@@ -125,8 +125,12 @@
   .spinner { width: 22px; height: 22px; border: 2px solid rgb(255 255 255 / .15); border-top-color: rgb(255 255 255 / .75); border-radius: 50%; animation: spin 1s linear infinite; }
   .retry { border: 0; background: transparent; color: rgb(255 255 255 / .75); padding: 7px 12px; font: inherit; cursor: pointer; }
   .retry:hover { color: #fff; }
-  .follow { position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 8px; white-space: nowrap; padding: 10px 17px; color: #fff; font-family: inherit; font-size: 13px; font-weight: 600; background: #2c292a; border: 1px solid rgb(255 255 255 / .18); border-radius: 50px; box-shadow: 0 5px 12px rgb(0 0 0 / .3); cursor: pointer; }
+  .follow { position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 8px; white-space: nowrap; padding: 10px 17px; color: #fff; font-family: inherit; font-size: 13px; font-weight: 600; background: var(--sideb-acrylic-fallback, #2c292a); border: 1px solid var(--sideb-acrylic-border, rgb(255 255 255 / .18)); border-radius: 50px; box-shadow: 0 5px 12px rgb(0 0 0 / .3); cursor: pointer; }
+  @supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    .follow { background: var(--sideb-acrylic-surface); backdrop-filter: var(--sideb-acrylic-blur); -webkit-backdrop-filter: var(--sideb-acrylic-blur); }
+  }
   .follow svg { width: 14px; height: 14px; }
   @keyframes spin { to { transform: rotate(360deg); } }
   @media (prefers-reduced-motion: reduce) { .line { transition: none; } .spinner { animation: none; } }
+  @media (forced-colors: active) { .follow { color: ButtonText; background: ButtonFace; border-color: ButtonText; backdrop-filter: none; -webkit-backdrop-filter: none; } }
 </style>

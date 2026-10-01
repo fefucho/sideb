@@ -279,6 +279,29 @@ impl QueueStateDto {
         Ok(true)
     }
 
+    /// Removes one exact occurrence and, when it was active, selects its successor or wraps
+    /// to the first remaining occurrence. Playback orchestration performs the actual load.
+    pub fn dismiss_entry(&mut self, entry_id: &str) -> Option<(bool, Option<QueueEntryDto>)> {
+        let index = self.items.iter().position(|entry| entry.entry_id == entry_id)?;
+        let was_current = self.current_index == Some(index);
+        self.items.remove(index);
+        if was_current {
+            self.current_index = if self.items.is_empty() {
+                None
+            } else if index < self.items.len() {
+                Some(index)
+            } else {
+                Some(0)
+            };
+        } else if let Some(current) = self.current_index {
+            if index < current {
+                self.current_index = Some(current - 1);
+            }
+        }
+        self.revision += 1;
+        Some((was_current, self.current()))
+    }
+
     /// Moves one occurrence before another (or to the end), preserving the playing occurrence.
     pub fn move_entry(
         &mut self,
@@ -482,6 +505,56 @@ mod tests {
         assert_eq!(queue.current_index, Some(0));
         assert_eq!(queue.current().unwrap().entry_id, current);
         assert_eq!(queue.remove_entry("missing"), Ok(false));
+    }
+
+    #[test]
+    fn dismissing_active_duplicate_selects_successor_without_touching_other_occurrences() {
+        let mut queue = QueueStateDto::default();
+        queue.replace(vec![item("same"), item("same"), item("same")], 1, source());
+        let active_id = queue.current().unwrap().entry_id;
+        let first_id = queue.items[0].entry_id.clone();
+        let (was_current, next) = queue.dismiss_entry(&active_id).unwrap();
+        assert!(was_current);
+        assert_eq!(next.unwrap().entry_id, queue.items[1].entry_id);
+        assert_eq!(queue.items.len(), 2);
+        assert_eq!(queue.items[0].entry_id, first_id);
+        assert_eq!(queue.items[0].video_id, queue.items[1].video_id);
+        assert_eq!(queue.current_index, Some(1));
+    }
+
+    #[test]
+    fn dismissing_last_active_entry_wraps_to_first_remaining_or_leaves_empty_queue() {
+        let mut queue = queue();
+        queue.select(2);
+        let last = queue.current().unwrap().entry_id;
+        let (was_current, next) = queue.dismiss_entry(&last).unwrap();
+        assert!(was_current);
+        assert_eq!(next.unwrap().entry_id, queue.items[0].entry_id);
+        assert_eq!(queue.current_index, Some(0));
+
+        let first = queue.current().unwrap().entry_id;
+        let (_, only) = queue.dismiss_entry(&first).unwrap();
+        assert_eq!(only.unwrap().entry_id, queue.items[0].entry_id);
+        let only = queue.current().unwrap().entry_id;
+        let (was_current, next) = queue.dismiss_entry(&only).unwrap();
+        assert!(was_current);
+        assert!(next.is_none());
+        assert!(queue.items.is_empty());
+        assert_eq!(queue.current_index, None);
+    }
+
+    #[test]
+    fn dismissing_a_nonactive_occurrence_preserves_the_playing_entry() {
+        let mut queue = queue();
+        let active = queue.current().unwrap().entry_id;
+        let before = queue.items[0].entry_id.clone();
+        let (was_current, selected) = queue.dismiss_entry(&before).unwrap();
+        assert!(!was_current);
+        assert_eq!(selected.unwrap().entry_id, active);
+        assert_eq!(queue.current_index, Some(0));
+        let unchanged = queue.clone();
+        assert!(queue.dismiss_entry("stale").is_none());
+        assert_eq!(queue, unchanged);
     }
 
     #[test]

@@ -65,15 +65,17 @@
 </script>
 
 <header class="titlebar" aria-label="Barra de título de Side B">
+  <div class="sidebar-slot">
+    <button type="button" class="titlebar-button sidebar-button" aria-label={sidebarCollapsed ? 'Expandir barra lateral' : 'Contraer barra lateral'} title={sidebarCollapsed ? 'Expandir barra lateral' : 'Contraer barra lateral'} aria-pressed={!sidebarCollapsed} onclick={onToggleSidebar}>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M9 4v16" /></svg>
+    </button>
+  </div>
   <div class="navigation-controls">
     <button type="button" class="titlebar-button" aria-label="Atrás" title="Atrás" disabled={!canBack} onclick={onBack}>
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18 9 12l6-6" /></svg>
     </button>
     <button type="button" class="titlebar-button" aria-label="Adelante" title="Adelante" disabled={!canForward} onclick={onForward}>
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6" /></svg>
-    </button>
-    <button type="button" class="titlebar-button sidebar-button" aria-label={sidebarCollapsed ? 'Expandir barra lateral' : 'Contraer barra lateral'} title={sidebarCollapsed ? 'Expandir barra lateral' : 'Contraer barra lateral'} aria-pressed={!sidebarCollapsed} onclick={onToggleSidebar}>
-      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M9 4v16" /></svg>
     </button>
   </div>
 
@@ -108,7 +110,8 @@
     user-select: none;
     -webkit-user-select: none;
   }
-  .navigation-controls, .window-controls { display: flex; align-items: center; height: 100%; }
+  .sidebar-slot, .navigation-controls, .window-controls { display: flex; align-items: center; height: 100%; }
+  .sidebar-slot { flex: 0 0 var(--sidebar-width, 230px); width: var(--sidebar-width, 230px); justify-content: center; }
   .navigation-controls { gap: 2px; padding-left: 8px; }
   .window-controls { width: 138px; flex: 0 0 138px; justify-content: stretch; }
   .titlebar-button, .window-button {
@@ -128,7 +131,7 @@
   .titlebar-button:hover:not(:disabled) { background: rgb(255 255 255 / 9%); }
   .titlebar-button:disabled { color: #68686f; cursor: default; }
   .titlebar-button svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-  .sidebar-button { margin-left: 4px; }
+  .sidebar-button { flex: 0 0 32px; }
   .drag-region { height: 100%; flex: 1; cursor: default; }
   .drag-region:focus-visible { outline: 2px solid #d06c70; outline-offset: -3px; }
   .window-button { height: 100%; flex: 1; }

@@ -34,12 +34,18 @@
     likePending?: boolean;
     onToggleLike?: () => void;
     onRetryRadio?: () => void;
+    likedIds?: Set<string>;
+    pendingIds?: Set<string>;
+    likesLoading?: boolean;
+    onToggleQueueLike?: (entry: QueueEntryDto) => void;
+    onDislikeQueueEntry?: (entry: QueueEntryDto) => void;
   }
 
   let {
     playback, onSelectQueue, onClose, selectedPanel, onSelectPanel, onOpenArtist, onOpenAlbum,
     onOpenMenu, onQueueContextMenu, loggedIn = false, liked = false, likePending = false,
-    onToggleLike, onRetryRadio,
+    onToggleLike, onRetryRadio, likedIds = new Set<string>(), pendingIds = new Set<string>(), likesLoading = false,
+    onToggleQueueLike, onDislikeQueueEntry,
     onMoveQueue, lyricsState, recommendationsState, onSeek, onRetryLyrics,
     onRefreshRecommendations, onPlayRecommendation, onEnqueueRecommendation,
     onSongContextMenu, onArtistContextMenu,
@@ -112,7 +118,7 @@
 
       <div id="fullscreen-panel" class="panel" role="tabpanel" aria-labelledby={`fullscreen-tab-${panel}`}>
         {#if panel === "queue"}
-          <QueuePanel {playback} {onSelectQueue} {onMoveQueue} {onQueueContextMenu} {onRetryRadio} />
+          <QueuePanel {playback} {onSelectQueue} {onMoveQueue} {onQueueContextMenu} {onRetryRadio} {loggedIn} {likedIds} {pendingIds} {likesLoading} onToggleLike={onToggleQueueLike} onDislike={onDislikeQueueEntry} />
         {:else if panel === "lyrics"}
           <LyricsPanel state={lyricsState} position={playback.position} duration={playback.duration} {onSeek} onRetry={onRetryLyrics} />
         {:else}

@@ -31,6 +31,9 @@
   let seekDraft = $state<{ generation: number; value: number } | null>(null);
   let failedArtworkUrl = $state<string | null>(null);
   let volumeOpen = $state(false);
+  let volumeDragging = false;
+  let volumeHovered = false;
+  let lastAudibleVolume = 100;
   let volumeRoot: HTMLDivElement;
   let volumeButton: HTMLButtonElement;
   let volumeSlider = $state<HTMLInputElement>();
@@ -39,14 +42,34 @@
     volumeOpen = !volumeOpen;
     if (volumeOpen) { await tick(); volumeSlider?.focus(); }
   }
+  function closeVolume(restoreFocus = false) {
+    volumeOpen = false;
+    if (restoreFocus) volumeButton?.focus({ preventScroll: true });
+  }
+  function leaveVolume() {
+    volumeHovered = false;
+    if (!volumeDragging) closeVolume(volumeRoot?.contains(document.activeElement));
+  }
+  function finishVolumeDrag() {
+    if (!volumeDragging) return;
+    volumeDragging = false;
+    if (!volumeHovered) closeVolume(volumeRoot?.contains(document.activeElement));
+  }
+  function handleVolumeFocusOut(event: FocusEvent) {
+    if (!volumeDragging && !(event.relatedTarget instanceof Node && volumeRoot?.contains(event.relatedTarget))) closeVolume();
+  }
+  function toggleMute() {
+    if (volume > 0) { lastAudibleVolume = volume; onVolumeChange(0); }
+    else onVolumeChange(lastAudibleVolume);
+  }
   function dismissVolume(event: PointerEvent) {
-    if (volumeOpen && event.target instanceof Node && !volumeRoot?.contains(event.target)) volumeOpen = false;
+    if (volumeOpen && !volumeDragging && event.target instanceof Node && !volumeRoot?.contains(event.target)) closeVolume();
   }
   function handleVolumeKeydown(event: KeyboardEvent) {
     if (event.key === "Escape" && volumeOpen) {
       event.preventDefault();
-      volumeOpen = false;
-      volumeButton?.focus();
+      volumeDragging = false;
+      closeVolume(true);
     }
   }
 
@@ -94,7 +117,7 @@
   }
 </script>
 
-<svelte:window onpointerdown={dismissVolume} onkeydown={handleVolumeKeydown} />
+<svelte:window onpointerdown={dismissVolume} onpointerup={finishVolumeDrag} onpointercancel={finishVolumeDrag} onkeydown={handleVolumeKeydown} onblur={() => { volumeDragging = false; closeVolume(); }} />
 
 <footer class="player-bar" aria-label="Reproductor de audio">
   <div class="progress">
@@ -189,6 +212,7 @@
 
     <div class="control-spacer" aria-hidden="true"></div>
     <div class="end-controls">
+      <div class="panel-shortcuts" class:obscured={volumeOpen} inert={volumeOpen}>
       {#if onSelectPanel}
         <button type="button" class="panel-shortcut" class:panel-active={fullscreenOpen && selectedPanel === "lyrics"} aria-label="Abrir letras" title="Letras" aria-pressed={fullscreenOpen && selectedPanel === "lyrics"} onclick={() => onSelectPanel?.("lyrics")}>
           <PlayerIcon name="lyrics" />
@@ -198,12 +222,12 @@
           <PlayerIcon name="queue" />
         </button>
       {/if}
-      <div class="volume" bind:this={volumeRoot}>
-        <button bind:this={volumeButton} type="button" class="volume-toggle" aria-label="Mostrar volumen" title={`Volumen: ${Math.round(volume)}%`} aria-expanded={volumeOpen} aria-controls="player-volume" onclick={toggleVolume}>
+      </div>
+      <div class="volume" class:open={volumeOpen} bind:this={volumeRoot} role="group" aria-label="Volumen" onpointerenter={() => volumeHovered = true} onpointerleave={leaveVolume} onfocusout={handleVolumeFocusOut}>
+        <button bind:this={volumeButton} type="button" class="volume-toggle" aria-label="Mostrar volumen" title={`Volumen: ${Math.round(volume)}%`} aria-expanded={volumeOpen} aria-controls="player-volume" aria-hidden={volumeOpen} tabindex={volumeOpen ? -1 : 0} onclick={toggleVolume}>
           <svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><path d="M3 9v6h4l5 5V4L7 9zm12.5 3a4 4 0 0 0-2-3.46v6.92a4 4 0 0 0 2-3.46" /></svg>
         </button>
-        {#if volumeOpen}
-        <div id="player-volume" class="volume-popover" data-volume-popover role="group" aria-label="Control de volumen">
+        <div id="player-volume" class="volume-popover" data-volume-popover={volumeOpen ? '' : undefined} inert={!volumeOpen} aria-hidden={!volumeOpen} role="group" aria-label="Control de volumen">
         <input bind:this={volumeSlider}
           type="range"
           min="0"
@@ -212,11 +236,17 @@
           value={volume}
           style={`--fill:${volume}%`}
           oninput={handleVolumeInput}
+          onpointerdown={() => volumeDragging = true}
           aria-label="Volumen"
+          aria-valuetext={`${Math.round(volume)}%`}
         />
-        <span class="volume-value">{Math.round(volume)}%</span>
+        <button type="button" class="volume-mute" aria-label={volume > 0 ? 'Silenciar' : 'Activar sonido'} title={`${volume > 0 ? 'Silenciar' : 'Activar sonido'} · ${Math.round(volume)}%`} onclick={toggleMute}>
+          <svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><path d="M3 9v6h4l5 5V4L7 9" />
+            {#if volume === 0}<path d="m16 9 5 6m0-6-5 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+            {:else}<path d="M15.5 12a4 4 0 0 0-2-3.46v6.92a4 4 0 0 0 2-3.46" />{/if}
+          </svg>
+        </button>
         </div>
-        {/if}
       </div>
       <button
         type="button"
@@ -246,10 +276,18 @@
     max-height: 74px;
     padding: 0;
     color: #f5f5f6;
-    background: #353538;
-    border: 1px solid rgba(255, 255, 255, 0.13);
+    background: var(--sideb-acrylic-fallback, #353538);
+    border: 1px solid var(--sideb-acrylic-border, rgb(255 255 255 / 20%));
     border-radius: 38px;
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.34);
+  }
+
+  @supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    .player-bar {
+      background: var(--sideb-acrylic-surface);
+      backdrop-filter: var(--sideb-acrylic-blur);
+      -webkit-backdrop-filter: var(--sideb-acrylic-blur);
+    }
   }
 
   .progress {
@@ -398,6 +436,8 @@
   .like-spinner { width: 13px; height: 13px; border: 2px solid rgb(255 255 255 / 30%); border-top-color: #d06c70; border-radius: 50%; animation: spin .8s linear infinite; }
 
   .end-controls { display: flex; align-items: center; justify-content: flex-end; gap: 8px; min-width: 0; }
+  .panel-shortcuts { display: flex; flex: none; align-items: center; gap: 8px; opacity: 1; transition: opacity 280ms ease; }
+  .panel-shortcuts.obscured { opacity: 0; pointer-events: none; }
   .panel-shortcut, .more-toggle { display: grid; flex: 0 0 32px; place-items: center; width: 32px; height: 32px; padding: 0; border: 0; border-radius: 7px; color: rgb(255 255 255 / 65%); background: transparent; cursor: pointer; }
   .more-toggle { width: 28px; height: 28px; flex-basis: 28px; }
   .more-toggle svg { width: 16px; height: 16px; }
@@ -405,14 +445,20 @@
   .panel-shortcut:hover:not(:disabled), .more-toggle:hover:not(:disabled) { color: #fff; background: rgb(255 255 255 / 10%); }
   .panel-shortcut.panel-active { color: #d06c70; }
   .volume { position: relative; flex: 0 0 32px; width: 32px; height: 32px; }
-  .volume-toggle { display: grid; place-items: center; width: 32px; height: 32px; padding: 7px; border: 0; border-radius: 7px; color: #c6c6cd; background: transparent; cursor: pointer; }
+  .volume-toggle { display: grid; place-items: center; width: 32px; height: 32px; padding: 7px; border: 0; border-radius: 7px; color: #c6c6cd; background: transparent; cursor: pointer; transition: opacity 280ms ease; }
+  .volume.open .volume-toggle { opacity: 0; pointer-events: none; }
   .volume-toggle:hover, .volume-toggle[aria-expanded="true"] { color: #fff; background: rgb(255 255 255 / 10%); }
   .volume svg { width: 18px; height: 18px; }
-  .volume-popover { position: absolute; right: 0; bottom: 42px; z-index: 2; box-sizing: border-box; display: flex; align-items: center; gap: 10px; width: 180px; padding: 14px; border: 1px solid rgb(255 255 255 / 15%); border-radius: 16px; background: #29292f; box-shadow: 0 6px 24px rgb(0 0 0 / 40%); }
-  .volume input { height: 8px; border-radius: 8px; }
-  .volume input::-webkit-slider-thumb { width: 10px; height: 10px; border-radius: 50%; }
-  .volume input::-moz-range-thumb { width: 10px; height: 10px; border-radius: 50%; }
-  .volume-value { width: 34px; flex: 0 0 34px; color: #b9b9c2; font-size: 10px; font-variant-numeric: tabular-nums; text-align: right; }
+  .volume-popover { position: absolute; right: 0; top: -2px; z-index: 2; box-sizing: border-box; display: flex; align-items: center; gap: 10px; width: 152px; height: 36px; padding: 0 10px 0 14px; border: 1px solid var(--sideb-acrylic-border, rgb(255 255 255 / 20%)); border-radius: 999px; background: var(--sideb-acrylic-fallback, #29292f); box-shadow: 0 4px 10px rgb(0 0 0 / 35%); opacity: 0; transform: scale(.92); transform-origin: right center; visibility: hidden; pointer-events: none; transition: opacity 280ms ease, transform 280ms cubic-bezier(.2,.8,.2,1), visibility 0s linear 280ms; }
+  @supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    .volume-popover { background: var(--sideb-acrylic-surface); backdrop-filter: var(--sideb-acrylic-blur); -webkit-backdrop-filter: var(--sideb-acrylic-blur); }
+  }
+  .volume.open .volume-popover { opacity: 1; transform: scale(1); visibility: visible; pointer-events: auto; transition-delay: 0s; }
+  .volume input { flex: 1; height: 11px; border-radius: 999px; background: linear-gradient(to right, #fff 0 var(--fill), rgb(255 255 255 / 16%) var(--fill) 100%); }
+  .volume input::-webkit-slider-thumb { width: 1px; height: 18px; border-radius: 0; background: transparent; box-shadow: none; }
+  .volume input::-moz-range-thumb { width: 1px; height: 18px; border-radius: 0; background: transparent; }
+  .volume-mute { display: grid; flex: 0 0 22px; place-items: center; width: 22px; height: 32px; padding: 0; border: 0; border-radius: 6px; color: #fff; background: transparent; cursor: pointer; }
+  .volume-mute:hover { color: #fff; background: rgb(255 255 255 / 8%); }
   .fullscreen-toggle { display: grid; flex: 0 0 32px; place-items: center; width: 32px; height: 32px; padding: 5px; border: 0; border-radius: 7px; color: rgb(255 255 255 / 75%); background: transparent; cursor: pointer; }
   .fullscreen-toggle:hover { color: #fff; background: rgb(255 255 255 / 10%); }
   .fullscreen-toggle svg { width: 20px; height: 20px; transition: transform 180ms ease; }
@@ -425,5 +471,10 @@
 
   @media (prefers-reduced-motion: reduce) {
     .spinner { animation-duration: 2s; }
+    .panel-shortcuts, .volume-toggle, .volume-popover { transition: none; }
+  }
+
+  @media (forced-colors: active) {
+    .player-bar, .volume-popover { background: Canvas; border-color: CanvasText; color: CanvasText; backdrop-filter: none; -webkit-backdrop-filter: none; }
   }
 </style>

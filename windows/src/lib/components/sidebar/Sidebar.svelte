@@ -59,13 +59,32 @@
   let accountOpen = $state(false);
   let profileButton: HTMLButtonElement;
   let accountPopover = $state<HTMLDivElement>();
+  let popoverPosition = $state({ left: 12, top: 12 });
   const currentItems = $derived(libraryTab === "playlists" ? playlists : albums);
+
+  function positionAccountPopover() {
+    const anchor = profileButton?.getBoundingClientRect();
+    const popover = accountPopover;
+    if (!anchor || !popover) return;
+
+    const margin = 12;
+    const viewportWidth = document.documentElement.clientWidth;
+    const viewportHeight = document.documentElement.clientHeight;
+    const width = popover.getBoundingClientRect().width;
+    const height = popover.getBoundingClientRect().height;
+    const left = Math.max(margin, Math.min(anchor.left, viewportWidth - width - margin));
+    const above = anchor.top - height - 8;
+    const below = anchor.bottom + 8;
+    const top = above >= margin ? above : Math.min(below, viewportHeight - height - margin);
+    popoverPosition = { left, top: Math.max(margin, top) };
+  }
 
   async function toggleAccount() {
     if (auth.state === "ready") {
       accountOpen = !accountOpen;
       if (accountOpen) {
         await tick();
+        positionAccountPopover();
         accountPopover?.querySelector<HTMLButtonElement>("button")?.focus();
       }
     } else if (auth.state === "authorizing") {
@@ -88,6 +107,10 @@
     }
   }
 
+  function handleWindowResize() {
+    if (accountOpen) positionAccountPopover();
+  }
+
   function handleWindowClick(event: MouseEvent) {
     if (accountOpen && event.target instanceof Node && !event.target.parentElement?.closest(".profile-wrap")) {
       closeAccount();
@@ -97,9 +120,15 @@
   $effect(() => {
     if (auth.state !== "ready") accountOpen = false;
   });
+
+  $effect(() => {
+    const open = accountOpen;
+    collapsed;
+    if (open) void tick().then(positionAccountPopover);
+  });
 </script>
 
-<svelte:window onkeydown={handleWindowKeydown} onclick={handleWindowClick} />
+<svelte:window onkeydown={handleWindowKeydown} onclick={handleWindowClick} onresize={handleWindowResize} />
 
 <aside class:collapsed aria-label="Barra lateral de Side B">
   <div class="scroll-region">
@@ -199,7 +228,7 @@
     </button>
     {#if auth.message}<small class="auth-error" role="alert">{auth.message}</small>{/if}
     {#if auth.state === "ready" && accountOpen}
-      <div bind:this={accountPopover} id="account-popover" class="account-popover" role="dialog" aria-label="Cuenta" aria-modal="false">
+      <div bind:this={accountPopover} id="account-popover" class="account-popover" style:left={`${popoverPosition.left}px`} style:top={`${popoverPosition.top}px`} role="dialog" aria-label="Cuenta" aria-modal="false">
         <div class="popover-account">
           {#if auth.thumbnail}<img class="popover-avatar" src={auth.thumbnail} alt="" />{:else}<span class="popover-avatar fallback">●</span>{/if}
           <span><strong>{auth.name ?? "Tu cuenta"}</strong><small>{auth.email ?? "Sesión activa de YouTube Music"}</small></span>
@@ -390,7 +419,7 @@
 
   .auth-error { color: #ef9a9e !important; }
 
-  .account-popover { position: absolute; z-index: 20; bottom: calc(100% + 4px); left: 0; width: 260px; padding: 13px; border: 1px solid rgb(255 255 255 / 13%); border-radius: 12px; background: #303036; box-shadow: 0 12px 30px rgb(0 0 0 / 45%); }
+  .account-popover { position: fixed; z-index: 220; box-sizing: border-box; width: min(260px, calc(100vw - 24px)); max-height: calc(100vh - 24px); overflow-y: auto; padding: 13px; border: 1px solid rgb(255 255 255 / 13%); border-radius: 12px; background: #303036; box-shadow: 0 12px 30px rgb(0 0 0 / 45%); }
   .popover-account { display: flex; align-items: center; gap: 10px; padding: 2px 2px 11px; }
   .popover-account > span:last-child { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
   .popover-account strong, .popover-account small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

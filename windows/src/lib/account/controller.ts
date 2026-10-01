@@ -197,6 +197,23 @@ export class AccountController {
     });
     if (changed && generation === this.generation && this.data.playlist?.id === 'LM' && liked) await this.openPlaylist('LM');
   }
+  async dislike(song: Pick<SongDto, 'videoId'>) {
+    const id = song.videoId; const generation = this.generation;
+    if (!this.data.loggedIn || this.data.pendingIds.has(id)) return false;
+    const wasLiked = this.data.likedIds.has(id);
+    const hadOverride = this.likeOverrides.has(id); const previousOverride = this.likeOverrides.get(id);
+    this.likeOverrides.set(id, false); this.data.likedIds.delete(id); this.emit();
+    const changed = await this.mutate(id, () => this.rpc('rate_song', { videoId: id, rating: 'DISLIKE' }), () => {
+      this.likedPlaylist = null;
+      if (this.data.playlist?.id === 'LM') this.data.playlist = { ...this.data.playlist, items: this.data.playlist.items.filter(item => item.videoId !== id) };
+    });
+    if (!changed && generation === this.generation) {
+      if (hadOverride) this.likeOverrides.set(id, previousOverride!); else this.likeOverrides.delete(id);
+      if (wasLiked) this.data.likedIds.add(id); else this.data.likedIds.delete(id);
+      this.emit();
+    }
+    return changed;
+  }
   async toggleSaved(song: SongDto) {
     const library = song.library; const token = library?.inLibrary ? library.removeToken : library?.addToken;
     if (!token) return;

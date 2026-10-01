@@ -237,7 +237,7 @@ async fn fetch_radio(
     };
     let _ = app.emit("playback-state-changed", &snapshot);
     if let Some((entry_id, generation)) = next_to_play {
-        tauri::async_runtime::spawn(start_queue_entry(app.clone(), entry_id, generation));
+        tauri::async_runtime::spawn(start_queue_entry(app.clone(), entry_id, generation, false));
     }
     maybe_prefetch_radio(app);
 }
@@ -341,6 +341,7 @@ pub(crate) async fn play_song(
     album: Option<String>,
     artist_runs: Option<Vec<crate::HomeArtistRunDto>>,
     queue_entry_id: Option<String>,
+    start_paused: Option<bool>,
 ) -> Result<PlaybackStateDto, CommandError> {
     let trimmed_id = video_id.trim();
     if trimmed_id.is_empty() {
@@ -634,6 +635,11 @@ pub(crate) async fn play_song(
         pb.duration = parsed_duration;
     }
 
+    if start_paused == Some(true) {
+        player.pause().map_err(|_| {
+            CommandError::new("PAUSE_FAILED", "No se pudo conservar la pausa al cambiar de pista.")
+        })?;
+    }
     if player
         .load(
             &stream_info.stream_url,
@@ -655,7 +661,7 @@ pub(crate) async fn play_song(
         ));
     }
 
-    if player.play().is_err() {
+    if start_paused != Some(true) && player.play().is_err() {
         pb.is_loading = false;
         pb.is_playing = false;
         pb.is_ended = false;
@@ -671,7 +677,7 @@ pub(crate) async fn play_song(
 
     // Mantener is_loading = true e is_playing = false hasta recibir el evento real Playing(true).
     // Se activa loaded_generation para que sólo a partir de ahora se procesen eventos del motor para este intento.
-    pb.is_loading = true;
+    pb.is_loading = start_paused != Some(true);
     pb.is_playing = false;
     pb.is_ended = false;
     pb.error = None;
@@ -687,6 +693,7 @@ async fn start_queue_entry(
     app: tauri::AppHandle,
     entry_id: String,
     expected_generation: u64,
+    start_paused: bool,
 ) -> Result<PlaybackStateDto, CommandError> {
     let state = app.state::<AppState>();
     let entry = {
@@ -727,6 +734,7 @@ async fn start_queue_entry(
         entry.album,
         Some(entry.artist_runs),
         Some(entry.entry_id),
+        Some(start_paused),
     )
     .await
 }
@@ -765,6 +773,7 @@ pub(crate) async fn start_song_radio(
         entry.artist_id,
         entry.album_id,
         entry.album,
+        None,
         None,
         None,
     )
@@ -851,7 +860,7 @@ pub(crate) fn enqueue_tracks(
 }
 
 #[tauri::command]
-pub(crate) fn remove_queue_entry(
+pub(crate) async fn remove_queue_entry(
     app: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
     entry_id: String,
@@ -863,30 +872,76 @@ pub(crate) fn remove_queue_entry(
             "El identificador de ocurrencia no puede estar vacío.",
         ));
     }
-    let snapshot = {
+    let player = state.player.read().map_err(|_| {
+        CommandError::new("LOCK_ERROR", "No se pudo acceder al reproductor.")
+    })?.clone();
+    let (snapshot, next) = {
         let mut playback = state
             .playback
             .lock()
             .map_err(|_| CommandError::new("LOCK_ERROR", "No se pudo actualizar la cola."))?;
-        match playback.queue.remove_entry(entry_id) {
-            Ok(true) => playback.to_dto(),
-            Ok(false) => {
-                return Err(CommandError::new(
-                    "QUEUE_ENTRY_NOT_FOUND",
-                    "La canción ya no está en la cola.",
-                ))
+        let (was_current, selected) = playback.queue.dismiss_entry(entry_id).ok_or_else(|| {
+            CommandError::new("QUEUE_ENTRY_NOT_FOUND", "La canción ya no está en la cola.")
+        })?;
+        if !was_current {
+            (playback.to_dto(), None)
+        } else if let Some(entry) = selected {
+            if let Some(player) = &player {
+                let _ = player.stop();
+                let _ = player.clear_playlist();
             }
-            Err(crate::queue::QueueRemoveError::CurrentEntry) => {
-                return Err(CommandError::new(
-                    "CURRENT_QUEUE_ENTRY",
-                    "No se puede quitar la canción que está sonando.",
-                ))
+            let (expected_generation, start_paused) = prepare_dismissed_current(&mut playback, &entry);
+            (playback.to_dto(), Some((entry.entry_id, expected_generation, start_paused)))
+        } else {
+            invalidate_queue_owner(&mut playback);
+            if let Some(player) = &player {
+                let _ = player.stop();
+                let _ = player.clear_playlist();
             }
+            playback.generation = playback.generation.wrapping_add(1);
+            playback.loaded_generation = None;
+            playback.is_playing = false;
+            playback.is_loading = false;
+            playback.is_ended = false;
+            playback.position = 0.0;
+            playback.duration = 0.0;
+            playback.current_track = None;
+            playback.error = None;
+            playback.queue = QueueStateDto::default();
+            (playback.to_dto(), None)
         }
     };
     let _ = app.emit("playback-state-changed", &snapshot);
+    if let Some((entry_id, expected_generation, start_paused)) = next {
+        return start_queue_entry(app, entry_id, expected_generation, start_paused).await;
+    }
     maybe_prefetch_radio(app);
     Ok(snapshot)
+}
+
+fn prepare_dismissed_current(playback: &mut crate::PlaybackManager, entry: &QueueEntryDto) -> (u64, bool) {
+    let start_paused = !playback.is_playing && !playback.is_loading && !playback.is_ended;
+    playback.generation = playback.generation.wrapping_add(1);
+    playback.loaded_generation = None;
+    playback.is_loading = true;
+    playback.is_playing = false;
+    playback.is_ended = false;
+    playback.position = 0.0;
+    playback.duration = entry.duration.unwrap_or(0.0);
+    playback.error = None;
+    playback.current_track = Some(PlaybackTrackDto {
+        video_id: entry.video_id.clone(),
+        title: entry.title.clone(),
+        artists: entry.artists.clone(),
+        thumbnail: entry.thumbnail.clone(),
+        duration: entry.duration,
+        artist_id: entry.artist_id.clone(),
+        album_id: entry.album_id.clone(),
+        album: entry.album.clone(),
+        artist_runs: entry.artist_runs.clone(),
+    });
+    playback.eof_waiting = None;
+    (playback.generation, start_paused)
 }
 
 #[tauri::command]
@@ -962,7 +1017,7 @@ pub(crate) fn handle_track_ended(app: tauri::AppHandle) {
     };
     let _ = app.emit("playback-state-changed", &snapshot);
     if let Some((entry_id, generation)) = next {
-        tauri::async_runtime::spawn(start_queue_entry(app, entry_id, generation));
+        tauri::async_runtime::spawn(start_queue_entry(app, entry_id, generation, false));
     } else {
         maybe_prefetch_radio(app);
     }
@@ -987,7 +1042,7 @@ pub(crate) async fn next_track(
         (next, playback.generation)
     };
     match next {
-        Some(entry_id) => start_queue_entry(app, entry_id, generation).await,
+        Some(entry_id) => start_queue_entry(app, entry_id, generation, false).await,
         None => get_playback_state(state).await,
     }
 }
@@ -1022,7 +1077,7 @@ pub(crate) async fn previous_track(
     let target = target.ok_or_else(|| {
         CommandError::new("INVALID_QUEUE_INDEX", "La pista ya no está en la cola.")
     })?;
-    start_queue_entry(app, target, generation).await
+    start_queue_entry(app, target, generation, false).await
 }
 
 #[tauri::command]
@@ -1282,4 +1337,40 @@ pub(crate) async fn stop_playback(
     let dto = pb.to_dto();
     let _ = app.emit("playback-state-changed", &dto);
     Ok(dto)
+}
+
+#[cfg(test)]
+mod dismissal_tests {
+    use super::*;
+
+    #[test]
+    fn active_dismissal_replaces_track_metadata_and_invalidates_old_generation() {
+        let source = QueueSourceDto { kind: "playlist".into(), id: None, title: None };
+        let mut playback = crate::PlaybackManager::new();
+        playback.generation = 8;
+        playback.loaded_generation = Some(8);
+        playback.position = 42.0;
+        let current = QueueEntryDto::new("same".into(), "Current".into(), "Artist A".into(), None, None);
+        let next = QueueEntryDto::new("same".into(), "Next occurrence".into(), "Artist B".into(), None, Some(120.0));
+        playback.queue.replace(vec![current, next], 0, source);
+        let next = playback.queue.items[1].clone();
+
+        let active_id = playback.queue.current().unwrap().entry_id;
+        let (was_current, selected) = playback.queue.dismiss_entry(&active_id).unwrap();
+        assert!(was_current);
+        let selected = selected.unwrap();
+        assert_eq!(selected.entry_id, next.entry_id);
+        let old_generation = playback.generation;
+        let (expected_generation, start_paused) = prepare_dismissed_current(&mut playback, &selected);
+
+        assert!(start_paused);
+        assert_eq!(expected_generation, old_generation + 1);
+        assert_ne!(expected_generation, old_generation);
+        assert_eq!(playback.loaded_generation, None);
+        assert!(playback.is_loading);
+        assert_eq!(playback.position, 0.0);
+        assert_eq!(playback.current_track.as_ref().unwrap().title, "Next occurrence");
+        assert_eq!(playback.current_track.as_ref().unwrap().artists, "Artist B");
+        assert_eq!(playback.duration, 120.0);
+    }
 }

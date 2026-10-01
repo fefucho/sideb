@@ -29,6 +29,20 @@ test('failed like keeps server state, exposes error and prevents double submissi
   assert.equal(data.likedIds.has('a'), true); assert.equal(data.pendingIds.size, 0); assert.equal(data.actionError, 'Provider unavailable');
   assert.equal(calls.at(-1).args.rating, 'INDIFFERENT');
 });
+test('dislike sends DISLIKE and removes the liked state, restoring it when the provider fails', async () => {
+  const mutation = deferred(); const calls = []; let data;
+  const account = new AccountController(async (command, args) => {
+    calls.push({ command, args }); if (command === 'get_playlist') return playlist([song('a')]);
+    if (command === 'rate_song') return mutation.promise;
+  }, next => data = next);
+  account.reset(true); await account.hydrateLikes();
+  const pending = account.dislike(song('a'));
+  assert.equal(data.likedIds.has('a'), false); assert.equal(data.pendingIds.has('a'), true);
+  assert.equal(calls.at(-1).args.rating, 'DISLIKE');
+  mutation.reject(new Error('Provider unavailable')); assert.equal(await pending, false);
+  assert.equal(data.likedIds.has('a'), true); assert.equal(data.pendingIds.size, 0);
+  assert.equal(data.actionError, 'Provider unavailable');
+});
 test('saving a song uses its feedback token independently of like IDs', async () => {
   const saved = song('a', { library: { inLibrary: false, addToken: 'opaque-add', removeToken: 'opaque-remove' } });
   const calls = []; let data;

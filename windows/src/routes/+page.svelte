@@ -819,6 +819,9 @@
       loggedIn={authStatus.state === 'ready'} liked={accountData.likedIds.has(playbackState.currentTrack?.videoId ?? '')}
       likePending={accountData.pendingIds.has(playbackState.currentTrack?.videoId ?? '')}
       onToggleLike={() => { if (playbackState.currentTrack) void account.toggleLike(playbackState.currentTrack); }}
+      likedIds={accountData.likedIds} pendingIds={accountData.pendingIds} likesLoading={accountData.loading.likes}
+      onToggleQueueLike={(entry) => { void account.toggleLike(entry); }}
+      onDislikeQueueEntry={(entry) => { void account.dislike(entry); void player.removeQueueEntry(entry.entryId).catch(error => shellError = extractErrorMessage(error, 'No se pudo quitar la canción de la cola.')); }}
       onOpenArtist={(id) => { void setPlayerFullscreen(false); void openArtistDetail(id); }}
       onOpenAlbum={(id) => { void setPlayerFullscreen(false); void openAlbumDetail(id); }} onOpenMenu={openNowPlayingMenu}
       onQueueContextMenu={(event, entry) => menuService.open(event, {kind:'song',song:songFromQueue(entry),entryId:entry.entryId})}

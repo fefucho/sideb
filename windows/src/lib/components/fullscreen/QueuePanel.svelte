@@ -8,8 +8,15 @@
     onMoveQueue: (entryId: string, beforeEntryId: string | null) => void | Promise<void>;
     onQueueContextMenu?: (event: MouseEvent, entry: QueueEntryDto) => void;
     onRetryRadio?: () => void;
+    loggedIn?: boolean;
+    likedIds?: Set<string>;
+    pendingIds?: Set<string>;
+    likesLoading?: boolean;
+    onToggleLike?: (entry: QueueEntryDto) => void;
+    onDislike?: (entry: QueueEntryDto) => void;
   }
-  let { playback, onSelectQueue, onMoveQueue, onQueueContextMenu, onRetryRadio }: Props = $props();
+  let { playback, onSelectQueue, onMoveQueue, onQueueContextMenu, onRetryRadio, loggedIn = false,
+    likedIds = new Set<string>(), pendingIds = new Set<string>(), likesLoading = false, onToggleLike, onDislike }: Props = $props();
   let draggingId = $state<string | null>(null);
   let dropId = $state<string | null>(null);
   let dropAfter = $state(false);
@@ -138,6 +145,18 @@
           <button type="button" class="reorder-handle" aria-label={`Mover ${entry.title} en la cola`} aria-describedby="queue-reorder-help" title="Arrastrar para reordenar (↑/↓ con el teclado)" disabled={movePending} draggable={!movePending} ondragstart={(event) => startDrag(event, entry)} ondragend={resetDrag} onkeydown={(event) => reorderWithKeyboard(event, entry)} onclick={(event) => event.stopPropagation()}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" /></svg>
           </button>
+          {#if loggedIn && onToggleLike}
+            {@const liked = likedIds.has(entry.videoId)}
+            {@const likePending = (likesLoading && !liked) || pendingIds.has(entry.videoId)}
+            <button type="button" class="queue-action like-action" class:liked aria-pressed={liked} aria-label={liked ? `Quitar Me gusta de ${entry.title}` : `Marcar ${entry.title} como Me gusta`} title={likePending ? "Actualizando Me gusta…" : liked ? "Quitar Me gusta" : "Me gusta"} disabled={likePending} onclick={(event) => { event.stopPropagation(); onToggleLike?.(entry); }} onpointerdown={(event) => event.stopPropagation()}>
+              <svg viewBox="0 0 24 24" aria-hidden="true" fill={liked ? "currentColor" : "none"} stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.8 8.7c0 4.2-6.4 9.1-8.8 11-2.4-1.9-8.8-6.8-8.8-11a4.9 4.9 0 0 1 8.8-3.1 4.9 4.9 0 0 1 8.8 3.1Z" /></svg>
+            </button>
+          {/if}
+          {#if onDislike}
+            <button type="button" class="queue-action dislike-action" aria-label={`No me gusta y quitar ${entry.title} de la cola`} title="No me gusta y quitar de la cola" disabled={movePending || playback.isLoading} onclick={(event) => { event.stopPropagation(); onDislike?.(entry); }} onpointerdown={(event) => event.stopPropagation()}>
+              <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 10V4H4a2 2 0 0 0-2 2v4a2 2 0 0 0 2 2h3m0-2 3-7a2 2 0 0 1 2-1h5a2 2 0 0 1 2 2l-1 6h2a2 2 0 0 1 2 2l-2 8a2 2 0 0 1-2 2h-7l-6-5v-7Z" /></svg>
+            </button>
+          {/if}
           {#if onQueueContextMenu}<button type="button" class="row-menu" aria-label={`Más opciones para ${entry.title}`} title="Más opciones" onclick={(event) => onQueueContextMenu?.(event, entry)}><svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg></button>{/if}
         </div>
       {/each}
@@ -167,7 +186,7 @@
   .queue-row.drop-before::before { top: 0; }
   .queue-row.drop-after::after { bottom: 0; }
   .queue-list.drop-end { box-shadow: inset 0 -2px #d06c70; }
-  .queue-select { box-sizing: border-box; display: flex; min-width: 0; flex: 1; height: 46px; align-items: center; gap: 6px; padding: 3px 2px; border: 0; border-radius: 7px; color: inherit; background: transparent; font: inherit; text-align: left; cursor: pointer; }
+  .queue-select { box-sizing: border-box; display: flex; min-width: 0; flex: 1; height: 46px; align-items: center; gap: 6px; padding: 3px 122px 3px 2px; border: 0; border-radius: 7px; color: inherit; background: transparent; font: inherit; text-align: left; cursor: pointer; }
   .queue-art { display: grid; flex: 0 0 36px; margin-right: 9px; place-items: center; width: 36px; height: 36px; overflow: hidden; border-radius: 6px; color: rgb(255 255 255 / 58%); background: rgb(255 255 255 / 10%); }
   .queue-art img { width: 100%; height: 100%; object-fit: cover; }
   .queue-art svg { width: 19px; height: 19px; }
@@ -177,6 +196,8 @@
   .queue-meta :global(.artist-credits) { color: rgb(255 255 255 / 60%); font-size: 11.5px; line-height: 14px; }
   .queue-index { display: grid; flex: 0 0 22px; place-items: center; color: rgb(255 255 255 / 55%); font-size: 11.5px; }
   .queue-index svg { width: 12px; height: 12px; color: white; }
+  .queue-duration { position: absolute; right: 6px; }
+  .has-menu .queue-duration { right: 42px; }
   .queue-duration { flex: 0 0 36px; color: rgb(255 255 255 / 45%); font-size: 11.5px; font-variant-numeric: tabular-nums; text-align: right; }
   .queue-row:hover .queue-duration, .queue-row:focus-within .queue-duration { visibility: hidden; }
   .reorder-handle { position: absolute; top: 8px; right: 6px; display: grid; place-items: center; width: 36px; height: 30px; padding: 6px; border: 0; border-radius: 6px; color: rgb(255 255 255 / 45%); background: transparent; cursor: grab; opacity: 0; }
@@ -186,6 +207,17 @@
   .reorder-handle:hover { color: #fff; }
   .reorder-handle:active { cursor: grabbing; }
   .reorder-handle:disabled { cursor: wait; opacity: .4; }
+  .queue-action { position: absolute; top: 8px; display: grid; place-items: center; width: 30px; height: 30px; padding: 6px; border: 0; border-radius: 6px; color: rgb(255 255 255 / 68%); background: transparent; cursor: pointer; opacity: 0; pointer-events: none; }
+  .queue-action svg { width: 17px; height: 17px; }
+  .like-action { right: 50px; }
+  .has-menu .like-action { right: 86px; }
+  .dislike-action { right: 86px; }
+  .has-menu .dislike-action { right: 122px; }
+  .queue-row:hover .queue-action, .queue-row:focus-within .queue-action { opacity: 1; pointer-events: auto; }
+  .queue-action:hover { color: #fff; background: rgb(255 255 255 / 10%); }
+  .queue-action.liked { color: #d06c70; opacity: 1; pointer-events: auto; }
+  .queue-row:hover .dislike-action:disabled, .queue-row:focus-within .dislike-action:disabled { opacity: .45; }
+  .queue-action:disabled { cursor: wait; }
   .row-menu { display: grid; flex: 0 0 30px; place-items: center; width: 30px; height: 30px; border: 0; border-radius: 6px; color: rgb(255 255 255 / 60%); background: transparent; cursor: pointer; }
   .row-menu svg { width: 16px; height: 16px; }
   .row-menu:hover { color: #fff; background: rgb(255 255 255 / 10%); }
