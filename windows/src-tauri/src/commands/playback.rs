@@ -470,6 +470,12 @@ pub(crate) async fn play_song(
         // Serializar parada y anuncio con la carga de otros play_song. Si se detiene fuera
         // de este cerrojo, una petición anterior puede cargar después de la parada y
         // seguir sonando mientras la nueva todavía se resuelve.
+        if player.set_loop_file(pb.is_repeat).is_err() {
+            return Err(CommandError::new(
+                "REPEAT_FAILED",
+                "No se pudo preparar la repetición para esta pista.",
+            ));
+        }
         player.stop().map_err(|_| {
             CommandError::new("STOP_FAILED", "No se pudo detener la pista anterior.")
         })?;
@@ -991,12 +997,16 @@ pub(crate) fn handle_track_ended(app: tauri::AppHandle) {
         playback.is_ended = true;
         playback.position = playback.duration;
         playback.loaded_generation = None;
-        let next_entry_id = playback
-            .queue
-            .current_index
-            .and_then(|index| index.checked_add(1))
-            .and_then(|index| playback.queue.items.get(index))
-            .map(|entry| entry.entry_id.clone());
+        let next_entry_id = if playback.is_repeat {
+            playback.queue.current().map(|entry| entry.entry_id)
+        } else {
+            playback
+                .queue
+                .current_index
+                .and_then(|index| index.checked_add(1))
+                .and_then(|index| playback.queue.items.get(index))
+                .map(|entry| entry.entry_id.clone())
+        };
         let next = if let Some(entry_id) = next_entry_id {
             playback.eof_waiting = None;
             Some((entry_id, generation))
@@ -1035,16 +1045,65 @@ pub(crate) async fn next_track(
             .map_err(|_| CommandError::new("LOCK_ERROR", "No se pudo leer la cola."))?;
         let next = playback
             .queue
-            .current_index
-            .and_then(|index| index.checked_add(1))
-            .and_then(|index| playback.queue.items.get(index))
-            .map(|entry| entry.entry_id.clone());
+            .next_or_first(playback.is_repeat)
+            .map(|entry| entry.entry_id);
         (next, playback.generation)
     };
     match next {
         Some(entry_id) => start_queue_entry(app, entry_id, generation, false).await,
         None => get_playback_state(state).await,
     }
+}
+
+#[tauri::command]
+pub(crate) fn set_shuffle(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+    enabled: bool,
+) -> Result<PlaybackStateDto, CommandError> {
+    let snapshot = {
+        let mut playback = state
+            .playback
+            .lock()
+            .map_err(|_| CommandError::new("LOCK_ERROR", "No se pudo cambiar el modo aleatorio."))?;
+        if enabled && !playback.is_shuffle {
+            playback.queue.shuffle_after_current();
+        }
+        playback.is_shuffle = enabled;
+        playback.to_dto()
+    };
+    let _ = app.emit("playback-state-changed", &snapshot);
+    maybe_prefetch_radio(app);
+    Ok(snapshot)
+}
+
+#[tauri::command]
+pub(crate) fn set_repeat(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+    enabled: bool,
+) -> Result<PlaybackStateDto, CommandError> {
+    let player = state
+        .player
+        .read()
+        .map_err(|_| CommandError::new("LOCK_ERROR", "No se pudo acceder al reproductor."))?
+        .clone()
+        .ok_or_else(|| {
+            CommandError::new("PLAYER_NOT_INITIALIZED", "El reproductor de audio no está listo.")
+        })?;
+    let snapshot = {
+        let mut playback = state
+            .playback
+            .lock()
+            .map_err(|_| CommandError::new("LOCK_ERROR", "No se pudo cambiar la repetición."))?;
+        player.set_loop_file(enabled).map_err(|_| {
+            CommandError::new("REPEAT_FAILED", "No se pudo cambiar el modo de repetición.")
+        })?;
+        playback.is_repeat = enabled;
+        playback.to_dto()
+    };
+    let _ = app.emit("playback-state-changed", &snapshot);
+    Ok(snapshot)
 }
 
 #[tauri::command]

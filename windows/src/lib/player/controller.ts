@@ -15,7 +15,7 @@ export interface PlaySongOptions {
 
 const emptyQueue = (): QueueStateDto => ({ items: [], currentIndex: null, source: null, revision: 0 });
 export function emptyPlaybackData(): PlaybackStateDto {
-  return { isPlaying: false, isLoading: false, isEnded: false, position: 0, duration: 0, volume: 100,
+  return { isPlaying: false, isLoading: false, isEnded: false, isShuffle: false, isRepeat: false, position: 0, duration: 0, volume: 100,
     currentTrack: null, error: null, generation: 0, queue: emptyQueue() };
 }
 
@@ -32,7 +32,8 @@ function errorMessage(error: unknown, fallback: string): string {
   return fallback;
 }
 function cloneState(state: PlaybackStateDto): PlaybackStateDto {
-  return { ...state, currentTrack: state.currentTrack ? { ...state.currentTrack, artistRuns: state.currentTrack.artistRuns?.map(run => ({ ...run })) ?? [] } : null,
+  return { ...state, isShuffle: state.isShuffle ?? false, isRepeat: state.isRepeat ?? false,
+    currentTrack: state.currentTrack ? { ...state.currentTrack, artistRuns: state.currentTrack.artistRuns?.map(run => ({ ...run })) ?? [] } : null,
     queue: { ...state.queue, radio: state.queue.radio ? { ...state.queue.radio } : null, source: state.queue.source ? { ...state.queue.source } : null,
       items: state.queue.items.map((item) => ({ ...item, artistRuns: item.artistRuns?.map(run => ({ ...run })) ?? [] })) } };
 }
@@ -59,7 +60,9 @@ export class PlaybackController {
   private error: string | null = null;
   private publish: (snapshot: PlaybackSnapshot) => void;
   private eventRevision = 0;
+  private stateEventRevision = 0;
   private operationRevision = new Map<string, number>();
+  private modeQueue: Promise<void> = Promise.resolve();
   private connectionRevision = 0;
   private connectStarted = false;
   private unlisteners = new Set<PlayerUnlisten>();
@@ -117,7 +120,7 @@ export class PlaybackController {
     await Promise.all([
       this.attachListener<PlaybackStateDto>('playback-state-changed', (state) => {
         this.eventRevision++;
-        this.acceptState(state);
+        if (this.acceptState(state)) this.stateEventRevision++;
       }, connection),
       this.attachListener<PlaybackProgressDto>('playback-progress', (progress) => this.acceptProgress(progress), connection),
     ]);
@@ -221,6 +224,50 @@ export class PlaybackController {
 
   async next(): Promise<void> { return this.command('next', 'next_track', {}, 'No se pudo avanzar la cola.'); }
   async previous(): Promise<void> { return this.command('previous', 'previous_track', {}, 'No se pudo retroceder en la cola.'); }
+
+  async setShuffle(enabled: boolean): Promise<void> {
+    return this.setMode('shuffle', 'set_shuffle', enabled, 'No se pudo cambiar el modo aleatorio.');
+  }
+  async setRepeat(enabled: boolean): Promise<void> {
+    return this.setMode('repeat', 'set_repeat', enabled, 'No se pudo cambiar la repetición.');
+  }
+  private setMode(key: 'shuffle' | 'repeat', command: 'set_shuffle' | 'set_repeat', enabled: boolean, fallback: string): Promise<void> {
+    const revision = this.issue(key);
+    const scheduled = this.modeQueue.then(async () => {
+      if (!this.current(key, revision)) return;
+      await this.applyMode(key, command, enabled, fallback, revision);
+    });
+    this.modeQueue = scheduled.catch(() => {});
+    return scheduled;
+  }
+
+  private async applyMode(key: 'shuffle' | 'repeat', command: 'set_shuffle' | 'set_repeat', enabled: boolean, fallback: string, revision: number) {
+    const eventRevision = this.eventRevision;
+    const stateEventRevision = this.stateEventRevision;
+    this.error = null;
+    this.state = { ...this.state, error: null };
+    this.emit();
+    try {
+      const next = await this.rpc<PlaybackStateDto>(command, { enabled });
+      if (!this.current(key, revision)) return;
+      this.acceptResponse(next, eventRevision);
+      if (this.current(key, revision) && this.stateEventRevision === stateEventRevision
+        && next.generation === this.state.generation) {
+        // The response may have a stale progress position or mode bit for the other
+        // control. acceptResponse merges newer queue/progress state; then apply only
+        // this serialized command's authoritative bit.
+        const field = key === 'shuffle' ? 'isShuffle' : 'isRepeat';
+        this.state = { ...this.state, [field]: next[field] ?? false };
+        this.emit();
+      } else this.acceptResponse(next, eventRevision);
+    } catch (cause) {
+      if (!this.current(key, revision)) return;
+      const message = errorMessage(cause, fallback);
+      this.error = message;
+      this.emit();
+      throw new Error(message);
+    }
+  }
 
   async toggle(): Promise<void> {
     if ((this.state.isEnded || this.state.error || this.error) && this.state.currentTrack) return this.retry();

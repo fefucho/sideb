@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Position = 0)]
-    [ValidateSet('doctor', 'bootstrap', 'verify', 'build', 'dev')]
+    [ValidateSet('doctor', 'bootstrap', 'verify', 'build', 'package', 'dev')]
     [string] $Action = 'doctor',
 
     [ValidateSet('debug', 'release')]
@@ -197,5 +197,14 @@ switch ($Action) {
         # has a real Tauri resource mapping and runtime DLL lookup configured.
         if ($Configuration -eq 'debug') { Invoke-Tauri @('build', '--debug', '--no-bundle', '--', '--locked') }
         else { Invoke-Tauri @('build', '--no-bundle', '--', '--locked') }
+    }
+    'package' {
+        Require-Command pnpm; Ensure-MpvImportLibrary; Import-VsDevEnvironment
+        Ensure-FrontendDependencies
+        $mpvDir = Get-MpvDir
+        $srcTauriDll = Join-Path $WindowsDir 'src-tauri\libmpv-2.dll'
+        Copy-Item -LiteralPath (Join-Path $mpvDir 'libmpv-2.dll') -Destination $srcTauriDll -Force
+        if ($Configuration -eq 'debug') { Invoke-Tauri @('build', '--debug', '--bundles', 'nsis', '--', '--locked') }
+        else { Invoke-Tauri @('build', '--bundles', 'nsis', '--', '--locked') }
     }
 }

@@ -13,9 +13,11 @@
 | Navegación/ventana | `src/lib/navigation/history.ts`, `window/controller.ts`, `components/shell/TitleBar.svelte` | Atrás/Adelante, snapshots y controles Tauri; F11 alterna fullscreen nativo |
 | Menús | `src/lib/menu/{types,policy,hooks,executor}.ts`, `components/menu/ContextMenu.svelte` | Política común de macOS, clic derecho/Más, disponibilidad y ejecución por controller |
 | Reproductor UI | `src/lib/player/controller.ts` | Comandos y eventos; snapshot de transporte publicado para barra/fullscreen |
-| Contratos frontend | `src/lib/types.ts`, `account/types.ts` | DTOs del bridge; estado de cuenta adicional tipado |
+| Actualizador UI | `src/lib/updater/controller.ts`, `components/update/UpdateModal.svelte` | Comprobación manual y automática, Fix Report, barra de progreso y coordinación de actualización |
+| Contratos frontend | `src/lib/types.ts`, `account/types.ts`, `updater/types.ts` | DTOs del bridge; estado de cuenta y actualización tipado |
 | Integración nativa | `src-tauri/src/lib.rs` | Inicialización, estado compartido, autenticación, eventos y registro Tauri |
-| Bridge | `src-tauri/src/dto.rs`, `commands/` | Conversión de records y comandos de catálogo/cuenta/reproducción |
+| Bridge | `src-tauri/src/dto.rs`, `commands/` | Conversión de records y comandos de catálogo/cuenta/reproducción/actualización |
+| Actualizador nativo | `src-tauri/src/commands/updater.rs`, `nsis_hooks.nsh` | Consulta SemVer a GitHub Releases, streaming de instalador NSIS y script trampoline de reinicio |
 | Cola | `src-tauri/src/queue.rs` | Pistas por ocurrencia, índice y revisión; límites de next/previous |
 | Sesión | `src-tauri/src/session.rs`, `session_store.rs` | Login WebView2, cancelación, restauración y protección de credenciales |
 | Core | `../core/crates/sideb-core`, `innertube`, `player` | Proveedor/red/persistencia/streams y wrapper libmpv |
@@ -30,13 +32,15 @@ Una canción de Inicio inicia radio: carga audio y agrega recomendaciones del co
 
 Home y catálogo invalidan solicitudes al cambiar contexto; búsqueda y cuenta vacían datos/cachés privados al cambiar de cuenta. El historial conserva snapshots y scroll en pasado/futuro, limitado a 40 entradas por pila. Una visita nueva descarta el futuro; Atrás/Adelante invalidan cargas abandonadas y restauran el destino. Los cambios de cuenta vacían ambas pilas.
 
-Las acciones masivas de playlist resuelven continuaciones antes de reproducir/encolar y conservan setVideoId por ocurrencia. Edición/eliminación/orden validan permisos en el backend y los diálogos sólo cierran tras éxito. Los menús usan los mismos comandos que los botones. La barra superior reemplaza decoraciones Windows. Como en macOS, el reproductor expandido ocupa el área de contenido sin cambiar el tamaño de ventana; conserva sidebar, controles superiores y scroll sólo en la lista derecha. F11 controla por separado el fullscreen del sistema. La cápsula mantiene medidas fijas de controles y portada; sólo la metadata se trunca, y el volumen se despliega sin alterar el layout. La ventana conserva el mínimo macOS de 960×640. Aleatorio, repetición y Genius tienen su espacio visual, pero permanecen deshabilitados hasta contar con implementación Windows. La barra Windows no muestra AirPlay.
+Las acciones masivas de playlist resuelven continuaciones antes de reproducir/encolar y conservan setVideoId por ocurrencia. Edición/eliminación/orden validan permisos en el backend y los diálogos sólo cierran tras éxito. Los menús usan los mismos comandos que los botones. La barra superior reemplaza decoraciones Windows. Como en macOS, el reproductor expandido ocupa el área de contenido sin cambiar el tamaño de ventana; conserva sidebar, controles superiores y scroll sólo en la lista derecha. F11 controla por separado el fullscreen del sistema. La cápsula mantiene medidas fijas de controles y portada; sólo la metadata se trunca, y el volumen se despliega sin alterar el layout. La ventana conserva el mínimo macOS de 960×640. `set_shuffle` mezcla las entradas posteriores a la pista actual sin recargarla; `set_repeat` activa `loop-file` en la pista actual y el siguiente manual avanza a otra entrada. Ambos estados se devuelven en snapshots de reproducción como `isShuffle` e `isRepeat`. Genius permanece deshabilitado. La barra Windows no muestra AirPlay.
 
 Autenticación y almacenamiento sensible permanecen en el runtime. Los DTOs no incluyen cookies ni URLs firmadas. Las vistas muestran sólo el estado público de la sesión.
 
 Los paneles del reproductor expandido se separan en `QueuePanel`, `LyricsPanel` y `RecommendedPanel`. El reordenamiento mueve una ocurrencia por `entryId` antes de otra, o al final; conserva la entrada activa y no carga de nuevo el audio. `dragDropEnabled: false` permite que WebView2 entregue los eventos HTML de arrastre a la UI.
 
 `player/lyrics.ts` solicita el proveedor compartido `get_lyrics`, invalida respuestas por pista/generación/sesión y calcula la línea actual a partir de la posición. La vista desplaza sólo su contenedor, suspende el seguimiento al intervenir el usuario y permite retomarlo o buscar la posición de una línea sincronizada. `player/recommendations.ts` carga al abrir Relacionado: pistas del artista, del mismo álbum, canciones parecidas y artistas afines; conserva resultados parciales, reutiliza datos de la pista y permite actualizar. Ambos controladores se limpian al cambiar de cuenta.
+
+El actualizador automático consulta la API de GitHub Releases con SemVer, muestra una modal estilo macOS con el Fix Report, descarga con reporte de progreso a través de eventos Tauri y desacopla la instalación silenciosa mediante un trampoline batch que espera el cierre del proceso actual, ejecuta el setup NSIS en modo `/S` y reabre la app.
 
 ## Cambiar un contrato
 
@@ -46,6 +50,6 @@ El bridge Tauri activa el feature optativo `sideb-core/windows-bridge` para cons
 
 ## Build
 
-`scripts/windows.ps1` resuelve el repositorio desde su propia ubicación, prepara MSVC 2022, fija la dependencia libmpv y ejecuta comandos iguales en local y CI. La build standalone incluye frontend compilado y DLL junto al ejecutable. `dev` usa Vite; un binario de `cargo build` directo con configuración debug puede seguir apuntando al servidor de desarrollo y no equivale a esa build standalone.
+`scripts/windows.ps1` resuelve el repositorio desde su propia ubicación, prepara MSVC 2022, fija la dependencia libmpv y ejecuta comandos iguales en local y CI. La build standalone incluye frontend compilado y DLL junto al ejecutable. `package` genera el instalador NSIS per-user mediante Tauri v2, asegurando mediante un hook que `libmpv-2.dll` se instale junto al ejecutable en la máquina de destino.
 
-La CI Windows verifica tipos, pruebas frontend y Rust, y compila el standalone. Instalador, firma, audibilidad y comparación visual en macOS son verificaciones distintas; ver [BACKLOG.md](BACKLOG.md).
+La CI Windows verifica tipos, pruebas frontend y Rust, y compila el standalone. El workflow de release compila tanto `SideB-macOS.zip` como `SideB-Windows-Setup.exe` y los publica juntos en GitHub Releases.

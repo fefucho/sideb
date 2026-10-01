@@ -4877,7 +4877,9 @@ dependencies = [
 name = "sideb-windows"
 version = "0.1.0"
 dependencies = [
+ "futures-util",
  "player",
+ "reqwest 0.12.28",
  "serde",
  "serde_json",
  "sideb-core",

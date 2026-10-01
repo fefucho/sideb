@@ -168,6 +168,10 @@ pub struct PlaybackStateDto {
     pub is_playing: bool,
     pub is_loading: bool,
     pub is_ended: bool,
+    #[serde(default)]
+    pub is_shuffle: bool,
+    #[serde(default)]
+    pub is_repeat: bool,
     pub position: f64,
     pub duration: f64,
     pub volume: f64,
@@ -175,6 +179,20 @@ pub struct PlaybackStateDto {
     pub error: Option<String>,
     pub generation: u64,
     pub queue: QueueStateDto,
+}
+
+#[cfg(test)]
+mod playback_state_tests {
+    use super::*;
+
+    #[test]
+    fn older_playback_snapshots_default_shuffle_and_repeat_to_false() {
+        let dto: PlaybackStateDto = serde_json::from_str(
+            r#"{"isPlaying":false,"isLoading":false,"isEnded":false,"position":0.0,"duration":0.0,"volume":100.0,"currentTrack":null,"error":null,"generation":0,"queue":{"items":[],"currentIndex":null,"source":null,"revision":0}}"#,
+        ).unwrap();
+        assert!(!dto.is_shuffle);
+        assert!(!dto.is_repeat);
+    }
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]

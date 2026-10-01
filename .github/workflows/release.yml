@@ -10,8 +10,8 @@ permissions:
   contents: write
 
 jobs:
-  build-and-release:
-    name: Compilar y Publicar macOS App
+  build-macos:
+    name: Compilar macOS App
     runs-on: macos-15
     steps:
       - name: Checkout del repositorio
@@ -48,10 +48,90 @@ jobs:
           chmod +x ../Scripts/package_release.sh
           ../Scripts/package_release.sh "${{ github.ref_name }}"
 
+      - name: Subir artefacto macOS
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-release
+          path: apple/SideB-macOS.zip
+
+  build-windows:
+    name: Compilar Windows Installer (NSIS)
+    runs-on: windows-2022
+    steps:
+      - name: Checkout del repositorio
+        uses: actions/checkout@v4
+
+      - name: Instalar toolchain de Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Configurar pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 12.6.0
+
+      - name: Cache de dependencias
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            core/target/
+            windows/src-tauri/target/
+            windows/.cache/mpv/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('core/Cargo.lock', 'windows/src-tauri/Cargo.lock', 'windows/pnpm-lock.yaml', 'windows/scripts/windows.ps1') }}
+
+      - name: Bootstrap libmpv
+        shell: pwsh
+        run: ./windows/scripts/windows.ps1 bootstrap
+
+      - name: Compilar instalador NSIS
+        shell: pwsh
+        run: ./windows/scripts/windows.ps1 package -Configuration release
+
+      - name: Preparar artefacto instalador
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem -Path "windows/src-tauri/target/release/bundle/nsis/*.exe" | Select-Object -First 1
+          if (-not $installer) { throw "No se encontró el instalador NSIS generado." }
+          Copy-Item -Path $installer.FullName -Destination "windows/SideB-Windows-Setup.exe" -Force
+
+      - name: Subir artefacto Windows
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-release
+          path: windows/SideB-Windows-Setup.exe
+
+  publish:
+    name: Publicar GitHub Release
+    needs: [build-macos, build-windows]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descargar artefacto macOS
+        uses: actions/download-artifact@v4
+        with:
+          name: macos-release
+          path: dist
+
+      - name: Descargar artefacto Windows
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-release
+          path: dist
+
       - name: Publicar GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: "apple/SideB-macOS.zip"
+          files: |
+            dist/SideB-macOS.zip
+            dist/SideB-Windows-Setup.exe
           generate_release_notes: true
           draft: false
           prerelease: false

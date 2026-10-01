@@ -141,6 +141,8 @@ export interface PlaybackStateDto {
   isPlaying: boolean;
   isLoading: boolean;
   isEnded: boolean;
+  isShuffle: boolean;
+  isRepeat: boolean;
   position: number;
   duration: number;
   volume: number;

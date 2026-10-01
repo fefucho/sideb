@@ -54,8 +54,8 @@
         <button class="see-all" type="button" onclick={() => onOpenCatalog?.(section.moreBrowseId!, section.moreParams, section.title)}>Ver más</button>
       {/if}
       <div class="scroll-controls" aria-label={`Desplazar ${section.title}`}>
-        <button class="scroll-button" type="button" aria-label={`Desplazar ${section.title} a la izquierda`} disabled={!canScrollBack} onclick={() => scrollShelf(-1)}>‹</button>
-        <button class="scroll-button" type="button" aria-label={`Desplazar ${section.title} a la derecha`} disabled={!canScrollForward} onclick={() => scrollShelf(1)}>›</button>
+        <button class="scroll-button" type="button" aria-label={`Desplazar ${section.title} a la izquierda`} disabled={!canScrollBack} onclick={() => scrollShelf(-1)}><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m10 3-5 5 5 5" /></svg></button>
+        <button class="scroll-button" type="button" aria-label={`Desplazar ${section.title} a la derecha`} disabled={!canScrollForward} onclick={() => scrollShelf(1)}><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 3 5 5-5 5" /></svg></button>
       </div>
     </div>
   </header>
@@ -83,7 +83,8 @@
   .see-all:hover { color:var(--sideb-highlight,#D06C70); }
   .see-all:focus-visible,.scroll-button:focus-visible { outline:2px solid var(--sideb-highlight,#D06C70); outline-offset:2px; }
   .scroll-controls { display:flex; gap:6px; }
-  .scroll-button { display:grid; width:28px; height:28px; place-items:center; border:0; border-radius:50%; background:var(--sideb-surface,rgba(255,255,255,.05)); color:inherit; font-family:inherit; font-size:22px; line-height:1; cursor:pointer; }
+  .scroll-button { box-sizing:border-box; display:grid; width:28px; height:28px; padding:0; place-items:center; border:0; border-radius:50%; background:var(--sideb-surface,rgba(255,255,255,.05)); color:inherit; cursor:pointer; }
+  .scroll-button svg { display:block; width:16px; height:16px; fill:none; stroke:currentColor; stroke-width:1.6; stroke-linecap:round; stroke-linejoin:round; }
   .scroll-button:hover:not(:disabled) { background:var(--sideb-surface-hover,rgba(255,255,255,.08)); }
   .scroll-button:disabled { opacity:.4; cursor:default; }
   .large-track { box-sizing:border-box; width:100%; height:var(--home-card-height,254px); padding:0 var(--home-shelf-inset-inline,28px); display:flex; gap:var(--home-shelf-column-gap,16px); overflow-x:auto; overflow-y:hidden; scrollbar-width:none; scroll-behavior:smooth; }

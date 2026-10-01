@@ -10,6 +10,7 @@ mod commands {
     pub(crate) mod playback;
     pub(crate) mod lyrics;
     pub(crate) mod recommendations;
+    pub(crate) mod updater;
 }
 pub use dto::*;
 use queue::{next_owner_epoch, QueueStateDto};
@@ -83,6 +84,8 @@ pub struct PlaybackManager {
     pub is_playing: bool,
     pub is_loading: bool,
     pub is_ended: bool,
+    pub is_shuffle: bool,
+    pub is_repeat: bool,
     pub position: f64,
     pub duration: f64,
     pub volume: f64,
@@ -105,6 +108,8 @@ impl PlaybackManager {
             is_playing: false,
             is_loading: false,
             is_ended: false,
+            is_shuffle: false,
+            is_repeat: false,
             position: 0.0,
             duration: 0.0,
             volume: 100.0,
@@ -127,6 +132,8 @@ impl PlaybackManager {
             is_playing: self.is_playing,
             is_loading: self.is_loading,
             is_ended: self.is_ended,
+            is_shuffle: self.is_shuffle,
+            is_repeat: self.is_repeat,
             position: self.position,
             duration: self.duration,
             volume: self.volume,
@@ -135,6 +142,26 @@ impl PlaybackManager {
             generation: self.generation,
             queue: self.queue.clone(),
         }
+    }
+}
+
+#[cfg(test)]
+mod playback_manager_tests {
+    use super::*;
+
+    #[test]
+    fn playback_snapshot_carries_shuffle_and_repeat_flags_without_changing_generation() {
+        let mut playback = PlaybackManager::new();
+        playback.generation = 17;
+        playback.is_shuffle = true;
+        playback.is_repeat = true;
+
+        let snapshot = playback.to_dto();
+        let json = serde_json::to_value(&snapshot).unwrap();
+        assert_eq!(json["isShuffle"], true);
+        assert_eq!(json["isRepeat"], true);
+        assert_eq!(snapshot.generation, 17);
+        assert_eq!(playback.generation, 17);
     }
 }
 
@@ -614,8 +641,16 @@ pub fn run() {
             commands::playback::resume_playback,
             commands::playback::seek_playback,
             commands::playback::set_playback_volume,
+            commands::playback::set_shuffle,
+            commands::playback::set_repeat,
             commands::playback::get_playback_state,
-            commands::playback::stop_playback
+            commands::playback::stop_playback,
+            commands::updater::check_for_updates,
+            commands::updater::download_and_install_update,
+            commands::updater::get_app_version,
+            commands::updater::get_skipped_version,
+            commands::updater::skip_version,
+            commands::updater::reset_skipped_version
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

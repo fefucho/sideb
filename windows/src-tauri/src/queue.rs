@@ -2,8 +2,10 @@ use crate::HomeArtistRunDto;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 static NEXT_ENTRY_ID: AtomicU64 = AtomicU64::new(1);
+static SHUFFLE_COUNTER: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -214,6 +216,52 @@ impl QueueStateDto {
     pub fn next(&mut self) -> Option<QueueEntryDto> {
         let next = self.current_index?.checked_add(1)?;
         self.select(next)
+    }
+
+    pub fn next_or_first(&self, wrap_at_end: bool) -> Option<QueueEntryDto> {
+        let next_index = self.current_index?.checked_add(1)?;
+        self.items
+            .get(next_index)
+            .cloned()
+            .or_else(|| wrap_at_end.then(|| self.items.first().cloned()).flatten())
+    }
+
+    /// Randomizes only the items after the active occurrence. The current track and
+    /// everything already passed retain their order and occurrence identity.
+    pub fn shuffle_after_current(&mut self) -> bool {
+        let seed = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|duration| duration.as_nanos() as u64)
+            .unwrap_or(0)
+            ^ SHUFFLE_COUNTER.fetch_add(1, Ordering::Relaxed);
+        self.shuffle_after_current_with_seed(seed)
+    }
+
+    fn shuffle_after_current_with_seed(&mut self, seed: u64) -> bool {
+        let Some(current_index) = self.current_index else {
+            return false;
+        };
+        let Some(suffix) = self.items.get_mut(current_index.saturating_add(1)..) else {
+            return false;
+        };
+        if suffix.len() < 2 {
+            return false;
+        }
+
+        // Small xorshift PRNG keeps this dependency-free while allowing deterministic tests.
+        let mut state = if seed == 0 {
+            0x9e37_79b9_7f4a_7c15
+        } else {
+            seed
+        };
+        for index in (1..suffix.len()).rev() {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            suffix.swap(index, (state as usize) % (index + 1));
+        }
+        self.revision += 1;
+        true
     }
 
     pub fn previous(&mut self, position: f64) -> Option<QueueEntryDto> {
@@ -474,6 +522,68 @@ mod tests {
         assert_eq!(queue.current_index, Some(2));
         assert_eq!(queue.revision, revision);
         assert!(queue.select(99).is_none());
+    }
+
+    #[test]
+    fn shuffle_keeps_passed_entries_and_current_occurrence_in_place() {
+        let mut queue = QueueStateDto::default();
+        queue.replace(
+            vec![
+                item("passed"),
+                item("current"),
+                item("duplicate"),
+                item("duplicate"),
+                item("last"),
+            ],
+            1,
+            source(),
+        );
+        let prefix = queue.items[..1].to_vec();
+        let current = queue.current().unwrap();
+        let suffix_before = queue.items[2..]
+            .iter()
+            .map(|entry| entry.entry_id.clone())
+            .collect::<Vec<_>>();
+        let mut suffix_ids = queue.items[2..]
+            .iter()
+            .map(|entry| entry.entry_id.clone())
+            .collect::<Vec<_>>();
+        suffix_ids.sort();
+        let old_revision = queue.revision;
+
+        assert!(queue.shuffle_after_current_with_seed(42));
+
+        assert_eq!(queue.items[..1], prefix);
+        assert_eq!(queue.current_index, Some(1));
+        assert_eq!(queue.current().unwrap().entry_id, current.entry_id);
+        let mut new_suffix_ids = queue.items[2..]
+            .iter()
+            .map(|entry| entry.entry_id.clone())
+            .collect::<Vec<_>>();
+        new_suffix_ids.sort();
+        assert_eq!(new_suffix_ids, suffix_ids);
+        assert_eq!(
+            queue.items[2..]
+                .iter()
+                .map(|entry| entry.entry_id.clone())
+                .collect::<Vec<_>>(),
+            vec![
+                suffix_before[0].clone(),
+                suffix_before[2].clone(),
+                suffix_before[1].clone()
+            ],
+        );
+        assert_eq!(queue.revision, old_revision + 1);
+    }
+
+    #[test]
+    fn repeat_wrap_target_is_first_occurrence_only_when_enabled() {
+        let mut queue = queue();
+        queue.select(2);
+        let first = queue.items[0].entry_id.clone();
+        assert!(queue.next_or_first(false).is_none());
+        assert_eq!(queue.next_or_first(true).unwrap().entry_id, first);
+        assert_eq!(queue.current_index, Some(2));
     }
 
     #[test]

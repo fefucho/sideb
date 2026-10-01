@@ -269,3 +269,133 @@ test('progress applies only to current generation and skips loading states', () 
     await connecting;
   });
 });
+
+test('legacy playback snapshots default missing mode flags to false', async () => {
+  const legacy = state(2, { isPlaying: true });
+  delete legacy.isShuffle;
+  delete legacy.isRepeat;
+  const player = new PlaybackController(async () => legacy, async () => () => {}, () => {});
+  await player.connect();
+  assert.equal(player.snapshot.state.isShuffle, false);
+  assert.equal(player.snapshot.state.isRepeat, false);
+});
+
+test('shuffle and repeat send explicit native arguments and accept authoritative flags', async () => {
+  const calls = [];
+  const player = new PlaybackController(async (command, args) => {
+    calls.push({ command, args });
+    if (command === 'get_playback_state') return state(4, { isPlaying: true, position: 31, duration: 201 });
+    if (command === 'set_shuffle') return state(4, { isPlaying: true, position: 31, duration: 201, isShuffle: true });
+    if (command === 'set_repeat') return state(4, { isPlaying: true, position: 31, duration: 201, isShuffle: true, isRepeat: true });
+    throw new Error(command);
+  }, async () => () => {}, () => {});
+  await player.connect();
+  await player.setShuffle(true);
+  await player.setRepeat(true);
+  assert.deepEqual(calls.slice(1), [
+    { command: 'set_shuffle', args: { enabled: true } },
+    { command: 'set_repeat', args: { enabled: true } },
+  ]);
+  assert.equal(player.snapshot.state.isShuffle, true);
+  assert.equal(player.snapshot.state.isRepeat, true);
+  assert.equal(player.snapshot.state.position, 31);
+  assert.equal(player.snapshot.state.isPlaying, true);
+});
+
+test('repeat RPC merges its mode bit after progress without rewinding the playback snapshot', async () => {
+  const listeners = new Map();
+  const response = deferred();
+  let published;
+  const player = new PlaybackController(async command => {
+    if (command === 'get_playback_state') return state(6, { isPlaying: true, position: 40, duration: 201 });
+    if (command === 'set_repeat') return response.promise;
+    throw new Error(command);
+  }, async (event, handler) => { listeners.set(event, handler); return () => {}; }, next => published = next);
+  await player.connect();
+  const pending = player.setRepeat(true);
+  await settle();
+  listeners.get('playback-progress')({ payload: { generation: 6, position: 42, duration: 201 } });
+  response.resolve(state(6, { isPlaying: false, position: 40, duration: 201, isRepeat: true }));
+  await pending;
+  assert.equal(published.state.isRepeat, true);
+  assert.equal(published.state.position, 42);
+  assert.equal(published.state.isPlaying, true);
+});
+
+test('shuffle response applies a newer queue while keeping progress received during the RPC', async () => {
+  const listeners = new Map();
+  const response = deferred();
+  let published;
+  const before = [{ ...song('a'), entryId: 'a', duration: 201 }, { ...song('b'), entryId: 'b', duration: 201 }];
+  const after = [before[0], { ...song('c'), entryId: 'c', duration: 201 }];
+  const player = new PlaybackController(async command => {
+    if (command === 'get_playback_state') return state(8, { isPlaying: true, position: 50, duration: 201,
+      queue: { revision: 4, items: before, currentIndex: 0 } });
+    if (command === 'set_shuffle') return response.promise;
+    throw new Error(command);
+  }, async (event, handler) => { listeners.set(event, handler); return () => {}; }, next => published = next);
+  await player.connect();
+  const pending = player.setShuffle(true);
+  await settle();
+  listeners.get('playback-progress')({ payload: { generation: 8, position: 54, duration: 201 } });
+  response.resolve(state(8, { isPlaying: false, isShuffle: true, position: 50, duration: 201,
+    queue: { revision: 5, items: after, currentIndex: 1 } }));
+  await pending;
+  assert.equal(published.state.isShuffle, true);
+  assert.deepEqual(published.state.queue.items.map(item => item.entryId), ['a', 'c']);
+  assert.equal(published.state.queue.currentIndex, 1);
+  assert.equal(published.state.position, 54);
+  assert.equal(published.state.isPlaying, true);
+});
+
+test('shuffle and repeat mode RPCs serialize so delayed snapshots preserve both flags', async () => {
+  const shuffleResponse = deferred();
+  const repeatResponse = deferred();
+  const calls = [];
+  const player = new PlaybackController(async (command, args) => {
+    if (command === 'get_playback_state') return state(9);
+    calls.push({ command, args });
+    if (command === 'set_shuffle') return shuffleResponse.promise;
+    if (command === 'set_repeat') return repeatResponse.promise;
+    throw new Error(command);
+  }, async () => () => {}, () => {});
+  await player.connect();
+  const shuffle = player.setShuffle(true);
+  const repeat = player.setRepeat(true);
+  await settle();
+  assert.deepEqual(calls, [{ command: 'set_shuffle', args: { enabled: true } }]);
+  shuffleResponse.resolve(state(9, { isShuffle: true, isRepeat: false }));
+  await settle();
+  assert.deepEqual(calls, [
+    { command: 'set_shuffle', args: { enabled: true } },
+    { command: 'set_repeat', args: { enabled: true } },
+  ]);
+  repeatResponse.resolve(state(9, { isShuffle: true, isRepeat: true }));
+  await Promise.all([shuffle, repeat]);
+  assert.equal(player.snapshot.state.isShuffle, true);
+  assert.equal(player.snapshot.state.isRepeat, true);
+});
+
+test('a later full playback event beats a stale mode response, and mode failures stay visible', async () => {
+  const listeners = new Map();
+  const response = deferred();
+  let failRepeat = false;
+  let published;
+  const player = new PlaybackController(async command => {
+    if (command === 'get_playback_state') return state(7);
+    if (command === 'set_shuffle') return response.promise;
+    if (command === 'set_repeat' && failRepeat) throw new Error('repeat unavailable');
+    throw new Error(command);
+  }, async (event, handler) => { listeners.set(event, handler); return () => {}; }, next => published = next);
+  await player.connect();
+  const pendingShuffle = player.setShuffle(true);
+  await settle();
+  listeners.get('playback-state-changed')({ payload: state(7, { isShuffle: true }) });
+  response.resolve(state(7, { isShuffle: false }));
+  await pendingShuffle;
+  assert.equal(published.state.isShuffle, true);
+
+  failRepeat = true;
+  await assert.rejects(player.setRepeat(true), /repeat unavailable/);
+  assert.equal(published.error, 'repeat unavailable');
+});

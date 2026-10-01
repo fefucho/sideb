@@ -13,6 +13,8 @@
     onNext: () => void;
     onSeek: (seconds: number) => void;
     onVolumeChange: (volume: number) => void;
+    onSetShuffle: (enabled: boolean) => Promise<void>;
+    onSetRepeat: (enabled: boolean) => Promise<void>;
     fullscreenOpen: boolean;
     onToggleFullscreen: () => void;
     loggedIn?: boolean;
@@ -27,7 +29,7 @@
     onOpenMenu?: (event: MouseEvent) => void;
   }
 
-  let { playback, onTogglePlayback, onRetryPlayback, onPrevious, onNext, onSeek, onVolumeChange, fullscreenOpen, onToggleFullscreen, loggedIn = false, liked = false, likePending = false, onToggleLike, likeError = null, selectedPanel, onSelectPanel, onOpenArtist, onOpenAlbum, onOpenMenu }: Props = $props();
+  let { playback, onTogglePlayback, onRetryPlayback, onPrevious, onNext, onSeek, onVolumeChange, onSetShuffle, onSetRepeat, fullscreenOpen, onToggleFullscreen, loggedIn = false, liked = false, likePending = false, onToggleLike, likeError = null, selectedPanel, onSelectPanel, onOpenArtist, onOpenAlbum, onOpenMenu }: Props = $props();
   let seekDraft = $state<{ generation: number; value: number } | null>(null);
   let failedArtworkUrl = $state<string | null>(null);
   let volumeOpen = $state(false);
@@ -37,6 +39,21 @@
   let volumeRoot: HTMLDivElement;
   let volumeButton: HTMLButtonElement;
   let volumeSlider = $state<HTMLInputElement>();
+  let shufflePending = $state(false);
+  let repeatPending = $state(false);
+
+  async function setShuffle() {
+    if (shufflePending) return;
+    shufflePending = true;
+    try { await onSetShuffle(!playback.isShuffle); } catch { /* PlaybackController exposes the action error in its snapshot. */ }
+    finally { shufflePending = false; }
+  }
+  async function setRepeat() {
+    if (repeatPending) return;
+    repeatPending = true;
+    try { await onSetRepeat(!playback.isRepeat); } catch { /* PlaybackController exposes the action error in its snapshot. */ }
+    finally { repeatPending = false; }
+  }
 
   async function toggleVolume() {
     volumeOpen = !volumeOpen;
@@ -144,7 +161,7 @@
 
   <div class="main-row">
     <div class="transport">
-      <button type="button" class="mode-toggle" disabled aria-label="Aleatorio no disponible todavía" title="Aleatorio: todavía no disponible en Windows"><PlayerIcon name="shuffle" size={17} /></button>
+      <button type="button" class="mode-toggle" class:mode-active={playback.isShuffle} disabled={shufflePending} aria-pressed={playback.isShuffle} aria-label={playback.isShuffle ? "Desactivar aleatorio" : "Activar aleatorio"} title={playback.isShuffle ? "Desactivar aleatorio" : "Activar aleatorio"} onclick={setShuffle}><PlayerIcon name="shuffle" size={17} /></button>
       <button type="button" class="skip" onclick={onPrevious} disabled={!hasTrack} aria-label="Pista anterior" title="Pista anterior">
         <PlayerIcon name="backward" size={20} />
       </button>
@@ -167,10 +184,10 @@
           <svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><path d="M6 3.5a1 1 0 0 1 1.51-.86l13 8.5a1 1 0 0 1 0 1.72l-13 8.5A1 1 0 0 1 6 20.5z" /></svg>
         {/if}
       </button>
-      <button type="button" class="skip" onclick={onNext} disabled={!hasTrack || playback.queue.currentIndex === null || playback.queue.currentIndex + 1 >= playback.queue.items.length} aria-label="Pista siguiente" title="Pista siguiente">
+      <button type="button" class="skip" onclick={onNext} disabled={!hasTrack || playback.queue.currentIndex === null || (!playback.isRepeat && playback.queue.currentIndex + 1 >= playback.queue.items.length)} aria-label="Pista siguiente" title="Pista siguiente">
         <PlayerIcon name="forward" size={20} />
       </button>
-      <button type="button" class="mode-toggle" disabled aria-label="Repetir no disponible todavía" title="Repetir: todavía no disponible en Windows"><PlayerIcon name="repeat" size={17} /></button>
+      <button type="button" class="mode-toggle" class:mode-active={playback.isRepeat} disabled={repeatPending} aria-pressed={playback.isRepeat} aria-label={playback.isRepeat ? "Desactivar repetición" : "Repetir tema"} title={playback.isRepeat ? "Desactivar repetición" : "Repetir tema"} onclick={setRepeat}><PlayerIcon name="repeat" size={17} /></button>
     </div>
 
     <div class="track" role="group" aria-label="Canción actual" oncontextmenu={(event) => { if (onOpenMenu && hasTrack) { event.preventDefault(); onOpenMenu(event); } }}>
@@ -360,6 +377,8 @@
   .transport { display: flex; align-items: center; justify-content: center; gap: 10px; }
   .skip, .mode-toggle { display: grid; flex: none; place-items: center; width: 32px; height: 32px; padding: 0; border: 0; border-radius: 6px; color: #dedee3; background: transparent; cursor: pointer; }
   .mode-toggle:disabled { color: rgb(255 255 255 / 45%); cursor: default; }
+  .mode-toggle.mode-active { color: #d06c70; }
+  .mode-toggle.mode-active:hover:not(:disabled), .mode-toggle.mode-active:focus-visible { color: #d06c70; background: rgb(255 255 255 / 10%); }
   .skip:hover:not(:disabled) { color: #fff; background: rgb(255 255 255 / 10%); }
   .skip:disabled { opacity: .38; cursor: default; }
 
@@ -431,6 +450,7 @@
   .like-toggle { display: grid; flex: 0 0 22px; place-items: center; width: 22px; height: 22px; padding: 4px; border: 0; border-radius: 50%; color: rgb(255 255 255 / 62%); background: transparent; cursor: pointer; }
   .like-toggle:hover:not(:disabled) { color: #fff; background: rgb(255 255 255 / 9%); }
   .like-toggle.liked { color: #d06c70; }
+  .like-toggle.liked:hover:not(:disabled), .like-toggle.liked:focus-visible { color: #d06c70; background: rgb(255 255 255 / 9%); }
   .like-toggle:disabled { opacity: .55; cursor: wait; }
   .like-toggle svg { width: 14px; height: 14px; }
   .like-spinner { width: 13px; height: 13px; border: 2px solid rgb(255 255 255 / 30%); border-top-color: #d06c70; border-radius: 50%; animation: spin .8s linear infinite; }
@@ -444,6 +464,7 @@
   .panel-shortcut:disabled, .more-toggle:disabled { color: rgb(255 255 255 / 40%); cursor: default; }
   .panel-shortcut:hover:not(:disabled), .more-toggle:hover:not(:disabled) { color: #fff; background: rgb(255 255 255 / 10%); }
   .panel-shortcut.panel-active { color: #d06c70; }
+  .panel-shortcut.panel-active:hover:not(:disabled), .panel-shortcut.panel-active:focus-visible { color: #d06c70; background: rgb(255 255 255 / 10%); }
   .volume { position: relative; flex: 0 0 32px; width: 32px; height: 32px; }
   .volume-toggle { display: grid; place-items: center; width: 32px; height: 32px; padding: 7px; border: 0; border-radius: 7px; color: #c6c6cd; background: transparent; cursor: pointer; transition: opacity 280ms ease; }
   .volume.open .volume-toggle { opacity: 0; pointer-events: none; }

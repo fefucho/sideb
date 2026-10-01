@@ -5,6 +5,7 @@
   import QueuePanel from './QueuePanel.svelte';
   import LyricsPanel from './LyricsPanel.svelte';
   import RecommendedPanel from './RecommendedPanel.svelte';
+  import { artworkCandidates, nextArtworkUrl } from '$lib/images/artwork';
   import type { LyricsState } from '$lib/player/lyrics';
   import type { RecommendationsSnapshot } from '$lib/player/recommendations';
 
@@ -52,8 +53,14 @@
   }: Props = $props();
   let localPanel = $state<Panel>("queue");
   let failedArtworkUrl = $state<string | null>(null);
+  let failedArtworkTrackKey = $state<string | null>(null);
   const panel = $derived(selectedPanel ?? localPanel);
   const currentTrack = $derived(playback.currentTrack);
+  const artworkTrackKey = $derived(currentTrack ? `${currentTrack.videoId}\u0000${currentTrack.thumbnail ?? ''}` : '');
+  let failedArtworkUrls = $state<string[]>([]);
+  const activeFailedArtworkUrls = $derived(failedArtworkTrackKey === artworkTrackKey ? failedArtworkUrls : []);
+  const currentArtworkCandidates = $derived(artworkCandidates(currentTrack?.thumbnail));
+  const selectedArtworkUrl = $derived(nextArtworkUrl(currentArtworkCandidates, activeFailedArtworkUrls));
 
   const panels: { id: Panel; label: string }[] = [
     { id: "queue", label: "Cola" },
@@ -65,9 +72,21 @@
     localPanel = value;
     onSelectPanel?.(value);
   }
+
+  function handleArtworkError(trackKey: string, url: string) {
+    if (trackKey !== artworkTrackKey || url !== selectedArtworkUrl) return;
+    const previousFailures = failedArtworkTrackKey === trackKey ? failedArtworkUrls : [];
+    failedArtworkTrackKey = trackKey;
+    failedArtworkUrl = url;
+    failedArtworkUrls = [...new Set([...previousFailures, url])];
+  }
 </script>
 
 <svelte:head><title>{currentTrack?.title ? `${currentTrack.title} · Side B` : "Reproducción · Side B"}</title></svelte:head>
+
+{#snippet artworkImage(trackKey: string, url: string, title: string)}
+  <img src={url} alt={`Portada de ${title}`} onerror={() => handleArtworkError(trackKey, url)} />
+{/snippet}
 
 <section id="fullscreen-now-playing" class="fullscreen" aria-label="Pantalla completa de reproducción">
   {#if currentTrack?.thumbnail && failedArtworkUrl !== currentTrack.thumbnail}
@@ -83,8 +102,10 @@
     <div class="art-column">
       <div class="art-block">
         <div class="artwork">
-          {#if currentTrack?.thumbnail && failedArtworkUrl !== currentTrack.thumbnail}
-            <img src={currentTrack.thumbnail} alt={`Portada de ${currentTrack.title}`} onerror={() => failedArtworkUrl = currentTrack?.thumbnail ?? null} />
+          {#if selectedArtworkUrl && currentTrack}
+            {#key `${artworkTrackKey}\u0000${selectedArtworkUrl}`}
+              {@render artworkImage(artworkTrackKey, selectedArtworkUrl, currentTrack.title)}
+            {/key}
           {:else}
             <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M10 5v12.1a4 4 0 1 1-2-3.46V3l12-2v14.1a4 4 0 1 1-2-3.46V4.4z" /></svg>
           {/if}

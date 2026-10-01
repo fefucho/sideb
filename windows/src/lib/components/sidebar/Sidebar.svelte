@@ -32,6 +32,7 @@
     selectedCollectionId?: string | null;
     onOpenPlaylist?: (id: string) => void;
     onOpenAlbum?: (id: string) => void;
+    onCheckUpdates?: () => void;
   };
 
   let {
@@ -53,6 +54,7 @@
     selectedCollectionId = null,
     onOpenPlaylist,
     onOpenAlbum,
+    onCheckUpdates,
   }: Props = $props();
 
   let libraryTab = $state<LibraryTab>("playlists");
@@ -224,7 +226,6 @@
         <strong>{auth.state === "ready" ? (auth.name ?? "Tu cuenta") : "Modo Invitado"}</strong>
         <small>{auth.state === "ready" ? (auth.email ?? "Sesión iniciada") : auth.state === "authorizing" ? "Abriendo acceso… · Cancelar" : auth.state === "error" ? "No se pudo iniciar sesión · Reintentar" : "Iniciar sesión"}</small>
       </span>
-      {#if auth.state === "ready"}<span class="profile-chevron" aria-hidden="true">⌃</span>{/if}
     </button>
     {#if auth.message}<small class="auth-error" role="alert">{auth.message}</small>{/if}
     {#if auth.state === "ready" && accountOpen}
@@ -234,6 +235,9 @@
           <span><strong>{auth.name ?? "Tu cuenta"}</strong><small>{auth.email ?? "Sesión activa de YouTube Music"}</small></span>
         </div>
         <div class="account-active">✓ Sesión activa de YouTube Music</div>
+        {#if onCheckUpdates}
+          <button class="update-check-btn" type="button" onclick={() => { accountOpen = false; onCheckUpdates(); }}>Buscar actualizaciones…</button>
+        {/if}
         <button class="signout" type="button" onclick={() => { accountOpen = false; onLogout(); }}>Cerrar sesión</button>
       </div>
     {/if}
@@ -273,6 +277,11 @@
     display: flex;
     flex-direction: column;
     gap: 2px;
+  }
+
+  .primary-section {
+    padding-bottom: 10px;
+    border-bottom: 1px solid rgb(255 255 255 / 9%);
   }
 
   .collection-section,
@@ -403,7 +412,6 @@
   }
   .profile:hover { background: rgb(255 255 255 / 6%); }
   .profile-avatar { width: 32px; height: 32px; flex: 0 0 32px; border-radius: 50%; object-fit: cover; }
-  .profile-chevron { margin-left: auto; color: rgb(255 255 255 / 45%); }
 
   .profile-icon {
     display: flex;
@@ -428,7 +436,9 @@
   .popover-avatar { width: 42px; height: 42px; border-radius: 50%; object-fit: cover; }
   .popover-avatar.fallback { display: grid; place-items: center; background: rgb(255 255 255 / 12%); }
   .account-active { padding: 10px 2px; border-top: 1px solid rgb(255 255 255 / 10%); border-bottom: 1px solid rgb(255 255 255 / 10%); }
-  .signout { width: 100%; margin-top: 9px; padding: 8px 10px; border: 0; border-radius: 7px; background: rgb(255 255 255 / 5%); color: inherit; text-align: left; cursor: pointer; }
+  .update-check-btn { width: 100%; margin-top: 8px; padding: 8px 10px; border: 0; border-radius: 7px; background: rgb(255 255 255 / 5%); color: inherit; font-size: 12px; text-align: left; cursor: pointer; transition: background 0.15s ease; }
+  .update-check-btn:hover { background: rgb(255 255 255 / 12%); }
+  .signout { width: 100%; margin-top: 6px; padding: 8px 10px; border: 0; border-radius: 7px; background: rgb(255 255 255 / 5%); color: inherit; text-align: left; cursor: pointer; }
   .signout:hover { background: rgb(220 70 80 / 18%); color: #ff9ba1; }
 
   .profile-copy strong {

@@ -111,7 +111,7 @@
     -webkit-user-select: none;
   }
   .sidebar-slot, .navigation-controls, .window-controls { display: flex; align-items: center; height: 100%; }
-  .sidebar-slot { flex: 0 0 var(--sidebar-width, 230px); width: var(--sidebar-width, 230px); justify-content: center; }
+  .sidebar-slot { flex: 0 0 60px; width: 60px; justify-content: center; }
   .navigation-controls { gap: 2px; padding-left: 8px; }
   .window-controls { width: 138px; flex: 0 0 138px; justify-content: stretch; }
   .titlebar-button, .window-button {

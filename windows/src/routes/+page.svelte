@@ -20,6 +20,8 @@
   import ContextMenu from '$lib/components/menu/ContextMenu.svelte';
   import PlaylistEditorDialog from '$lib/components/detail/PlaylistEditorDialog.svelte';
   import PlaylistDeleteDialog from '$lib/components/detail/PlaylistDeleteDialog.svelte';
+  import UpdateModal from '$lib/components/update/UpdateModal.svelte';
+  import { UpdaterController } from '$lib/updater/controller';
   import { CatalogController, emptyCatalogData, type CatalogData } from "$lib/catalog/controller";
   import { HomeController, emptyHomeData } from "$lib/home/controller";
   import SearchView from "$lib/components/search/SearchView.svelte";
@@ -53,6 +55,7 @@
   let selectedPanel = $state<'queue' | 'lyrics' | 'related'>('queue');
   let shellError = $state<string | null>(null);
   const nativeWindow = new WindowController();
+  const updater = new UpdaterController();
   let accountData = $state(emptyAccountData());
   const account = new AccountController((command, args) => invoke(command, args), data => { accountData = data; });
   let lastPlaylistId = $state<string | null>(null);
@@ -542,6 +545,8 @@
   function playQueueIndex(index: number) { ++collectionPlayRevision; void player.playQueueIndex(index).catch(() => {}); }
   function handleNext() { ++collectionPlayRevision; return player.next(); }
   function handlePrevious() { ++collectionPlayRevision; return player.previous(); }
+  function handleSetShuffle(enabled: boolean) { return player.setShuffle(enabled); }
+  function handleSetRepeat(enabled: boolean) { return player.setRepeat(enabled); }
   function handleTogglePlay() { ++collectionPlayRevision; return player.toggle().catch(() => {}); }
   function handleRetryPlayback() { ++collectionPlayRevision; return player.retry().catch(() => {}); }
   function handleSeek(seconds: number) { return player.seek(seconds); }
@@ -668,12 +673,17 @@
     window.addEventListener('auxclick', handleMouseNavigation);
 
     void player.connect();
+    void updater.init();
+    const updateCheckTimeout = setTimeout(() => {
+      if (mounted) void updater.checkForUpdates(false);
+    }, 3500);
 
     listen<AuthStatusDto>("auth-status-changed", (event) => applyAuthStatus(event.payload))
       .then((unlisten) => { if (mounted) unlistenAuth = unlisten; else unlisten(); });
 
     return () => {
       mounted = false;
+      clearTimeout(updateCheckTimeout);
       account.reset(false);
       window.removeEventListener("keydown", handleWindowKeydown);
       window.removeEventListener('mousedown', handleMouseNavigation);
@@ -709,6 +719,7 @@
     libraryError={accountData.errors.playlists || accountData.errors.albums}
     selectedCollectionId={activeView === 'playlist_detail' ? lastPlaylistId : activeView === 'album_detail' ? lastAlbumBrowseId : null}
     onOpenPlaylist={openPlaylist} onOpenAlbum={openAlbumDetail}
+    onCheckUpdates={() => void updater.checkForUpdates(true)}
   />
   </div>
   <div class="content-column">
@@ -846,7 +857,7 @@
 </main>
 
 <div class="player-dock" inert={spotlightOpen}>
-  <PlayerBar playback={playerBarState} onTogglePlayback={handleTogglePlay} onRetryPlayback={handleRetryPlayback} onPrevious={handlePrevious} onNext={handleNext} onSeek={handleSeek} onVolumeChange={handleVolumeChange} fullscreenOpen={isFullscreenOpen} onToggleFullscreen={() => setPlayerFullscreen(!isFullscreenOpen)}
+  <PlayerBar playback={playerBarState} onTogglePlayback={handleTogglePlay} onRetryPlayback={handleRetryPlayback} onPrevious={handlePrevious} onNext={handleNext} onSeek={handleSeek} onVolumeChange={handleVolumeChange} onSetShuffle={handleSetShuffle} onSetRepeat={handleSetRepeat} fullscreenOpen={isFullscreenOpen} onToggleFullscreen={() => setPlayerFullscreen(!isFullscreenOpen)}
     {selectedPanel} onSelectPanel={(panel) => setPlayerFullscreen(!(isFullscreenOpen && selectedPanel === panel), panel)}
     onOpenArtist={(id) => { void setPlayerFullscreen(false); void openArtistDetail(id); }}
     onOpenAlbum={(id) => { void setPlayerFullscreen(false); void openAlbumDetail(id); }} onOpenMenu={openNowPlayingMenu}
@@ -890,6 +901,8 @@
       onQueryChange={handleDraftChange} onCommit={(query) => executeSearch(query)} onDismiss={dismissSearchPreview}
       onSelectCard={selectSearchCard} onPlaySong={playSearchPreviewSong} />
   {/if}
+
+  <UpdateModal controller={updater} />
 </div>
 
 <style>
