@@ -1,6 +1,58 @@
 use std::sync::atomic::Ordering;
 use crate::commands::account::account_core;
-use crate::{AppState, AlbumCardDto, AlbumDetailDto, ArtistDetailDto, BrowseCardDto, CommandError, HomePageDto, PlaylistDetailDto, SongDto};
+use crate::{AppState, AlbumCardDto, AlbumDetailDto, ArtistDetailDto, BrowseCardDto, CommandError, HomePageDto, PlaylistDetailDto, SearchResultsDto, SongDto};
+
+const SEARCH_CATEGORIES: [&str; 3] = ["albums", "artists", "playlists"];
+
+fn search_core(state: &AppState) -> Result<std::sync::Arc<sideb_core::SideBCore>, CommandError> {
+    state.core.read().map_err(|_| CommandError::new("LOCK_ERROR", "Error de concurrencia al acceder al motor."))?
+        .clone().ok_or_else(|| CommandError::new("CORE_NOT_INITIALIZED", "El motor de Side B no está listo. Reintentá la inicialización."))
+}
+
+fn validate_search_query(query: &str) -> Result<&str, CommandError> {
+    let query = query.trim();
+    if query.is_empty() { Err(CommandError::new("EMPTY_QUERY", "La consulta de búsqueda no puede estar vacía.")) } else { Ok(query) }
+}
+
+#[tauri::command]
+pub(crate) async fn search_all(state: tauri::State<'_, AppState>, query: String, record_history: bool) -> Result<SearchResultsDto, CommandError> {
+    let query = validate_search_query(&query)?;
+    let generation = state.auth_generation.load(Ordering::SeqCst);
+    let _operation = if record_history { Some(state.auth_operation.lock().await) } else { None };
+    if state.auth_generation.load(Ordering::SeqCst) != generation { return Err(CommandError::new("SESSION_CHANGED", "La sesión cambió antes de completar la búsqueda.")); }
+    let core = search_core(&state)?;
+    let result = core.search_all(query.to_owned(), record_history).await
+        .map(SearchResultsDto::from)
+        .map_err(|_| CommandError::new("SEARCH_FAILED", "No se pudo completar la búsqueda en YouTube Music. Comprobá tu conexión a internet."))?;
+    if state.auth_generation.load(Ordering::SeqCst) != generation { return Err(CommandError::new("SESSION_CHANGED", "La sesión cambió durante la operación.")); }
+    Ok(result)
+}
+
+#[tauri::command]
+pub(crate) async fn search_videos(state: tauri::State<'_, AppState>, query: String) -> Result<Vec<SongDto>, CommandError> {
+    let query = validate_search_query(&query)?;
+    let generation = state.auth_generation.load(Ordering::SeqCst);
+    let core = search_core(&state)?;
+    let result = core.search_videos(query.to_owned()).await
+        .map(|items| items.into_iter().map(SongDto::from).collect())
+        .map_err(|_| CommandError::new("SEARCH_FAILED", "No se pudo completar la búsqueda de videos en YouTube Music. Comprobá tu conexión a internet."))?;
+    if state.auth_generation.load(Ordering::SeqCst) != generation { return Err(CommandError::new("SESSION_CHANGED", "La sesión cambió durante la operación.")); }
+    Ok(result)
+}
+
+#[tauri::command]
+pub(crate) async fn search_cards(state: tauri::State<'_, AppState>, query: String, category: String) -> Result<Vec<BrowseCardDto>, CommandError> {
+    let query = validate_search_query(&query)?;
+    let category = category.trim().to_ascii_lowercase();
+    if !SEARCH_CATEGORIES.contains(&category.as_str()) { return Err(CommandError::new("INVALID_CATEGORY", "La categoría de búsqueda no es válida.")); }
+    let generation = state.auth_generation.load(Ordering::SeqCst);
+    let core = search_core(&state)?;
+    let result = core.search_cards(query.to_owned(), category).await
+        .map(|items| items.into_iter().map(BrowseCardDto::from).collect())
+        .map_err(|_| CommandError::new("SEARCH_FAILED", "No se pudo completar la búsqueda de la categoría en YouTube Music. Comprobá tu conexión a internet."))?;
+    if state.auth_generation.load(Ordering::SeqCst) != generation { return Err(CommandError::new("SESSION_CHANGED", "La sesión cambió durante la operación.")); }
+    Ok(result)
+}
 
 #[tauri::command]
 pub(crate) async fn search_songs(

@@ -1837,6 +1837,64 @@ mod tests {
     }
 
     #[test]
+    fn keeps_artist_top_result_followed_by_three_related_songs_in_provider_order() {
+        let related_song = |video_id: &str, title: &str, duration: &str, video_type: &str| {
+            json!({ "musicResponsiveListItemRenderer": {
+                "playlistItemData": { "videoId": video_id },
+                "navigationEndpoint": { "watchEndpoint": {
+                    "videoId": video_id,
+                    "watchEndpointMusicSupportedConfigs": {
+                        "watchEndpointMusicConfig": { "musicVideoType": video_type }
+                    }
+                } },
+                "flexColumns": [
+                    { "musicResponsiveListItemFlexColumnRenderer": { "text": { "runs": [
+                        { "text": title }
+                    ] } } },
+                    { "musicResponsiveListItemFlexColumnRenderer": { "text": { "runs": [
+                        { "text": "Song" }, { "text": " • " },
+                        { "text": "The Artist", "navigationEndpoint": {
+                            "browseEndpoint": { "browseId": "UCartist" }
+                        } }, { "text": " • " }, { "text": duration }
+                    ] } } }
+                ]
+            } })
+        };
+        let root = json!({ "contents": { "sectionListRenderer": { "contents": [
+            { "musicCardShelfRenderer": {
+                "title": { "runs": [{ "text": "The Artist", "navigationEndpoint": {
+                    "browseEndpoint": { "browseId": "UCartist" }
+                } }] },
+                "subtitle": { "runs": [{ "text": "Artist" }] },
+                "contents": [
+                    related_song("waves", "Waves", "3:01", "MUSIC_VIDEO_TYPE_ATV"),
+                    related_song("follow", "Follow God", "1:45", "MUSIC_VIDEO_TYPE_ATV"),
+                    related_song("runaway", "Runaway", "9:08", "MUSIC_VIDEO_TYPE_OMV")
+                ]
+            } }
+        ] } } });
+
+        let results = parse_search_all(&root);
+        assert_eq!(results.top.len(), 4);
+        assert_eq!((results.top[0].kind, results.top[0].id.as_str()), ("artist", "UCartist"));
+        assert_eq!(
+            results.top[1..]
+                .iter()
+                .map(|song| (song.id.as_str(), song.title.as_str(), song.duration.as_deref()))
+                .collect::<Vec<_>>(),
+            [
+                ("waves", "Waves", Some("3:01")),
+                ("follow", "Follow God", Some("1:45")),
+                ("runaway", "Runaway", Some("9:08")),
+            ]
+        );
+        assert!(results.top[1..3].iter().all(|song| !song.is_video));
+        assert!(results.top[3].is_video);
+        assert_eq!(results.top[1].artists.as_deref(), Some("The Artist"));
+        assert_eq!(results.top[1].artist_id.as_deref(), Some("UCartist"));
+    }
+
+    #[test]
     fn parses_album_page() {
         let root = json!({
             "header": { "musicResponsiveHeaderRenderer": {

@@ -249,6 +249,10 @@ pub struct BrowseCardRecord {
     #[cfg(feature = "windows-bridge")]
     pub album_id: Option<String>,
     #[cfg(feature = "windows-bridge")]
+    pub is_video: bool,
+    #[cfg(feature = "windows-bridge")]
+    pub explicit: bool,
+    #[cfg(feature = "windows-bridge")]
     pub artist_runs: Vec<HomeArtistRunRecord>,
 }
 
@@ -269,6 +273,10 @@ impl From<innertube::BrowseItem> for BrowseCardRecord {
             album: item.album,
             #[cfg(feature = "windows-bridge")]
             album_id: item.album_id,
+            #[cfg(feature = "windows-bridge")]
+            is_video: item.is_video,
+            #[cfg(feature = "windows-bridge")]
+            explicit: item.explicit,
             #[cfg(feature = "windows-bridge")]
             artist_runs: item
                 .artist_runs
@@ -1940,6 +1948,10 @@ impl SideBCore {
                 #[cfg(feature = "windows-bridge")]
                 album_id: None,
                 #[cfg(feature = "windows-bridge")]
+                is_video: false,
+                #[cfg(feature = "windows-bridge")]
+                explicit: false,
+                #[cfg(feature = "windows-bridge")]
                 artist_runs: Vec::new(),
             })
             .collect()
@@ -2081,6 +2093,33 @@ impl SideBCore {
     }
 }
 
+// UniFFI's `export` macro expands method wrappers before Rust applies method-level `cfg`s. Keep
+// the feature gate on the entire extension impl so default/macOS builds never generate a wrapper
+// for a method that was compiled out.
+#[cfg(feature = "windows-bridge")]
+#[uniffi::export(async_runtime = "tokio")]
+impl SideBCore {
+    /// Search music videos for the Windows bridge. The mixed search owns history recording;
+    /// this filtered request is anonymous and respects the core's `hide_videos` setting.
+    pub async fn search_videos(
+        &self,
+        query: String,
+    ) -> Result<Vec<SongItemRecord>, SideBError> {
+        let client = self
+            .clients
+            .get(METADATA_CLIENT)
+            .ok_or_else(|| SideBError::Other {
+                message: "Metadata client missing".into(),
+            })?;
+        let results = self.it.search_videos(client, &query).await?;
+        Ok(results
+            .items
+            .into_iter()
+            .map(SongItemRecord::from)
+            .collect())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2144,9 +2183,9 @@ mod tests {
                 id: Some("UCartist".into()),
             }],
             play_count: None,
-            is_video: false,
+            is_video: true,
             is_upload: false,
-            explicit: false,
+            explicit: true,
             artists: Some("Artist".into()),
             artist_id: Some("UCartist".into()),
             album: Some("Album".into()),
@@ -2155,6 +2194,8 @@ mod tests {
         let record = BrowseCardRecord::from(card);
         assert_eq!(record.album.as_deref(), Some("Album"));
         assert_eq!(record.album_id.as_deref(), Some("MPREalbum"));
+        assert!(record.is_video);
+        assert!(record.explicit);
         assert_eq!(record.artist_runs.len(), 1);
         assert_eq!(record.artist_runs[0].id.as_deref(), Some("UCartist"));
     }

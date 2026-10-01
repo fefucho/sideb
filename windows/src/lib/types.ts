@@ -77,7 +77,14 @@ export interface HomePageDto {
 }
 
 export interface HomeArtistRunDto { text: string; id: string | null }
-export interface BrowseCardDto { kind: string; id: string; title: string; subtitle: string | null; thumbnail: string | null; duration: string | null; artistRuns?: HomeArtistRunDto[]; artists?: string | null; artistId?: string | null; album?: string | null; albumId?: string | null }
+export interface BrowseCardDto { kind: string; id: string; title: string; subtitle: string | null; thumbnail: string | null; duration: string | null; artistRuns?: HomeArtistRunDto[]; artists?: string | null; artistId?: string | null; album?: string | null; albumId?: string | null; isVideo?: boolean; explicit?: boolean }
+export interface SearchResultsDto {
+  top: BrowseCardDto[];
+  songs: SongDto[];
+  albums: BrowseCardDto[];
+  artists: BrowseCardDto[];
+  playlists: BrowseCardDto[];
+}
 export interface ArtistCarouselDto { title: string; items: BrowseCardDto[]; moreBrowseId: string | null; moreParams: string | null }
 export interface ArtistDetailDto {
   channelId: string; name: string; thumbnail: string | null; description: string | null;

@@ -14,6 +14,66 @@ mod commands {
 pub use dto::*;
 use queue::{next_owner_epoch, QueueStateDto};
 
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct SearchResultsDto {
+    pub top: Vec<SearchTopCardDto>,
+    pub songs: Vec<SongDto>,
+    pub albums: Vec<BrowseCardDto>,
+    pub artists: Vec<BrowseCardDto>,
+    pub playlists: Vec<BrowseCardDto>,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct SearchTopCardDto {
+    pub kind: String,
+    pub id: String,
+    pub title: String,
+    pub subtitle: Option<String>,
+    pub thumbnail: Option<String>,
+    pub duration: Option<String>,
+    pub artists: Option<String>,
+    pub artist_id: Option<String>,
+    pub album: Option<String>,
+    pub album_id: Option<String>,
+    pub artist_runs: Vec<HomeArtistRunDto>,
+    pub is_video: bool,
+    pub explicit: bool,
+}
+
+impl From<sideb_core::BrowseCardRecord> for SearchTopCardDto {
+    fn from(r: sideb_core::BrowseCardRecord) -> Self {
+        Self {
+            kind: r.kind,
+            id: r.id,
+            title: r.title,
+            subtitle: r.subtitle,
+            thumbnail: r.thumbnail,
+            duration: r.duration,
+            artists: r.artists,
+            artist_id: r.artist_id,
+            album: r.album,
+            album_id: r.album_id,
+            artist_runs: r.artist_runs.into_iter().map(HomeArtistRunDto::from).collect(),
+            is_video: r.is_video,
+            explicit: r.explicit,
+        }
+    }
+}
+
+impl From<sideb_core::SearchResultsRecord> for SearchResultsDto {
+    fn from(result: sideb_core::SearchResultsRecord) -> Self {
+        Self {
+            top: result.top.into_iter().map(SearchTopCardDto::from).collect(),
+            songs: result.songs.into_iter().map(SongDto::from).collect(),
+            albums: result.albums.into_iter().map(BrowseCardDto::from).collect(),
+            artists: result.artists.into_iter().map(BrowseCardDto::from).collect(),
+            playlists: result.playlists.into_iter().map(BrowseCardDto::from).collect(),
+        }
+    }
+}
+
 #[cfg(target_os = "windows")]
 mod session;
 #[cfg(target_os = "windows")]
@@ -510,6 +570,9 @@ pub fn run() {
             cancel_login,
             sign_out,
             retry_init_core,
+            commands::catalog::search_all,
+            commands::catalog::search_videos,
+            commands::catalog::search_cards,
             commands::catalog::search_songs,
             commands::catalog::search_albums,
             commands::catalog::get_album,

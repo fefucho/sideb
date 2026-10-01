@@ -230,12 +230,12 @@
 
   function loadHomePage(chipParams: string | null = null) { return home.load(chipParams); }
   function loadMoreHome() { return home.loadMore(); }
-  function executeSearch(targetQuery: string, mode: SearchMode = searchData.mode) {
+  function executeSearch(targetQuery: string, mode: SearchMode = searchData.mode, recordHistory = true) {
     if (!targetQuery.trim()) return;
     if (activeView !== 'search_results' || searchData.lastSearchedQuery !== targetQuery.trim() || searchData.mode !== mode) pushNavigation();
     primaryNav = "search"; activeView = "search_results";
     scrollContentToTop();
-    void search.execute(targetQuery, mode);
+    void search.execute(targetQuery, mode, recordHistory);
   }
 
   function handleSwitchNav(nav: PrimaryNav) {
@@ -301,7 +301,7 @@
     return { view: activeView, primary: primaryNav,
       scroll: document.querySelector<HTMLElement>('.content-column')?.scrollTop ?? 0,
       details: catalog.data, playlistId: lastPlaylistId, account: account.captureNavigation(),
-      search: { ...searchData, songs: [...searchData.songs], albums: [...searchData.albums] } };
+      search: { ...searchData, songs: [...searchData.songs], albums: [...searchData.albums], top: [...searchData.top], artists: [...searchData.artists], playlists: [...searchData.playlists], videos: [...searchData.videos], partialErrors: { ...searchData.partialErrors } } };
   }
   function pushNavigation() {
     navigationHistory.visit(captureNavigation()); updateHistoryAvailability();
@@ -787,11 +787,12 @@
   {:else}
     <SearchView data={searchData} backendReady={backendStatus?.ready ?? false}
       currentTrackId={playbackState.currentTrack?.videoId ?? null} isPlaying={playbackState.isPlaying}
-      onSubmit={executeSearch} onQueryChange={(query) => search.setQuery(query)}
+      onSubmit={executeSearch} onRetry={(query, mode) => executeSearch(query, mode, false)} onQueryChange={(query) => search.setQuery(query)}
       onModeChange={handleSwitchSearchMode} onQuickSearch={handleQuickSearch}
       onPlaySong={(song) => handlePlaySong(song.videoId, song)}
       onOpenArtist={openArtistDetail}
-      onOpenAlbum={(album) => openAlbumDetail(album.id, "search")} />
+      onOpenAlbum={(album) => openAlbumDetail(album.id, "search")}
+      onOpenPlaylist={(id) => openPlaylist(id)} />
   {/if}
 </main>
 
