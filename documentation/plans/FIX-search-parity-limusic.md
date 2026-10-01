@@ -128,4 +128,18 @@ Si se necesita explicar la identidad/posición de resultados, hacer después una
 
 ## Referencias visuales
 
+### Presentación Windows: Spotlight y página final
+
+La interfaz Windows adopta las medidas de `SpotlightSearchModal.swift`, `QuickResultComponents.swift` y `SearchView.swift`, manteniendo las categorías y la tarjeta con tres canciones asociadas descritas en este fix. macOS sigue siendo referencia de sólo lectura para esta entrega.
+
+- Buscar en la sidebar y Ctrl+K abren Spotlight sobre la vista actual: ancho máximo 620 px, radio 18 px, cabecera de 20 × 16 px y espacio reservado sobre el reproductor. Escape o clic fuera cierran; Enter confirma y abre la página de resultados.
+- Los resultados rápidos tienen estado independiente, debounce de 250 ms y `search_all` con `recordHistory: false`. Escribir conserva los resultados confirmados; cerrar, cambiar de consulta o cambiar de cuenta invalida respuestas pendientes.
+- La página final tiene una barra centrada de hasta 520 px, filtros en cápsulas y cabecera fija. El contenido usa márgenes de 24 px, separaciones de 24 px entre secciones y scroll propio con espacio inferior para el reproductor.
+- Todo conserva la ficha principal y sus canciones asociadas, canciones, álbumes, artistas, videos y playlists. Las colecciones se muestran en filas horizontales; sus filtros abren cuadrículas o la tabla de canciones compartida. No se altera el ranking recibido.
+- Se reutilizan los menús y la radio existentes. La transparencia usa las superficies de Windows; las medidas no dependen de Liquid Glass.
+
+Para una futura entrega macOS, aplicar las mejoras de datos de este fix a sus componentes existentes, sin reemplazar su Spotlight ni su página final. La comprobación visual y las búsquedas reales se registran aparte de los tests de estado.
+
+**Verificación de esta interfaz (2026-10-01):** `pnpm check` sin errores ni advertencias, 95/95 tests frontend (7 de preview), build frontend y ejecutable standalone aprobados. En Side B se comprobó «Kanye West»: Spotlight carga resultados rápidos, Enter abre los resultados confirmados con artista y tres temas, el input de la página muestra su desplegable, Ctrl+K desde ese input abre Spotlight y Escape cierra cada capa conservando la página. El scroll de resultados mantiene la cabecera fija. La prueba en WebView2 detectó un receptor incorrecto de los timers; se corrigió y se agregó una prueba de ese contrato. No se verificó audio en esta entrega ni se modificó macOS.
+
 La UI que se conserva es la de Side B en macOS y Windows; Limusic sirve como evidencia del contrato de resultados y de la relación entre tarjeta principal y canciones, no como plantilla visual. Las tres capturas que el encargo indicó copiar no estaban disponibles en las rutas `Temp/codex-clipboard-*.png` de este host. No se copiaron ni recrearon; las observaciones usadas aquí son la descripción textual recibida: artista principal con tres canciones, secciones de canciones/álbumes/artistas/videos/playlists y la sección distinta «Volver a escucharlo».
