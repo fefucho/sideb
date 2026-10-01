@@ -1,7 +1,8 @@
 # Búsqueda global y paridad con Limusic
 
-**Estado: Windows implementado · macOS pendiente**  
-**Fecha:** 2026-10-01  
+**Estado: Windows implementado · macOS pendiente**
+
+**Fecha:** 2026-10-01
 **Objetivo:** conservar el diseño de búsqueda de Side B y completar los datos y secciones que necesita para presentar resultados con la estructura de YouTube Music: resultado principal, canciones asociadas, canciones, álbumes, artistas, videos y playlists.
 
 **Actualización 2026-10-01:** Windows reutiliza el parser compartido existente y añade la API de videos para `windows-bridge`; Windows ya presenta los resultados globales y sus filtros. La API `search_videos` y los flags de tarjeta son exclusivos de `windows-bridge`, por lo que no modifican el ABI UniFFI usado por macOS. La etapa macOS y la comprobación manual de búsqueda con una cuenta siguen pendientes.
