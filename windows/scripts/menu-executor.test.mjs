@@ -12,6 +12,22 @@ test('bulk menu action delegates full playlist resolution and preserves occurren
   await executor.execute({ type: 'enqueue-next' }, playlist, {});
   assert.deepEqual(added, { tracks: songs, position: 'next' });
 });
+test('playlist and album shuffle menus pass the canonical full collection and shuffle intent', async () => {
+  const tracks = [{ videoId: 'first', title: 'First' }, { videoId: 'same', title: 'Second', setVideoId: 'a' }, { videoId: 'same', title: 'Third', setVideoId: 'b' }];
+  const plays = [];
+  const executor = new MenuExecutor({ begin: () => () => true, resolvePlaylist: async () => tracks,
+    play: async (...args) => plays.push(args) });
+  await executor.execute({ type: 'shuffle' }, playlist, {});
+  await executor.execute({ type: 'shuffle' }, { kind: 'album', card: { id: 'album-id', title: 'Album', thumbnail: null },
+    detail: { items: tracks, browseId: 'album-id', title: 'Album', thumbnail: null, artist: 'Artist', artistId: 'artist-id' } }, {});
+  assert.equal(plays.length, 2);
+  for (const [songs, _source, shuffle] of plays) {
+    assert.deepEqual(songs.map(song => song.title), ['First', 'Second', 'Third']);
+    assert.equal(shuffle, true);
+    assert.equal(songs[1].setVideoId, 'a');
+    assert.equal(songs[2].setVideoId, 'b');
+  }
+});
 test('late collection load does not supersede a later playback or navigation intent', async () => {
   let valid = true, resolve, plays = 0;
   const executor = new MenuExecutor({ begin: () => () => valid, resolvePlaylist: () => new Promise(yes => resolve = yes), play: async () => plays++ });

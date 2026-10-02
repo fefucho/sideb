@@ -414,6 +414,9 @@ pub(crate) async fn play_song(
             }
             invalidate_queue_owner(&mut pb);
             pb.is_shuffle = shuffle.unwrap_or(false);
+            if pb.is_shuffle {
+                pb.queue.shuffle_on_start();
+            }
         } else if let Some(entry_id) = queue_entry_id.as_deref() {
             pb.queue.select_entry(entry_id).ok_or_else(|| {
                 CommandError::new(
@@ -1071,10 +1074,7 @@ pub(crate) fn set_shuffle(
             .playback
             .lock()
             .map_err(|_| CommandError::new("LOCK_ERROR", "No se pudo cambiar el modo aleatorio."))?;
-        if enabled && !playback.is_shuffle {
-            playback.queue.shuffle_after_current();
-        }
-        playback.is_shuffle = enabled;
+        playback.set_shuffle_mode(enabled);
         playback.to_dto()
     };
     let _ = app.emit("playback-state-changed", &snapshot);

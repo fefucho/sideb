@@ -14,6 +14,18 @@ export interface PlaySongOptions {
   shuffle?: boolean;
 }
 
+/** Sends canonical occurrence order to Rust; shuffle selects only the initial track here. */
+export function prepareCollectionPlayback(items: SongDto[], selectedIndex: number, source: PlaybackQueueSource,
+  shuffle = false, fallbackThumbnail: string | null = null, fallbackArtist = '', random = Math.random): { song: QueueEntryDto; options: PlaySongOptions } {
+  const indexed = items.map((song, originalIndex) => ({ song, originalIndex })).filter(({ song }) => song.videoId.trim());
+  const entries = indexed.map(({ song }, index) => entryFor({ ...song,
+    artists: song.artists || fallbackArtist, thumbnail: song.thumbnail || fallbackThumbnail }, index));
+  if (!entries.length) throw new Error('No hay canciones disponibles para reproducir.');
+  const selected = indexed.findIndex(entry => entry.originalIndex === selectedIndex);
+  const queueIndex = shuffle ? Math.floor(random() * entries.length) : Math.max(0, selected);
+  return { song: entries[queueIndex], options: { queueItems: entries, queueIndex, queueSource: source, shuffle } };
+}
+
 const emptyQueue = (): QueueStateDto => ({ items: [], currentIndex: null, source: null, revision: 0 });
 export function emptyPlaybackData(): PlaybackStateDto {
   return { isPlaying: false, isLoading: false, isEnded: false, isShuffle: false, isRepeat: false, position: 0, duration: 0, volume: 100,

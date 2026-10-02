@@ -5,7 +5,7 @@ import ts from 'typescript';
 
 const source = await readFile(new URL('../src/lib/player/controller.ts', import.meta.url), 'utf8');
 const output = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText;
-const { PlaybackController, emptyPlaybackData } = await import(`data:text/javascript;base64,${Buffer.from(output).toString('base64')}`);
+const { PlaybackController, emptyPlaybackData, prepareCollectionPlayback } = await import(`data:text/javascript;base64,${Buffer.from(output).toString('base64')}`);
 
 function deferred() {
   let resolve; let reject;
@@ -18,6 +18,42 @@ function state(generation, options = {}) {
 }
 const song = (videoId) => ({ videoId, title: videoId, artists: 'Artist', thumbnail: null, duration: '3:21' });
 async function settle() { await new Promise((resolve) => setTimeout(resolve, 0)); }
+
+test('initial shuffle chooses from the full catalog without destroying canonical order', async () => {
+  const songs = Array.from({ length: 2000 }, (_, index) => song(`song-${index}`));
+  const original = structuredClone(songs);
+  const source = { kind: 'playlist', id: 'LM', title: 'Likes' };
+  const prepared = prepareCollectionPlayback(songs, 0, source, true, null, '', () => 0.875);
+  assert.equal(prepared.options.queueIndex, 1750);
+  assert.equal(prepared.song.videoId, 'song-1750');
+  assert.deepEqual(prepared.options.queueItems.map(entry => entry.videoId), songs.map(entry => entry.videoId));
+  assert.equal(new Set(prepared.options.queueItems.map(entry => entry.entryId)).size, 2000);
+  assert.deepEqual(songs, original);
+  let args;
+  const player = new PlaybackController(async (_command, input) => { args = input; return state(1); }, async () => () => {}, () => {});
+  await player.playSong(prepared.song, prepared.options);
+  assert.equal(args.shuffle, true);
+  assert.equal(args.queueCurrentIndex, 1750);
+  assert.equal(args.videoId, args.queueItems[1750].videoId);
+  assert.deepEqual(args.queueItems.map(entry => entry.videoId), songs.map(entry => entry.videoId));
+});
+
+test('all collection sources retain selected occurrences after filtering unavailable tracks', () => {
+  const songs = [song(''), song('same'), song('same'), song('last')];
+  for (const kind of ['album', 'artist', 'playlist', 'library', 'history', 'mix']) {
+    const source = { kind, id: 'collection', title: 'Collection' };
+    const prepared = prepareCollectionPlayback(songs, 2, source, false, 'artwork', 'Fallback artist');
+    assert.deepEqual(prepared.options.queueItems.map(entry => entry.videoId), ['same', 'same', 'last']);
+    assert.equal(prepared.options.queueIndex, 1);
+    assert.equal(prepared.song.entryId, prepared.options.queueItems[1].entryId);
+    assert.notEqual(prepared.options.queueItems[0].entryId, prepared.song.entryId);
+    assert.equal(prepared.song.thumbnail, 'artwork');
+    assert.equal(prepared.song.duration, 201);
+    assert.equal(prepared.options.shuffle, false);
+    assert.deepEqual(prepared.options.queueSource, source);
+  }
+  assert.throws(() => prepareCollectionPlayback([song(' ')], 0, null), /No hay canciones disponibles/);
+});
 
 test('collection playback passes shuffle atomically and queue selection preserves its mode', async () => {
   const calls = [];

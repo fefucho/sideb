@@ -1,6 +1,6 @@
 use crate::HomeArtistRunDto;
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -155,6 +155,12 @@ pub struct QueueStateDto {
     // The runtime retains the complete order; snapshots expose it in batches.
     #[serde(skip)]
     visible_len: usize,
+    // Canonical rank belongs to each source occurrence, never its video ID. Explicit
+    // insertions and drag edits have no rank and retain their queue slots on toggles.
+    #[serde(skip)]
+    source_ranks: HashMap<String, usize>,
+    #[serde(skip)]
+    next_source_rank: usize,
 }
 
 impl Default for QueueStateDto {
@@ -166,6 +172,8 @@ impl Default for QueueStateDto {
             revision: 0,
             radio: None,
             visible_len: 0,
+            source_ranks: HashMap::new(),
+            next_source_rank: 0,
         }
     }
 }
@@ -188,6 +196,9 @@ impl QueueStateDto {
             revision: self.revision,
             radio: self.radio.clone(),
             visible_len: len,
+            // Playback policy stays native; public snapshots need only visible items.
+            source_ranks: HashMap::new(),
+            next_source_rank: 0,
         }
     }
 
@@ -221,6 +232,13 @@ impl QueueStateDto {
                 item
             })
             .collect();
+        self.source_ranks = self
+            .items
+            .iter()
+            .enumerate()
+            .map(|(rank, entry)| (entry.entry_id.clone(), rank))
+            .collect();
+        self.next_source_rank = self.items.len();
         self.current_index = Some(current_index);
         self.visible_len = current_index
             .saturating_add(PLAYLIST_BATCH_SIZE)
@@ -268,8 +286,24 @@ impl QueueStateDto {
             .or_else(|| wrap_at_end.then(|| self.items.first().cloned()).flatten())
     }
 
-    /// Randomizes only the items after the active occurrence. The current track and
-    /// everything already passed retain their order and occurrence identity.
+    /// Starts shuffle without treating entries before a randomly selected canonical
+    /// index as played history. The selected occurrence starts the new queue at zero.
+    pub fn shuffle_on_start(&mut self) -> bool {
+        let Some(index) = self.current_index else {
+            return false;
+        };
+        if index > 0 {
+            let active = self.items.remove(index);
+            self.items.insert(0, active);
+            self.current_index = Some(0);
+            self.visible_len = PLAYLIST_BATCH_SIZE.min(self.items.len());
+            self.revision += 1;
+        }
+        self.shuffle_after_current() || index > 0
+    }
+
+    /// Reorders only pending source occurrences, including those not yet published
+    /// in a snapshot. History, active audio and explicit edits retain their slots.
     pub fn shuffle_after_current(&mut self) -> bool {
         let seed = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -280,27 +314,54 @@ impl QueueStateDto {
     }
 
     fn shuffle_after_current_with_seed(&mut self, seed: u64) -> bool {
+        self.reorder_pending_source(Some(seed))
+    }
+
+    pub fn restore_order_after_current(&mut self) -> bool {
+        self.reorder_pending_source(None)
+    }
+
+    fn reorder_pending_source(&mut self, seed: Option<u64>) -> bool {
         let Some(current_index) = self.current_index else {
             return false;
         };
         let Some(suffix) = self.items.get_mut(current_index.saturating_add(1)..) else {
             return false;
         };
-        if suffix.len() < 2 {
+        let slots = suffix
+            .iter()
+            .enumerate()
+            .filter_map(|(index, entry)| {
+                self.source_ranks
+                    .contains_key(&entry.entry_id)
+                    .then_some(index)
+            })
+            .collect::<Vec<_>>();
+        if slots.len() < 2 {
             return false;
         }
-
-        // Small xorshift PRNG keeps this dependency-free while allowing deterministic tests.
-        let mut state = if seed == 0 {
-            0x9e37_79b9_7f4a_7c15
+        let mut entries = slots
+            .iter()
+            .map(|&index| suffix[index].clone())
+            .collect::<Vec<_>>();
+        if let Some(seed) = seed {
+            // Small xorshift PRNG permits deterministic policy tests without dependencies.
+            let mut state = if seed == 0 {
+                0x9e37_79b9_7f4a_7c15
+            } else {
+                seed
+            };
+            for index in (1..entries.len()).rev() {
+                state ^= state << 13;
+                state ^= state >> 7;
+                state ^= state << 17;
+                entries.swap(index, (state as usize) % (index + 1));
+            }
         } else {
-            seed
-        };
-        for index in (1..suffix.len()).rev() {
-            state ^= state << 13;
-            state ^= state >> 7;
-            state ^= state << 17;
-            suffix.swap(index, (state as usize) % (index + 1));
+            entries.sort_by_key(|entry| self.source_ranks[&entry.entry_id]);
+        }
+        for (index, entry) in slots.into_iter().zip(entries) {
+            suffix[index] = entry;
         }
         self.revision += 1;
         true
@@ -369,6 +430,7 @@ impl QueueStateDto {
             return Err(QueueRemoveError::CurrentEntry);
         }
         self.items.remove(index);
+        self.source_ranks.remove(entry_id);
         if index < self.visible_len {
             self.visible_len = self.visible_len.saturating_sub(1);
         }
@@ -391,6 +453,7 @@ impl QueueStateDto {
             .position(|entry| entry.entry_id == entry_id)?;
         let was_current = self.current_index == Some(index);
         self.items.remove(index);
+        self.source_ranks.remove(entry_id);
         if index < self.visible_len {
             self.visible_len = self.visible_len.saturating_sub(1);
         }
@@ -438,6 +501,9 @@ impl QueueStateDto {
         let entry = self.items.remove(from);
         let target = if from < before { before - 1 } else { before };
         self.items.insert(target, entry);
+        // A drag is an explicit placement, just like an enqueued occurrence. Future
+        // shuffle toggles must not undo it or confuse it with the source's own order.
+        self.source_ranks.remove(entry_id);
         if before_entry_id.is_none() {
             self.visible_len = self.items.len();
         }
@@ -500,6 +566,9 @@ impl QueueStateDto {
                 if entry.entry_id.trim().is_empty() || !entry_ids.insert(entry.entry_id.clone()) {
                     entry.entry_id = new_unique_entry_id(&mut entry_ids);
                 }
+                self.source_ranks
+                    .insert(entry.entry_id.clone(), self.next_source_rank);
+                self.next_source_rank += 1;
             }
             self.items.extend(added);
             metadata_changed = true;
@@ -559,6 +628,166 @@ mod tests {
         let mut queue = QueueStateDto::default();
         queue.replace(vec![item("same"), item("same"), item("last")], 1, source());
         queue
+    }
+
+    fn entry_ids(items: &[QueueEntryDto]) -> Vec<String> {
+        items.iter().map(|entry| entry.entry_id.clone()).collect()
+    }
+
+    #[test]
+    fn initial_shuffle_at_a_hidden_canonical_index_keeps_the_entire_catalog() {
+        let mut queue = QueueStateDto::default();
+        queue.replace(
+            (0..2000).map(|index| item(&index.to_string())).collect(),
+            1234,
+            source(),
+        );
+        let selected = queue.current().unwrap();
+        let original_ids = entry_ids(&queue.items).into_iter().collect::<HashSet<_>>();
+
+        queue.shuffle_on_start();
+
+        assert_eq!(queue.current_index, Some(0));
+        assert_eq!(queue.current(), Some(selected));
+        assert_eq!(queue.snapshot().items.len(), 100);
+        assert_eq!(
+            entry_ids(&queue.items).into_iter().collect::<HashSet<_>>(),
+            original_ids
+        );
+        assert_eq!(queue.items.len(), 2000);
+        queue.restore_order_after_current();
+        assert_eq!(
+            queue.items[1..]
+                .iter()
+                .map(|entry| entry.video_id.clone())
+                .collect::<Vec<_>>(),
+            (0..2000)
+                .filter(|&index| index != 1234)
+                .map(|index| index.to_string())
+                .collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn toggles_reorder_only_pending_occurrences_across_the_complete_hidden_catalog() {
+        let mut queue = QueueStateDto::default();
+        queue.replace(
+            (0..2000).map(|index| item(&index.to_string())).collect(),
+            0,
+            source(),
+        );
+        queue.shuffle_after_current_with_seed(42);
+        queue.select(7);
+        let fixed = queue.items[..8].to_vec();
+        let pending_ids = entry_ids(&queue.items[8..])
+            .into_iter()
+            .collect::<HashSet<_>>();
+        let mut canonical_pending = queue.items[8..].to_vec();
+        canonical_pending.sort_by_key(|entry| queue.source_ranks[&entry.entry_id]);
+
+        assert!(queue.restore_order_after_current());
+        assert_eq!(queue.items[..8], fixed);
+        assert_eq!(queue.items[8..], canonical_pending);
+        assert_eq!(queue.snapshot().items.len(), 100);
+        assert!(queue.shuffle_after_current_with_seed(314));
+        assert_eq!(queue.items[..8], fixed);
+        assert_ne!(queue.items[8..], canonical_pending);
+        assert_eq!(
+            entry_ids(&queue.items[8..])
+                .into_iter()
+                .collect::<HashSet<_>>(),
+            pending_ids
+        );
+        assert!(queue.snapshot().items[8..].iter().any(|entry| entry
+            .video_id
+            .parse::<usize>()
+            .unwrap()
+            >= 100));
+        queue.restore_order_after_current();
+        assert_eq!(queue.items[8..], canonical_pending);
+        assert_eq!(queue.previous(0.0), Some(fixed[6].clone()));
+    }
+
+    #[test]
+    fn manual_insertions_keep_their_slots_and_duplicates_keep_their_canonical_ranks() {
+        let mut queue = QueueStateDto::default();
+        queue.replace((0..12).map(|_| item("same")).collect(), 0, source());
+        let canonical = queue.items.clone();
+        queue.shuffle_after_current_with_seed(42);
+        queue.enqueue(vec![item("next-a"), item("next-b")], true);
+        queue.enqueue(vec![item("end-a"), item("end-b")], false);
+        let manual_slots = [1, 2, 14, 15].map(|index| (index, queue.items[index].clone()));
+        let active = queue.current().unwrap();
+
+        queue.restore_order_after_current();
+        assert_eq!(queue.current(), Some(active));
+        for (index, entry) in &manual_slots {
+            assert_eq!(&queue.items[*index], entry);
+        }
+        assert_eq!(queue.items[3..14], canonical[1..]);
+        queue.shuffle_after_current_with_seed(67);
+        for (index, entry) in &manual_slots {
+            assert_eq!(&queue.items[*index], entry);
+        }
+        queue.select(1); // A manually enqueued current track has no source rank.
+        let history_and_current = queue.items[..2].to_vec();
+        queue.restore_order_after_current();
+        assert_eq!(queue.items[..2], history_and_current);
+        assert_eq!(queue.items[3..14], canonical[1..]);
+        assert_eq!(
+            entry_ids(&queue.items)
+                .into_iter()
+                .collect::<HashSet<_>>()
+                .len(),
+            16
+        );
+    }
+
+    #[test]
+    fn removals_are_not_resurrected_and_drag_placements_survive_toggles() {
+        let mut queue = QueueStateDto::default();
+        queue.replace(
+            (0..20).map(|index| item(&index.to_string())).collect(),
+            0,
+            source(),
+        );
+        let removed = queue.items[8].entry_id.clone();
+        let moved = queue.items[6].entry_id.clone();
+        let active = queue.current().unwrap();
+        queue.shuffle_after_current_with_seed(42);
+        queue.remove_entry(&removed).unwrap();
+        queue.move_entry(&moved, None).unwrap();
+        let fixed_index = queue.items.len() - 1;
+        queue.restore_order_after_current();
+        assert_eq!(queue.items[fixed_index].entry_id, moved);
+        assert_eq!(queue.current(), Some(active));
+        queue.shuffle_after_current_with_seed(314);
+        assert_eq!(queue.items[fixed_index].entry_id, moved);
+        assert!(queue.items.iter().all(|entry| entry.entry_id != removed));
+        assert!(!queue.source_ranks.contains_key(&removed));
+        assert!(!queue.source_ranks.contains_key(&moved));
+    }
+
+    #[test]
+    fn reversible_source_order_is_shared_by_albums_artists_mixes_and_radio_pages() {
+        for kind in ["playlist", "album", "artist", "mix", "radio"] {
+            let mut queue = QueueStateDto::default();
+            let mut context = source();
+            context.kind = kind.into();
+            queue.replace(
+                (0..10).map(|index| item(&index.to_string())).collect(),
+                2,
+                context,
+            );
+            queue.merge_radio(vec![item("radio-a"), item("radio-b")]);
+            queue.enqueue(vec![item("manual")], true);
+            let canonical = queue.items.clone();
+            queue.shuffle_after_current_with_seed(42);
+            queue.restore_order_after_current();
+            assert_eq!(queue.items, canonical, "source kind: {kind}");
+            assert_eq!(queue.items[3].video_id, "manual");
+            assert_eq!(queue.items.last().unwrap().video_id, "radio-b");
+        }
     }
 
     #[test]
@@ -898,12 +1127,21 @@ mod tests {
         assert_eq!(queue.move_entry(&first, Some(&first)), Ok(false));
         assert_eq!(queue.move_entry(&first, Some(&second)), Ok(false));
         assert_eq!(queue.move_entry(&last, None), Ok(false));
-        assert_eq!(queue.move_entry("stale", Some(&first)), Err(QueueMoveError::EntryNotFound));
-        assert_eq!(queue.move_entry(&first, Some("stale")), Err(QueueMoveError::TargetNotFound));
+        assert_eq!(
+            queue.move_entry("stale", Some(&first)),
+            Err(QueueMoveError::EntryNotFound)
+        );
+        assert_eq!(
+            queue.move_entry(&first, Some("stale")),
+            Err(QueueMoveError::TargetNotFound)
+        );
         assert_eq!(queue, original);
         queue.replace(vec![item("same"), item("new")], 0, source());
         let replaced = queue.clone();
-        assert_eq!(queue.move_entry(&first, None), Err(QueueMoveError::EntryNotFound));
+        assert_eq!(
+            queue.move_entry(&first, None),
+            Err(QueueMoveError::EntryNotFound)
+        );
         assert_eq!(queue, replaced);
     }
 
