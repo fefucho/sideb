@@ -144,8 +144,16 @@ function Bootstrap-Mpv {
         $actual = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
         if ($actual -ne $script:MpvSha256) { throw "SHA256 inválido: $actual (esperado $($script:MpvSha256)); no se extraerá el archivo." }
         New-Item -ItemType Directory -Force -Path $staging | Out-Null
-        & tar.exe -xf $zip -C $staging
-        if ($LASTEXITCODE -ne 0) { throw 'No se pudo extraer el archivo libmpv verificado.' }
+        # Windows Server's bundled tar cannot decode the LZMA stream in this pinned .7z.
+        # GitHub's Windows runner supplies 7-Zip; keep tar as a fallback for compatible hosts.
+        $sevenZipCommand = Get-Command 7z.exe -ErrorAction SilentlyContinue
+        $sevenZipPath = if ($sevenZipCommand) { $sevenZipCommand.Source } else { Join-Path $env:ProgramFiles '7-Zip\7z.exe' }
+        if (Test-Path -LiteralPath $sevenZipPath) {
+            & $sevenZipPath x $zip "-o$staging" -y
+        } else {
+            & tar.exe -xf $zip -C $staging
+        }
+        if ($LASTEXITCODE -ne 0) { throw 'No se pudo extraer libmpv verificado; instalar 7-Zip si tar no admite LZMA.' }
         $dll = Join-Path $staging 'libmpv-2.dll'
         if (-not (Test-Path -LiteralPath $dll)) { throw 'El asset verificado no contiene libmpv-2.dll.' }
         Copy-Item -LiteralPath $dll -Destination (Join-Path $mpvDir 'libmpv-2.dll') -Force

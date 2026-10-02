@@ -7,7 +7,7 @@ App Tauri 2 + Svelte 5/TypeScript que reutiliza el core Rust y reproduce con lib
 - Windows x64 con WebView2 Runtime.
 - PowerShell, Node.js 24, pnpm 12.6.0 y Rust estable `x86_64-pc-windows-msvc`.
 - Visual Studio 2022 Build Tools: C++ de escritorio y Windows SDK. El script selecciona 17.x explícitamente.
-- Para bootstrap inicial: conexión a GitHub y `tar.exe` de Windows.
+- Para bootstrap inicial: conexión a GitHub y 7-Zip (en PATH o instalado en `Program Files/7-Zip`). Se puede usar `tar.exe` si su versión admite el LZMA del archivo `.7z`; el tar de Windows Server 2022 no lo admite.
 
 `package.json` fija pnpm; los lockfiles forman parte de Git. No ejecutar pnpm desde la raíz del repositorio: el proyecto frontend está en `windows/`.
 
