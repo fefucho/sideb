@@ -20,6 +20,7 @@ use crate::transport::{Error, InnerTube};
 
 /// Search filter params (opaque base64). context/08.
 pub const FILTER_SONG: &str = "EgWKAQIIAWoKEAkQBRAKEAMQBA%3D%3D";
+pub const FILTER_VIDEO: &str = "EgWKAQIQAWoKEAkQChAFEAMQBA%3D%3D";
 pub const FILTER_ALBUM: &str = "EgWKAQIYAWoKEAkQChAFEAMQBA%3D%3D";
 pub const FILTER_ARTIST: &str = "EgWKAQIgAWoKEAkQChAFEAMQBA%3D%3D";
 pub const FILTER_COMMUNITY_PLAYLIST: &str = "EgeKAQQoAEABagoQAxAEEAoQCRAF";
@@ -141,6 +142,25 @@ impl InnerTube {
         let mut r = metadata::parse_search(&value);
         self.drop_video_songs(&mut r.items);
         Ok(r)
+    }
+
+    /// Search video uploads only (`FILTER_VIDEO`), using YouTube's video category filter.
+    /// Video classification remains the provider's `musicVideoType`, parsed by metadata.
+    pub async fn search_videos(
+        &self,
+        metadata_client: &YouTubeClient,
+        query: &str,
+    ) -> Result<SearchResult, Error> {
+        // Match Limusic: when music videos are hidden, the video shelf has no results.
+        if self.hide_videos() {
+            return Ok(SearchResult { items: Vec::new() });
+        }
+        // The mixed search already records this submitted query; this filtered request must not
+        // record it a second time.
+        let value = self
+            .search_raw(metadata_client, query, Some(FILTER_VIDEO), false)
+            .await?;
+        Ok(metadata::parse_search(&value))
     }
 
     /// Unfiltered search → categorized sections (top / songs / albums / artists / playlists).
@@ -1074,6 +1094,17 @@ fn edit_rejection(v: &serde_json::Value) -> Option<Error> {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[tokio::test]
+    async fn hidden_video_setting_short_circuits_filtered_video_search() {
+        let it = InnerTube::new(crate::Session::default(), None).unwrap();
+        it.set_hide_videos(true);
+        let clients = crate::Clients::bundled();
+        let client = clients.get(crate::METADATA_CLIENT).unwrap();
+
+        let result = it.search_videos(client, "synthetic query").await.unwrap();
+        assert!(result.items.is_empty());
+    }
 
     #[test]
     fn strips_vl_prefix() {

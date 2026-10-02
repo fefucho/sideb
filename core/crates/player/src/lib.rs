@@ -162,6 +162,12 @@ impl Player {
         Ok(())
     }
 
+    /// Stop playback and unload any active media from mpv.
+    pub fn stop(&self) -> Result<(), Error> {
+        self.mpv.command("stop", &[])?;
+        Ok(())
+    }
+
     /// True when mpv has nothing loaded (playlist exhausted or the last load failed). The
     /// orchestrator uses this after a track ends/fails to tell "gaplessly advanced into the
     /// lookahead" apart from "stalled — load the next track explicitly".

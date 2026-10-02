@@ -4,6 +4,7 @@ members = [
     "crates/innertube",
     "crates/listen-protocol",
     "crates/sideb-core",
+    "crates/player",
 ]
 
 [workspace.package]

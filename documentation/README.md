@@ -1,29 +1,26 @@
-# Side B
+# Documentación de Side B
 
-> Cliente nativo de YouTube Music para macOS diseñado en SwiftUI, AppKit y Rust.
+- [Sincronizar el código entre las dos PCs](SINCRONIZAR_PCS.md): ramas y scripts para Windows/macOS.
 
-## Características
-- **Audio de alto rendimiento**: Integración nativa con `AVPlayer` y motor de stream optimizado en Rust.
-- **Diseño macOS 26/27**: Estilo Liquid Glass, tipografía SF Pro adaptativa y paleta refinada (ver [`UI_ARCHITECTURE.md`](UI_ARCHITECTURE.md)).
-- **Colección y reproducción**: Cola dinámica, radios continuas, historial y sincronización de biblioteca.
-- **Auto-actualizaciones**: Integración directa con GitHub Releases para recibir nuevas versiones dentro de la app con un solo clic. Consulta la [**Guía de Actualizaciones y Lanzamiento**](GUIA_DE_ACTUALIZACION.md).
+## Windows: documentación vigente
 
-## Requisitos
-- macOS 15.0 o superior (compatible con Apple Silicon e Intel).
+- [Guía de desarrollo](../windows/README.md): requisitos, comandos y comprobaciones.
+- [Arquitectura](../windows/ARCHITECTURE.md): módulos y contratos.
+- [Backlog](../windows/BACKLOG.md): única lista activa de pendientes Windows.
 
-## Compilación local
-Para compilar y ejecutar en modo Release:
-```bash
-sh Scripts/compile_and_run.sh
-```
+## macOS
 
-## Pruebas
-```bash
-swift test --package-path apple
-```
+Se conserva la documentación actual hasta su revisión específica:
 
-## Documentación del Proyecto
-- [**Estado del Proyecto**](PROJECT_STATE.md): Resumen de arquitectura, hitos y componentes vigentes.
-- [**Planes y Epics**](plans/README.md): Registro oficial de epics estructurales y roadmaps de producto.
-- [**Registro de Fixes**](FIXES_LOG.md): Bitácora técnica continua de correcciones y mejoras.
-- [**Auditorías y Reportes**](docs/audits/README.md): Archivo histórico de optimizaciones de scroll y diagnósticos forenses.
+- [Arquitectura UI](UI_ARCHITECTURE.md).
+- [Estado del proyecto](PROJECT_STATE.md).
+- [Actualización y lanzamiento](GUIA_DE_ACTUALIZACION.md).
+- [Playlists por tandas y shuffle global](PLAYLIST_SHUFFLE_PORT.md): fix Windows y guía para portarlo a macOS.
+- [Planes macOS y roadmaps](plans/README.md).
+
+## Referencias históricas
+
+- [Port Windows: planes, entregas y capturas](archive/windows/README.md).
+- [Auditorías](audits/README.md) y [registro de fixes](FIXES_LOG.md).
+
+La guía [AGENTS.md](../AGENTS.md) y sus ámbitos describen el trabajo de agentes. No hace falta leer este archivo histórico completo para cada tarea.

@@ -317,6 +317,40 @@ impl Db {
         let _ = conn.execute("DELETE FROM settings WHERE key = ?1", [key]);
     }
 
+    /// Remove credentials left by the legacy SQLite-backed session implementation while keeping
+    /// non-secret account metadata available to a host that uses an OS credential store. The
+    /// secure-delete, WAL checkpoint and VACUUM steps reduce recoverable SQLite remnants; they are
+    /// not a guarantee against filesystem snapshots, backups or SSD wear-leveling.
+    pub fn clear_persisted_session_cookies(&self) -> rusqlite::Result<()> {
+        let mut conn = self.0.lock().unwrap();
+        // secure_delete must be enabled before overwriting/deleting cells. This setting is local
+        // to this connection, so the Apple-created Db retains its existing behavior.
+        conn.pragma_update(None, "secure_delete", true)?;
+        let tx = conn.transaction()?;
+        tx.execute("DELETE FROM settings WHERE key = 'session_cookie'", [])?;
+        tx.execute("UPDATE accounts SET session_cookie = ''", [])?;
+        tx.commit()?;
+
+        Self::checkpoint_and_truncate_wal(&conn)?;
+        conn.execute_batch("VACUUM")?;
+        Self::checkpoint_and_truncate_wal(&conn)
+    }
+
+    fn checkpoint_and_truncate_wal(conn: &Connection) -> rusqlite::Result<()> {
+        let (busy, _, _): (i64, i64, i64) = conn.query_row(
+            "PRAGMA wal_checkpoint(TRUNCATE)",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )?;
+        if busy != 0 {
+            return Err(rusqlite::Error::SqliteFailure(
+                rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_BUSY),
+                Some("WAL checkpoint could not complete while clearing session credentials".into()),
+            ));
+        }
+        Ok(())
+    }
+
     /// Persist the canonical selected identity and its two legacy projections atomically. Older
     /// releases still read `data_sync_id` / `account_json`; keeping all three in one transaction
     /// prevents a restart from pairing one channel's request delegation with another's display.
@@ -1151,6 +1185,59 @@ mod tests {
 
     fn db() -> Db {
         Db::open(std::path::Path::new(":memory:")).unwrap()
+    }
+
+    #[test]
+    fn clearing_session_cookies_scrubs_sqlite_and_wal_remnants() {
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!(
+            "sideb-secure-cookie-clear-{}-{unique}.sqlite",
+            std::process::id()
+        ));
+        let marker = b"fixture-cookie-remnant-marker";
+
+        {
+            let d = Db::open(&path).unwrap();
+            d.set_setting(
+                "session_cookie",
+                "SAPISID=fixture-cookie-remnant-marker; SID=other-fixture-value",
+            );
+            d.upsert_account(&StoredAccount {
+                id: "fixture-account".into(),
+                session_cookie:
+                    "SAPISID=fixture-cookie-remnant-marker; SID=other-fixture-value".into(),
+                data_sync_id: Some("channel-fixture".into()),
+                selected_identity_json: None,
+                account_json: Some(r#"{"name":"Fixture account"}"#.into()),
+                visitor_data: None,
+                added_at: 1,
+            })
+            .unwrap();
+
+            d.clear_persisted_session_cookies().unwrap();
+            assert_eq!(d.get_setting("session_cookie"), None);
+            let account = d.get_account("fixture-account").unwrap();
+            assert!(account.session_cookie.is_empty());
+            assert_eq!(account.data_sync_id.as_deref(), Some("channel-fixture"));
+            assert_eq!(
+                account.account_json.as_deref(),
+                Some(r#"{"name":"Fixture account"}"#)
+            );
+
+            let db_bytes = std::fs::read(&path).unwrap();
+            assert!(!db_bytes.windows(marker.len()).any(|window| window == marker));
+            let wal_path = path.with_extension("sqlite-wal");
+            if let Ok(wal_bytes) = std::fs::read(wal_path) {
+                assert!(!wal_bytes.windows(marker.len()).any(|window| window == marker));
+            }
+        }
+
+        std::fs::remove_file(&path).ok();
+        std::fs::remove_file(path.with_extension("sqlite-wal")).ok();
+        std::fs::remove_file(path.with_extension("sqlite-shm")).ok();
     }
 
     #[test]

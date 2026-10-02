@@ -1,6 +1,6 @@
 ---
 trigger: glob
-globs: ["SIDE B/core/**/*.rs", "SIDE B/core/**/Cargo.toml", "SIDE B/apple/build_xcframework.sh"]
+globs: ["core/**/*.rs", "core/Cargo.toml", "core/**/Cargo.toml", "apple/build_xcframework.sh"]
 ---
 
 # Side B v2 — Rust, InnerTube y UniFFI (2026)

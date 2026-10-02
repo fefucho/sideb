@@ -9,6 +9,10 @@ description = "Side B core - Shared YouTube Music backend"
 name = "sideb_core"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+[features]
+default = []
+windows-bridge = []
+
 [[bin]]
 name = "uniffi-bindgen"
 path = "src/bin/uniffi-bindgen.rs"

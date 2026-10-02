@@ -989,6 +989,22 @@ fn first_album_id(runs: &[Value]) -> Option<String> {
     })
 }
 
+/// Song cards keep the album label on its browse link, outside the artist-only subtitle.
+fn first_album_name(runs: &[Value]) -> Option<String> {
+    runs.iter().find_map(|run| {
+        let id = run
+            .get("navigationEndpoint")?
+            .get("browseEndpoint")?
+            .get("browseId")?
+            .as_str()?;
+        if !id.starts_with("MPRE") {
+            return None;
+        }
+        let text = run.get("text")?.as_str()?.trim();
+        (!text.is_empty()).then(|| text.to_owned())
+    })
+}
+
 /// A `musicTwoRowItemRenderer` → one card. Kind inferred from its navigation endpoint.
 fn parse_two_row_item(node: &Value) -> Option<BrowseItem> {
     let title = runs_text(node.get("title"))?;
@@ -1022,7 +1038,7 @@ fn parse_two_row_item(node: &Value) -> Option<BrowseItem> {
             explicit: is_explicit(node),
             artists: subtitle,
             artist_id: runs.and_then(|r| first_artist_id(r)),
-            album: None,
+            album: runs.and_then(|r| first_album_name(r)),
             album_id: runs.and_then(|r| first_album_id(r)),
         });
     }
@@ -1395,6 +1411,7 @@ mod tests {
         let song = &items(&root)[0];
         assert_eq!(song.subtitle.as_deref(), Some("Miley Cyrus"));
         assert_eq!(song.album_id.as_deref(), Some("MPREplastic"));
+        assert_eq!(song.album.as_deref(), Some("Plastic Hearts"));
         assert_eq!(song.artist_runs.iter().map(|run| (run.text.as_str(), run.id.as_deref())).collect::<Vec<_>>(), [("Miley Cyrus", Some("UCmiley"))]);
 
         // An album card is not a queue entry, so its subtitle stays whole.
@@ -1405,6 +1422,34 @@ mod tests {
         let card = &items(&root)[0];
         assert_eq!(card.kind, "album");
         assert_eq!(card.subtitle.as_deref(), Some("Album • Miley Cyrus"));
+    }
+
+    #[test]
+    fn listen_again_keeps_album_and_individual_artist_destinations() {
+        let item = parse_two_row_item(&json!({
+            "title": {"runs": [{"text": "Lose Yourself to Dance"}]},
+            "navigationEndpoint": {"watchEndpoint": {"videoId": "dance"}},
+            "subtitle": {"runs": [
+                {"text": "Daft Punk", "navigationEndpoint": {"browseEndpoint": {"browseId": "UCdaft"}}},
+                {"text": " & "},
+                {"text": "Pharrell Williams", "navigationEndpoint": {"browseEndpoint": {"browseId": "UCpharrell"}}},
+                {"text": " • "},
+                {"text": "Random Access Memories", "navigationEndpoint": {"browseEndpoint": {"browseId": "MPREram"}}},
+                {"text": " • "}, {"text": "2013"}
+            ]}
+        })).unwrap();
+        assert_eq!(item.album.as_deref(), Some("Random Access Memories"));
+        assert_eq!(item.album_id.as_deref(), Some("MPREram"));
+        assert_eq!(item.artist_runs.iter().filter(|run| run.id.is_some()).map(|run| (run.text.as_str(), run.id.as_deref())).collect::<Vec<_>>(),
+            [("Daft Punk", Some("UCdaft")), ("Pharrell Williams", Some("UCpharrell"))]);
+        assert_eq!(item.artists.as_deref(), Some("Daft Punk & Pharrell Williams"));
+        let legacy = parse_two_row_item(&json!({
+            "title": {"runs": [{"text": "Video"}]},
+            "navigationEndpoint": {"watchEndpoint": {"videoId": "video"}},
+            "subtitle": {"runs": [{"text": "Daft Punk"}, {"text": " • "}, {"text": "1.7B views"}]}
+        })).unwrap();
+        assert!(legacy.album.is_none());
+        assert!(legacy.album_id.is_none());
     }
 
     #[test]
@@ -1789,6 +1834,64 @@ mod tests {
         assert_eq!(r.artists.len(), 1);
         assert_eq!(r.artists[0].kind, "artist");
         assert_eq!(r.artists[0].title, "The Artist");
+    }
+
+    #[test]
+    fn keeps_artist_top_result_followed_by_three_related_songs_in_provider_order() {
+        let related_song = |video_id: &str, title: &str, duration: &str, video_type: &str| {
+            json!({ "musicResponsiveListItemRenderer": {
+                "playlistItemData": { "videoId": video_id },
+                "navigationEndpoint": { "watchEndpoint": {
+                    "videoId": video_id,
+                    "watchEndpointMusicSupportedConfigs": {
+                        "watchEndpointMusicConfig": { "musicVideoType": video_type }
+                    }
+                } },
+                "flexColumns": [
+                    { "musicResponsiveListItemFlexColumnRenderer": { "text": { "runs": [
+                        { "text": title }
+                    ] } } },
+                    { "musicResponsiveListItemFlexColumnRenderer": { "text": { "runs": [
+                        { "text": "Song" }, { "text": " • " },
+                        { "text": "The Artist", "navigationEndpoint": {
+                            "browseEndpoint": { "browseId": "UCartist" }
+                        } }, { "text": " • " }, { "text": duration }
+                    ] } } }
+                ]
+            } })
+        };
+        let root = json!({ "contents": { "sectionListRenderer": { "contents": [
+            { "musicCardShelfRenderer": {
+                "title": { "runs": [{ "text": "The Artist", "navigationEndpoint": {
+                    "browseEndpoint": { "browseId": "UCartist" }
+                } }] },
+                "subtitle": { "runs": [{ "text": "Artist" }] },
+                "contents": [
+                    related_song("waves", "Waves", "3:01", "MUSIC_VIDEO_TYPE_ATV"),
+                    related_song("follow", "Follow God", "1:45", "MUSIC_VIDEO_TYPE_ATV"),
+                    related_song("runaway", "Runaway", "9:08", "MUSIC_VIDEO_TYPE_OMV")
+                ]
+            } }
+        ] } } });
+
+        let results = parse_search_all(&root);
+        assert_eq!(results.top.len(), 4);
+        assert_eq!((results.top[0].kind, results.top[0].id.as_str()), ("artist", "UCartist"));
+        assert_eq!(
+            results.top[1..]
+                .iter()
+                .map(|song| (song.id.as_str(), song.title.as_str(), song.duration.as_deref()))
+                .collect::<Vec<_>>(),
+            [
+                ("waves", "Waves", Some("3:01")),
+                ("follow", "Follow God", Some("1:45")),
+                ("runaway", "Runaway", Some("9:08")),
+            ]
+        );
+        assert!(results.top[1..3].iter().all(|song| !song.is_video));
+        assert!(results.top[3].is_video);
+        assert_eq!(results.top[1].artists.as_deref(), Some("The Artist"));
+        assert_eq!(results.top[1].artist_id.as_deref(), Some("UCartist"));
     }
 
     #[test]

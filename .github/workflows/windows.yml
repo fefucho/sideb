@@ -1,0 +1,65 @@
+name: Windows CI
+
+on:
+  push:
+    paths:
+      - 'core/**'
+      - 'windows/**'
+      - '.github/workflows/windows.yml'
+  pull_request:
+    paths:
+      - 'core/**'
+      - 'windows/**'
+      - '.github/workflows/windows.yml'
+  workflow_dispatch: {}
+
+jobs:
+  verify-build:
+    name: Verify and build standalone Windows app
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.6.0
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            core/target/
+            windows/src-tauri/target/
+            windows/.cache/mpv/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('core/Cargo.lock', 'windows/src-tauri/Cargo.lock', 'windows/pnpm-lock.yaml', 'windows/scripts/windows.ps1') }}
+
+      - name: Bootstrap pinned libmpv
+        shell: pwsh
+        run: ./windows/scripts/windows.ps1 bootstrap
+
+      - name: Verify
+        shell: pwsh
+        run: ./windows/scripts/windows.ps1 verify
+
+      - name: Build standalone debug app
+        shell: pwsh
+        run: ./windows/scripts/windows.ps1 build -Configuration debug
+
+      - name: Upload standalone app and runtime DLL
+        uses: actions/upload-artifact@v4
+        with:
+          name: sideb-windows-debug-x64
+          if-no-files-found: error
+          path: |
+            windows/src-tauri/target/debug/sideb-windows.exe
+            windows/src-tauri/target/debug/libmpv-2.dll
