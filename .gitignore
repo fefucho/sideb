@@ -41,6 +41,7 @@ Updates/
 /windows/build/
 /windows/artifacts/
 /windows/src-tauri/*.dll
+/windows/src-tauri/VulkanRT-License.txt
 **/.env
 **/.env.*
 !**/.env.example

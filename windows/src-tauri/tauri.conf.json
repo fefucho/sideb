@@ -29,7 +29,9 @@
     "active": true,
     "targets": ["nsis"],
     "resources": [
-      "libmpv-2.dll"
+      "libmpv-2.dll",
+      "vulkan-1.dll",
+      "VulkanRT-License.txt"
     ],
     "icon": [
       "icons/32x32.png",

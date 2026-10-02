@@ -18,9 +18,20 @@
   IfFileExists "$INSTDIR\resources\*.dll" 0 end_mpv_postinstall
     CopyFiles /SILENT "$INSTDIR\resources\*.dll" "$INSTDIR\"
   end_mpv_postinstall:
+  ; El loader Vulkan es una dependencia transitiva de libmpv.
+  IfFileExists "$INSTDIR\vulkan-1.dll" end_vulkan_postinstall 0
+  IfFileExists "$INSTDIR\resources\vulkan-1.dll" 0 end_vulkan_postinstall
+    CopyFiles /SILENT "$INSTDIR\resources\vulkan-1.dll" "$INSTDIR\vulkan-1.dll"
+  end_vulkan_postinstall:
+  IfFileExists "$INSTDIR\VulkanRT-License.txt" end_vulkan_license 0
+  IfFileExists "$INSTDIR\resources\VulkanRT-License.txt" 0 end_vulkan_license
+    CopyFiles /SILENT "$INSTDIR\resources\VulkanRT-License.txt" "$INSTDIR\VulkanRT-License.txt"
+  end_vulkan_license:
 !macroend
 
 !macro NSIS_HOOK_PREUNINSTALL
   Delete "$INSTDIR\libmpv-2.dll"
+  Delete "$INSTDIR\vulkan-1.dll"
+  Delete "$INSTDIR\VulkanRT-License.txt"
   RMDir /r "$INSTDIR\_up_"
 !macroend

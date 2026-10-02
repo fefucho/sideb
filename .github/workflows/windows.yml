@@ -63,3 +63,5 @@ jobs:
           path: |
             windows/src-tauri/target/debug/sideb-windows.exe
             windows/src-tauri/target/debug/libmpv-2.dll
+            windows/src-tauri/target/debug/vulkan-1.dll
+            windows/src-tauri/target/debug/VulkanRT-License.txt

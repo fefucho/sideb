@@ -15,6 +15,10 @@ $script:MpvVersion = 'mpv-dev-x86_64-20260928-git-e470f8986e'
 $script:MpvAsset = "$($script:MpvVersion).7z"
 $script:MpvUrl = "https://github.com/shinchiro/mpv-winbuild-cmake/releases/download/20260928/$($script:MpvAsset)"
 $script:MpvSha256 = '81795d759e01016f1550fd71651a1a5d59ab5c28ef31c0b6793224e9cff39459'
+$script:VulkanVersion = '1.4.363.0'
+$script:VulkanAsset = "VulkanRT-X64-$($script:VulkanVersion)-Components"
+$script:VulkanUrl = "https://sdk.lunarg.com/sdk/download/$($script:VulkanVersion)/windows/$($script:VulkanAsset).zip"
+$script:VulkanSha256 = 'a25a927aa8b9f0371048f1861cf88ac3b9bc9b1fb332c42d897c8ab32695769a'
 
 function Get-MpvDir {
     if ($env:SIDEB_MPV_DIR) {
@@ -70,17 +74,50 @@ function Get-MpvExports([string] $DllPath) {
     return $names
 }
 
+function Ensure-VulkanRuntime([string] $MpvDir) {
+    # This libmpv build imports vulkan-1.dll even for audio-only playback. Ship the
+    # official x64 loader beside it instead of relying on the user's GPU driver.
+    $versionFile = Join-Path $MpvDir 'vulkan-version.txt'
+    if ((Test-Path -LiteralPath (Join-Path $MpvDir 'vulkan-1.dll')) -and
+        (Test-Path -LiteralPath (Join-Path $MpvDir 'VulkanRT-License.txt')) -and
+        (Test-Path -LiteralPath $versionFile) -and
+        (Get-Content -LiteralPath $versionFile -Raw).Trim() -eq $script:VulkanVersion) { return }
+    $staging = Join-Path ([IO.Path]::GetTempPath()) ('sideb-vulkan-' + [guid]::NewGuid().ToString('N'))
+    New-Item -ItemType Directory -Path $staging | Out-Null
+    try {
+        $zip = Join-Path $staging 'runtime.zip'
+        Invoke-WebRequest -Uri $script:VulkanUrl -OutFile $zip
+        $actual = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+        if ($actual -ne $script:VulkanSha256) { throw "SHA256 de Vulkan inválido: $actual; no se extraerá el archivo." }
+        Expand-Archive -LiteralPath $zip -DestinationPath $staging
+        $components = Join-Path $staging $script:VulkanAsset
+        Copy-Item -LiteralPath (Join-Path $components 'x64\vulkan-1.dll') -Destination $MpvDir -Force
+        Copy-Item -LiteralPath (Join-Path $components 'VulkanRT-License.txt') -Destination $MpvDir -Force
+        Set-Content -LiteralPath $versionFile -Value $script:VulkanVersion -Encoding ascii
+    } finally {
+        $tempRoot = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\') + '\'
+        $stageFullPath = [IO.Path]::GetFullPath($staging)
+        if ($stageFullPath.StartsWith($tempRoot, [StringComparison]::OrdinalIgnoreCase)) {
+            Remove-Item -LiteralPath $stageFullPath -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
 function Ensure-MpvImportLibrary {
     $mpvDir = Get-MpvDir
     $dll = Join-Path $mpvDir 'libmpv-2.dll'
     if (-not (Test-Path -LiteralPath $dll)) { throw "Falta libmpv-2.dll en $mpvDir. Ejecuta la acción bootstrap." }
     # tauri_build copies configured resources before our build.rs runs. Stage the DLL
     # for verify/build as well as package so a clean checkout has that input available.
-    $resourceDll = Join-Path $WindowsDir 'src-tauri\libmpv-2.dll'
-    if (-not (Test-Path -LiteralPath $resourceDll) -or
-        (Get-FileHash -LiteralPath $dll -Algorithm SHA256).Hash -ne
-        (Get-FileHash -LiteralPath $resourceDll -Algorithm SHA256).Hash) {
-        Copy-Item -LiteralPath $dll -Destination $resourceDll -Force
+    Ensure-VulkanRuntime $mpvDir
+    foreach ($name in @('libmpv-2.dll', 'vulkan-1.dll', 'VulkanRT-License.txt')) {
+        $source = Join-Path $mpvDir $name
+        $resource = Join-Path $WindowsDir "src-tauri\$name"
+        if (-not (Test-Path -LiteralPath $resource) -or
+            (Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash -ne
+            (Get-FileHash -LiteralPath $resource -Algorithm SHA256).Hash) {
+            Copy-Item -LiteralPath $source -Destination $resource -Force
+        }
     }
     if (Test-Path -LiteralPath (Join-Path $mpvDir 'mpv.lib')) { return }
     Import-VsDevEnvironment

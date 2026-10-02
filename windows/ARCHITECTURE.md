@@ -52,6 +52,6 @@ El bridge Tauri activa el feature optativo `sideb-core/windows-bridge` para cons
 
 ## Build
 
-`scripts/windows.ps1` resuelve el repositorio desde su propia ubicación, prepara MSVC 2022, fija la dependencia libmpv y ejecuta comandos iguales en local y CI. La build standalone incluye frontend compilado y DLL junto al ejecutable. `package` genera el instalador NSIS per-user mediante Tauri v2, asegurando mediante un hook que `libmpv-2.dll` se instale junto al ejecutable en la máquina de destino.
+`scripts/windows.ps1` resuelve el repositorio desde su propia ubicación, prepara MSVC 2022, fija libmpv y el loader Vulkan x64 (con sus SHA256) y ejecuta comandos iguales en local y CI. La build standalone incluye frontend compilado, ambas DLL y la licencia Vulkan junto al ejecutable. `package` genera el instalador NSIS per-user mediante Tauri v2 y conserva esos archivos en el directorio del ejecutable; su instalación se valida manualmente antes de publicar.
 
 La CI Windows verifica tipos, pruebas frontend y Rust con y sin `windows-bridge`, y compila el standalone. La CI macOS regenera bindings y XCFramework desde el mismo core y ejecuta las pruebas Swift. El workflow de release conserva la publicación macOS existente; el instalador Windows se puede generar con `package`, y su publicación se configura aparte.

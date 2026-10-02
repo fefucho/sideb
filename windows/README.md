@@ -32,7 +32,7 @@ powershell -NoProfile -File windows/scripts/windows.ps1 -Action dev
 
 También admiten `pwsh`. El script resuelve rutas desde su ubicación; puede invocarse desde otro directorio usando su ruta absoluta. Los errores detienen la acción y devuelven salida no exitosa.
 
-Bootstrap usa `windows/.cache/mpv/`, ignorado por Git. La versión fijada es `mpv-dev-x86_64-20260928-git-e470f8986e` del tag `20260928` de `shinchiro/mpv-winbuild-cmake`; URL y SHA256 están en el script. Se verifica el hash antes de extraer. Para usar una instalación existente con `libmpv-2.dll` y `mpv.lib`:
+Bootstrap usa `windows/.cache/mpv/`, ignorado por Git. La versión fijada es `mpv-dev-x86_64-20260928-git-e470f8986e` del tag `20260928` de `shinchiro/mpv-winbuild-cmake`. También prepara el loader x64 de Vulkan 1.4.363.0 desde el [archivo oficial de LunarG](https://vulkan.lunarg.com/sdk/home), necesario para cargar esta DLL de libmpv aun al reproducir sólo audio. URLs y SHA256 están fijados en el script y se comprueban antes de extraer; no se instala software en el sistema. `verify`, `build` y `package` descargan ese loader sólo cuando falta en la caché. Para usar una instalación existente con `libmpv-2.dll` y `mpv.lib`:
 
 ```powershell
 $env:SIDEB_MPV_DIR = 'C:\dependencias\mpv'
@@ -43,11 +43,11 @@ No incluir esa carpeta, cookies ni datos de usuario en Git. Si falta la dependen
 
 ## Qué produce build
 
-- Debug: `src-tauri/target/debug/sideb-windows.exe` y `libmpv-2.dll` juntos.
-- Release: la misma pareja en `src-tauri/target/release/`, con `-Configuration release`.
+- Debug: `src-tauri/target/debug/sideb-windows.exe`, `libmpv-2.dll`, `vulkan-1.dll` y `VulkanRT-License.txt` juntos.
+- Release: los mismos archivos en `src-tauri/target/release/`, con `-Configuration release`.
 - `CARGO_TARGET_DIR` puede cambiar la carpeta; no forma parte del contrato una unidad como `S:`.
 
-El frontend queda incluido en el ejecutable Tauri. Mantener la DLL junto al exe al copiarlo. La generación de instaladores está desactivada hasta validar su distribución de runtime en una máquina limpia. WebView2 sigue siendo requisito de ejecución.
+El frontend queda incluido en el ejecutable Tauri. Mantener ambas DLL y la licencia junto al exe al copiarlo. `package` genera un instalador NSIS; su instalación requiere validación manual en una máquina limpia antes de publicarlo. WebView2 sigue siendo requisito de ejecución.
 
 Una ventana que muestra `localhost rechazó la conexión` corresponde a una build de desarrollo cuyo Vite está apagado. Usar `dev` para esa ventana o abrir el ejecutable standalone producido por `build`.
 
