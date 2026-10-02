@@ -74,6 +74,14 @@ function Ensure-MpvImportLibrary {
     $mpvDir = Get-MpvDir
     $dll = Join-Path $mpvDir 'libmpv-2.dll'
     if (-not (Test-Path -LiteralPath $dll)) { throw "Falta libmpv-2.dll en $mpvDir. Ejecuta la acción bootstrap." }
+    # tauri_build copies configured resources before our build.rs runs. Stage the DLL
+    # for verify/build as well as package so a clean checkout has that input available.
+    $resourceDll = Join-Path $WindowsDir 'src-tauri\libmpv-2.dll'
+    if (-not (Test-Path -LiteralPath $resourceDll) -or
+        (Get-FileHash -LiteralPath $dll -Algorithm SHA256).Hash -ne
+        (Get-FileHash -LiteralPath $resourceDll -Algorithm SHA256).Hash) {
+        Copy-Item -LiteralPath $dll -Destination $resourceDll -Force
+    }
     if (Test-Path -LiteralPath (Join-Path $mpvDir 'mpv.lib')) { return }
     Import-VsDevEnvironment
     Require-Command 'lib.exe'
