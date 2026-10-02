@@ -45,6 +45,9 @@ export class AccountController {
   private usedPlaylistTokens = new Set<string>();
   private likedPlaylist: PlaylistDetailDto | null = null;
   private likesLoaded = false;
+  private likesHydration: Promise<void> | null = null;
+  private completePlaylists = new Map<string, SongDto[]>();
+  private catalogRevision = 0;
   private likeOverrides = new Map<string, boolean>();
   private published: (data: AccountData) => void;
   constructor(private rpc: AccountRpc, publish: (data: AccountData) => void) { this.published = publish; }
@@ -77,11 +80,16 @@ export class AccountController {
   reset(loggedIn: boolean) {
     ++this.generation; this.requests.clear(); this.usedSongTokens.clear(); this.usedPlaylistTokens.clear();
     this.likeOverrides.clear(); this.likesLoaded = false; this.likedPlaylist = null;
+    this.likesHydration = null; this.invalidateCatalog();
     this.data = emptyAccountData(loggedIn); this.emit();
   }
   setTab(tab: LibraryTab) { this.data.tab = tab; this.emit(); void this.load(tab); }
   async refreshPlaylist(id: string) {
-    if (id === 'LM') { this.likedPlaylist = null; this.likesLoaded = false; this.likeOverrides.clear(); }
+    this.invalidateCatalog();
+    if (id === 'LM') {
+      this.likedPlaylist = null; this.likesLoaded = false; this.likeOverrides.clear();
+      this.ticket('likes'); this.likesHydration = null; this.data.loading.likes = false;
+    }
     await this.openPlaylist(id);
     if (id === 'LM') await this.hydrateLikes();
   }
@@ -117,12 +125,28 @@ export class AccountController {
     finally { if (valid()) { this.data.loadingMore = false; this.emit(); } }
   }
   async hydrateLikes() {
-    if (!this.data.loggedIn || this.data.loading.likes || this.likesLoaded) return;
+    if (!this.data.loggedIn || this.likesLoaded) return;
+    if (this.likesHydration) return this.likesHydration;
+    const hydration = this.loadLikes();
+    this.likesHydration = hydration;
+    try { await hydration; }
+    finally { if (this.likesHydration === hydration) this.likesHydration = null; }
+  }
+  private invalidateCatalog() { ++this.catalogRevision; this.completePlaylists.clear(); }
+  private cachePlaylist(id: string, items: SongDto[]) {
+    if (this.completePlaylists.size >= 20) this.completePlaylists.delete(this.completePlaylists.keys().next().value!);
+    this.completePlaylists.set(id, items);
+  }
+  private async loadLikes() {
+    const catalogRevision = this.catalogRevision;
     const valid = this.ticket('likes'); this.data.loading.likes = true; this.data.errors.likes = null; this.emit();
     try {
-      const playlist = await this.rpc<PlaylistDetailDto>('get_playlist', { playlistId: 'LM' });
+      const current = this.data.playlist;
+      const playlist = this.likedPlaylist ?? (current?.id.replace(/^VL/, '') === 'LM' ? current : null)
+        ?? await this.rpc<PlaylistDetailDto>('get_playlist', { playlistId: 'LM' });
       if (!valid()) return;
       this.likedPlaylist = playlist;
+      let items = appendSongs([], playlist.items);
       const ids = new Set(playlist.items.map(song => song.videoId));
       const publishIds = () => {
         const next = new Set(ids);
@@ -136,13 +160,16 @@ export class AccountController {
         used.add(token);
         const page = await this.rpc<SongPage>('get_playlist_continuation', { token });
         if (!valid()) return;
+        items = appendSongs(items, page.items);
         for (const song of page.items) ids.add(song.videoId);
         publishIds();
         token = page.continuation;
       }
       if (valid()) {
+        if (token) throw new Error('No se pudo completar Tus Me Gusta: el proveedor repitió una página.');
         for (const [id, liked] of this.likeOverrides) { if (liked) ids.add(id); else ids.delete(id); }
         this.data.likedIds = ids; this.likesLoaded = true;
+        if (catalogRevision === this.catalogRevision) this.cachePlaylist('LM', items);
       }
     } catch (error) { if (valid()) this.data.errors.likes = message(error, 'No se pudieron cargar tus Me Gusta.'); }
     finally { if (valid()) { this.data.loading.likes = false; this.emit(); } }
@@ -193,6 +220,7 @@ export class AccountController {
     const changed = await this.mutate(song.videoId, () => this.rpc('rate_song', { videoId: song.videoId, rating: liked ? 'LIKE' : 'INDIFFERENT' }), () => {
       this.likeOverrides.set(song.videoId, liked); if (liked) this.data.likedIds.add(song.videoId); else this.data.likedIds.delete(song.videoId);
       this.likedPlaylist = null;
+      this.invalidateCatalog();
       if (!liked && this.data.playlist?.id === 'LM') this.data.playlist = { ...this.data.playlist, items: this.data.playlist.items.filter(item => item.videoId !== song.videoId) };
     });
     if (changed && generation === this.generation && this.data.playlist?.id === 'LM' && liked) await this.openPlaylist('LM');
@@ -205,6 +233,7 @@ export class AccountController {
     this.likeOverrides.set(id, false); this.data.likedIds.delete(id); this.emit();
     const changed = await this.mutate(id, () => this.rpc('rate_song', { videoId: id, rating: 'DISLIKE' }), () => {
       this.likedPlaylist = null;
+      this.invalidateCatalog();
       if (this.data.playlist?.id === 'LM') this.data.playlist = { ...this.data.playlist, items: this.data.playlist.items.filter(item => item.videoId !== id) };
     });
     if (!changed && generation === this.generation) {
@@ -252,6 +281,7 @@ export class AccountController {
     try {
       await this.rpc<void>(command, args);
       if (generation !== this.generation || !this.data.loggedIn) return;
+      this.invalidateCatalog();
       if (refresh && this.data.playlist?.id === id && playlistRevision === this.requests.get('playlist')) await this.openPlaylist(id);
       if (generation === this.generation) await this.load('playlists');
     } catch (error) {
@@ -271,30 +301,42 @@ export class AccountController {
     const protectedId = normalizedId.startsWith('VL') ? normalizedId.slice(2) : normalizedId;
     if (!this.data.loggedIn && protectedId === 'LM') throw new Error('Iniciá sesión para reproducir Tus Me Gusta.');
     const generation = this.generation;
+    const catalogRevision = this.catalogRevision;
     const revision = (this.requests.get('resolve-playlist') ?? 0) + 1;
     this.requests.set('resolve-playlist', revision);
     const playlistRevision = this.requests.get('playlist');
     const isValid = () => generation === this.generation
+      && catalogRevision === this.catalogRevision
       && revision === this.requests.get('resolve-playlist')
       && playlistRevision === this.requests.get('playlist')
       && (!valid || valid());
     const stop = () => [] as SongDto[];
     try {
-      const first = await this.rpc<PlaylistDetailDto>('get_playlist', { playlistId: id });
+      if (protectedId === 'LM' && this.likesHydration) await this.likesHydration;
+      if (!isValid()) return stop();
+      const cached = this.completePlaylists.get(protectedId);
+      if (cached) return [...cached];
+      const current = this.data.playlist;
+      const currentId = current?.id.replace(/^VL/, '');
+      const first = current && currentId === protectedId ? current
+        : protectedId === 'LM' && this.likedPlaylist ? this.likedPlaylist
+        : await this.rpc<PlaylistDetailDto>('get_playlist', { playlistId: id });
       if (!isValid()) return stop();
       let items = appendSongs([], first.items);
       let token = first.continuation;
       const seen = new Set<string>();
       while (token) {
         if (!isValid()) return stop();
-        if (seen.has(token)) break;
+        if (seen.has(token)) throw new Error('No se pudo completar la playlist: el proveedor repitió una página.');
         seen.add(token);
         const page = await this.rpc<SongPage>('get_playlist_continuation', { token });
         if (!isValid()) return stop();
         items = appendSongs(items, page.items);
         token = page.continuation;
       }
-      return isValid() ? items : stop();
+      if (!isValid()) return stop();
+      this.cachePlaylist(protectedId, items);
+      return [...items];
     } catch (error) {
       if (!isValid()) return stop();
       throw error;

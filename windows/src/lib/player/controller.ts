@@ -11,6 +11,7 @@ export interface PlaySongOptions {
   queueIndex?: number | null;
   queueSource?: PlaybackQueueSource | null;
   preserveQueue?: boolean;
+  shuffle?: boolean;
 }
 
 const emptyQueue = (): QueueStateDto => ({ items: [], currentIndex: null, source: null, revision: 0 });
@@ -176,6 +177,7 @@ export class PlaybackController {
         queueCurrentIndex: queueIndex, queueSource: entries ? options.queueSource ?? {
           kind: 'song', id: song.videoId.trim(), title: song.title || null,
         } : null, preserveQueue,
+        shuffle: preserveQueue ? null : options.shuffle ?? false,
         queueEntryId: preserveQueue ? (song as Partial<QueueEntryDto>).entryId ?? (queueIndex == null ? null : this.state.queue.items[queueIndex]?.entryId) ?? null : null,
       });
       if (this.current('play-song', revision)) this.acceptResponse(state, eventRevision);

@@ -342,6 +342,7 @@ pub(crate) async fn play_song(
     artist_runs: Option<Vec<crate::HomeArtistRunDto>>,
     queue_entry_id: Option<String>,
     start_paused: Option<bool>,
+    shuffle: Option<bool>,
 ) -> Result<PlaybackStateDto, CommandError> {
     let trimmed_id = video_id.trim();
     if trimmed_id.is_empty() {
@@ -412,6 +413,7 @@ pub(crate) async fn play_song(
                 ));
             }
             invalidate_queue_owner(&mut pb);
+            pb.is_shuffle = shuffle.unwrap_or(false);
         } else if let Some(entry_id) = queue_entry_id.as_deref() {
             pb.queue.select_entry(entry_id).ok_or_else(|| {
                 CommandError::new(
@@ -457,6 +459,7 @@ pub(crate) async fn play_song(
                 },
             );
             invalidate_queue_owner(&mut pb);
+            pb.is_shuffle = false;
         }
         let active_entry = pb.queue.current().ok_or_else(|| {
             CommandError::new("INVALID_QUEUE", "No hay una pista activa en la cola.")
@@ -741,6 +744,7 @@ async fn start_queue_entry(
         Some(entry.artist_runs),
         Some(entry.entry_id),
         Some(start_paused),
+        None,
     )
     .await
 }
@@ -779,6 +783,7 @@ pub(crate) async fn start_song_radio(
         entry.artist_id,
         entry.album_id,
         entry.album,
+        None,
         None,
         None,
         None,

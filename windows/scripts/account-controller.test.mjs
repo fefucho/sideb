@@ -88,3 +88,79 @@ test('older like pages cannot resurrect a like removed during hydration', async 
   assert.equal(data.likedIds.has('a'), false); assert.equal(data.likedIds.has('b'), true);
   assert.equal(calls.find(call => call.command === 'rate_song').args.rating, 'INDIFFERENT');
 });
+
+test('2000 hydrated likes remain available for global shuffle without fetching pages again', async () => {
+  const tracks = Array.from({ length: 2000 }, (_, index) => song(`song-${index}`, { setVideoId: `entry-${index}` }));
+  const calls = []; let data;
+  const account = new AccountController(async (command, args) => {
+    calls.push({ command, args });
+    if (command === 'get_playlist') return { ...playlist(tracks.slice(0, 100)), continuation: '100' };
+    const offset = Number(args.token);
+    return { items: tracks.slice(offset, offset + 100), continuation: offset + 100 < tracks.length ? String(offset + 100) : null };
+  }, next => data = next);
+  account.reset(true);
+  await account.hydrateLikes();
+  assert.equal(data.likedIds.size, 2000);
+  await account.openPlaylist('LM');
+  assert.equal(data.playlist.items.length, 100);
+  const resolved = await account.resolvePlaylistTracks('VLLM');
+  assert.deepEqual(resolved.map(item => item.setVideoId), tracks.map(item => item.setVideoId));
+  assert.equal((await account.resolvePlaylistTracks('LM')).length, 2000);
+  assert.equal(calls.length, 20);
+  account.reset(false);
+  await assert.rejects(account.resolvePlaylistTracks('LM'), /Iniciá sesión/);
+  account.reset(true);
+  await account.resolvePlaylistTracks('LM');
+  assert.equal(calls.length, 40);
+});
+
+test('play during likes hydration shares the pending catalog and retains older pages', async () => {
+  const page = deferred(); const calls = [];
+  const account = new AccountController(async (command, args) => {
+    calls.push({ command, args });
+    if (command === 'get_playlist') return { ...playlist([song('new')]), continuation: 'older' };
+    return page.promise;
+  }, () => {});
+  account.reset(true);
+  const hydration = account.hydrateLikes();
+  await new Promise(resolve => setTimeout(resolve, 0));
+  const resolving = account.resolvePlaylistTracks('LM');
+  page.resolve({ items: [song('old')], continuation: null });
+  await hydration;
+  assert.deepEqual((await resolving).map(item => item.videoId), ['new', 'old']);
+  assert.equal(calls.length, 2);
+});
+
+test('refresh and successful unlike invalidate the playback catalog', async () => {
+  let tracks = [song('a'), song('b')]; let fetches = 0;
+  const account = new AccountController(async (command, args) => {
+    if (command === 'get_playlist') { ++fetches; return playlist([...tracks]); }
+    if (command === 'rate_song') tracks = tracks.filter(item => item.videoId !== args.videoId);
+  }, () => {});
+  account.reset(true);
+  await account.hydrateLikes();
+  await account.toggleLike(song('a'));
+  assert.deepEqual((await account.resolvePlaylistTracks('LM')).map(item => item.videoId), ['b']);
+  assert.equal(fetches, 2);
+  tracks = [song('external-like'), ...tracks];
+  await account.refreshPlaylist('LM');
+  assert.deepEqual((await account.resolvePlaylistTracks('LM')).map(item => item.videoId), ['external-like', 'b']);
+});
+
+test('a stale hydration cannot populate the next account playback catalog', async () => {
+  const page = deferred(); let fetches = 0;
+  const account = new AccountController(async command => {
+    if (command === 'get_playlist') return ++fetches === 1
+      ? { ...playlist([song('private')]), continuation: 'older' } : playlist([song('next-account')]);
+    return page.promise;
+  }, () => {});
+  account.reset(true);
+  const hydration = account.hydrateLikes();
+  await new Promise(resolve => setTimeout(resolve, 0));
+  const resolving = account.resolvePlaylistTracks('LM');
+  account.reset(true);
+  page.resolve({ items: [song('private-older')], continuation: null });
+  await hydration;
+  assert.deepEqual(await resolving, []);
+  assert.deepEqual((await account.resolvePlaylistTracks('LM')).map(item => item.videoId), ['next-account']);
+});

@@ -10,17 +10,55 @@ const song = (videoId, setVideoId) => ({ videoId, setVideoId, title: videoId, ar
 const playlist = (items, continuation = null) => ({ id: 'VLp', title: 'Playlist', items, continuation, thumbnail: null, subtitle: null, description: null, owned: true, inLibrary: false, privacy: 'PRIVATE', collaborative: false, sort: 'default', sortEditable: true });
 function deferred() { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; }
 
-test('resolve playlist follows pages, retains repeated songs with distinct occurrence IDs and stops a looping token', async () => {
+test('resolve playlist follows pages and retains repeated songs with distinct occurrence IDs', async () => {
   const calls = [];
   const account = new AccountController(async (command, args) => {
     calls.push({ command, args });
     if (command === 'get_playlist') return playlist([song('same', 'entry-a')], 'page-2');
-    return { items: [song('same', 'entry-a'), song('same', 'entry-b')], continuation: 'page-2' };
+    return { items: [song('same', 'entry-a'), song('same', 'entry-b')], continuation: null };
   }, () => {});
   account.reset(true);
   const tracks = await account.resolvePlaylistTracks('VLp');
   assert.deepEqual(tracks.map(item => item.setVideoId), ['entry-a', 'entry-b']);
   assert.equal(calls.filter(item => item.command === 'get_playlist_continuation').length, 1);
+});
+
+test('a looping continuation fails instead of returning a partial playlist for global shuffle', async () => {
+  const account = new AccountController(async command => command === 'get_playlist'
+    ? playlist([song('first', 'first')], 'next')
+    : { items: [song('second', 'second')], continuation: 'next' }, () => {});
+  account.reset(true);
+  await assert.rejects(account.resolvePlaylistTracks('VLp'), /repitió una página/);
+});
+
+test('playback reuses displayed pages and the complete catalog on subsequent plays', async () => {
+  const calls = [];
+  const account = new AccountController(async (command, args) => {
+    calls.push({ command, args });
+    if (command === 'get_playlist') return playlist([song('first', 'first')], 'next');
+    return { items: [song('older', 'older')], continuation: null };
+  }, () => {});
+  account.reset(true);
+  await account.openPlaylist('VLp');
+  await account.loadMorePlaylist();
+  const tracks = await account.resolvePlaylistTracks('VLp');
+  assert.deepEqual(tracks.map(item => item.videoId), ['first', 'older']);
+  tracks.pop();
+  assert.equal((await account.resolvePlaylistTracks('p')).length, 2);
+  assert.equal(calls.length, 2);
+});
+
+test('page errors remain recoverable and never cache a partial playback catalog', async () => {
+  let tries = 0;
+  const account = new AccountController(async command => {
+    if (command === 'get_playlist') return playlist([song('first', 'first')], 'next');
+    if (++tries === 1) throw new Error('network down');
+    return { items: [song('older', 'older')], continuation: null };
+  }, () => {});
+  account.reset(true);
+  await assert.rejects(account.resolvePlaylistTracks('VLp'), /network down/);
+  assert.equal((await account.resolvePlaylistTracks('VLp')).length, 2);
+  assert.equal(tries, 2);
 });
 
 test('guest playback can resolve a public playlist while Me Gusta remains protected', async () => {

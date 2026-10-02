@@ -463,7 +463,7 @@
     }
     startIndex = Math.max(0, startIndex);
     const track = entries[startIndex];
-    await player.playSong(track, { queueItems: entries, queueIndex: startIndex, queueSource: source });
+    await player.playSong(track, { queueItems: entries, queueIndex: startIndex, queueSource: source, shuffle });
   }
 
   function playAlbum(index: number, shuffle = false) {

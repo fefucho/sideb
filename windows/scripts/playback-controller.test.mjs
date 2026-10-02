@@ -19,6 +19,24 @@ function state(generation, options = {}) {
 const song = (videoId) => ({ videoId, title: videoId, artists: 'Artist', thumbnail: null, duration: '3:21' });
 async function settle() { await new Promise((resolve) => setTimeout(resolve, 0)); }
 
+test('collection playback passes shuffle atomically and queue selection preserves its mode', async () => {
+  const calls = [];
+  const items = ['older-like', 'recent-like'].map(videoId => ({ ...song(videoId), entryId: videoId, duration: 201 }));
+  const player = new PlaybackController(async (command, args) => {
+    calls.push({ command, args });
+    return state(calls.length, { isShuffle: args.shuffle ?? true, queue: { items, currentIndex: 0 } });
+  }, async () => () => {}, () => {});
+  await player.playSong(items[0], { queueItems: items, queueIndex: 0, queueSource: { kind: 'playlist', id: 'LM', title: 'Likes' }, shuffle: true });
+  assert.equal(calls[0].args.shuffle, true);
+  assert.equal(player.snapshot.state.isShuffle, true);
+  await player.playQueueIndex(1);
+  assert.equal(calls[1].args.shuffle, null);
+  assert.equal(calls[1].args.preserveQueue, true);
+  await player.playSong(song('normal'));
+  assert.equal(calls[2].args.shuffle, false);
+  assert.equal(player.snapshot.state.isShuffle, false);
+});
+
 test('queue metadata survives RPC normalization and queue actions preserve freshest progress', async () => {
   const listeners = new Map(); let published; const enqueued = deferred(); let args;
   const player = new PlaybackController(async (command, input) => {

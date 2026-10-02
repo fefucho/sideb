@@ -140,7 +140,7 @@ impl PlaybackManager {
             current_track: self.current_track.clone(),
             error: self.error.clone(),
             generation: self.generation,
-            queue: self.queue.clone(),
+            queue: self.queue.snapshot(),
         }
     }
 }
@@ -148,6 +148,7 @@ impl PlaybackManager {
 #[cfg(test)]
 mod playback_manager_tests {
     use super::*;
+    use crate::queue::{QueueEntryDto, QueueSourceDto};
 
     #[test]
     fn playback_snapshot_carries_shuffle_and_repeat_flags_without_changing_generation() {
@@ -162,6 +163,41 @@ mod playback_manager_tests {
         assert_eq!(json["isRepeat"], true);
         assert_eq!(snapshot.generation, 17);
         assert_eq!(playback.generation, 17);
+    }
+
+    #[test]
+    fn playback_snapshots_publish_a_playlist_batch_without_copying_the_complete_catalog() {
+        let mut playback = PlaybackManager::new();
+        let items = (0..2000)
+            .map(|index| {
+                QueueEntryDto::new(
+                    index.to_string(),
+                    index.to_string(),
+                    String::new(),
+                    None,
+                    None,
+                )
+            })
+            .collect();
+        playback.queue.replace(
+            items,
+            0,
+            QueueSourceDto {
+                kind: "playlist".into(),
+                id: Some("LM".into()),
+                title: Some("Likes".into()),
+            },
+        );
+        let snapshot = playback.to_dto();
+        assert_eq!(snapshot.queue.items.len(), 100);
+        assert_eq!(playback.queue.items.len(), 2000);
+        let json = serde_json::to_value(&snapshot).unwrap();
+        assert_eq!(json["queue"]["items"].as_array().unwrap().len(), 100);
+        assert!(json["queue"].get("visibleLen").is_none());
+        assert_eq!(
+            snapshot.queue.items[0].entry_id,
+            playback.queue.current().unwrap().entry_id
+        );
     }
 }
 

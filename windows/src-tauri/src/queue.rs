@@ -6,6 +6,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 static NEXT_ENTRY_ID: AtomicU64 = AtomicU64::new(1);
 static SHUFFLE_COUNTER: AtomicU64 = AtomicU64::new(1);
+const PLAYLIST_BATCH_SIZE: usize = 100;
+const PLAYLIST_REFILL_THRESHOLD: usize = 10;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -150,6 +152,9 @@ pub struct QueueStateDto {
     pub revision: u64,
     #[serde(default)]
     pub radio: Option<QueueRadioDto>,
+    // The runtime retains the complete order; snapshots expose it in batches.
+    #[serde(skip)]
+    visible_len: usize,
 }
 
 impl Default for QueueStateDto {
@@ -160,11 +165,44 @@ impl Default for QueueStateDto {
             source: None,
             revision: 0,
             radio: None,
+            visible_len: 0,
         }
     }
 }
 
 impl QueueStateDto {
+    pub fn snapshot(&self) -> Self {
+        let len = if self
+            .source
+            .as_ref()
+            .is_some_and(|source| source.kind == "playlist")
+        {
+            self.visible_len.min(self.items.len())
+        } else {
+            self.items.len()
+        };
+        Self {
+            items: self.items[..len].to_vec(),
+            current_index: self.current_index,
+            source: self.source.clone(),
+            revision: self.revision,
+            radio: self.radio.clone(),
+            visible_len: len,
+        }
+    }
+
+    fn extend_visible_batch(&mut self) {
+        if let Some(index) = self.current_index {
+            if index.saturating_add(PLAYLIST_REFILL_THRESHOLD + 1) >= self.visible_len {
+                self.visible_len = self
+                    .visible_len
+                    .saturating_add(PLAYLIST_BATCH_SIZE)
+                    .max(index.saturating_add(1))
+                    .min(self.items.len());
+            }
+        }
+    }
+
     pub fn replace(
         &mut self,
         items: Vec<QueueEntryDto>,
@@ -184,6 +222,9 @@ impl QueueStateDto {
             })
             .collect();
         self.current_index = Some(current_index);
+        self.visible_len = current_index
+            .saturating_add(PLAYLIST_BATCH_SIZE)
+            .min(self.items.len());
         self.source = Some(source);
         self.radio = None;
         self.revision += 1;
@@ -201,6 +242,7 @@ impl QueueStateDto {
             return None;
         }
         self.current_index = Some(index);
+        self.extend_visible_batch();
         self.revision += 1;
         self.current()
     }
@@ -294,7 +336,16 @@ impl QueueStateDto {
         } else {
             self.items.len()
         };
+        let added_len = entries.len();
         self.items.splice(insert_at..insert_at, entries);
+        // Explicit edits retain their existing visibility, including "add to end".
+        self.visible_len = if at_next {
+            self.visible_len
+                .saturating_add(added_len)
+                .min(self.items.len())
+        } else {
+            self.items.len()
+        };
         if self.source.is_none() {
             self.source = Some(QueueSourceDto {
                 kind: "manual".into(),
@@ -318,21 +369,31 @@ impl QueueStateDto {
             return Err(QueueRemoveError::CurrentEntry);
         }
         self.items.remove(index);
+        if index < self.visible_len {
+            self.visible_len = self.visible_len.saturating_sub(1);
+        }
         if let Some(current) = self.current_index {
             if index < current {
                 self.current_index = Some(current - 1);
             }
         }
         self.revision += 1;
+        self.extend_visible_batch();
         Ok(true)
     }
 
     /// Removes one exact occurrence and, when it was active, selects its successor or wraps
     /// to the first remaining occurrence. Playback orchestration performs the actual load.
     pub fn dismiss_entry(&mut self, entry_id: &str) -> Option<(bool, Option<QueueEntryDto>)> {
-        let index = self.items.iter().position(|entry| entry.entry_id == entry_id)?;
+        let index = self
+            .items
+            .iter()
+            .position(|entry| entry.entry_id == entry_id)?;
         let was_current = self.current_index == Some(index);
         self.items.remove(index);
+        if index < self.visible_len {
+            self.visible_len = self.visible_len.saturating_sub(1);
+        }
         if was_current {
             self.current_index = if self.items.is_empty() {
                 None
@@ -347,6 +408,7 @@ impl QueueStateDto {
             }
         }
         self.revision += 1;
+        self.extend_visible_batch();
         Some((was_current, self.current()))
     }
 
@@ -356,10 +418,16 @@ impl QueueStateDto {
         entry_id: &str,
         before_entry_id: Option<&str>,
     ) -> Result<bool, QueueMoveError> {
-        let from = self.items.iter().position(|entry| entry.entry_id == entry_id)
+        let from = self
+            .items
+            .iter()
+            .position(|entry| entry.entry_id == entry_id)
             .ok_or(QueueMoveError::EntryNotFound)?;
         let before = match before_entry_id {
-            Some(id) => self.items.iter().position(|entry| entry.entry_id == id)
+            Some(id) => self
+                .items
+                .iter()
+                .position(|entry| entry.entry_id == id)
                 .ok_or(QueueMoveError::TargetNotFound)?,
             None => self.items.len(),
         };
@@ -370,7 +438,11 @@ impl QueueStateDto {
         let entry = self.items.remove(from);
         let target = if from < before { before - 1 } else { before };
         self.items.insert(target, entry);
-        self.current_index = active_id.and_then(|id| self.items.iter().position(|entry| entry.entry_id == id));
+        if before_entry_id.is_none() {
+            self.visible_len = self.items.len();
+        }
+        self.current_index =
+            active_id.and_then(|id| self.items.iter().position(|entry| entry.entry_id == id));
         self.revision += 1;
         Ok(true)
     }
@@ -487,6 +559,121 @@ mod tests {
         let mut queue = QueueStateDto::default();
         queue.replace(vec![item("same"), item("same"), item("last")], 1, source());
         queue
+    }
+
+    #[test]
+    fn playlist_snapshots_expand_by_100_and_play_every_occurrence_without_gaps() {
+        let mut queue = QueueStateDto::default();
+        let items = (0..2000)
+            .map(|index| item(&format!("song-{index}")))
+            .collect();
+        queue.replace(items, 0, source());
+        assert_eq!(queue.items.len(), 2000);
+        let mut visible = queue.snapshot().items.len();
+        assert_eq!(visible, 100);
+        let ids = queue
+            .items
+            .iter()
+            .map(|entry| entry.entry_id.clone())
+            .collect::<HashSet<_>>();
+        assert_eq!(ids.len(), 2000);
+        for index in 1..2000 {
+            assert_eq!(
+                queue.next_or_first(false).unwrap().video_id,
+                format!("song-{index}")
+            );
+            assert_eq!(queue.next().unwrap().video_id, format!("song-{index}"));
+            assert!(queue.current_index.unwrap() < queue.visible_len);
+            if queue.visible_len != visible {
+                assert_eq!(queue.visible_len, visible + 100);
+                visible = queue.visible_len;
+            }
+        }
+        assert_eq!(visible, 2000);
+        assert!(queue.next().is_none());
+        assert!(queue.next_or_first(false).is_none());
+        assert_eq!(queue.next_or_first(true).unwrap().video_id, "song-0");
+        assert_eq!(queue.previous(0.0).unwrap().video_id, "song-1998");
+    }
+
+    #[test]
+    fn shuffle_spans_the_complete_playlist_and_batches_preserve_that_order() {
+        let mut queue = QueueStateDto::default();
+        queue.replace(
+            (0..2000).map(|index| item(&format!("{index}"))).collect(),
+            0,
+            source(),
+        );
+        let current = queue.current().unwrap();
+        let mut expected = queue.clone();
+        expected.source.as_mut().unwrap().kind = "album".into();
+        assert!(expected.shuffle_after_current_with_seed(42));
+        assert!(queue.shuffle_after_current_with_seed(42));
+        assert_eq!(queue.current(), Some(current));
+        assert_eq!(queue.snapshot().items.len(), 100);
+        assert!(queue.snapshot().items.iter().any(|entry| entry
+            .video_id
+            .parse::<usize>()
+            .unwrap()
+            >= 100));
+        for entry in expected.items.iter().skip(1) {
+            assert_eq!(queue.next().unwrap(), *entry);
+        }
+        assert_eq!(queue.snapshot().items, expected.items);
+        assert!(queue.next().is_none());
+    }
+
+    #[test]
+    fn batches_preserve_history_duplicates_and_discard_the_old_playlist_on_replacement() {
+        let mut queue = QueueStateDto::default();
+        queue.replace((0..350).map(|_| item("same")).collect(), 150, source());
+        let snapshot = queue.snapshot();
+        assert_eq!(snapshot.items.len(), 250);
+        assert_eq!(snapshot.current_index, Some(150));
+        assert_eq!(
+            snapshot
+                .items
+                .iter()
+                .map(|entry| &entry.entry_id)
+                .collect::<HashSet<_>>()
+                .len(),
+            250
+        );
+        assert_eq!(
+            queue.previous(0.0).unwrap().entry_id,
+            snapshot.items[149].entry_id
+        );
+        queue.replace(vec![item("new")], 0, source());
+        assert_eq!(queue.snapshot().items.len(), 1);
+        assert_eq!(queue.current().unwrap().video_id, "new");
+        assert!(queue.next().is_none());
+    }
+
+    #[test]
+    fn explicit_queue_edits_keep_their_visibility_and_occurrence_identity() {
+        let mut queue = QueueStateDto::default();
+        queue.replace(
+            (0..250).map(|index| item(&format!("{index}"))).collect(),
+            0,
+            source(),
+        );
+        let active = queue.current().unwrap();
+        queue.enqueue(vec![item("manual-next")], true);
+        assert_eq!(queue.snapshot().items.len(), 101);
+        assert_eq!(queue.next().unwrap().video_id, "manual-next");
+        let manual_id = queue.current().unwrap().entry_id;
+        queue.remove_entry(&active.entry_id).unwrap();
+        assert_eq!(queue.current().unwrap().entry_id, manual_id);
+        queue.enqueue(vec![item("manual-end")], false);
+        assert_eq!(
+            queue.snapshot().items.last().unwrap().video_id,
+            "manual-end"
+        );
+        assert_eq!(queue.current().unwrap().entry_id, manual_id);
+        let moved = queue.items[2].entry_id.clone();
+        queue.move_entry(&moved, None).unwrap();
+        assert_eq!(queue.snapshot().items.last().unwrap().entry_id, moved);
+        assert_eq!(queue.current().unwrap().entry_id, manual_id);
     }
 
     #[test]

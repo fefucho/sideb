@@ -13,6 +13,7 @@ Se conserva la documentación actual hasta su revisión específica:
 - [Arquitectura UI](UI_ARCHITECTURE.md).
 - [Estado del proyecto](PROJECT_STATE.md).
 - [Actualización y lanzamiento](GUIA_DE_ACTUALIZACION.md).
+- [Playlists por tandas y shuffle global](PLAYLIST_SHUFFLE_PORT.md): fix Windows y guía para portarlo a macOS.
 - [Planes macOS y roadmaps](plans/README.md).
 
 ## Referencias históricas
