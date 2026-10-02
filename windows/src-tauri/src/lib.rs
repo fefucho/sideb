@@ -135,7 +135,7 @@ impl PlaybackManager {
         if enabled {
             self.queue.shuffle_after_current();
         } else {
-            self.queue.restore_order_after_current();
+            self.queue.restore_original_order();
         }
         self.is_shuffle = enabled;
     }
@@ -214,7 +214,7 @@ mod playback_manager_tests {
     }
 
     #[test]
-    fn shuffle_transitions_preserve_audio_history_and_manual_next_with_the_full_catalog() {
+    fn shuffle_transitions_preserve_audio_and_manual_next_with_the_full_catalog() {
         let mut playback = PlaybackManager::new();
         playback.queue.replace(
             (0..2000)
@@ -282,7 +282,74 @@ mod playback_manager_tests {
         let json = serde_json::to_value(playback.to_dto()).unwrap();
         assert!(json["queue"].get("sourceRanks").is_none());
         assert!(json["queue"].get("nextSourceRank").is_none());
+        assert!(json["queue"].get("explicitPlacements").is_none());
         assert!(json["queue"]["items"].as_array().unwrap().len() < 2001);
+    }
+
+    #[test]
+    fn disabling_shuffle_restores_the_album_above_and_below_the_active_audio() {
+        let mut playback = PlaybackManager::new();
+        playback.queue.replace(
+            (0..12)
+                .map(|index| {
+                    QueueEntryDto::new(
+                        index.to_string(),
+                        index.to_string(),
+                        String::new(),
+                        None,
+                        None,
+                    )
+                })
+                .collect(),
+            0,
+            QueueSourceDto {
+                kind: "album".into(),
+                id: Some("album".into()),
+                title: None,
+            },
+        );
+        let canonical = playback.queue.items.clone();
+        // The screenshot's source order: the first album track is playing in row six.
+        playback.queue.items = [7, 5, 10, 8, 6, 0, 9, 4, 3, 11, 1, 2]
+            .into_iter()
+            .map(|index| canonical[index].clone())
+            .collect();
+        playback.queue.select(5);
+        let active = playback.queue.current().unwrap();
+        playback.current_track = Some(PlaybackTrackDto {
+            video_id: active.video_id.clone(),
+            title: active.title.clone(),
+            artists: String::new(),
+            thumbnail: None,
+            duration: Some(201.0),
+            artist_id: None,
+            album_id: None,
+            album: None,
+            artist_runs: vec![],
+        });
+        playback.is_shuffle = true;
+        playback.is_playing = true;
+        playback.generation = 17;
+        playback.loaded_generation = Some(17);
+        playback.position = 62.25;
+        let mut before = serde_json::to_value(playback.to_dto()).unwrap();
+        before.as_object_mut().unwrap().remove("queue");
+        before.as_object_mut().unwrap().remove("isShuffle");
+
+        playback.set_shuffle_mode(false);
+
+        assert_eq!(playback.queue.items, canonical);
+        assert_eq!(playback.queue.current_index, Some(0));
+        assert_eq!(playback.queue.current().unwrap().entry_id, active.entry_id);
+        assert_eq!(playback.loaded_generation, Some(17));
+        let mut after = serde_json::to_value(playback.to_dto()).unwrap();
+        after.as_object_mut().unwrap().remove("queue");
+        after.as_object_mut().unwrap().remove("isShuffle");
+        assert_eq!(after, before);
+        assert_eq!(
+            playback.queue.next_or_first(false),
+            Some(canonical[1].clone())
+        );
     }
 }
 
