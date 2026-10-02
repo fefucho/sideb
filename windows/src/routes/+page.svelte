@@ -28,7 +28,7 @@
   import { SearchController, emptySearchData, type SearchMode, type SearchData } from "$lib/search/controller";
   import { SearchPreviewController, emptySearchPreviewData } from "$lib/search/preview";
   import SpotlightSearch from "$lib/components/search/SpotlightSearch.svelte";
-  import { PlaybackController, emptyPlaybackData, parseDuration } from "$lib/player/controller";
+  import { PlaybackController, emptyPlaybackData, prepareCollectionPlayback } from "$lib/player/controller";
   import { LyricsController, emptyLyricsState } from '$lib/player/lyrics';
   import { RecommendationsController, emptyRecommendationsSnapshot } from '$lib/player/recommendations';
   import FullscreenNowPlaying from "$lib/components/fullscreen/FullscreenNowPlaying.svelte";
@@ -444,26 +444,8 @@
   }
 
   async function playCollection(items: SongDto[], index: number, source: {kind:string;id:string;title:string}, shuffle = false, fallbackThumbnail: string | null = null, fallbackArtist = "") {
-    const indexed = items.map((song, originalIndex) => ({ song, originalIndex })).filter(({ song }) => song.videoId.trim());
-    const entries = indexed.map(({ song }) => ({
-      entryId: crypto.randomUUID(), videoId: song.videoId, title: song.title,
-      artists: song.artists || fallbackArtist, thumbnail: song.thumbnail || fallbackThumbnail,
-      duration: song.duration ? parseDuration(song.duration) : null,
-      artistId: song.artistId, albumId: song.albumId, album: song.album,
-      artistRuns: song.artistRuns?.map(run => ({ ...run })) ?? [],
-    }));
-    if (!entries.length) throw new Error("No hay canciones disponibles para reproducir.");
-    let startIndex = indexed.findIndex((entry) => entry.originalIndex === index);
-    if (shuffle) {
-      for (let position = entries.length - 1; position > 0; position--) {
-        const other = Math.floor(Math.random() * (position + 1));
-        [entries[position], entries[other]] = [entries[other], entries[position]];
-      }
-      startIndex = 0;
-    }
-    startIndex = Math.max(0, startIndex);
-    const track = entries[startIndex];
-    await player.playSong(track, { queueItems: entries, queueIndex: startIndex, queueSource: source, shuffle });
+    const prepared = prepareCollectionPlayback(items, index, source, shuffle, fallbackThumbnail, fallbackArtist);
+    await player.playSong(prepared.song, prepared.options);
   }
 
   function playAlbum(index: number, shuffle = false) {

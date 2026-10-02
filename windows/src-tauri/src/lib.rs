@@ -127,6 +127,19 @@ impl PlaybackManager {
         }
     }
 
+    /// Changing the queue's order never loads audio or changes the active occurrence.
+    pub fn set_shuffle_mode(&mut self, enabled: bool) {
+        if self.is_shuffle == enabled {
+            return;
+        }
+        if enabled {
+            self.queue.shuffle_after_current();
+        } else {
+            self.queue.restore_original_order();
+        }
+        self.is_shuffle = enabled;
+    }
+
     pub fn to_dto(&self) -> PlaybackStateDto {
         PlaybackStateDto {
             is_playing: self.is_playing,
@@ -197,6 +210,145 @@ mod playback_manager_tests {
         assert_eq!(
             snapshot.queue.items[0].entry_id,
             playback.queue.current().unwrap().entry_id
+        );
+    }
+
+    #[test]
+    fn shuffle_transitions_preserve_audio_and_manual_next_with_the_full_catalog() {
+        let mut playback = PlaybackManager::new();
+        playback.queue.replace(
+            (0..2000)
+                .map(|index| {
+                    QueueEntryDto::new(index.to_string(), index.to_string(), String::new(), None, None)
+                })
+                .collect(),
+            2,
+            QueueSourceDto {
+                kind: "playlist".into(),
+                id: Some("LM".into()),
+                title: None,
+            },
+        );
+        let active = playback.queue.current().unwrap();
+        playback.current_track = Some(PlaybackTrackDto {
+            video_id: active.video_id.clone(),
+            title: active.title.clone(),
+            artists: active.artists.clone(),
+            thumbnail: None,
+            duration: Some(201.0),
+            artist_id: None,
+            album_id: None,
+            album: None,
+            artist_runs: vec![],
+        });
+        playback.generation = 17;
+        playback.loaded_generation = Some(17);
+        playback.queue_epoch = 42;
+        playback.position = 31.5;
+        playback.duration = 201.0;
+        playback.is_playing = true;
+        playback.is_repeat = true;
+        playback.eof_waiting = Some((42, 17));
+        playback.queue.enqueue(
+            vec![QueueEntryDto::new("manual".into(), "Manual".into(), String::new(), None, None)],
+            true,
+        );
+        let original = playback.queue.items.clone();
+        let mut transport = serde_json::to_value(playback.to_dto()).unwrap();
+        transport.as_object_mut().unwrap().remove("queue");
+        transport.as_object_mut().unwrap().remove("isShuffle");
+        for enabled in [true, false, true, false] {
+            playback.set_shuffle_mode(enabled);
+            assert_eq!(playback.queue.items.len(), 2001);
+            assert_eq!(playback.queue.items[..4], original[..4]);
+            assert_eq!(playback.queue.current().unwrap().entry_id, active.entry_id);
+            assert_eq!(playback.loaded_generation, Some(17));
+            assert_eq!(playback.queue_epoch, 42);
+            assert_eq!(playback.eof_waiting, Some((42, 17)));
+            assert_eq!(playback.is_shuffle, enabled);
+            let mut current_transport = serde_json::to_value(playback.to_dto()).unwrap();
+            current_transport.as_object_mut().unwrap().remove("queue");
+            current_transport.as_object_mut().unwrap().remove("isShuffle");
+            assert_eq!(current_transport, transport);
+            let revision = playback.queue.revision;
+            let order = playback.queue.items.clone();
+            playback.set_shuffle_mode(enabled);
+            assert_eq!(playback.queue.revision, revision);
+            assert_eq!(playback.queue.items, order);
+            if !enabled {
+                assert_eq!(playback.queue.items, original);
+            }
+        }
+        let json = serde_json::to_value(playback.to_dto()).unwrap();
+        assert!(json["queue"].get("sourceRanks").is_none());
+        assert!(json["queue"].get("nextSourceRank").is_none());
+        assert!(json["queue"].get("explicitPlacements").is_none());
+        assert!(json["queue"]["items"].as_array().unwrap().len() < 2001);
+    }
+
+    #[test]
+    fn disabling_shuffle_restores_the_album_above_and_below_the_active_audio() {
+        let mut playback = PlaybackManager::new();
+        playback.queue.replace(
+            (0..12)
+                .map(|index| {
+                    QueueEntryDto::new(
+                        index.to_string(),
+                        index.to_string(),
+                        String::new(),
+                        None,
+                        None,
+                    )
+                })
+                .collect(),
+            0,
+            QueueSourceDto {
+                kind: "album".into(),
+                id: Some("album".into()),
+                title: None,
+            },
+        );
+        let canonical = playback.queue.items.clone();
+        // The screenshot's source order: the first album track is playing in row six.
+        playback.queue.items = [7, 5, 10, 8, 6, 0, 9, 4, 3, 11, 1, 2]
+            .into_iter()
+            .map(|index| canonical[index].clone())
+            .collect();
+        playback.queue.select(5);
+        let active = playback.queue.current().unwrap();
+        playback.current_track = Some(PlaybackTrackDto {
+            video_id: active.video_id.clone(),
+            title: active.title.clone(),
+            artists: String::new(),
+            thumbnail: None,
+            duration: Some(201.0),
+            artist_id: None,
+            album_id: None,
+            album: None,
+            artist_runs: vec![],
+        });
+        playback.is_shuffle = true;
+        playback.is_playing = true;
+        playback.generation = 17;
+        playback.loaded_generation = Some(17);
+        playback.position = 62.25;
+        let mut before = serde_json::to_value(playback.to_dto()).unwrap();
+        before.as_object_mut().unwrap().remove("queue");
+        before.as_object_mut().unwrap().remove("isShuffle");
+
+        playback.set_shuffle_mode(false);
+
+        assert_eq!(playback.queue.items, canonical);
+        assert_eq!(playback.queue.current_index, Some(0));
+        assert_eq!(playback.queue.current().unwrap().entry_id, active.entry_id);
+        assert_eq!(playback.loaded_generation, Some(17));
+        let mut after = serde_json::to_value(playback.to_dto()).unwrap();
+        after.as_object_mut().unwrap().remove("queue");
+        after.as_object_mut().unwrap().remove("isShuffle");
+        assert_eq!(after, before);
+        assert_eq!(
+            playback.queue.next_or_first(false),
+            Some(canonical[1].clone())
         );
     }
 }
