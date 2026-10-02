@@ -12,7 +12,7 @@ Si todavía no tenés el repositorio:
 git clone https://github.com/fefucho/SIDE-B-CLIENT-NATIVE.git
 cd SIDE-B-CLIENT-NATIVE
 git fetch origin
-git switch --track origin/windows/ux-controls-and-menus
+git switch --track origin/windows/main
 ```
 
 Si ya lo tenés:
@@ -22,18 +22,18 @@ git status
 # Revisar y commitear los cambios locales antes de cambiar de rama.
 git fetch origin
 # Si la rama local aún no existe:
-git switch --track origin/windows/ux-controls-and-menus
+git switch --track origin/windows/main
 # Si ya existe:
-# git switch windows/ux-controls-and-menus
+# git switch windows/main
 ```
 
-La rama `windows/ux-controls-and-menus` contiene el fix de playlists/shuffle guardado en `555338f`. Abrir esa rama en el Mac permite comparar ambos clientes y consultar la [guía del port](PLAYLIST_SHUFFLE_PORT.md).
+La rama `windows/main` contiene el fix de playlists/shuffle guardado en `555338f` y los scripts de sincronización. Los cambios de `windows/ux-controls-and-menus` se integraron allí por avance directo el 2026-10-02. Usar `windows/main` como rama compartida de Windows; abrirla en el Mac permite comparar ambos clientes y consultar la [guía del port](PLAYLIST_SHUFFLE_PORT.md).
 
 En la revisión del 2026-10-02, `origin/main` y la rama Windows tienen historiales sin ancestro común y diferencias en `apple/`. Por eso hacer pull de `main` no incorpora el fix Windows. El script no intenta unir esos historiales ni trasladar archivos entre ellos. Para conservar tu checkout macOS en `main` y consultar Windows al lado, podés abrir otro checkout:
 
 ```bash
 git fetch origin
-git worktree add --detach ../SideB-Windows-reference origin/windows/ux-controls-and-menus
+git worktree add --detach ../SideB-Windows-reference origin/windows/main
 ```
 
 Ese checkout es una referencia para comparar: no ejecutar `sync push/pull` allí porque tiene HEAD separado. Para editar desde las dos PCs con los scripts, usar una rama de trabajo compartida. La integración de los historiales de `main` y Windows requiere una tarea específica con revisión de diferencias de ambos clientes.
