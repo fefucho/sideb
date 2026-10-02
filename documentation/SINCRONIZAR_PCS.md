@@ -8,13 +8,13 @@ El script [`Scripts/sync.sh`](../Scripts/sync.sh) funciona con Bash y Git en mac
 
 El destino común es `main`: ambas PCs deben trabajar sobre la misma base, con `apple/`, `windows/` y un solo `core/`. Las ramas de arreglos son temporales y se integran mediante revisión.
 
-La integración inicial está preparada en `codex/unify-shared-core`, basada en el `main` macOS y con el historial Windows incorporado. Conserva el código de `apple/`, la versión macOS y el FIX-083 del cipher; adapta Windows a esa base. Hasta verificar macOS e incorporar esa rama a `main`, usar la rama de integración para probar ambas apps. No borrar `windows/main` durante esa validación.
+La integración inicial ya está en `main` mediante el [PR #1](https://github.com/fefucho/SIDE-B-CLIENT-NATIVE/pull/1), basada en el `main` macOS y con el historial Windows incorporado. Conserva los fuentes de la app macOS, su versión y el FIX-083 del cipher; adapta Windows a esa base. Las CI de [macOS](https://github.com/fefucho/SIDE-B-CLIENT-NATIVE/actions/runs/36965397021), [Windows](https://github.com/fefucho/SIDE-B-CLIENT-NATIVE/actions/runs/36965397069) y [sincronización](https://github.com/fefucho/SIDE-B-CLIENT-NATIVE/actions/runs/36965397035) terminaron correctamente. `windows/main` queda como referencia del estado anterior; los nuevos cambios se hacen desde `main`.
 
 Para verificar en el Mac sin cambiar tu checkout habitual:
 
 ```bash
 git fetch origin
-git worktree add --detach ../SideB-integracion origin/codex/unify-shared-core
+git worktree add --detach ../SideB-integracion origin/main
 cd ../SideB-integracion
 cd apple
 bash build_xcframework.sh
@@ -28,7 +28,7 @@ Después, ejecutar los recorridos habituales de reproducción, búsqueda, cuenta
 
 Ese worktree tiene HEAD separado: permite validar, pero no usar `sync push/pull`. Si hay que corregir algo allí, crear primero una rama, por ejemplo `git switch -c codex/macos-integration-check`, y después revisar/commitear los cambios.
 
-## Primera vez después de integrar en main
+## Usar main en ambas PCs
 
 Si todavía no tenés el repositorio:
 
@@ -49,7 +49,10 @@ git fetch origin
 git switch --track origin/main
 # Si ya existe:
 # git switch main
+# git merge --ff-only origin/main
 ```
+
+No usar `reset --hard` si el Mac tiene commits o cambios locales pendientes. El avance directo incorpora la integración sin reemplazar trabajo; si las ramas divergieron, revisar esos commits antes de resolver el merge.
 
 El fix Windows de playlists/shuffle está guardado en `555338f` y conserva su [guía del port](PLAYLIST_SHUFFLE_PORT.md). La unificación del core no traslada automáticamente las funciones implementadas en los controladores o interfaces de una plataforma a la otra.
 

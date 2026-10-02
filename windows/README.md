@@ -63,7 +63,7 @@ pnpm build
 
 Los tests de controladores inyectan RPC/eventos falsos y prueban consistencia sin modificar una cuenta. `verify` agrega pruebas de `innertube`, `sideb-core`, `player` y el bridge Tauri. Las pruebas en vivo ignoradas del core no se ejecutan por defecto.
 
-`sideb-core` se comprueba con y sin `windows-bridge`: Windows usa esa feature para sus extensiones y macOS consume el contrato por defecto, incluido `CipherJsRuntime`. Las dos apps comparten la base `main`; durante la integración inicial, seguir [la guía entre PCs](../documentation/SINCRONIZAR_PCS.md).
+`sideb-core` se comprueba con y sin `windows-bridge`: Windows usa esa feature para sus extensiones y macOS consume el contrato por defecto, incluido `CipherJsRuntime`. Las dos apps comparten la base `main`; seguir [la guía entre PCs](../documentation/SINCRONIZAR_PCS.md) para traer el código y validarlo en el Mac.
 
 ## Revisión de una entrega
 
