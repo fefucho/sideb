@@ -1,5 +1,7 @@
 # Documentación de Side B
 
+- [Sincronizar el código entre las dos PCs](SINCRONIZAR_PCS.md): ramas y scripts para Windows/macOS.
+
 ## Windows: documentación vigente
 
 - [Guía de desarrollo](../windows/README.md): requisitos, comandos y comprobaciones.
