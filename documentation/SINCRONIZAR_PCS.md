@@ -24,6 +24,8 @@ swift test --package-path apple
 
 Después, ejecutar los recorridos habituales de reproducción, búsqueda, cuenta y el atajo de espacio. El proyecto macOS actual requiere un SDK que conozca sus APIs macOS 27; la CI usa el runner `xcode-27`. La versión mínima de despliegue se mantiene en macOS 15.
 
+`swift test` comprueba por defecto los contratos y lógica sin consultar servicios externos. Las pruebas antiguas de YouTube se habilitan con `SIDEB_LIVE_TESTS=1`; para el smoke del FIX-083 se conserva `SIDEB_LIVE_CIPHER=1`. La prueba de cuenta es independiente (`SIDEB_LIVE_ACCOUNT=1`), accede al Keychain y puede actualizar su cookie guardada: ejecutarla sólo cuando se quiere comprobar explícitamente esa cuenta. Ninguna de esas pruebas en vivo forma parte de la CI por defecto.
+
 Ese worktree tiene HEAD separado: permite validar, pero no usar `sync push/pull`. Si hay que corregir algo allí, crear primero una rama, por ejemplo `git switch -c codex/macos-integration-check`, y después revisar/commitear los cambios.
 
 ## Primera vez después de integrar en main
