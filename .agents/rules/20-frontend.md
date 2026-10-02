@@ -1,6 +1,6 @@
 ---
 trigger: glob
-globs: ["SIDE B/apple/**/*.swift", "SIDE B/apple/**/*.xcodeproj", "SIDE B/apple/**/Package.swift"]
+globs: ["apple/**/*.swift", "apple/**/*.xcodeproj", "apple/**/Package.swift"]
 ---
 
 # Side B v2 — SwiftUI, AppKit y macOS (2026)
@@ -9,7 +9,7 @@ Leer `.agents/skills/swiftui-pro/SKILL.md` para trabajo de interfaz, interacció
 
 ## Arquitectura y comportamiento
 
-- Respetar las cuatro capas y el centrado de la barra sobre el área de contenido de `SIDE B/UI_ARCHITECTURE.md`. La vista fullscreen vigente es `FullscreenNowPlayingView`; comprobar nombres y rutas actuales antes de editar.
+- Respetar las cuatro capas y el centrado de la barra sobre el área de contenido de `documentation/UI_ARCHITECTURE.md`. La vista fullscreen vigente es `FullscreenNowPlayingView`; comprobar nombres y rutas actuales antes de editar.
 - Reproducir con AVPlayer y mantener integraciones del sistema. Consumir los modelos tipados de UniFFI; evitar parseo JSON de datos del Core dentro de vistas.
 - Preferir controles de sistema, navegación de teclado, VoiceOver, estado de foco y menús reales. Mantener acciones completas durante cambios de arquitectura.
 

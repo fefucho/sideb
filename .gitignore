@@ -32,3 +32,16 @@ apple/.build/
 Updates/
 *.tmp
 *.log
+
+# Windows tooling and local work
+/scratch/
+**/node_modules/
+/windows/.cache/
+/windows/.svelte-kit/
+/windows/build/
+/windows/artifacts/
+/windows/src-tauri/*.dll
+/windows/src-tauri/VulkanRT-License.txt
+**/.env
+**/.env.*
+!**/.env.example

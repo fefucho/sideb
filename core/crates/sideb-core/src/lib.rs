@@ -115,6 +115,10 @@ pub struct SongItemRecord {
     pub is_video: bool,
     pub is_upload: bool,
     pub library: Option<LibraryToggleRecord>,
+    /// Run-by-run linked artist credits for Windows' local Tauri bridge. Kept out of the
+    /// default UniFFI record so the macOS ABI and generated XCFramework stay unchanged.
+    #[cfg(feature = "windows-bridge")]
+    pub artist_runs: Vec<HomeArtistRunRecord>,
 }
 
 impl From<innertube::SongItem> for SongItemRecord {
@@ -136,6 +140,15 @@ impl From<innertube::SongItem> for SongItemRecord {
                 add_token: toggle.add_token,
                 remove_token: toggle.remove_token,
             }),
+            #[cfg(feature = "windows-bridge")]
+            artist_runs: item
+                .artist_runs
+                .into_iter()
+                .map(|run| HomeArtistRunRecord {
+                    text: run.text,
+                    id: run.id,
+                })
+                .collect(),
         }
     }
 }
@@ -234,6 +247,54 @@ pub struct BrowseCardRecord {
     pub subtitle: Option<String>,
     pub thumbnail: Option<String>,
     pub duration: Option<String>,
+    #[cfg(feature = "windows-bridge")]
+    pub artists: Option<String>,
+    #[cfg(feature = "windows-bridge")]
+    pub artist_id: Option<String>,
+    #[cfg(feature = "windows-bridge")]
+    pub album: Option<String>,
+    #[cfg(feature = "windows-bridge")]
+    pub album_id: Option<String>,
+    #[cfg(feature = "windows-bridge")]
+    pub is_video: bool,
+    #[cfg(feature = "windows-bridge")]
+    pub explicit: bool,
+    #[cfg(feature = "windows-bridge")]
+    pub artist_runs: Vec<HomeArtistRunRecord>,
+}
+
+impl From<innertube::BrowseItem> for BrowseCardRecord {
+    fn from(item: innertube::BrowseItem) -> Self {
+        Self {
+            kind: item.kind.to_owned(),
+            id: item.id,
+            title: item.title,
+            subtitle: item.subtitle,
+            thumbnail: item.thumbnail,
+            duration: item.duration,
+            #[cfg(feature = "windows-bridge")]
+            artists: item.artists,
+            #[cfg(feature = "windows-bridge")]
+            artist_id: item.artist_id,
+            #[cfg(feature = "windows-bridge")]
+            album: item.album,
+            #[cfg(feature = "windows-bridge")]
+            album_id: item.album_id,
+            #[cfg(feature = "windows-bridge")]
+            is_video: item.is_video,
+            #[cfg(feature = "windows-bridge")]
+            explicit: item.explicit,
+            #[cfg(feature = "windows-bridge")]
+            artist_runs: item
+                .artist_runs
+                .into_iter()
+                .map(|run| HomeArtistRunRecord {
+                    text: run.text,
+                    id: run.id,
+                })
+                .collect(),
+        }
+    }
 }
 
 #[derive(Clone, Debug, uniffi::Record)]
@@ -273,6 +334,8 @@ pub struct AlbumDetailRecord {
     pub in_library: bool,
     pub items: Vec<SongItemRecord>,
     pub sections: Vec<ArtistCarouselRecord>,
+    #[cfg(feature = "windows-bridge")]
+    pub artist_runs: Vec<HomeArtistRunRecord>,
 }
 
 #[derive(Clone, Debug, uniffi::Record)]
@@ -287,18 +350,7 @@ impl From<innertube::ArtistCarousel> for ArtistCarouselRecord {
     fn from(c: innertube::ArtistCarousel) -> Self {
         Self {
             title: c.title,
-            items: c
-                .items
-                .into_iter()
-                .map(|i| BrowseCardRecord {
-                    kind: i.kind.to_string(),
-                    id: i.id,
-                    title: i.title,
-                    subtitle: i.subtitle,
-                    thumbnail: i.thumbnail,
-                    duration: i.duration,
-                })
-                .collect(),
+            items: c.items.into_iter().map(BrowseCardRecord::from).collect(),
             more_browse_id: c.more_browse_id,
             more_params: c.more_params,
         }
@@ -346,6 +398,7 @@ struct CorePlaybackTracking {
 pub struct SideBCore {
     data_dir: PathBuf,
     db: Arc<db::Db>,
+    persist_cookie_in_sqlite: bool,
     it: InnerTube,
     clients: Clients,
     orchestrator: Arc<orchestrator::Orchestrator>,
@@ -355,10 +408,8 @@ pub struct SideBCore {
     genius: Arc<genius::GeniusEngine>,
 }
 
-#[uniffi::export(async_runtime = "tokio")]
 impl SideBCore {
-    #[uniffi::constructor]
-    pub fn new(data_dir: String) -> Result<Arc<Self>, SideBError> {
+    fn build(data_dir: String, persist_cookie_in_sqlite: bool) -> Result<Arc<Self>, SideBError> {
         let path = PathBuf::from(&data_dir);
         std::fs::create_dir_all(&path).map_err(|e| SideBError::DbError {
             message: format!("Failed to create data directory: {e}"),
@@ -369,16 +420,23 @@ impl SideBCore {
             message: format!("Failed to open database: {e}"),
         })?);
 
-        let it = InnerTube::new(innertube::Session::default(), None).map_err(|e| SideBError::Other { message: format!("Failed to create InnerTube: {e}") })?;
+        if !persist_cookie_in_sqlite {
+            db.clear_persisted_session_cookies()
+                .map_err(|e| SideBError::DbError {
+                message: format!("Failed to clear legacy session credentials: {e}"),
+            })?;
+        }
+
+        let it =
+            InnerTube::new(innertube::Session::default(), None).map_err(|e| SideBError::Other {
+                message: format!("Failed to create InnerTube: {e}"),
+            })?;
         let clients = Clients::bundled();
 
         let player_config_cache = path.join("player_configs.json");
         let player_config_store = Arc::new(cipher::PlayerConfigStore::new(&player_config_cache));
 
-        let cipher = Arc::new(cipher::CipherDeobfuscator::new(
-            &path,
-            player_config_store,
-        ));
+        let cipher = Arc::new(cipher::CipherDeobfuscator::new(&path, player_config_store));
 
         let potoken = Arc::new(potoken::PoTokenGenerator::new(db.clone()));
 
@@ -389,12 +447,15 @@ impl SideBCore {
             potoken.clone(),
         ));
 
-        // Restore saved session cookie if available in DB
-        if let Some(cookie) = db.get_setting("session_cookie") {
-            it.set_cookie(Some(cookie));
+        // The Windows host supplies session credentials from its OS credential store.
+        // Never rehydrate a legacy SQLite cookie for that construction path.
+        if persist_cookie_in_sqlite {
+            if let Some(cookie) = db.get_setting("session_cookie") {
+                it.set_cookie(Some(cookie));
+            }
         }
 
-        // Restore saved visitor_data if available in DB
+        // visitor_data is public client state rather than an authentication credential.
         if let Some(vd) = db.get_setting("visitor_data") {
             it.set_visitor_data(Some(vd));
         }
@@ -403,6 +464,7 @@ impl SideBCore {
             data_dir: path,
             genius: Arc::new(genius::GeniusEngine::new(db.clone())),
             db,
+            persist_cookie_in_sqlite,
             it,
             clients,
             orchestrator,
@@ -411,6 +473,14 @@ impl SideBCore {
             current_playback: Arc::new(Mutex::new(None)),
         }))
     }
+}
+
+#[uniffi::export(async_runtime = "tokio")]
+impl SideBCore {
+    #[uniffi::constructor]
+    pub fn new(data_dir: String) -> Result<Arc<Self>, SideBError> {
+        Self::build(data_dir, true)
+    }
 
     pub fn set_cipher_js_runtime(&self, runtime: Box<dyn CipherJsRuntime>) {
         self.cipher.set_runtime(Arc::from(runtime));
@@ -418,10 +488,12 @@ impl SideBCore {
 
     /// Set session cookie extracted from Swift WKWebView or login flow.
     pub fn set_cookie(&self, cookie: Option<String>) {
-        if let Some(ref c) = cookie {
-            self.db.set_setting("session_cookie", c);
-        } else {
-            self.db.delete_setting("session_cookie");
+        if self.persist_cookie_in_sqlite {
+            if let Some(ref c) = cookie {
+                self.db.set_setting("session_cookie", c);
+            } else {
+                self.db.delete_setting("session_cookie");
+            }
         }
         self.it.set_cookie(cookie);
     }
@@ -442,7 +514,11 @@ impl SideBCore {
             .ok_or_else(|| SideBError::Other {
                 message: "Metadata client missing".into(),
             })?;
-        let info = self.it.account_menu(client).await.map_err(|e| SideBError::NetworkError {
+        let info = self
+            .it
+            .account_menu(client)
+            .await
+            .map_err(|e| SideBError::NetworkError {
             message: e.to_string(),
         })?;
         Ok(AccountInfoRecord {
@@ -462,20 +538,14 @@ impl SideBCore {
             .ok_or_else(|| SideBError::Other {
                 message: "Metadata client missing".into(),
             })?;
-        let items = self.it.library_playlists(client).await.map_err(|e| SideBError::NetworkError {
+        let items =
+            self.it
+                .library_playlists(client)
+                .await
+                .map_err(|e| SideBError::NetworkError {
             message: e.to_string(),
         })?;
-        Ok(items
-            .into_iter()
-            .map(|i| BrowseCardRecord {
-                kind: i.kind.to_string(),
-                id: i.id,
-                title: i.title,
-                subtitle: i.subtitle,
-                thumbnail: i.thumbnail,
-                duration: i.duration,
-            })
-            .collect())
+        Ok(items.into_iter().map(BrowseCardRecord::from).collect())
     }
 
     /// Fetch user's saved library albums.
@@ -486,25 +556,22 @@ impl SideBCore {
             .ok_or_else(|| SideBError::Other {
                 message: "Metadata client missing".into(),
             })?;
-        let items = self.it.library_albums(client).await.map_err(|e| SideBError::NetworkError {
+        let items = self
+            .it
+            .library_albums(client)
+            .await
+            .map_err(|e| SideBError::NetworkError {
             message: e.to_string(),
         })?;
-        Ok(items
-            .into_iter()
-            .map(|i| BrowseCardRecord {
-                kind: i.kind.to_string(),
-                id: i.id,
-                title: i.title,
-                subtitle: i.subtitle,
-                thumbnail: i.thumbnail,
-                duration: i.duration,
-            })
-            .collect())
+        Ok(items.into_iter().map(BrowseCardRecord::from).collect())
     }
 
     /// Library Songs is a track shelf with continuation, rather than a card grid.
     pub async fn get_library_songs(&self) -> Result<PlaylistContinuationRecord, SideBError> {
-        let client = self.clients.get(METADATA_CLIENT).ok_or_else(|| SideBError::Other {
+        let client = self
+            .clients
+            .get(METADATA_CLIENT)
+            .ok_or_else(|| SideBError::Other {
             message: "Metadata client missing".into(),
         })?;
         let page = self.it.library_songs(client).await?;
@@ -515,14 +582,14 @@ impl SideBCore {
     }
 
     pub async fn get_library_artists(&self) -> Result<Vec<BrowseCardRecord>, SideBError> {
-        let client = self.clients.get(METADATA_CLIENT).ok_or_else(|| SideBError::Other {
+        let client = self
+            .clients
+            .get(METADATA_CLIENT)
+            .ok_or_else(|| SideBError::Other {
             message: "Metadata client missing".into(),
         })?;
         let items = self.it.library_artists(client).await?;
-        Ok(items.into_iter().map(|i| BrowseCardRecord {
-            kind: i.kind.to_string(), id: i.id, title: i.title,
-            subtitle: i.subtitle, thumbnail: i.thumbnail, duration: i.duration,
-        }).collect())
+        Ok(items.into_iter().map(BrowseCardRecord::from).collect())
     }
 
     /// Fetch user's playback history grouped by day.
@@ -568,7 +635,11 @@ impl SideBCore {
                 let first_group = &mut groups[0];
                 for (_played_at, json) in recent_local.into_iter().rev() {
                     if let Some(song_rec) = parse_song_record(&json) {
-                        if !first_group.items.iter().any(|item| item.video_id == song_rec.video_id) {
+                        if !first_group
+                            .items
+                            .iter()
+                            .any(|item| item.video_id == song_rec.video_id)
+                        {
                             first_group.items.insert(0, song_rec);
                         }
                     }
@@ -608,7 +679,10 @@ impl SideBCore {
     }
 
     /// Fetch playlist detail and tracks by id (e.g. "LM" for Liked Music, or VL...).
-    pub async fn get_playlist(&self, playlist_id: String) -> Result<PlaylistDetailRecord, SideBError> {
+    pub async fn get_playlist(
+        &self,
+        playlist_id: String,
+    ) -> Result<PlaylistDetailRecord, SideBError> {
         let client = self
             .clients
             .get(METADATA_CLIENT)
@@ -620,7 +694,11 @@ impl SideBCore {
         } else {
             format!("VL{playlist_id}")
         };
-        let page = self.it.playlist(client, &browse_id, None).await.map_err(|e| SideBError::NetworkError {
+        let page = self
+            .it
+            .playlist(client, &browse_id, None)
+            .await
+            .map_err(|e| SideBError::NetworkError {
             message: e.to_string(),
         })?;
         Ok(PlaylistDetailRecord {
@@ -635,7 +713,10 @@ impl SideBCore {
             in_library: page.in_library,
             privacy: page.privacy,
             collaborative: page.collaborative,
-            sort: page.sort_menu.as_ref().and_then(|m| m.selected)
+            sort: page
+                .sort_menu
+                .as_ref()
+                .and_then(|m| m.selected)
                 .map(|s| format!("{s:?}").to_ascii_lowercase()),
             sort_editable: page.sort_menu.as_ref().is_some_and(|m| m.editable),
         })
@@ -649,7 +730,11 @@ impl SideBCore {
             .ok_or_else(|| SideBError::Other {
                 message: "Metadata client missing".into(),
             })?;
-        let page = self.it.album(client, &browse_id).await.map_err(|e| SideBError::NetworkError {
+        let page =
+            self.it
+                .album(client, &browse_id)
+                .await
+                .map_err(|e| SideBError::NetworkError {
             message: e.to_string(),
         })?;
         Ok(AlbumDetailRecord {
@@ -664,20 +749,40 @@ impl SideBCore {
             playlist_id: page.playlist_id,
             in_library: page.in_library,
             items: page.items.into_iter().map(SongItemRecord::from).collect(),
-            sections: page.sections.into_iter().map(ArtistCarouselRecord::from).collect(),
+            sections: page
+                .sections
+                .into_iter()
+                .map(ArtistCarouselRecord::from)
+                .collect(),
+            #[cfg(feature = "windows-bridge")]
+            artist_runs: page
+                .artist_runs
+                .into_iter()
+                .map(|run| HomeArtistRunRecord {
+                    text: run.text,
+                    id: run.id,
+                })
+                .collect(),
         })
     }
 
     /// Cards behind an artist carousel's "See all" browse endpoint.
-    pub async fn get_browse_grid(&self, browse_id: String, params: Option<String>) -> Result<Vec<BrowseCardRecord>, SideBError> {
-        let client = self.clients.get(METADATA_CLIENT).ok_or_else(|| SideBError::Other {
+    pub async fn get_browse_grid(
+        &self,
+        browse_id: String,
+        params: Option<String>,
+    ) -> Result<Vec<BrowseCardRecord>, SideBError> {
+        let client = self
+            .clients
+            .get(METADATA_CLIENT)
+            .ok_or_else(|| SideBError::Other {
             message: "Metadata client missing".into(),
         })?;
-        let items = self.it.browse_grid(client, &browse_id, params.as_deref()).await?;
-        Ok(items.into_iter().map(|i| BrowseCardRecord {
-            kind: i.kind.to_string(), id: i.id, title: i.title,
-            subtitle: i.subtitle, thumbnail: i.thumbnail, duration: i.duration,
-        }).collect())
+        let items = self
+            .it
+            .browse_grid(client, &browse_id, params.as_deref())
+            .await?;
+        Ok(items.into_iter().map(BrowseCardRecord::from).collect())
     }
 
     /// Fetch artist detail, top songs, and carousels by browseId (e.g. "UC...").
@@ -688,7 +793,11 @@ impl SideBCore {
             .ok_or_else(|| SideBError::Other {
                 message: "Metadata client missing".into(),
             })?;
-        let page = self.it.artist(client, &browse_id).await.map_err(|e| SideBError::NetworkError {
+        let page =
+            self.it
+                .artist(client, &browse_id)
+                .await
+                .map_err(|e| SideBError::NetworkError {
             message: e.to_string(),
         })?;
         Ok(ArtistDetailRecord {
@@ -700,21 +809,36 @@ impl SideBCore {
             monthly_listeners: page.monthly_listeners,
             subscribed: page.subscribed,
             radio_playlist_id: page.radio_playlist_id,
-            top_songs: page.top_songs.into_iter().map(SongItemRecord::from).collect(),
+            top_songs: page
+                .top_songs
+                .into_iter()
+                .map(SongItemRecord::from)
+                .collect(),
             top_songs_id: page.top_songs_id,
-            sections: page.sections.into_iter().map(ArtistCarouselRecord::from).collect(),
+            sections: page
+                .sections
+                .into_iter()
+                .map(ArtistCarouselRecord::from)
+                .collect(),
         })
     }
 
     /// Subscribe or unsubscribe to an artist channel.
-    pub async fn subscribe_artist(&self, channel_id: String, subscribe: bool) -> Result<(), SideBError> {
+    pub async fn subscribe_artist(
+        &self,
+        channel_id: String,
+        subscribe: bool,
+    ) -> Result<(), SideBError> {
         let client = self
             .clients
             .get(METADATA_CLIENT)
             .ok_or_else(|| SideBError::Other {
                 message: "Metadata client missing".into(),
             })?;
-        self.it.subscribe(client, &channel_id, subscribe).await.map_err(|e| SideBError::NetworkError {
+        self.it
+            .subscribe(client, &channel_id, subscribe)
+            .await
+            .map_err(|e| SideBError::NetworkError {
             message: e.to_string(),
         })?;
         Ok(())
@@ -736,7 +860,10 @@ impl SideBCore {
         } else {
             playlist_id
         };
-        self.it.like_playlist(client, &target_id, like).await.map_err(|e| SideBError::NetworkError {
+        self.it
+            .like_playlist(client, &target_id, like)
+            .await
+            .map_err(|e| SideBError::NetworkError {
             message: e.to_string(),
         })?;
         Ok(())
@@ -745,9 +872,14 @@ impl SideBCore {
     /// Apply the library action token supplied with a track row. This is separate from liking.
     pub async fn apply_song_library_action(&self, token: String) -> Result<(), SideBError> {
         if token.is_empty() {
-            return Err(SideBError::Other { message: "Missing library action".into() });
+            return Err(SideBError::Other {
+                message: "Missing library action".into(),
+            });
         }
-        let client = self.clients.get(METADATA_CLIENT).ok_or_else(|| SideBError::Other {
+        let client = self
+            .clients
+            .get(METADATA_CLIENT)
+            .ok_or_else(|| SideBError::Other {
             message: "Metadata client missing".into(),
         })?;
         self.it.feedback(client, &token).await?;
@@ -755,21 +887,38 @@ impl SideBCore {
     }
 
     /// Create a playlist and return the server's playlist ID.
-    pub async fn create_playlist(&self, title: String, description: String, privacy: String) -> Result<String, SideBError> {
+    pub async fn create_playlist(
+        &self,
+        title: String,
+        description: String,
+        privacy: String,
+    ) -> Result<String, SideBError> {
         let title = title.trim();
         if title.is_empty() {
-            return Err(SideBError::Other { message: "Playlist name is required".into() });
+            return Err(SideBError::Other {
+                message: "Playlist name is required".into(),
+            });
         }
         if title.contains(['<', '>']) {
-            return Err(SideBError::Other { message: "Playlist name cannot contain < or >".into() });
+            return Err(SideBError::Other {
+                message: "Playlist name cannot contain < or >".into(),
+            });
         }
         if !matches!(privacy.as_str(), "PRIVATE" | "UNLISTED" | "PUBLIC") {
-            return Err(SideBError::Other { message: "Invalid playlist privacy".into() });
+            return Err(SideBError::Other {
+                message: "Invalid playlist privacy".into(),
+            });
         }
-        let client = self.clients.get(METADATA_CLIENT).ok_or_else(|| SideBError::Other {
+        let client = self
+            .clients
+            .get(METADATA_CLIENT)
+            .ok_or_else(|| SideBError::Other {
             message: "Metadata client missing".into(),
         })?;
-        self.it.create_playlist_with_details(client, title, &description, &privacy).await.map_err(Into::into)
+        self.it
+            .create_playlist_with_details(client, title, &description, &privacy)
+            .await
+            .map_err(Into::into)
     }
 
     pub async fn edit_playlist_details(
@@ -781,24 +930,45 @@ impl SideBCore {
     ) -> Result<(), SideBError> {
         let name = name.as_deref().map(str::trim);
         if name.is_some_and(str::is_empty) {
-            return Err(SideBError::Other { message: "Playlist name is required".into() });
+            return Err(SideBError::Other {
+                message: "Playlist name is required".into(),
+            });
         }
         if name.is_some_and(|value| value.contains(['<', '>'])) {
-            return Err(SideBError::Other { message: "Playlist name cannot contain < or >".into() });
+            return Err(SideBError::Other {
+                message: "Playlist name cannot contain < or >".into(),
+            });
         }
         if let Some(ref value) = privacy {
             if !matches!(value.as_str(), "PRIVATE" | "UNLISTED" | "PUBLIC") {
-                return Err(SideBError::Other { message: "Invalid playlist privacy".into() });
+                return Err(SideBError::Other {
+                    message: "Invalid playlist privacy".into(),
+                });
             }
         }
-        let client = self.clients.get(METADATA_CLIENT).ok_or_else(|| SideBError::Other {
+        let client = self
+            .clients
+            .get(METADATA_CLIENT)
+            .ok_or_else(|| SideBError::Other {
             message: "Metadata client missing".into(),
         })?;
-        self.it.playlist_edit_details(client, &playlist_id, name, description.as_deref(), privacy.as_deref()).await?;
+        self.it
+            .playlist_edit_details(
+                client,
+                &playlist_id,
+                name,
+                description.as_deref(),
+                privacy.as_deref(),
+            )
+            .await?;
         Ok(())
     }
 
-    pub async fn set_playlist_sort(&self, playlist_id: String, sort: String) -> Result<(), SideBError> {
+    pub async fn set_playlist_sort(
+        &self,
+        playlist_id: String,
+        sort: String,
+    ) -> Result<(), SideBError> {
         let selected = match sort.as_str() {
             "default" => PlaylistSort::Default,
             "newest" => PlaylistSort::Newest,
@@ -807,12 +977,21 @@ impl SideBCore {
             "artist" => PlaylistSort::Artist,
             "album" => PlaylistSort::Album,
             "top" => PlaylistSort::Top,
-            _ => return Err(SideBError::Other { message: "Invalid playlist sort".into() }),
+            _ => {
+                return Err(SideBError::Other {
+                    message: "Invalid playlist sort".into(),
+                })
+            }
         };
-        let client = self.clients.get(METADATA_CLIENT).ok_or_else(|| SideBError::Other {
+        let client = self
+            .clients
+            .get(METADATA_CLIENT)
+            .ok_or_else(|| SideBError::Other {
             message: "Metadata client missing".into(),
         })?;
-        self.it.playlist_set_sort(client, &playlist_id, selected).await?;
+        self.it
+            .playlist_set_sort(client, &playlist_id, selected)
+            .await?;
         Ok(())
     }
 
@@ -822,18 +1001,35 @@ impl SideBCore {
         set_video_id: String,
         successor_set_video_id: Option<String>,
     ) -> Result<(), SideBError> {
-        if set_video_id.is_empty() || successor_set_video_id.as_deref() == Some(set_video_id.as_str()) {
-            return Err(SideBError::Other { message: "Invalid playlist track move".into() });
+        if set_video_id.is_empty()
+            || successor_set_video_id.as_deref() == Some(set_video_id.as_str())
+        {
+            return Err(SideBError::Other {
+                message: "Invalid playlist track move".into(),
+            });
         }
-        let client = self.clients.get(METADATA_CLIENT).ok_or_else(|| SideBError::Other {
+        let client = self
+            .clients
+            .get(METADATA_CLIENT)
+            .ok_or_else(|| SideBError::Other {
             message: "Metadata client missing".into(),
         })?;
-        self.it.playlist_move(client, &playlist_id, &set_video_id, successor_set_video_id.as_deref()).await?;
+        self.it
+            .playlist_move(
+                client,
+                &playlist_id,
+                &set_video_id,
+                successor_set_video_id.as_deref(),
+            )
+            .await?;
         Ok(())
     }
 
     pub async fn delete_playlist(&self, playlist_id: String) -> Result<(), SideBError> {
-        let client = self.clients.get(METADATA_CLIENT).ok_or_else(|| SideBError::Other {
+        let client = self
+            .clients
+            .get(METADATA_CLIENT)
+            .ok_or_else(|| SideBError::Other {
             message: "Metadata client missing".into(),
         })?;
         self.it.delete_playlist(client, &playlist_id).await?;
@@ -842,14 +1038,21 @@ impl SideBCore {
     }
 
     /// Add a track to a user playlist.
-    pub async fn add_to_playlist(&self, playlist_id: String, video_id: String) -> Result<(), SideBError> {
+    pub async fn add_to_playlist(
+        &self,
+        playlist_id: String,
+        video_id: String,
+    ) -> Result<(), SideBError> {
         let client = self
             .clients
             .get(METADATA_CLIENT)
             .ok_or_else(|| SideBError::Other {
                 message: "Metadata client missing".into(),
             })?;
-        self.it.playlist_add(client, &playlist_id, &video_id).await.map_err(|e| SideBError::NetworkError {
+        self.it
+            .playlist_add(client, &playlist_id, &video_id)
+            .await
+            .map_err(|e| SideBError::NetworkError {
             message: e.to_string(),
         })?;
         self.db.add_playlist_track(&playlist_id, &video_id);
@@ -880,14 +1083,21 @@ impl SideBCore {
     }
 
     /// Fetch continuation tracks for a playlist (typed record).
-    pub async fn get_playlist_continuation(&self, token: String) -> Result<PlaylistContinuationRecord, SideBError> {
+    pub async fn get_playlist_continuation(
+        &self,
+        token: String,
+    ) -> Result<PlaylistContinuationRecord, SideBError> {
         let client = self
             .clients
             .get(METADATA_CLIENT)
             .ok_or_else(|| SideBError::Other {
                 message: "Metadata client missing".into(),
             })?;
-        let cont = self.it.playlist_continuation(client, &token).await.map_err(|e| SideBError::NetworkError {
+        let cont = self
+            .it
+            .playlist_continuation(client, &token)
+            .await
+            .map_err(|e| SideBError::NetworkError {
             message: e.to_string(),
         })?;
         Ok(PlaylistContinuationRecord {
@@ -944,7 +1154,14 @@ impl SideBCore {
                             artist_id: i.artist_id,
                             album: i.album,
                             album_id: i.album_id,
-                            artist_runs: i.artist_runs.into_iter().map(|run| HomeArtistRunRecord { text: run.text, id: run.id }).collect(),
+                            artist_runs: i
+                                .artist_runs
+                                .into_iter()
+                                .map(|run| HomeArtistRunRecord {
+                                    text: run.text,
+                                    id: run.id,
+                                })
+                                .collect(),
                             explicit: i.explicit,
                         })
                         .collect(),
@@ -994,7 +1211,14 @@ impl SideBCore {
                             artist_id: i.artist_id,
                             album: i.album,
                             album_id: i.album_id,
-                            artist_runs: i.artist_runs.into_iter().map(|run| HomeArtistRunRecord { text: run.text, id: run.id }).collect(),
+                            artist_runs: i
+                                .artist_runs
+                                .into_iter()
+                                .map(|run| HomeArtistRunRecord {
+                                    text: run.text,
+                                    id: run.id,
+                                })
+                                .collect(),
                             explicit: i.explicit,
                         })
                         .collect(),
@@ -1031,7 +1255,6 @@ impl SideBCore {
         serde_json::to_string(&page).map_err(Into::into)
     }
 
-
     /// Get up next queue / related tracks.
     pub async fn get_next(
         &self,
@@ -1046,11 +1269,7 @@ impl SideBCore {
             })?;
         let next = self
             .it
-            .next(
-                client,
-                video_id.as_deref(),
-                playlist_id.as_deref(),
-            )
+            .next(client, video_id.as_deref(), playlist_id.as_deref())
             .await?;
         Ok(NextResultRecord {
             items: next.items.into_iter().map(SongItemRecord::from).collect(),
@@ -1072,7 +1291,11 @@ impl SideBCore {
                 message: "Metadata client missing".into(),
             })?;
         let radio_playlist_id = format!("RDAMVM{video_id}");
-        if let Ok(first) = self.it.next(client, Some(&video_id), Some(&radio_playlist_id)).await {
+        if let Ok(first) = self
+            .it
+            .next(client, Some(&video_id), Some(&radio_playlist_id))
+            .await
+        {
             if first.items.len() > 1 {
                 return Ok(NextResultRecord {
                     items: first.items.into_iter().map(SongItemRecord::from).collect(),
@@ -1120,7 +1343,10 @@ impl SideBCore {
                 message: "Metadata client missing".into(),
             })?;
         let seed = radio_seed.unwrap_or_else(|| format!("RDAMVM{last_video_id}"));
-        let next = self.it.next(client, Some(&last_video_id), Some(&seed)).await?;
+        let next = self
+            .it
+            .next(client, Some(&last_video_id), Some(&seed))
+            .await?;
         Ok(NextResultRecord {
             items: next.items.into_iter().map(SongItemRecord::from).collect(),
             lyrics_browse_id: next.lyrics_browse_id,
@@ -1162,16 +1388,25 @@ impl SideBCore {
                                 .map(|i| SongItemRecord {
                                     video_id: i.id,
                                     title: i.title,
-                                    artists: i.subtitle.unwrap_or_default(),
-                                    album: None,
+                                    artists: i.artists.or(i.subtitle).unwrap_or_default(),
+                                    album: i.album,
                                     duration: i.duration,
                                     thumbnail: i.thumbnail,
-                                    artist_id: None,
-                                    album_id: None,
+                                    artist_id: i.artist_id,
+                                    album_id: i.album_id,
                                     set_video_id: None,
                                     is_video: i.is_video,
                                     is_upload: i.is_upload,
                                     library: None,
+                                    #[cfg(feature = "windows-bridge")]
+                                    artist_runs: i
+                                        .artist_runs
+                                        .into_iter()
+                                        .map(|run| HomeArtistRunRecord {
+                                            text: run.text,
+                                            id: run.id,
+                                        })
+                                        .collect(),
                                 })
                                 .collect();
                             if !songs.is_empty() {
@@ -1213,14 +1448,7 @@ impl SideBCore {
                             let cards: Vec<BrowseCardRecord> = section
                                 .items
                                 .into_iter()
-                                .map(|i| BrowseCardRecord {
-                                    kind: i.kind.to_string(),
-                                    id: i.id,
-                                    title: i.title,
-                                    subtitle: i.subtitle,
-                                    thumbnail: i.thumbnail,
-                                    duration: i.duration,
-                                })
+                                .map(BrowseCardRecord::from)
                                 .collect();
                             if !cards.is_empty() {
                                 return Ok(cards);
@@ -1232,7 +1460,6 @@ impl SideBCore {
         }
         Ok(vec![])
     }
-
 
     /// Search songs, returning a typed list of SongItemRecord.
     pub async fn search_songs(
@@ -1247,7 +1474,11 @@ impl SideBCore {
                 message: "Metadata client missing".into(),
             })?;
         let results = self.it.search_songs(client, &query, record_history).await?;
-        Ok(results.items.into_iter().map(SongItemRecord::from).collect())
+        Ok(results
+            .items
+            .into_iter()
+            .map(SongItemRecord::from)
+            .collect())
     }
 
     /// Search songs, returning a JSON array of SongItem (legacy/compat).
@@ -1283,14 +1514,7 @@ impl SideBCore {
             top: results
                 .top
                 .into_iter()
-                .map(|i| BrowseCardRecord {
-                    kind: i.kind.to_string(),
-                    id: i.id,
-                    title: i.title,
-                    subtitle: i.subtitle,
-                    thumbnail: i.thumbnail,
-                    duration: i.duration,
-                })
+                .map(BrowseCardRecord::from)
                 .collect(),
             songs: results
                 .songs
@@ -1299,52 +1523,40 @@ impl SideBCore {
                     video_id: i.id,
                     title: i.title,
                     artists: i.subtitle.unwrap_or_default(),
-                    album: None,
+                    album: i.album,
                     duration: i.duration,
                     thumbnail: i.thumbnail,
                     artist_id: i.artist_runs.first().and_then(|r| r.id.clone()),
-                    album_id: None,
+                    album_id: i.album_id,
                     set_video_id: None,
                     is_video: i.is_video,
                     is_upload: i.is_upload,
                     library: None,
+                    #[cfg(feature = "windows-bridge")]
+                    artist_runs: i
+                        .artist_runs
+                        .into_iter()
+                        .map(|run| HomeArtistRunRecord {
+                            text: run.text,
+                            id: run.id,
+                        })
+                        .collect(),
                 })
                 .collect(),
             albums: results
                 .albums
                 .into_iter()
-                .map(|i| BrowseCardRecord {
-                    kind: i.kind.to_string(),
-                    id: i.id,
-                    title: i.title,
-                    subtitle: i.subtitle,
-                    thumbnail: i.thumbnail,
-                    duration: i.duration,
-                })
+                .map(BrowseCardRecord::from)
                 .collect(),
             artists: results
                 .artists
                 .into_iter()
-                .map(|i| BrowseCardRecord {
-                    kind: i.kind.to_string(),
-                    id: i.id,
-                    title: i.title,
-                    subtitle: i.subtitle,
-                    thumbnail: i.thumbnail,
-                    duration: i.duration,
-                })
+                .map(BrowseCardRecord::from)
                 .collect(),
             playlists: results
                 .playlists
                 .into_iter()
-                .map(|i| BrowseCardRecord {
-                    kind: i.kind.to_string(),
-                    id: i.id,
-                    title: i.title,
-                    subtitle: i.subtitle,
-                    thumbnail: i.thumbnail,
-                    duration: i.duration,
-                })
+                .map(BrowseCardRecord::from)
                 .collect(),
         })
     }
@@ -1362,17 +1574,7 @@ impl SideBCore {
                 message: "Metadata client missing".into(),
             })?;
         let items = self.it.search_cards(client, &query, &category).await?;
-        Ok(items
-            .into_iter()
-            .map(|i| BrowseCardRecord {
-                kind: i.kind.to_string(),
-                id: i.id,
-                title: i.title,
-                subtitle: i.subtitle,
-                thumbnail: i.thumbnail,
-                duration: i.duration,
-            })
-            .collect())
+        Ok(items.into_iter().map(BrowseCardRecord::from).collect())
     }
 
     /// Full search across songs, albums, artists, playlists (legacy JSON).
@@ -1442,8 +1644,6 @@ impl SideBCore {
         serde_json::to_string(&continuation).map_err(Into::into)
     }
 
-
-
     /// History page.
     pub async fn get_history_json(&self) -> Result<String, SideBError> {
         let client = self
@@ -1500,7 +1700,8 @@ impl SideBCore {
                 .map(|d| d.as_secs() as i64)
                 .unwrap_or(0);
             const ON_REPEAT_WINDOW_SECS: i64 = 30 * 86400; // 30 days
-            self.db.record_play(&video_id, json, now, ON_REPEAT_WINDOW_SECS);
+            self.db
+                .record_play(&video_id, json, now, ON_REPEAT_WINDOW_SECS);
         }
 
         // 2. YouTube Music remote watch-history ping if authenticated
@@ -1516,9 +1717,7 @@ impl SideBCore {
                         .clients
                         .get(&tracking.ping.client)
                         .cloned()
-                        .unwrap_or_else(|| {
-                            self.clients.get(METADATA_CLIENT).cloned().unwrap()
-                        });
+                        .unwrap_or_else(|| self.clients.get(METADATA_CLIENT).cloned().unwrap());
                     let _ = self
                         .it
                         .register_playback(
@@ -1544,12 +1743,7 @@ impl SideBCore {
         let disabled = HashSet::new();
         let playback = self
             .orchestrator
-            .resolve(
-                &video_id,
-                is_upload,
-                AudioQuality::High,
-                &disabled,
-            )
+            .resolve(&video_id, is_upload, AudioQuality::High, &disabled)
             .await?;
 
         // Cache the watch-history tracking info for record_playback
@@ -1720,7 +1914,13 @@ impl SideBCore {
         thumbnail: Option<String>,
     ) -> Result<(), SideBError> {
         self.db
-            .pin_item(&id, &kind, &title, subtitle.as_deref(), thumbnail.as_deref())
+            .pin_item(
+                &id,
+                &kind,
+                &title,
+                subtitle.as_deref(),
+                thumbnail.as_deref(),
+            )
             .map_err(|e| SideBError::DbError {
                 message: e.to_string(),
             })
@@ -1750,6 +1950,20 @@ impl SideBCore {
                 subtitle: p.subtitle,
                 thumbnail: p.thumbnail,
                 duration: None,
+                #[cfg(feature = "windows-bridge")]
+                artists: None,
+                #[cfg(feature = "windows-bridge")]
+                artist_id: None,
+                #[cfg(feature = "windows-bridge")]
+                album: None,
+                #[cfg(feature = "windows-bridge")]
+                album_id: None,
+                #[cfg(feature = "windows-bridge")]
+                is_video: false,
+                #[cfg(feature = "windows-bridge")]
+                explicit: false,
+                #[cfg(feature = "windows-bridge")]
+                artist_runs: Vec::new(),
             })
             .collect()
     }
@@ -1761,14 +1975,46 @@ fn parse_song_record(json: &str) -> Option<SongItemRecord> {
     }
     let val: serde_json::Value = serde_json::from_str(json).ok()?;
     let video_id = val.get("video_id")?.as_str()?.to_string();
-    let title = val.get("title").and_then(|v| v.as_str()).unwrap_or_default().to_string();
-    let artists = val.get("artists").and_then(|v| v.as_str()).unwrap_or_default().to_string();
-    let artist_id = val.get("artist_id").and_then(|v| v.as_str()).filter(|s| !s.is_empty()).map(String::from);
-    let album = val.get("album").and_then(|v| v.as_str()).filter(|s| !s.is_empty()).map(String::from);
-    let album_id = val.get("album_id").and_then(|v| v.as_str()).filter(|s| !s.is_empty()).map(String::from);
-    let duration = val.get("duration").and_then(|v| v.as_str()).filter(|s| !s.is_empty()).map(String::from);
-    let thumbnail = val.get("thumbnail").and_then(|v| v.as_str()).filter(|s| !s.is_empty()).map(String::from);
-    let set_video_id = val.get("set_video_id").and_then(|v| v.as_str()).filter(|s| !s.is_empty()).map(String::from);
+    let title = val
+        .get("title")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default()
+        .to_string();
+    let artists = val
+        .get("artists")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default()
+        .to_string();
+    let artist_id = val
+        .get("artist_id")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .map(String::from);
+    let album = val
+        .get("album")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .map(String::from);
+    let album_id = val
+        .get("album_id")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .map(String::from);
+    let duration = val
+        .get("duration")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .map(String::from);
+    let thumbnail = val
+        .get("thumbnail")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .map(String::from);
+    let set_video_id = val
+        .get("set_video_id")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .map(String::from);
     Some(SongItemRecord {
         video_id,
         title,
@@ -1782,6 +2028,8 @@ fn parse_song_record(json: &str) -> Option<SongItemRecord> {
         is_video: false,
         is_upload: false,
         library: None,
+        #[cfg(feature = "windows-bridge")]
+        artist_runs: Vec::new(),
     })
 }
 
@@ -1821,6 +2069,68 @@ fn format_epoch_day(played_at: i64, now: i64) -> String {
     }
 }
 
+impl SideBCore {
+    /// Construct the Windows core with session credentials managed by the host's OS vault.
+    /// This path neither restores a cookie from SQLite nor persists cookies passed to `set_cookie`.
+    /// It is intentionally outside the UniFFI export; Apple keeps using `new`.
+    pub fn new_windows(data_dir: String) -> Result<Arc<Self>, SideBError> {
+        Self::build(data_dir, false)
+    }
+
+    /// Install or remove a session cookie in memory only.
+    ///
+    /// The caller is responsible for securely storing the credential and observing rotations.
+    pub fn set_cookie_memory(&self, cookie: Option<String>) {
+        self.it.set_cookie(cookie);
+    }
+
+    /// Validate the active session against YouTube and return only public account metadata.
+    pub async fn validate_session(&self) -> Result<AccountInfoRecord, SideBError> {
+        if !self.is_logged_in() {
+            return Err(SideBError::NetworkError {
+                message: "No authenticated session is installed".into(),
+            });
+        }
+        self.get_account_info().await
+    }
+
+    /// Wait for an InnerTube response to rotate the cookie jar, then return the current jar to
+    /// the trusted Rust host adapter so it can update its OS credential store. Never expose this
+    /// method through Tauri commands or frontend events.
+    pub async fn wait_for_cookie_rotation(&self) -> Option<String> {
+        let changed = self.it.cookie_changed();
+        changed.notified().await;
+        self.it.cookie()
+    }
+}
+
+// UniFFI's `export` macro expands method wrappers before Rust applies method-level `cfg`s. Keep
+// the feature gate on the entire extension impl so default/macOS builds never generate a wrapper
+// for a method that was compiled out.
+#[cfg(feature = "windows-bridge")]
+#[uniffi::export(async_runtime = "tokio")]
+impl SideBCore {
+    /// Search music videos for the Windows bridge. The mixed search owns history recording;
+    /// this filtered request is anonymous and respects the core's `hide_videos` setting.
+    pub async fn search_videos(
+        &self,
+        query: String,
+    ) -> Result<Vec<SongItemRecord>, SideBError> {
+        let client = self
+            .clients
+            .get(METADATA_CLIENT)
+            .ok_or_else(|| SideBError::Other {
+                message: "Metadata client missing".into(),
+            })?;
+        let results = self.it.search_videos(client, &query).await?;
+        Ok(results
+            .items
+            .into_iter()
+            .map(SongItemRecord::from)
+            .collect())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1838,5 +2148,124 @@ mod tests {
         assert_eq!(format_epoch_day(now, now), "Hoy");
         assert_eq!(format_epoch_day(now - 86400, now), "Ayer");
         assert_eq!(format_epoch_day(now - 2 * 86400, now), "Jueves");
+    }
+
+    #[cfg(feature = "windows-bridge")]
+    #[test]
+    fn windows_song_record_keeps_album_and_linked_artist_runs() {
+        let item = innertube::SongItem {
+            video_id: "song-1".into(),
+            title: "Track".into(),
+            artists: "Artist A & Artist B".into(),
+            album: Some("Release".into()),
+            album_id: Some("MPRErelease".into()),
+            artist_runs: vec![
+                innertube::ArtistRun {
+                    text: "Artist A".into(),
+                    id: Some("UCa".into()),
+                },
+                innertube::ArtistRun {
+                    text: "Artist B".into(),
+                    id: Some("UCb".into()),
+                },
+            ],
+            ..Default::default()
+        };
+        let record = SongItemRecord::from(item);
+        assert_eq!(record.album.as_deref(), Some("Release"));
+        assert_eq!(record.album_id.as_deref(), Some("MPRErelease"));
+        assert_eq!(record.artist_runs.len(), 2);
+        assert_eq!(record.artist_runs[1].text, "Artist B");
+        assert_eq!(record.artist_runs[1].id.as_deref(), Some("UCb"));
+    }
+
+    #[cfg(feature = "windows-bridge")]
+    #[test]
+    fn windows_browse_card_keeps_linked_artist_and_album_metadata() {
+        let card = innertube::BrowseItem {
+            kind: "song",
+            id: "song-2".into(),
+            title: "Track".into(),
+            subtitle: Some("Artist ? Album".into()),
+            thumbnail: None,
+            duration: None,
+            artist_runs: vec![innertube::ArtistRun {
+                text: "Artist".into(),
+                id: Some("UCartist".into()),
+            }],
+            play_count: None,
+            is_video: true,
+            is_upload: false,
+            explicit: true,
+            artists: Some("Artist".into()),
+            artist_id: Some("UCartist".into()),
+            album: Some("Album".into()),
+            album_id: Some("MPREalbum".into()),
+        };
+        let record = BrowseCardRecord::from(card);
+        assert_eq!(record.album.as_deref(), Some("Album"));
+        assert_eq!(record.album_id.as_deref(), Some("MPREalbum"));
+        assert!(record.is_video);
+        assert!(record.explicit);
+        assert_eq!(record.artist_runs.len(), 1);
+        assert_eq!(record.artist_runs[0].id.as_deref(), Some("UCartist"));
+    }
+
+    #[test]
+    fn external_session_constructor_does_not_restore_or_persist_cookie() {
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let data_dir = std::env::temp_dir().join(format!(
+            "sideb-core-external-session-{}-{unique}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&data_dir).unwrap();
+        let db_path = data_dir.join("sideb.db");
+        let db = db::Db::open(&db_path).unwrap();
+        db.set_setting("session_cookie", "SAPISID=legacy-fixture-cookie");
+        drop(db);
+
+        let core = SideBCore::new_windows(data_dir.to_string_lossy().into_owned()).unwrap();
+        assert!(!core.is_logged_in());
+        assert_eq!(core.get_cookie(), None);
+        assert_eq!(core.db.get_setting("session_cookie"), None);
+
+        core.set_cookie_memory(Some("SAPISID=memory-fixture-cookie".into()));
+        assert!(core.is_logged_in());
+        assert_eq!(core.db.get_setting("session_cookie"), None);
+
+        core.set_cookie_memory(None);
+        assert!(!core.is_logged_in());
+        assert_eq!(core.db.get_setting("session_cookie"), None);
+        assert!(core
+            .db
+            .list_accounts()
+            .iter()
+            .all(|account| account.session_cookie.is_empty()));
+        drop(core);
+        let _ = std::fs::remove_dir_all(data_dir);
+    }
+
+    #[test]
+    fn legacy_constructor_still_persists_cookie_for_apple() {
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let data_dir = std::env::temp_dir().join(format!(
+            "sideb-core-legacy-session-{}-{unique}",
+            std::process::id()
+        ));
+        let core = SideBCore::new(data_dir.to_string_lossy().into_owned()).unwrap();
+
+        core.set_cookie(Some("SAPISID=apple-fixture-cookie".into()));
+        assert_eq!(
+            core.db.get_setting("session_cookie").as_deref(),
+            Some("SAPISID=apple-fixture-cookie")
+        );
+        drop(core);
+        let _ = std::fs::remove_dir_all(data_dir);
     }
 }

@@ -1,0 +1,47 @@
+:root {
+  color-scheme: dark;
+  --sideb-background: #1b1b1e;
+  --sideb-sidebar: #24242a;
+  --sideb-accent: #a33d45;
+  --sideb-highlight: #d06c70;
+  --sideb-surface: rgb(255 255 255 / 5%);
+  --sideb-surface-hover: rgb(255 255 255 / 8%);
+  --sideb-surface-border: rgb(255 255 255 / 8%);
+  --sideb-acrylic-fallback: #353538;
+  --sideb-acrylic-surface: rgb(43 43 49 / 78%);
+  --sideb-acrylic-blur: blur(20px) saturate(1.4);
+  --sideb-acrylic-border: rgb(255 255 255 / 20%);
+
+  --home-header-inset-inline: 28px;
+  --home-header-inset-block-start: 24px;
+  --home-header-inset-block-end: 12px;
+  --home-chip-gap: 8px;
+  --home-chip-padding-inline: 14px;
+  --home-chip-padding-block: 7px;
+  --home-chip-band-height: 42px;
+  --home-chip-band-margin-block-end: 4px;
+  --home-feed-inset-block-start: 10px;
+  --home-feed-inset-block-end: 120px;
+  --home-shelf-header-inset-inline: 28px;
+  --home-shelf-header-height: 46px;
+  --home-shelf-inset-inline: 28px;
+  --home-shelf-column-gap: 16px;
+  --home-card-artwork-size: 160px;
+  --home-card-artwork-size-narrow: 140px;
+  --home-card-height: 254px;
+  --home-card-artwork-title-gap: 11px;
+  --home-card-artwork-radius: 12px;
+  --home-compact-shelf-height: 230px;
+  --home-compact-card-width: 330px;
+  --home-compact-card-width-narrow: 286px;
+  --home-compact-card-height: 56px;
+  --home-compact-artwork-size: 44px;
+  --home-compact-artwork-inset: 6px;
+  --home-compact-artwork-radius: 8px;
+}
+
+@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  :root {
+    --sideb-acrylic-surface: rgb(43 43 49 / 62%);
+  }
+}

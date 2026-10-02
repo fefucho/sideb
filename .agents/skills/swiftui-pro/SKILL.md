@@ -5,7 +5,7 @@ description: Diseñar, implementar o revisar la interfaz nativa de Side B en mac
 
 # SwiftUI y AppKit para Side B (2026)
 
-Trabajar sobre `SIDE B/apple/` y aplicar `.agents/rules/20-frontend.md`. Consultar [fuentes Apple y compatibilidad](references/apple-2026.md) al decidir sobre APIs, diseño o rendimiento de macOS 26/27.
+Trabajar sobre `apple/` y aplicar `.agents/rules/20-frontend.md`. Consultar [fuentes Apple y compatibilidad](references/apple-2026.md) al decidir sobre APIs, diseño o rendimiento de macOS 26/27.
 
 ## Decisiones que importan
 

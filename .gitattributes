@@ -1,0 +1,18 @@
+# Keep source diffs stable across Windows/macOS checkouts.
+* text=auto
+*.md text eol=lf
+*.rs text eol=lf
+*.ts text eol=lf
+*.js text eol=lf
+*.mjs text eol=lf
+*.svelte text eol=lf
+*.json text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.toml text eol=lf
+*.sh text eol=lf
+*.ps1 text eol=lf
+*.png binary
+*.jpg binary
+*.ico binary
+*.icns binary

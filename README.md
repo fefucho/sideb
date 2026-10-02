@@ -1,6 +1,15 @@
 # Side B
 
-> Cliente nativo de YouTube Music para macOS diseñado en SwiftUI, AppKit y Rust.
+> Cliente de YouTube Music: macOS nativo con SwiftUI/AppKit y Windows con Tauri/Svelte, sobre un core Rust compartido.
+
+## Desarrollo por plataforma
+
+- [Windows: requisitos, comandos y verificación](windows/README.md).
+- [Instrucciones comunes para agentes](AGENTS.md), con ámbitos independientes para Windows, macOS y el core.
+- [Índice de documentación](documentation/README.md).
+- [Compartir el código entre ambas PCs](documentation/SINCRONIZAR_PCS.md): integración basada en `main` y sincronización por Git.
+
+Las instrucciones de instalación y desarrollo macOS se mantienen debajo.
 
 ## 🚀 Instalación en macOS
 
@@ -38,9 +47,9 @@ Al descargar la app desde un navegador (Safari o Chrome), macOS le asigna autom�
 
 ## ✨ Características
 - **Audio de alto rendimiento**: Integración nativa con `AVPlayer` y motor de stream optimizado en Rust.
-- **Diseño macOS 26/27**: Estilo Liquid Glass, tipografía SF Pro adaptativa y paleta refinada (ver [`UI_ARCHITECTURE.md`](UI_ARCHITECTURE.md)).
+- **Diseño macOS 26/27**: Estilo Liquid Glass, tipografía SF Pro adaptativa y paleta refinada (ver [`UI_ARCHITECTURE.md`](documentation/UI_ARCHITECTURE.md)).
 - **Colección y reproducción**: Cola dinámica, radios continuas, historial y sincronización de biblioteca.
-- **Auto-actualizaciones**: Integración directa con GitHub Releases para recibir nuevas versiones dentro de la app con un solo clic. Consulta la [**Guía de Actualizaciones y Lanzamiento**](GUIA_DE_ACTUALIZACION.md).
+- **Auto-actualizaciones**: Integración directa con GitHub Releases para recibir nuevas versiones dentro de la app con un solo clic. Consulta la [**Guía de Actualizaciones y Lanzamiento**](documentation/GUIA_DE_ACTUALIZACION.md).
 
 ## 💻 Requisitos
 - macOS 15.0 o superior (compatible con Apple Silicon e Intel).
@@ -57,8 +66,8 @@ swift test --package-path apple
 ```
 
 ## 📚 Documentación del Proyecto
-- [**Estado del Proyecto**](PROJECT_STATE.md): Resumen de arquitectura, hitos y componentes vigentes.
-- [**Planes y Epics**](plans/README.md): Registro oficial de epics estructurales y roadmaps de producto.
+- [**Estado del Proyecto**](documentation/PROJECT_STATE.md): Resumen de arquitectura, hitos y componentes vigentes.
+- [**Planes y Epics**](documentation/plans/README.md): Registro histórico de epics y roadmaps de producto.
 - [**Registro de Fixes**](documentation/FIXES_LOG.md): Bitácora técnica continua de correcciones y mejoras.
 - [**Auditorías y Reportes**](documentation/audits/README.md): Archivo histórico de optimizaciones de scroll y diagnósticos forenses.
 

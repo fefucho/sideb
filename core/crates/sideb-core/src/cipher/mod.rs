@@ -234,7 +234,107 @@ fn parse_cipher(cipher: &str) -> Option<(String, String, String)> {
 
 #[cfg(test)]
 mod tests {
-    use super::parse_cipher;
+    use super::{parse_cipher, CipherDeobfuscator, PlayerConfigStore};
+    use crate::CipherJsRuntime;
+    use std::sync::Arc;
+
+    struct FixtureRuntime {
+        signature: Option<String>,
+        n: Option<String>,
+    }
+
+    impl CipherJsRuntime for FixtureRuntime {
+        fn load(&self, _script: String) -> bool {
+            panic!("the fixture represents an already loaded player runtime");
+        }
+
+        fn evaluate(&self, expression: String) -> Option<String> {
+            if expression.starts_with("window._cipherSigFunc(") {
+                self.signature.clone()
+            } else if expression.starts_with("window._nTransformFunc(") {
+                self.n.clone()
+            } else {
+                panic!("unexpected runtime expression: {expression}");
+            }
+        }
+    }
+
+    async fn cached_cipher(runtime: Option<Arc<dyn CipherJsRuntime>>) -> CipherDeobfuscator {
+        // Mark the analysis/runtime as cached so these tests exercise signing and fallback
+        // without downloading player.js or consulting the config registry.
+        let path =
+            std::env::temp_dir().join(format!("sideb-cipher-fixture-{}", std::process::id()));
+        let config = Arc::new(PlayerConfigStore::new(&path));
+        let epoch = config.config_epoch();
+        let cipher = CipherDeobfuscator::new(&path, config);
+        if let Some(runtime) = runtime {
+            cipher.set_runtime(runtime);
+        }
+        {
+            let mut inner = cipher.inner.lock().await;
+            inner.analyzed = true;
+            inner.built_epoch = epoch;
+            inner.runtime_ready = true;
+        }
+        cipher
+    }
+
+    #[tokio::test]
+    async fn native_runtime_signs_streams_and_transforms_n_without_losing_query_parameters() {
+        let cipher = cached_cipher(Some(Arc::new(FixtureRuntime {
+            signature: Some("signed/with&symbols".into()),
+            n: Some("unthrottled".into()),
+        })))
+        .await;
+        let signed = cipher.deobfuscate_stream_url(
+            "s=original&sp=sig&url=https%3A%2F%2Fx.googlevideo.com%2Fv%3Fn%3Doriginal%26itag%3D140",
+            "fixture",
+        ).await.unwrap();
+        let transformed = cipher.transform_n_param_in_url(&signed).await;
+        let url = reqwest::Url::parse(&transformed).unwrap();
+        let query: std::collections::HashMap<_, _> = url.query_pairs().collect();
+        assert_eq!(
+            query.get("sig").map(|value| value.as_ref()),
+            Some("signed/with&symbols")
+        );
+        assert_eq!(
+            query.get("n").map(|value| value.as_ref()),
+            Some("unthrottled")
+        );
+        assert_eq!(query.get("itag").map(|value| value.as_ref()), Some("140"));
+    }
+
+    #[tokio::test]
+    async fn hosts_without_a_runtime_keep_the_direct_stream_fallback() {
+        let cipher = cached_cipher(None).await;
+        assert!(cipher
+            .deobfuscate_stream_url(
+                "s=original&url=https%3A%2F%2Fx.googlevideo.com%2Fv",
+                "fixture",
+            )
+            .await
+            .is_none());
+        let direct = "https://x.googlevideo.com/v?n=original&itag=140";
+        assert_eq!(cipher.transform_n_param_in_url(direct).await, direct);
+    }
+
+    #[tokio::test]
+    async fn failed_native_evaluation_keeps_the_direct_stream_fallback() {
+        let cipher = cached_cipher(Some(Arc::new(FixtureRuntime {
+            signature: None,
+            n: None,
+        })))
+        .await;
+        assert!(cipher
+            .deobfuscate_stream_url(
+                "s=original&url=https%3A%2F%2Fx.googlevideo.com%2Fv",
+                "fixture",
+            )
+            .await
+            .is_none());
+        let direct = "https://x.googlevideo.com/v?n=original&itag=140";
+        assert_eq!(cipher.transform_n_param_in_url(direct).await, direct);
+    }
 
     #[test]
     fn parses_escaped_signature_and_url() {

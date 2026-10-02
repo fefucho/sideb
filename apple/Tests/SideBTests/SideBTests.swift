@@ -4,9 +4,11 @@ import AVFoundation
 import SideBCore
 @testable import SideB
 
-@Test func testStreamResolutionAndPlayer() async throws {
+@Test(.enabled(if: ProcessInfo.processInfo.environment["SIDEB_LIVE_TESTS"] == "1"))
+func testStreamResolutionAndPlayer() async throws {
     print("--- INICIANDO TEST DE STREAMING ---")
     let core = try SideBCore(dataDir: NSTemporaryDirectory())
+    core.setCipherJsRuntime(runtime: NativeCipherJsRuntime())
     print("SideBCore creado con éxito")
     
     do {
@@ -17,7 +19,7 @@ import SideBCore
         print("  Itag: \(playback.itag)")
         print("  Duration: \(playback.duration ?? "nil")")
         print("  Loudness: \(playback.loudnessDb ?? 0)")
-        print("  URL: \(playback.streamUrl)")
+        print("  URL de stream disponible: \(!playback.streamUrl.isEmpty)")
         
         guard let url = URL(string: playback.streamUrl) else {
             Issue.record("URL inválida")
@@ -30,6 +32,7 @@ import SideBCore
         let item = AVPlayerItem(asset: asset)
         let player = AVPlayer(playerItem: item)
         player.play()
+        defer { player.pause() }
         
         // Esperar 4 segundos observando el status
         for second in 1...4 {
@@ -47,7 +50,8 @@ import SideBCore
     }
 }
 
-@Test func testGetHomeSections() async throws {
+@Test(.enabled(if: ProcessInfo.processInfo.environment["SIDEB_LIVE_TESTS"] == "1"))
+func testGetHomeSections() async throws {
     print("--- TEST DE HOME SECTIONS ---")
     let core = try SideBCore(dataDir: NSTemporaryDirectory())
     let sections = try await core.getHomeSections()
@@ -60,7 +64,10 @@ import SideBCore
 
 @Test func testCoreSessionCookieState() throws {
     print("--- TEST DE ESTADO DE SESIÓN ---")
-    let core = try SideBCore(dataDir: NSTemporaryDirectory())
+    let directory = URL(fileURLWithPath: NSTemporaryDirectory())
+        .appendingPathComponent("sideb-session-contract-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let core = try SideBCore(dataDir: directory.path)
     
     // Inicialmente debe estar deslogueado
     core.setCookie(cookie: nil)
@@ -79,7 +86,8 @@ import SideBCore
     #expect(core.getCookie() == nil)
 }
 
-@Test func testGetPlaylistAndLibraryLoggedOut() async throws {
+@Test(.enabled(if: ProcessInfo.processInfo.environment["SIDEB_LIVE_TESTS"] == "1"))
+func testGetPlaylistAndLibraryLoggedOut() async throws {
     print("--- TEST DE BIBLIOTECA DESLOGUEADO ---")
     let core = try SideBCore(dataDir: NSTemporaryDirectory())
     core.setCookie(cookie: nil)
@@ -95,7 +103,8 @@ import SideBCore
     }
 }
 
-@Test func testLiveAccountAndLibraryWithKeychainCookie() async throws {
+@Test(.enabled(if: ProcessInfo.processInfo.environment["SIDEB_LIVE_ACCOUNT"] == "1"))
+func testLiveAccountAndLibraryWithKeychainCookie() async throws {
     print("--- TEST DE DIAGNÓSTICO EN VIVO CON COOKIE REAL ---")
     let servicePrefix = "com.fefucho.SideB.auth"
     let cookieKey = "sessionCookie"
@@ -207,7 +216,8 @@ import SideBCore
     }
 }
 
-@Test func testLiveRadioFetchFromCore() async throws {
+@Test(.enabled(if: ProcessInfo.processInfo.environment["SIDEB_LIVE_TESTS"] == "1"))
+func testLiveRadioFetchFromCore() async throws {
     print("--- TEST DE RADIO DINÁMICA CON INNERTUBE ---")
     let core = try SideBCore(dataDir: NSTemporaryDirectory())
     
@@ -220,7 +230,8 @@ import SideBCore
     }
 }
 
-@Test func testLiveRelatedTracksAndArtistsFromCore() async throws {
+@Test(.enabled(if: ProcessInfo.processInfo.environment["SIDEB_LIVE_TESTS"] == "1"))
+func testLiveRelatedTracksAndArtistsFromCore() async throws {
     print("--- TEST DE CANCIONES PARECIDAS (RELATED) CON INNERTUBE ---")
     let core = try SideBCore(dataDir: NSTemporaryDirectory())
     
@@ -240,9 +251,11 @@ import SideBCore
     }
 }
 
-@Test func testSearchAllAndPlayback() async throws {
+@Test(.enabled(if: ProcessInfo.processInfo.environment["SIDEB_LIVE_TESTS"] == "1"))
+func testSearchAllAndPlayback() async throws {
     print("--- TEST DE SEARCH ALL Y REPRODUCCIÓN ---")
     let core = try SideBCore(dataDir: NSTemporaryDirectory())
+    core.setCipherJsRuntime(runtime: NativeCipherJsRuntime())
     let results = try await core.searchAll(query: "kanye west", recordHistory: false)
     print("✅ SearchAll Kanye West completado:")
     print("   - Top: \(results.top.count)")
@@ -260,7 +273,7 @@ import SideBCore
     if let firstSong = results.songs.first {
         print("Probando resolveStream para canción: \(firstSong.videoId)...")
         let stream = try await core.resolveStream(videoId: firstSong.videoId, isUpload: false)
-        print("✅ Stream resuelto: itag=\(stream.itag) dur=\(stream.duration ?? "nil") url=\(stream.streamUrl.prefix(60))...")
+        print("✅ Stream resuelto: itag=\(stream.itag) dur=\(stream.duration ?? "nil")")
         
         print("Probando getRadio para canción: \(firstSong.videoId)...")
         let radio = try await core.getRadio(videoId: firstSong.videoId)
@@ -285,4 +298,3 @@ import SideBCore
     router.goBack()
     #expect(router.currentPage == .home)
 }
-

@@ -2,7 +2,7 @@
 
 ## Compatibilidad del proyecto
 
-- `SIDE B/apple/Package.swift` declara macOS 15 como mínimo. El host consultado tiene macOS 27, Xcode 27 y Swift 6.4. Confirmar estas versiones de nuevo cuando cambie el entorno.
+- `apple/Package.swift` declara macOS 15 como mínimo. Confirmar la versión de Xcode y Swift del host antes de usar APIs nuevas.
 - Liquid Glass se introdujo en macOS 26 y recibe refinamientos en macOS 27. Muchos cambios visuales del sistema se adoptan al ejecutar la app en 27; no requieren replicar el aspecto con controles personalizados.
 - `AsyncImage` tiene caché HTTP por defecto en macOS 27. Esa mejora no cubre automáticamente macOS 15/26 ni todas las necesidades de tamaño, persistencia o cancelación de `ImageCache`.
 - SwiftUI de 2026 mejora la inicialización de `@State` y el flujo de datos; algunas mejoras se retroportan. No atribuir una caída de FPS a un wrapper o contenedor sin registrar sus actualizaciones en Instruments.

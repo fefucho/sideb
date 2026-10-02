@@ -1,0 +1,44 @@
+name: macOS CI
+
+on:
+  push:
+    paths:
+      - 'core/**'
+      - 'apple/**'
+      - 'Scripts/**'
+      - '.github/workflows/macos.yml'
+  pull_request:
+    paths:
+      - 'core/**'
+      - 'apple/**'
+      - 'Scripts/**'
+      - '.github/workflows/macos.yml'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    # The current macOS app already uses macOS 27 APIs. This arm64 image supplies
+    # that SDK; deployment remains macOS 15 as declared by Package.swift.
+    runs-on: xcode-27
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/
+            ~/.cargo/git/
+            core/target/
+          key: macos-core-${{ hashFiles('core/Cargo.lock') }}
+      - name: Test default shared core
+        run: cargo test --locked --manifest-path core/Cargo.toml -p innertube -p sideb-core
+      - name: Rebuild XCFramework and Swift bindings from this revision
+        working-directory: apple
+        run: bash build_xcframework.sh
+      - name: Test and compile macOS app
+        run: swift test --package-path apple
