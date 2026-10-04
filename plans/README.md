@@ -4,6 +4,6 @@ Herramientas compartidas o fixes para ambas plataformas. [Formato](../README.md#
 
 | Plan | Estado |
 |---|---|
-| [Release 1.1.5](RELEASE-1.1.5.md) | Preparación y publicación estable macOS |
+| [Release 1.1.5](RELEASE-1.1.5.md) | Publicada estable/Latest; build-0032 y hash remoto verificados |
 
 Los planes previos reunidos en `temp/documentation/plans/` son material local de importación, no compromisos vigentes. Trasladar sólo lo que se retome y verificarlo contra el código.
