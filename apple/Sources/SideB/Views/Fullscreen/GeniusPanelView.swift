@@ -405,6 +405,7 @@ struct GeniusLyricsTextView: NSViewRepresentable {
         scrollView.borderType = .noBorder
         scrollView.hasVerticalScroller = true
         scrollView.hasHorizontalScroller = false
+        scrollView.horizontalScroller = nil
         scrollView.autohidesScrollers = true
 
         let contentSize = scrollView.contentSize

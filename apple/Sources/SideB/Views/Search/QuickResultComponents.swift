@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 import SideBCore
 
 // MARK: - QuickResultCardRow
@@ -6,6 +7,11 @@ import SideBCore
 struct QuickResultCardRow: View {
     let card: BrowseCardRecord
     var isHero: Bool = false
+    var isActive: Bool = false
+    var isPlaying: Bool = false
+    var isLoading: Bool = false
+    var onPlay: (() -> Void)? = nil
+    var menuProvider: (() -> NSMenu?)? = nil
     let onSelect: () -> Void
     
     @State private var isHovered: Bool = false
@@ -15,29 +21,56 @@ struct QuickResultCardRow: View {
     }
     
     var body: some View {
-        Button(action: onSelect) {
-            HStack(spacing: 12) {
-                // Miniatura optimizada CDN (Google CDN 96px ~2KB)
-                if let thumb = card.thumbnail,
-                   let url = ImageURLHelper.optimizedThumbnailURL(from: thumb, targetPixelSize: isHero ? 120 : 96) {
-                    CachedAsyncImage(url: url, targetSize: CGSize(width: isHero ? 48 : 38, height: isHero ? 48 : 38)) { img in
-                        img
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                    } placeholder: {
-                        placeholderIcon
-                    }
-                    .frame(width: isHero ? 48 : 38, height: isHero ? 48 : 38)
-                    .clipShape(isArtist ? AnyShape(Circle()) : AnyShape(RoundedRectangle(cornerRadius: 6, style: .continuous)))
-                    .overlay(
-                        isArtist
-                            ? AnyView(Circle().stroke(Color.white.opacity(0.12), lineWidth: 0.5))
-                            : AnyView(RoundedRectangle(cornerRadius: 6, style: .continuous).stroke(Color.white.opacity(0.12), lineWidth: 0.5))
-                    )
-                } else {
+        let isCollection = ["album", "playlist"].contains(card.kind.lowercased())
+        let activationLabel = isArtist || isCollection ? "Abrir \(card.title)" : "Reproducir \(card.title)"
+        let artwork = Group {
+            if let thumb = card.thumbnail,
+               let url = ImageURLHelper.optimizedThumbnailURL(from: thumb, targetPixelSize: isHero ? 120 : 96) {
+                CachedAsyncImage(url: url, targetSize: CGSize(width: isHero ? 48 : 38, height: isHero ? 48 : 38)) { image in
+                    image.resizable().aspectRatio(contentMode: .fill)
+                } placeholder: {
                     placeholderIcon
                 }
-                
+                .frame(width: isHero ? 48 : 38, height: isHero ? 48 : 38)
+                .clipShape(isArtist ? AnyShape(Circle()) : AnyShape(RoundedRectangle(cornerRadius: AppTheme.artworkThumbnailRadius, style: .continuous)))
+                .overlay(isArtist
+                    ? AnyView(Circle().stroke(Color.white.opacity(0.12), lineWidth: 0.5))
+                    : AnyView(RoundedRectangle(cornerRadius: AppTheme.artworkThumbnailRadius, style: .continuous)
+                        .stroke(Color.white.opacity(0.12), lineWidth: 0.5)))
+            } else {
+                placeholderIcon
+            }
+        }
+        HStack(spacing: 12) {
+            if isCollection, let onPlay {
+                MediaArtworkControls(
+                    isCollection: true,
+                    isActive: isActive,
+                    isPlaying: isPlaying,
+                    isLoading: isLoading,
+                    showsIndicator: isActive,
+                    accessibilityTitle: card.title,
+                    onOpen: onSelect,
+                    onPlay: onPlay,
+                    menuProvider: menuProvider
+                ) { artwork }
+                    .frame(width: isHero ? 48 : 38, height: isHero ? 48 : 38)
+            } else if let onPlay, !isArtist {
+                MediaArtworkControls(
+                    isCollection: false,
+                    accessibilityTitle: card.title,
+                    onOpen: onSelect,
+                    onPlay: onPlay,
+                    menuProvider: menuProvider
+                ) { artwork }
+                    .frame(width: isHero ? 48 : 38, height: isHero ? 48 : 38)
+            } else {
+                Button(action: onSelect) { artwork }
+                    .buttonStyle(.plain)
+                    .mediaCardFocusControl()
+            }
+
+            Button(action: onSelect) {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(card.title)
                         .font(.system(size: isHero ? 14 : 13, weight: isHero ? .semibold : .medium))
@@ -61,8 +94,14 @@ struct QuickResultCardRow: View {
                         }
                     }
                 }
-                
-                Spacer()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .mediaCardFocusControl()
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            Spacer()
                 
                 if isHero {
                     Text("Mejor resultado")
@@ -73,11 +112,13 @@ struct QuickResultCardRow: View {
                         .background(Color.white.opacity(0.10), in: Capsule())
                 }
                 
-                Image(systemName: isArtist || card.kind == "album" || card.kind == "playlist" ? "chevron.right" : "play.fill")
+            if isArtist || isCollection {
+                Image(systemName: "chevron.right")
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(isHovered ? Color.primary : Color.secondary.opacity(0.6))
                     .padding(.trailing, 4)
             }
+        }
             .padding(.horizontal, 10)
             .padding(.vertical, isHero ? 8 : 6)
             .background(
@@ -85,8 +126,8 @@ struct QuickResultCardRow: View {
                     .fill(isHovered ? Color.white.opacity(0.08) : Color.clear)
             )
             .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
+        .mediaCardActivation(label: activationLabel, action: onSelect)
+        .mediaCardSurface()
         .onHover { isHovered = $0 }
     }
     
@@ -108,7 +149,7 @@ struct QuickResultCardRow: View {
                     .font(.system(size: isHero ? 16 : 14))
                     .foregroundStyle(.secondary)
             } else {
-                RoundedRectangle(cornerRadius: 6, style: .continuous).fill(Color.white.opacity(0.06))
+                RoundedRectangle(cornerRadius: AppTheme.artworkThumbnailRadius, style: .continuous).fill(Color.white.opacity(0.06))
                 Image(systemName: card.kind == "album" ? "opticaldisc" : "music.note")
                     .font(.system(size: isHero ? 16 : 14))
                     .foregroundStyle(.secondary)
@@ -122,82 +163,90 @@ struct QuickResultCardRow: View {
 
 struct QuickResultSongRow: View {
     let song: SongItemRecord
+    var onArtist: (() -> Void)? = nil
+    var onAlbum: (() -> Void)? = nil
+    var menuProvider: (() -> NSMenu?)? = nil
     let onSelect: () -> Void
     
     @State private var isHovered: Bool = false
     
     var body: some View {
-        Button(action: onSelect) {
-            HStack(spacing: 12) {
-                // Miniatura 38x38
+        HStack(spacing: 12) {
+            MediaArtworkControls(
+                isCollection: false,
+                accessibilityTitle: song.title,
+                onOpen: onSelect,
+                onPlay: onSelect,
+                menuProvider: menuProvider
+            ) {
                 if let thumb = song.thumbnail,
                    let url = ImageURLHelper.optimizedThumbnailURL(from: thumb, targetPixelSize: 96) {
-                    CachedAsyncImage(url: url, targetSize: CGSize(width: 38, height: 38)) { img in
-                        img
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                    } placeholder: {
-                        RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .fill(Color.white.opacity(0.06))
-                            .overlay(Image(systemName: "music.note").foregroundStyle(.secondary))
-                    }
-                    .frame(width: 38, height: 38)
-                    .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .stroke(Color.white.opacity(0.12), lineWidth: 0.5)
-                    )
-                } else {
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .fill(Color.white.opacity(0.06))
+                    CachedAsyncImage(url: url, targetSize: CGSize(width: 38, height: 38)) { image in
+                        image.resizable().aspectRatio(contentMode: .fill)
+                    } placeholder: { quickSongPlaceholder }
                         .frame(width: 38, height: 38)
-                        .overlay(Image(systemName: "music.note").foregroundStyle(.secondary))
+                        .clipShape(RoundedRectangle(cornerRadius: AppTheme.artworkThumbnailRadius, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: AppTheme.artworkThumbnailRadius, style: .continuous)
+                            .stroke(Color.white.opacity(0.12), lineWidth: 0.5))
+                } else {
+                    quickSongPlaceholder
                 }
-                
-                VStack(alignment: .leading, spacing: 2.5) {
-                    Text(song.title)
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
-                    
-                    HStack(spacing: 4) {
-                        Text("Canción")
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundStyle(.secondary.opacity(0.8))
-                        
-                        Text("•")
-                            .font(.system(size: 10))
-                            .foregroundStyle(.tertiary)
-                        
-                        Text(song.artists)
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
+            }
+            .frame(width: 38, height: 38)
+
+            VStack(alignment: .leading, spacing: 2.5) {
+                Text(song.title)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                    .allowsHitTesting(false)
+
+                HStack(spacing: 4) {
+                    Text("Canción").font(.system(size: 11, weight: .medium)).foregroundStyle(.secondary.opacity(0.8))
+                        .allowsHitTesting(false)
+                    Text("•").font(.system(size: 10)).foregroundStyle(.tertiary).allowsHitTesting(false)
+                    if let onArtist {
+                        Button(action: onArtist) {
+                            Text(song.artists).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
+                        }
+                        .buttonStyle(.plain)
+                        .mediaCardFocusControl()
+                    } else {
+                        Text(song.artists).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
+                            .allowsHitTesting(false)
+                    }
+                    if let album = song.album, !album.isEmpty, let onAlbum {
+                        Text("•").font(.system(size: 10)).foregroundStyle(.tertiary)
+                        Button(action: onAlbum) {
+                            Text(album).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
+                        }
+                        .buttonStyle(.plain)
+                        .mediaCardFocusControl()
+                    } else if let album = song.album, !album.isEmpty {
+                        Text("•").font(.system(size: 10)).foregroundStyle(.tertiary).allowsHitTesting(false)
+                        Text(album).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1).allowsHitTesting(false)
                     }
                 }
-                
-                Spacer()
-                
                 if let duration = song.duration {
-                    Text(duration)
-                        .font(.system(size: 11, weight: .regular))
-                        .foregroundStyle(.tertiary)
+                    Text(duration).font(.system(size: 10)).foregroundStyle(.tertiary).allowsHitTesting(false)
                 }
-                
-                Image(systemName: "play.fill")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(isHovered ? Color.primary : Color.secondary.opacity(0.5))
-                    .padding(.trailing, 4)
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 5)
-            .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(isHovered ? Color.white.opacity(0.08) : Color.clear)
-            )
-            .contentShape(Rectangle())
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .buttonStyle(.plain)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
+        .background(RoundedRectangle(cornerRadius: 8, style: .continuous)
+            .fill(isHovered ? Color.white.opacity(0.08) : Color.clear))
+        .contentShape(Rectangle())
+        .mediaCardActivation(label: "Reproducir \(song.title)", action: onSelect)
+        .mediaCardSurface()
         .onHover { isHovered = $0 }
+    }
+
+    private var quickSongPlaceholder: some View {
+        RoundedRectangle(cornerRadius: AppTheme.artworkThumbnailRadius, style: .continuous)
+            .fill(Color.white.opacity(0.06))
+            .frame(width: 38, height: 38)
+            .overlay(Image(systemName: "music.note").foregroundStyle(.secondary))
     }
 }

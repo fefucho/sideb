@@ -1,78 +1,89 @@
 # Side B
 
-> Cliente de YouTube Music: macOS nativo con SwiftUI/AppKit y Windows con Tauri/Svelte, sobre un core Rust compartido.
+Dos apps, un core Rust y un `main`: Mac usa SwiftUI/AppKit y AVPlayer; Windows usa Svelte/TypeScript, Tauri y libmpv.
 
-## Desarrollo por plataforma
+Este README es la entrada para personas y agentes. Abrir como proyecto esta carpeta `SIDE B`, que contiene `.git`, y empezar leyendo este archivo y [AGENTS.md](AGENTS.md).
 
-- [Windows: requisitos, comandos y verificación](windows/README.md).
-- [Instrucciones comunes para agentes](AGENTS.md), con ámbitos independientes para Windows, macOS y el core.
-- [Índice de documentación](documentation/README.md).
-- [Compartir el código entre ambas PCs](documentation/SINCRONIZAR_PCS.md): integración basada en `main` y sincronización por Git.
+## Qué leer según la tarea
 
-Las instrucciones de instalación y desarrollo macOS se mantienen debajo.
+| Trabajo | Instrucciones | Registro y pendientes |
+|---|---|---|
+| Mac | [Apple AGENTS](apple/AGENTS.md) | [Fixes: tag Apple](FIXES.md), [planes Apple](apple/plans/README.md) |
+| Windows | [Windows AGENTS](windows/AGENTS.md) | [Fixes: tag Windows](FIXES.md), [planes Windows](windows/plans/README.md) |
+| Fix compartido / herramientas | [AGENTS general](AGENTS.md); [Core AGENTS](core/AGENTS.md) si cambia Rust | [Fixes: tag Compartido](FIXES.md), [planes generales](plans/README.md) |
+| Trasladar un arreglo | AGENTS del destino y fix del origen | [Paridad Mac ↔ Windows](PARIDAD.md) y su referencia |
+| Compilar Mac | [Skill Mac](.agents/skills/sideb-build-macos/SKILL.md) | Nueva versión en `builds/macos/` |
+| Compilar Windows | [Skill Windows](.agents/skills/sideb-build-windows/SKILL.md) | Nueva versión en `builds/windows/` |
+| Guardar / subir cambios | [Skill Git](.agents/skills/sideb-git/SKILL.md) | Diff, fixes, paridad y planes del trabajo |
 
-## 🚀 Instalación en macOS
+Antes de corregir algo, buscar su síntoma, componente y archivos en FIXES.md; leer los cambios anteriores relacionados y contrastarlos con el código/Git. Consultar también paridad y planes. Leer sólo las entradas/referencias relevantes, sin cargar todo el historial por rutina.
 
-### Opción 1: Instalación automática por Terminal (Recomendado)
-Para instalar o actualizar Side B en un solo paso sin lidiar con bloqueos de seguridad de macOS, ejecutá en tu Terminal:
+## Builds locales conservadas
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/fefucho/SIDE-B-CLIENT-NATIVE/main/install.sh | bash
+Desde la raíz, con Node.js 22.12 o superior:
+
+```sh
+node Scripts/build-version.mjs macos
+node Scripts/build-version.mjs windows
 ```
 
-Este comando descarga la última versión desde GitHub Releases, la instala en `/Applications/Side B.app` y remueve automáticamente los atributos de cuarentena.
+Configuración predeterminada: `release` en ambos sistemas. Usar `--configuration debug` para debug y `--open` cuando también se quiera abrir la app. Mac requiere Apple Silicon, Xcode y Rust; Windows requiere MSVC 2022, WebView2, Rust, pnpm y PowerShell. Las skills detallan los requisitos.
 
----
+El comando verifica, compila y crea `builds/<plataforma>/build-0001/`, luego `build-0002/`, etc. Cada carpeta conserva la aplicación, `BUILD.json` con commit/estado local/configuración/comandos/hashes y `build.log`. Sólo `status: compiled` indica comprobaciones y empaquetado terminados; un fallo conserva el diagnóstico y consume su número.
 
-### Opción 2: Descarga manual (.zip) desde GitHub Releases
-Podés descargar el archivo `SideB-macOS.zip` directamente desde [**Releases**](https://github.com/fefucho/SIDE-B-CLIENT-NATIVE/releases/latest).
+El número local no cambia `version.env`. Las cachés se reutilizan; los resultados numerados se conservan. Borrar versiones antiguas sólo cuando se solicite y conservar `.next-number`. `.lock` protege la compilación activa: si queda tras una interrupción abrupta, comprobar que no haya compilación antes de quitarlo.
 
-#### ⚠️ Importante sobre la primera apertura (Gatekeeper):
-Al descargar la app desde un navegador (Safari o Chrome), macOS le asigna automáticamente un atributo de **cuarentena** (`com.apple.quarantine`). Al abrirla por primera vez, macOS mostrará un aviso diciendo que *"Apple no puede comprobar si contiene software malicioso"* o que *"la aplicación está dañada"*.
+`Scripts/compile_and_run.sh` es la entrada compatible para compilar y abrir Mac y usa el mismo flujo versionado. Los scripts internos/de release no son rutas alternativas para las builds locales. No ejecutar `release_update.sh` para guardar código: publica una release.
 
-> **¿Por qué pasa esto?**  
-> Apple exige pagar una suscripción de desarrollador de \$99 USD anuales para notarizar y validar apps con sus servidores. Side B es un proyecto comunitario, libre y gratuito, por lo que no cuenta con esa firma comercial.
+## Registrar un fix
 
-#### 💡 ¿Cómo abrirla sin dar vueltas?
-1. Descomprimí el ZIP y arrastrá **`Side B.app`** a tu carpeta de **Aplicaciones** (`/Applications`).
-2. Abrí la **Terminal** y ejecutá este comando de una sola línea:
-   ```bash
-   xattr -cr /Applications/"Side B.app"
-   ```
-   ¡Listo! Con eso se elimina la bandera de cuarentena y Side B abrirá normalmente con doble clic para siempre.
+Un único `FIXES.md` conserva la historia de todas las plataformas, incluidas las entradas importadas. Cada entrada lleva un ID único `FIX-NNN` y un tag de ámbito: `[Apple]`, `[Windows]` o `[Compartido]`. Core y herramientas comunes usan Compartido y detallan el componente. El tag describe dónde se hizo el cambio, no dónde falta trasladarlo ni qué plataformas se verificaron.
 
-*(Alternativa por interfaz gráfica: si preferís no usar la Terminal, podés ir a **Ajustes del Sistema** > **Privacidad y Seguridad**, bajar hasta la sección de **Seguridad** y hacer clic en **"Abrir de todos modos"**, ingresando tu contraseña o Touch ID).*
+Elegir el siguiente número libre global; no renumerar entradas anteriores. Se conservaron IDs `FEAT` históricos y se distinguieron los dos números antiguos repetidos con sufijo `-2`, dejando el alias original. Las mejoras nuevas usan la serie FIX y declaran su tipo.
 
----
+```markdown
+### [FIX-NNN] [Apple] - Título concreto
 
-## ✨ Características
-- **Audio de alto rendimiento**: Integración nativa con `AVPlayer` y motor de stream optimizado en Rust.
-- **Diseño macOS 26/27**: Estilo Liquid Glass, tipografía SF Pro adaptativa y paleta refinada (ver [`UI_ARCHITECTURE.md`](documentation/UI_ARCHITECTURE.md)).
-- **Colección y reproducción**: Cola dinámica, radios continuas, historial y sincronización de biblioteca.
-- **Auto-actualizaciones**: Integración directa con GitHub Releases para recibir nuevas versiones dentro de la app con un solo clic. Consulta la [**Guía de Actualizaciones y Lanzamiento**](documentation/GUIA_DE_ACTUALIZACION.md).
-
-## 💻 Requisitos
-- macOS 15.0 o superior (compatible con Apple Silicon e Intel).
-
-## 🛠️ Compilación local
-Para compilar y ejecutar en modo Release:
-```bash
-sh Scripts/compile_and_run.sh
+- Fecha: YYYY-MM-DD (America/Montevideo).
+- Componente: cola / shuffle / navegación / búsqueda / Core / build / etc.
+- Tipo / estado: fix; implementado / validado / validación pendiente.
+- Problema y causa: escenario reproducible y causa encontrada.
+- Solución y motivo: qué se cambió y por qué se eligió esa solución.
+- Archivos: rutas o enlaces del cambio.
+- Fixes relacionados: IDs anteriores; explicar si completa, reemplaza o corrige una regresión.
+- Verificación: comandos y resultados reales; prueba manual por separado.
+- Límites: lo pendiente y las relaciones causales aún por investigar.
+- Paridad: PAR-NNN, o «No aplica: motivo específico».
+- Plan / build / commit: referencias disponibles; omitir lo inexistente.
 ```
 
-## 🧪 Pruebas
-```bash
-swift test --package-path apple
+El registro sirve para investigar el origen de errores: conservar antecedentes y motivos, no sólo decir «arreglado». No atribuir una causa a un fix anterior sin contrastar el código/evidencia. Si aún no existe commit, incluir el ID del fix en su mensaje cuando se guarde: permite localizarlo con `git log --all --grep='FIX-089'` sin actualizar otra bitácora.
+
+Búsquedas desde la raíz:
+
+```sh
+rg -n -i -C 5 'shuffle|QueueManager|PlayerViewModel' FIXES.md
+rg -n '^### .*\[Windows\]' FIXES.md
 ```
 
-## 📚 Documentación del Proyecto
-- [**Estado del Proyecto**](documentation/PROJECT_STATE.md): Resumen de arquitectura, hitos y componentes vigentes.
-- [**Planes y Epics**](documentation/plans/README.md): Registro histórico de epics y roadmaps de producto.
-- [**Registro de Fixes**](documentation/FIXES_LOG.md): Bitácora técnica continua de correcciones y mejoras.
-- [**Auditorías y Reportes**](documentation/audits/README.md): Archivo histórico de optimizaciones de scroll y diagnósticos forenses.
+Evaluar la otra plataforma en cada fix. [PARIDAD.md](PARIDAD.md) registra lo trasladable o por investigar; un caso exclusivo se explica en su entrada. Resolver paridad requiere evidencia del destino. No borrar fixes cerrados: los nuevos enlazan los antecedentes. Los registros importados indican `Histórico: sí`; sus mediciones y mandatos anteriores no son reglas activas ni mejoras nuevas de una release.
 
-## 🙏 Agradecimientos y Créditos
+## Planes
 
-Side B es posible gracias al software de código abierto y a proyectos excepcionales que allanaron el camino:
+Guardar en `apple/plans/`, `windows/plans/` o `plans/`. Los índices enlazan planes activos; PARIDAD conserva el estado de los ports, sin otro backlog duplicado.
 
-- **[Limusic](https://github.com/SimoHypers/limusic)** (creado por [SimoHypers](https://github.com/SimoHypers)): La base del backend en Rust (`core`), la integración con la API de InnerTube (YouTube Music), la lógica de resolución de streams y cipher, el soporte de PoToken y los esquemas de persistencia local en SQLite están fundamentados y adaptados de la arquitectura desarrollada originalmente en el proyecto Limusic. ¡Muchas gracias por su valioso trabajo en la comunidad de código abierto!
+Cada plan indica objetivo, estado, alcance/exclusiones, referencias, pasos con casillas, comprobaciones de cierre y enlaces a fixes/builds. Actualizar el mismo archivo. Usar nombres como `PLAN-001-shuffle-reversible.md`. Un plan describe trabajo; un fix registra lo realizado.
+
+## Referencias anteriores
+
+`archive/` conserva las referencias que deben acompañar al repositorio. Sus instrucciones y resultados son históricos:
+
+- El [historial de fixes](FIXES.md#historial-importado) ya está integrado en el registro único; los resultados importados conservan su condición histórica.
+- [Blueprint Apple](archive/APPLE_UI_ARCHITECTURE.md): contrastar nombres, medidas y decisiones con el código.
+- [Arquitectura Windows](archive/WINDOWS_ARCHITECTURE.md): contrastar contratos con el código actual.
+- [Port de playlists/shuffle](archive/PLAYLIST_SHUFFLE_PORT.md): referencia de PAR-001.
+- [Índice histórico](archive/README.md): ubicación y condición de las referencias preservadas.
+
+Al incorporar una referencia a una tarea nueva, comprobar su estado y registrar el resultado en los archivos activos. Código y pruebas actuales prevalecen sobre decisiones antiguas.
+
+El resto de lo reunido permanece intacto en `temp/` como material local de importación. Al retomar una tarea, trasladar sólo la referencia necesaria a un plan/documento versionable, revisar sus enlaces y agregarla al índice; no convertir toda la carpeta en instrucciones activas.

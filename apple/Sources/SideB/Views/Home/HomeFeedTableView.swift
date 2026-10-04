@@ -2,50 +2,89 @@ import AppKit
 import SwiftUI
 import SideBCore
 
+/// Maps scrolling intro/featured content, shelves and pagination to native rows.
+struct HomeFeedRows {
+    let sectionCount: Int
+    let hasHeader: Bool
+    let hasMore: Bool
+    var hasFeatured: Bool = false
+    var featuredRow: Int? { hasFeatured ? (hasHeader ? 1 : 0) : nil }
+    var sectionOffset: Int { (hasHeader ? 1 : 0) + (hasFeatured ? 1 : 0) }
+    var count: Int { sectionOffset + sectionCount + (hasMore ? 1 : 0) }
+    var loadMoreRow: Int? { hasMore ? sectionOffset + sectionCount : nil }
+    func sectionIndex(forRow row: Int) -> Int? {
+        let index = row - sectionOffset
+        return (0..<sectionCount).contains(index) ? index : nil
+    }
+}
+
 /// El scroll vertical recicla estantes completos; cada estante recicla sus tarjetas en horizontal.
 /// Así las categorías agregadas por paginación no mantienen scrollers ortogonales fuera de pantalla.
 struct HomeFeedTableView: NSViewRepresentable {
+    let headerContent: AnyView?
+    let headerHeight: CGFloat
+    let featuredContent: ((CGFloat) -> AnyView)?
+    let featuredHeight: ((CGFloat) -> CGFloat)?
+    var hasFeatured: Bool { featuredContent != nil && featuredHeight != nil }
+    let topContentInset: CGFloat
     let sections: [HomeSectionPresentation]
     let isObscured: Bool
     let revision: UInt64
     let selectedChip: String?
     let hasMore: Bool
     let isLoadingMore: Bool
+    let loadMoreMessage: String?
+    private var hasPaginationFooter: Bool { hasMore || loadMoreMessage != nil }
     let currentTrackID: String?
     let currentAlbumBrowseId: String?
     let currentPlaylistBrowseId: String?
     let isPlaying: Bool
+    let queueContext: QueueContext?
     let player: PlayerViewModel
     let router: NavigationRouter?
     let onNavigate: (PageDestination) -> Void
     let onLoadMore: () -> Void
 
     init(
+        headerContent: AnyView? = nil,
+        headerHeight: CGFloat = 0,
+        featuredContent: ((CGFloat) -> AnyView)? = nil,
+        featuredHeight: ((CGFloat) -> CGFloat)? = nil,
+        topContentInset: CGFloat = 0,
         sections: [HomeSectionPresentation],
         isObscured: Bool,
         revision: UInt64,
         selectedChip: String?,
         hasMore: Bool,
         isLoadingMore: Bool,
+        loadMoreMessage: String? = nil,
         currentTrackID: String?,
         currentAlbumBrowseId: String? = nil,
         currentPlaylistBrowseId: String? = nil,
         isPlaying: Bool,
+        queueContext: QueueContext? = nil,
         player: PlayerViewModel,
         router: NavigationRouter?,
         onNavigate: @escaping (PageDestination) -> Void,
         onLoadMore: @escaping () -> Void
     ) {
+        self.headerContent = headerContent
+        self.headerHeight = headerHeight
+        self.featuredContent = featuredContent
+        self.featuredHeight = featuredHeight
+        self.topContentInset = topContentInset
         self.sections = sections
         self.isObscured = isObscured
         self.revision = revision
         self.selectedChip = selectedChip
         self.hasMore = hasMore
         self.isLoadingMore = isLoadingMore
+        self.loadMoreMessage = loadMoreMessage
         self.currentTrackID = currentTrackID
         self.currentAlbumBrowseId = currentAlbumBrowseId
         self.currentPlaylistBrowseId = currentPlaylistBrowseId
         self.isPlaying = isPlaying
+        self.queueContext = queueContext
         self.player = player
         self.router = router
         self.onNavigate = onNavigate
@@ -55,16 +94,30 @@ struct HomeFeedTableView: NSViewRepresentable {
     func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
 
     func makeNSView(context: Context) -> NSScrollView {
-        let scroll = NSScrollView()
+        makeNativeScrollView(coordinator: context.coordinator)
+    }
+
+    func sizeThatFits(_ proposal: ProposedViewSize, nsView: NSScrollView, context: Context) -> CGSize? {
+        // The viewport fills the parent's proposal. Measuring the document's
+        // intrinsic size walks every mounted shelf/hosting subtree on scroll.
+        // Use the same sizing contract as NativeTrackTableView.
+        CGSize(width: proposal.width ?? 800, height: proposal.height ?? 600)
+    }
+
+    func makeNativeScrollView(coordinator: Coordinator) -> NSScrollView {
+        let scroll = HomeFeedScrollView()
         scroll.isHidden = isObscured
         scroll.drawsBackground = false
         scroll.hasVerticalScroller = true
         scroll.hasHorizontalScroller = false
+        scroll.horizontalScroller = nil
         scroll.autohidesScrollers = true
         scroll.horizontalScrollElasticity = .none
         scroll.verticalScrollElasticity = .allowed
         scroll.automaticallyAdjustsContentInsets = false
-        scroll.contentInsets = NSEdgeInsets(top: 10, left: 0, bottom: 120, right: 0)
+        scroll.contentInsets = NSEdgeInsets(
+            top: topContentInset + (headerContent == nil && !hasFeatured ? 10 : 0), left: 0, bottom: 120, right: 0
+        )
 
         let table = NSTableView()
         table.headerView = nil
@@ -74,23 +127,26 @@ struct HomeFeedTableView: NSViewRepresentable {
         table.backgroundColor = .clear
         table.selectionHighlightStyle = .none
         table.columnAutoresizingStyle = .uniformColumnAutoresizingStyle
-        table.delegate = context.coordinator
-        table.dataSource = context.coordinator
+        table.delegate = coordinator
+        table.dataSource = coordinator
         table.setAccessibilityLabel("Recomendaciones de Inicio")
         let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("HomeShelfColumn"))
         column.minWidth = 260
         column.resizingMask = .autoresizingMask
         table.addTableColumn(column)
         scroll.documentView = table
-        context.coordinator.table = table
+        scroll.onViewportLayout = { [weak coordinator] in coordinator?.updateFeatured() }
+        coordinator.table = table
         scroll.contentView.postsBoundsChangedNotifications = true
         NotificationCenter.default.addObserver(
-            context.coordinator,
+            coordinator,
             selector: #selector(Coordinator.boundsChanged(_:)),
             name: NSView.boundsDidChangeNotification,
             object: scroll.contentView
         )
         table.reloadData()
+        scroll.contentView.scroll(to: NSPoint(x: 0, y: -scroll.contentInsets.top))
+        scroll.reflectScrolledClipView(scroll.contentView)
         return scroll
     }
 
@@ -100,11 +156,15 @@ struct HomeFeedTableView: NSViewRepresentable {
             table.delegate = nil
             table.dataSource = nil
         }
+        (scroll as? HomeFeedScrollView)?.onViewportLayout = nil
         coordinator.table = nil
     }
 
     func updateNSView(_ scroll: NSScrollView, context: Context) {
-        let coordinator = context.coordinator
+        updateNativeScrollView(scroll, coordinator: context.coordinator)
+    }
+
+    func updateNativeScrollView(_ scroll: NSScrollView, coordinator: Coordinator) {
         let old = coordinator.parent
         coordinator.parent = self
         if old.isObscured != isObscured {
@@ -113,13 +173,31 @@ struct HomeFeedTableView: NSViewRepresentable {
             scroll.isHidden = isObscured
         }
         guard let table = scroll.documentView as? NSTableView else { return }
+        coordinator.setFeedVisible(!isObscured)
+        coordinator.updateHeader()
+        coordinator.updateFeatured(force: true)
+        let newTopInset = topContentInset + (headerContent == nil && !hasFeatured ? 10 : 0)
+        let oldTopInset = scroll.contentInsets.top
+        let wasAtTop = abs(scroll.contentView.bounds.minY + oldTopInset) < 0.5
+        if oldTopInset != newTopInset {
+            scroll.contentInsets.top = newTopInset
+            if wasAtTop {
+                scroll.contentView.scroll(to: NSPoint(x: 0, y: -newTopInset))
+                scroll.reflectScrolledClipView(scroll.contentView)
+            }
+        }
+        if headerContent != nil, old.headerHeight != headerHeight {
+            table.noteHeightOfRows(withIndexesChanged: IndexSet(integer: 0))
+        }
+        let contextChanged = coordinator.lastQueueContext != queueContext
+        coordinator.lastQueueContext = queueContext
         let compact = scroll.contentView.bounds.width < 760
-        if old.revision != revision || old.hasMore != hasMore || old.selectedChip != selectedChip ||
-            coordinator.wasCompact != compact {
+        if old.revision != revision || old.hasMore != hasMore || old.hasPaginationFooter != hasPaginationFooter || old.selectedChip != selectedChip ||
+            coordinator.wasCompact != compact || (old.headerContent == nil) != (headerContent == nil) || old.hasFeatured != hasFeatured {
             coordinator.wasCompact = compact
             table.reloadData()
             if old.selectedChip != selectedChip {
-                scroll.contentView.scroll(to: .zero)
+                scroll.contentView.scroll(to: NSPoint(x: 0, y: -scroll.contentInsets.top))
                 scroll.reflectScrolledClipView(scroll.contentView)
             }
             coordinator.scheduleHoverUpdate()
@@ -127,10 +205,10 @@ struct HomeFeedTableView: NSViewRepresentable {
             if old.currentTrackID != currentTrackID ||
                old.currentAlbumBrowseId != currentAlbumBrowseId ||
                old.currentPlaylistBrowseId != currentPlaylistBrowseId ||
-               old.isPlaying != isPlaying {
+               old.isPlaying != isPlaying || contextChanged {
                 coordinator.updateVisiblePlayback()
             }
-            if old.isLoadingMore != isLoadingMore {
+            if old.isLoadingMore != isLoadingMore || old.loadMoreMessage != loadMoreMessage {
                 coordinator.updateLoadMore()
             }
         }
@@ -141,32 +219,114 @@ struct HomeFeedTableView: NSViewRepresentable {
         var parent: HomeFeedTableView
         weak var table: NSTableView?
         var wasCompact = false
+        private var headerHost: NSHostingView<AnyView>?
+        private var featuredHost: NSHostingView<AnyView>?
+        private var featuredWidth: CGFloat = -1
+        private var measuredFeaturedHeight: CGFloat = -1
+        var rows: HomeFeedRows {
+            HomeFeedRows(sectionCount: parent.sections.count, hasHeader: parent.headerContent != nil,
+                         hasMore: parent.hasPaginationFooter, hasFeatured: parent.hasFeatured)
+        }
+
+        func updateHeader() {
+            if let headerContent = parent.headerContent {
+                var transaction = Transaction()
+                transaction.disablesAnimations = true
+                withTransaction(transaction) { headerHost?.rootView = headerContent }
+            }
+        }
+        private var viewportWidth: CGFloat {
+            max(260, table?.enclosingScrollView?.contentView.bounds.width ?? table?.bounds.width ?? 260)
+        }
+
+        /// Geometry belongs to the native viewport, including every intermediate sidebar width.
+        func updateFeatured(force: Bool = false) {
+            guard let table, let row = rows.featuredRow, let height = parent.featuredHeight else { return }
+            let width = viewportWidth
+            let nextHeight = height(width)
+            if force || width != featuredWidth {
+                featuredWidth = width
+                if let builder = parent.featuredContent {
+                    var transaction = Transaction()
+                    transaction.disablesAnimations = true
+                    withTransaction(transaction) { featuredHost?.rootView = builder(width) }
+                }
+            }
+            let loadedRow = table.numberOfRows == rows.count && row < table.numberOfRows
+            // The delegate can build a view before AppKit invalidates its cached row geometry.
+            // Compare the table's actual row too, especially on remount after navigation.
+            let cachedHeightDiffers = loadedRow && abs(table.rect(ofRow: row).height - nextHeight) > 0.5
+            if nextHeight != measuredFeaturedHeight || cachedHeightDiffers {
+                measuredFeaturedHeight = nextHeight
+                NSAnimationContext.runAnimationGroup { context in
+                    context.duration = 0
+                    context.allowsImplicitAnimation = false
+                    if loadedRow {
+                        table.noteHeightOfRows(withIndexesChanged: IndexSet(integer: row))
+                    }
+                }
+            }
+        }
         private var horizontalOffsets: [String: CGFloat] = [:]
         private weak var hoveredShelf: HomeShelfRowView?
         private var hoverUpdateScheduled = false
+        fileprivate var lastQueueContext: QueueContext?
 
-        init(parent: HomeFeedTableView) { self.parent = parent }
+        init(parent: HomeFeedTableView) {
+            self.parent = parent
+            self.lastQueueContext = parent.queueContext
+        }
         deinit { NotificationCenter.default.removeObserver(self) }
 
         func numberOfRows(in tableView: NSTableView) -> Int {
-            parent.sections.count + (parent.hasMore ? 1 : 0)
+            rows.count
         }
 
         func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat {
-            guard row < parent.sections.count else { return 68 }
-            if parent.sections[row].style == .compactSong { return 300 }
-            return (tableView.bounds.width < 760 ? 140 : 160) + HomeItemView.largeCardTextHeight + 70
+            if rows.hasHeader, row == 0 { return parent.headerHeight }
+            if row == rows.featuredRow { return parent.featuredHeight?(viewportWidth) ?? 0 }
+            guard let index = rows.sectionIndex(forRow: row) else { return 68 }
+            let headerHeight: CGFloat = 38
+            let bottomSpacing: CGFloat = 16
+            if parent.sections[index].style == .compactSong {
+                return headerHeight + 230 + bottomSpacing
+            }
+            let availableWidth = tableView.enclosingScrollView?.contentView.bounds.width ?? tableView.bounds.width
+            let artworkWidth: CGFloat = availableWidth < 760 ? 120 : 140
+            return headerHeight + artworkWidth + HomeItemView.largeCardTextHeight + bottomSpacing
         }
 
         func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
-            if row == parent.sections.count {
+            if rows.hasHeader, row == 0, let headerContent = parent.headerContent {
+                if headerHost == nil {
+                    headerHost = NSHostingView(rootView: headerContent)
+                    headerHost?.sizingOptions = []
+                }
+                headerHost?.rootView = headerContent
+                return headerHost
+            }
+            if row == rows.featuredRow, let builder = parent.featuredContent {
+                let width = viewportWidth
+                if featuredHost == nil {
+                    featuredHost = NSHostingView(rootView: builder(width))
+                    featuredHost?.sizingOptions = []
+                }
+                featuredWidth = width
+                var transaction = Transaction()
+                transaction.disablesAnimations = true
+                withTransaction(transaction) { featuredHost?.rootView = builder(width) }
+                return featuredHost
+            }
+            if row == rows.loadMoreRow {
                 let view = (tableView.makeView(withIdentifier: HomeLoadMoreRowView.identifier, owner: nil) as? HomeLoadMoreRowView)
                     ?? HomeLoadMoreRowView()
-                view.configure(loading: parent.isLoadingMore) { [weak self] in self?.parent.onLoadMore() }
+                view.configure(loading: parent.isLoadingMore, hasMore: parent.hasMore,
+                               message: parent.loadMoreMessage) { [weak self] in self?.parent.onLoadMore() }
                 return view
             }
 
-            let section = parent.sections[row]
+            guard let index = rows.sectionIndex(forRow: row) else { return nil }
+            let section = parent.sections[index]
             let view = (tableView.makeView(withIdentifier: HomeShelfRowView.identifier, owner: nil) as? HomeShelfRowView)
                 ?? HomeShelfRowView()
             view.configure(
@@ -181,27 +341,55 @@ struct HomeFeedTableView: NSViewRepresentable {
         }
 
         func updateVisiblePlayback() {
+            lastQueueContext = parent.queueContext
             guard let table else { return }
             let visible = table.rows(in: table.visibleRect)
             guard visible.location != NSNotFound else { return }
-            for row in visible.location..<NSMaxRange(visible) where row < parent.sections.count {
+            for row in visible.location..<NSMaxRange(visible) where rows.sectionIndex(forRow: row) != nil {
                 (table.view(atColumn: 0, row: row, makeIfNecessary: false) as? HomeShelfRowView)?
                     .updateVisiblePlayback(
                         trackID: parent.currentTrackID,
                         albumBrowseId: parent.currentAlbumBrowseId ?? parent.player.currentAlbumBrowseId,
                         playlistBrowseId: parent.currentPlaylistBrowseId ?? parent.player.currentPlaylistBrowseId,
-                        isPlaying: parent.isPlaying
+                        isPlaying: parent.isPlaying,
+                        queueContext: parent.queueContext
                     )
             }
         }
 
-        func updateLoadMore() {
-            guard let table, parent.hasMore else { return }
-            (table.view(atColumn: 0, row: parent.sections.count, makeIfNecessary: false) as? HomeLoadMoreRowView)?
-                .configure(loading: parent.isLoadingMore) { [weak self] in self?.parent.onLoadMore() }
+        func setFeedVisible(_ visible: Bool) {
+            guard let table else { return }
+            let rows = table.rows(in: table.visibleRect)
+            guard rows.location != NSNotFound else { return }
+            for row in rows.location..<NSMaxRange(rows) {
+                (table.view(atColumn: 0, row: row, makeIfNecessary: false) as? HomeShelfRowView)?
+                    .setFeedVisible(visible)
+            }
         }
 
-        @objc func boundsChanged(_ notification: Notification) { scheduleHoverUpdate() }
+        func updateLoadMore() {
+            guard let table, let row = rows.loadMoreRow else { return }
+            (table.view(atColumn: 0, row: row, makeIfNecessary: false) as? HomeLoadMoreRowView)?
+                .configure(loading: parent.isLoadingMore, hasMore: parent.hasMore,
+                           message: parent.loadMoreMessage) { [weak self] in self?.parent.onLoadMore() }
+        }
+
+        @objc func boundsChanged(_ notification: Notification) {
+            updateFeatured()
+            updateRowHeightsIfCompactModeChanged()
+            scheduleHoverUpdate()
+        }
+
+        private func updateRowHeightsIfCompactModeChanged() {
+            guard let table,
+                  let width = table.enclosingScrollView?.contentView.bounds.width else { return }
+            let compact = width < 760
+            guard compact != wasCompact else { return }
+            wasCompact = compact
+            let rowCount = numberOfRows(in: table)
+            guard rowCount > 0, table.numberOfRows == rowCount else { return }
+            table.noteHeightOfRows(withIndexesChanged: IndexSet(integersIn: 0..<rowCount))
+        }
 
         func scheduleHoverUpdate() {
             guard !hoverUpdateScheduled else { return }
@@ -214,11 +402,12 @@ struct HomeFeedTableView: NSViewRepresentable {
         }
 
         private func updateHoverAtPointer() {
+            setFeedVisible(!parent.isObscured)
             guard !parent.isObscured else { clearHover(); return }
             guard let table, let window = table.window else { return }
             let point = table.convert(window.mouseLocationOutsideOfEventStream, from: nil)
             let row = table.visibleRect.contains(point) ? table.row(at: point) : -1
-            let next = row >= 0 && row < parent.sections.count
+            let next = rows.sectionIndex(forRow: row) != nil
                 ? table.view(atColumn: 0, row: row, makeIfNecessary: false) as? HomeShelfRowView
                 : nil
             if hoveredShelf !== next { hoveredShelf?.clearHover() }
@@ -247,6 +436,7 @@ struct HomeFeedTableView: NSViewRepresentable {
                 currentAlbumBrowseId: parent.currentAlbumBrowseId ?? parent.player.currentAlbumBrowseId,
                 currentPlaylistBrowseId: parent.currentPlaylistBrowseId ?? parent.player.currentPlaylistBrowseId,
                 isPlaying: parent.isPlaying,
+                queueContext: parent.queueContext,
                 onCard: { [weak self] in self?.activate(itemID: id, fromCover: true) },
                 onCover: { [weak self] in self?.activate(itemID: id, fromCover: true) },
                 onTitle: { [weak self] in self?.activate(itemID: id, fromCover: true) },
@@ -259,42 +449,13 @@ struct HomeFeedTableView: NSViewRepresentable {
 
         private func handleDirectPlay(itemID: String) {
             guard let record = item(for: itemID)?.record else { return }
-            let isActive = isItemActive(record)
-            if isActive {
-                parent.player.togglePlayPause()
-                return
-            }
-
             switch record.kind {
             case "song":
-                parent.player.playWithRadio(SongItemRecord(fromHomeItem: record))
+                parent.player.activateMediaRadio(SongItemRecord(fromHomeItem: record))
             case "album":
-                Task { @MainActor in
-                    guard let core = parent.player.rustCore,
-                          let album = try? await core.getAlbum(browseId: record.id),
-                          !album.items.isEmpty else { return }
-                    parent.player.playAlbum(
-                        browseId: album.browseId,
-                        title: album.title,
-                        tracks: album.items,
-                        startingAt: 0,
-                        artistBrowseId: album.artistId
-                    )
-                }
+                parent.player.activateMediaCollection(id: record.id, kind: "album")
             case "playlist":
-                let canonicalId = MenuIDNormalizer.canonicalPlaylistId(record.id)
-                Task { @MainActor in
-                    guard let core = parent.player.rustCore,
-                          let pl = try? await core.getPlaylist(playlistId: canonicalId),
-                          !pl.items.isEmpty else { return }
-                    parent.player.playPlaylist(
-                        browseId: pl.id,
-                        title: pl.title,
-                        tracks: pl.items,
-                        startingAt: 0,
-                        continuation: pl.continuation
-                    )
-                }
+                parent.player.activateMediaCollection(id: record.id, kind: "playlist")
             case "artist":
                 parent.player.startRadioForCollection(
                     id: record.id,
@@ -307,52 +468,10 @@ struct HomeFeedTableView: NSViewRepresentable {
             }
         }
 
-        private func isItemActive(_ record: HomeItemRecord) -> Bool {
-            switch record.kind {
-            case "song":
-                return parent.currentTrackID == record.id
-            case "album":
-                let curAlb = parent.currentAlbumBrowseId ?? parent.player.currentAlbumBrowseId
-                if let curAlb {
-                    if MenuIDNormalizer.normalize(curAlb) == MenuIDNormalizer.normalize(record.id) {
-                        return true
-                    }
-                    if let albId = record.albumId, MenuIDNormalizer.normalize(curAlb) == MenuIDNormalizer.normalize(albId) {
-                        return true
-                    }
-                }
-                if case .album(let browseId, _) = parent.player.queueManager.context {
-                    if MenuIDNormalizer.normalize(browseId) == MenuIDNormalizer.normalize(record.id) {
-                        return true
-                    }
-                    if let albId = record.albumId, MenuIDNormalizer.normalize(browseId) == MenuIDNormalizer.normalize(albId) {
-                        return true
-                    }
-                }
-                return false
-            case "playlist":
-                let canonicalId = MenuIDNormalizer.canonicalPlaylistId(record.id)
-                let curPl = parent.currentPlaylistBrowseId ?? parent.player.currentPlaylistBrowseId
-                if let curPl, MenuIDNormalizer.canonicalPlaylistId(curPl) == canonicalId {
-                    return true
-                }
-                if case .playlist(let browseId, _) = parent.player.queueManager.context {
-                    return MenuIDNormalizer.canonicalPlaylistId(browseId) == canonicalId
-                }
-                return false
-            default:
-                return false
-            }
-        }
-
         private func activate(itemID: String, fromCover: Bool) {
             guard let record = item(for: itemID)?.record else { return }
             if record.kind == "song" {
-                if fromCover && parent.currentTrackID == record.id && parent.isPlaying {
-                    parent.player.togglePlayPause()
-                } else {
-                    parent.player.playWithRadio(SongItemRecord(fromHomeItem: record))
-                }
+                parent.player.activateMediaRadio(SongItemRecord(fromHomeItem: record))
                 return
             }
             switch record.kind {
@@ -411,7 +530,7 @@ struct HomeFeedTableView: NSViewRepresentable {
 }
 
 @MainActor
-private final class HomeShelfScrollView: NSScrollView {
+private final class HomeShelfScrollView: HomeFeedScrollView {
     override func scrollWheel(with event: NSEvent) {
         if abs(event.scrollingDeltaY) > abs(event.scrollingDeltaX) {
             var ancestor = superview
@@ -429,7 +548,7 @@ private final class HomeShelfScrollView: NSScrollView {
 }
 
 @MainActor
-private final class HomeShelfRowView: NSView, NSCollectionViewDataSource {
+final class HomeShelfRowView: NSView, NSCollectionViewDataSource {
     static let identifier = NSUserInterfaceItemIdentifier("HomeShelfRow")
 
     private let header = HomeSectionHeaderView()
@@ -443,6 +562,7 @@ private final class HomeShelfRowView: NSView, NSCollectionViewDataSource {
     private var onActivate: ((HomeItemPresentation) -> Void)?
     private var onConfigure: ((HomeCollectionItem, HomeItemPresentation) -> Void)?
     private weak var hoveredItem: HomeCollectionItem?
+    private var feedVisible = true
     override var isFlipped: Bool { true }
 
     override init(frame frameRect: NSRect) {
@@ -466,6 +586,7 @@ private final class HomeShelfRowView: NSView, NSCollectionViewDataSource {
         collection.onHoverPosition = { [weak self] point in self?.updateHover(at: point) }
         scroll.drawsBackground = false
         scroll.hasHorizontalScroller = false
+        scroll.horizontalScroller = nil
         scroll.hasVerticalScroller = false
         scroll.horizontalScrollElasticity = .allowed
         scroll.verticalScrollElasticity = .none
@@ -481,20 +602,22 @@ private final class HomeShelfRowView: NSView, NSCollectionViewDataSource {
 
     override func layout() {
         super.layout()
-        header.frame = NSRect(x: 28, y: 0, width: max(0, bounds.width - 56), height: 46)
+        header.frame = NSRect(x: 28, y: 0, width: max(0, bounds.width - 56), height: 38)
         let shelfHeight: CGFloat = section?.style == .compactSong ? 230 :
-            (bounds.width < 760 ? 140 : 160) + HomeItemView.largeCardTextHeight
-        scroll.frame = NSRect(x: 0, y: 46, width: bounds.width, height: shelfHeight)
+            (bounds.width < 760 ? 120 : 140) + HomeItemView.largeCardTextHeight
+        scroll.frame = NSRect(x: 0, y: 38, width: bounds.width, height: shelfHeight)
         let itemSize = section?.style == .compactSong
             ? NSSize(width: bounds.width < 760 ? 286 : 330, height: 56)
-            : NSSize(width: bounds.width < 760 ? 140 : 160, height: shelfHeight)
+            : NSSize(width: bounds.width < 760 ? 120 : 140, height: shelfHeight)
         if flow.itemSize != itemSize {
             flow.itemSize = itemSize
             flow.invalidateLayout()
         }
         if let pendingHorizontalOffset {
             self.pendingHorizontalOffset = nil
-            scroll.contentView.scroll(to: NSPoint(x: pendingHorizontalOffset, y: 0))
+            collection.layoutSubtreeIfNeeded()
+            let maxOffset = max(0, flow.collectionViewContentSize.width - scroll.contentView.bounds.width)
+            scroll.contentView.scroll(to: NSPoint(x: min(maxOffset, max(0, pendingHorizontalOffset)), y: 0))
             scroll.reflectScrolledClipView(scroll.contentView)
             isApplyingSection = false
             onHorizontalOffset?(scroll.contentView.bounds.minX)
@@ -516,7 +639,7 @@ private final class HomeShelfRowView: NSView, NSCollectionViewDataSource {
         self.onActivate = onActivate
         self.onConfigure = onConfigure
         header.configure(title: section.title, showsMore: section.isNavigableMore,
-                         showsArrows: section.items.count > 4,
+                         showsArrows: false,
                          previous: { [weak self] in self?.scrollShelf(direction: -1) },
                          next: { [weak self] in self?.scrollShelf(direction: 1) },
                          action: onMore)
@@ -524,7 +647,7 @@ private final class HomeShelfRowView: NSView, NSCollectionViewDataSource {
             clearHover()
             isApplyingSection = true
             if changedIdentity {
-                scroll.contentView.scroll(to: .zero)
+                scroll.contentView.scroll(to: NSPoint(x: 0, y: -scroll.contentInsets.top))
                 scroll.reflectScrolledClipView(scroll.contentView)
             }
             pendingHorizontalOffset = horizontalOffset
@@ -542,6 +665,7 @@ private final class HomeShelfRowView: NSView, NSCollectionViewDataSource {
         if let section, section.items.indices.contains(indexPath.item) {
             onConfigure?(cell, section.items[indexPath.item])
         }
+        cell.content.setFeedVisible(feedVisible && !cell.content.visibleRect.isEmpty)
         return cell
     }
 
@@ -549,15 +673,25 @@ private final class HomeShelfRowView: NSView, NSCollectionViewDataSource {
         trackID: String?,
         albumBrowseId: String? = nil,
         playlistBrowseId: String? = nil,
-        isPlaying: Bool
+        isPlaying: Bool,
+        queueContext: QueueContext?
     ) {
         for path in collection.indexPathsForVisibleItems() {
             (collection.item(at: path) as? HomeCollectionItem)?.content.updatePlayback(
                 currentTrackID: trackID,
                 currentAlbumBrowseId: albumBrowseId,
                 currentPlaylistBrowseId: playlistBrowseId,
-                isPlaying: isPlaying
+                isPlaying: isPlaying,
+                queueContext: queueContext
             )
+        }
+    }
+
+    func setFeedVisible(_ visible: Bool) {
+        feedVisible = visible
+        for path in collection.indexPathsForVisibleItems() {
+            guard let content = (collection.item(at: path) as? HomeCollectionItem)?.content else { continue }
+            content.setFeedVisible(visible && !content.visibleRect.isEmpty)
         }
     }
 
@@ -573,6 +707,10 @@ private final class HomeShelfRowView: NSView, NSCollectionViewDataSource {
     }
 
     private func updateHover(at point: NSPoint?) {
+        for path in collection.indexPathsForVisibleItems() {
+            guard let content = (collection.item(at: path) as? HomeCollectionItem)?.content else { continue }
+            content.setFeedVisible(feedVisible && !content.visibleRect.isEmpty)
+        }
         var next: HomeCollectionItem?
         var localPoint: NSPoint?
         if let point, collection.visibleRect.contains(point),
@@ -611,6 +749,7 @@ private final class HomeShelfRowView: NSView, NSCollectionViewDataSource {
 private final class HomeLoadMoreRowView: NSView {
     static let identifier = NSUserInterfaceItemIdentifier("HomeLoadMoreRow")
     private let button = NSButton(title: "Cargar más recomendaciones", target: nil, action: nil)
+    private let messageLabel = NSTextField(labelWithString: "")
     private var action: (() -> Void)?
     override var isFlipped: Bool { true }
 
@@ -621,16 +760,28 @@ private final class HomeLoadMoreRowView: NSView {
         button.target = self
         button.action = #selector(loadMore)
         addSubview(button)
+        messageLabel.font = .systemFont(ofSize: 12)
+        messageLabel.textColor = .secondaryLabelColor
+        messageLabel.alignment = .center
+        messageLabel.lineBreakMode = .byTruncatingTail
+        messageLabel.isHidden = true
+        addSubview(messageLabel)
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) no se usa") }
     override func layout() {
         super.layout()
-        button.frame = NSRect(x: max(0, (bounds.width - 220) / 2), y: 14, width: 220, height: 32)
+        button.frame = NSRect(x: max(0, (bounds.width - 220) / 2), y: messageLabel.isHidden ? 14 : 30, width: 220, height: 32)
+        messageLabel.frame = NSRect(x: 16, y: button.isHidden ? 24 : 6,
+                                    width: max(0, bounds.width - 32), height: 20)
     }
-    func configure(loading: Bool, action: @escaping () -> Void) {
+    func configure(loading: Bool, hasMore: Bool, message: String?, action: @escaping () -> Void) {
         self.action = action
         button.title = loading ? "Cargando recomendaciones…" : "Cargar más recomendaciones"
-        button.isEnabled = !loading
+        button.isEnabled = hasMore && !loading
+        button.isHidden = !hasMore
+        messageLabel.stringValue = message ?? ""
+        messageLabel.isHidden = message == nil
+        needsLayout = true
     }
     @objc private func loadMore() { action?() }
 }

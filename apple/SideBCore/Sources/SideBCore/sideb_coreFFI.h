@@ -253,14 +253,14 @@ typedef void (*UniffiForeignFutureCompleteVoid)(uint64_t, UniffiForeignFutureStr
 #endif
 #ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_CIPHER_JS_RUNTIME_METHOD0
 #define UNIFFI_FFIDEF_CALLBACK_INTERFACE_CIPHER_JS_RUNTIME_METHOD0
-typedef void (*UniffiCallbackInterfaceCipherJsRuntimeMethod0)(uint64_t, RustBuffer, int8_t* _Nonnull,
+typedef void (*UniffiCallbackInterfaceCipherJsRuntimeMethod0)(uint64_t, RustBuffer, int8_t* _Nonnull, 
         RustCallStatus *_Nonnull uniffiCallStatus
     );
 
 #endif
 #ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_CIPHER_JS_RUNTIME_METHOD1
 #define UNIFFI_FFIDEF_CALLBACK_INTERFACE_CIPHER_JS_RUNTIME_METHOD1
-typedef void (*UniffiCallbackInterfaceCipherJsRuntimeMethod1)(uint64_t, RustBuffer, RustBuffer* _Nonnull,
+typedef void (*UniffiCallbackInterfaceCipherJsRuntimeMethod1)(uint64_t, RustBuffer, RustBuffer* _Nonnull, 
         RustCallStatus *_Nonnull uniffiCallStatus
     );
 
@@ -584,6 +584,11 @@ uint64_t uniffi_sideb_core_fn_method_sidebcore_search_songs(void*_Nonnull ptr, R
 uint64_t uniffi_sideb_core_fn_method_sidebcore_search_songs_json(void*_Nonnull ptr, RustBuffer query, int8_t record_history
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_FN_METHOD_SIDEBCORE_SEARCH_VIDEOS
+#define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_FN_METHOD_SIDEBCORE_SEARCH_VIDEOS
+uint64_t uniffi_sideb_core_fn_method_sidebcore_search_videos(void*_Nonnull ptr, RustBuffer query
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_FN_METHOD_SIDEBCORE_SET_CIPHER_JS_RUNTIME
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_FN_METHOD_SIDEBCORE_SET_CIPHER_JS_RUNTIME
 void uniffi_sideb_core_fn_method_sidebcore_set_cipher_js_runtime(void*_Nonnull ptr, uint64_t runtime, RustCallStatus *_Nonnull out_status
@@ -902,415 +907,421 @@ void ffi_sideb_core_rust_future_complete_void(uint64_t handle, RustCallStatus *_
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_ADD_TO_PLAYLIST
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_ADD_TO_PLAYLIST
 uint16_t uniffi_sideb_core_checksum_method_sidebcore_add_to_playlist(void
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_APPLY_SONG_LIBRARY_ACTION
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_APPLY_SONG_LIBRARY_ACTION
 uint16_t uniffi_sideb_core_checksum_method_sidebcore_apply_song_library_action(void
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_CHOOSE_GENIUS
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_CHOOSE_GENIUS
 uint16_t uniffi_sideb_core_checksum_method_sidebcore_choose_genius(void
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_CLEAR_GENIUS_CHOICE
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_CLEAR_GENIUS_CHOICE
 uint16_t uniffi_sideb_core_checksum_method_sidebcore_clear_genius_choice(void
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_CREATE_PLAYLIST
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_CREATE_PLAYLIST
 uint16_t uniffi_sideb_core_checksum_method_sidebcore_create_playlist(void
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_DELETE_PLAYLIST
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_DELETE_PLAYLIST
 uint16_t uniffi_sideb_core_checksum_method_sidebcore_delete_playlist(void
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_EDIT_PLAYLIST_DETAILS
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_EDIT_PLAYLIST_DETAILS
 uint16_t uniffi_sideb_core_checksum_method_sidebcore_edit_playlist_details(void
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_GET_ACCOUNT_INFO
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_GET_ACCOUNT_INFO
 uint16_t uniffi_sideb_core_checksum_method_sidebcore_get_account_info(void
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_GET_ALBUM
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_GET_ALBUM
 uint16_t uniffi_sideb_core_checksum_method_sidebcore_get_album(void
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_GET_ALBUM_JSON
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_GET_ALBUM_JSON
 uint16_t uniffi_sideb_core_checksum_method_sidebcore_get_album_json(void
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_GET_ARTIST
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_GET_ARTIST
 uint16_t uniffi_sideb_core_checksum_method_sidebcore_get_artist(void
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_GET_ARTIST_JSON
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_GET_ARTIST_JSON
 uint16_t uniffi_sideb_core_checksum_method_sidebcore_get_artist_json(void
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_GET_BROWSE_GRID
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_GET_BROWSE_GRID
 uint16_t uniffi_sideb_core_checksum_method_sidebcore_get_browse_grid(void
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_GET_COOKIE
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_GET_COOKIE
 uint16_t uniffi_sideb_core_checksum_method_sidebcore_get_cookie(void
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_GET_GENIUS_ANNOTATIONS
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_GET_GENIUS_ANNOTATIONS
 uint16_t uniffi_sideb_core_checksum_method_sidebcore_get_genius_annotations(void
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_GET_GENIUS_CACHED
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_GET_GENIUS_CACHED
 uint16_t uniffi_sideb_core_checksum_method_sidebcore_get_genius_cached(void
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_GET_GENIUS_CACHED_ANNOTATIONS
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_GET_GENIUS_CACHED_ANNOTATIONS
 uint16_t uniffi_sideb_core_checksum_method_sidebcore_get_genius_cached_annotations(void
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_GET_GENIUS_CACHED_LYRICS
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_GET_GENIUS_CACHED_LYRICS
 uint16_t uniffi_sideb_core_checksum_method_sidebcore_get_genius_cached_lyrics(void
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_GET_GENIUS_LYRICS
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_GET_GENIUS_LYRICS
 uint16_t uniffi_sideb_core_checksum_method_sidebcore_get_genius_lyrics(void
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_GET_GENIUS_METRICS
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_GET_GENIUS_METRICS
 uint16_t uniffi_sideb_core_checksum_method_sidebcore_get_genius_metrics(void
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_GET_HISTORY
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_GET_HISTORY
 uint16_t uniffi_sideb_core_checksum_method_sidebcore_get_history(void
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_GET_HISTORY_JSON
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_GET_HISTORY_JSON
 uint16_t uniffi_sideb_core_checksum_method_sidebcore_get_history_json(void
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_GET_HOME_CONTINUATION
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_GET_HOME_CONTINUATION
 uint16_t uniffi_sideb_core_checksum_method_sidebcore_get_home_continuation(void
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_GET_HOME_JSON
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_GET_HOME_JSON
 uint16_t uniffi_sideb_core_checksum_method_sidebcore_get_home_json(void
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_GET_HOME_PAGE
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_GET_HOME_PAGE
 uint16_t uniffi_sideb_core_checksum_method_sidebcore_get_home_page(void
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_GET_HOME_SECTIONS
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_GET_HOME_SECTIONS
 uint16_t uniffi_sideb_core_checksum_method_sidebcore_get_home_sections(void
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_GET_LIBRARY_ALBUMS
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_GET_LIBRARY_ALBUMS
 uint16_t uniffi_sideb_core_checksum_method_sidebcore_get_library_albums(void
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_GET_LIBRARY_ARTISTS
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_GET_LIBRARY_ARTISTS
 uint16_t uniffi_sideb_core_checksum_method_sidebcore_get_library_artists(void
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_GET_LIBRARY_PLAYLISTS
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_GET_LIBRARY_PLAYLISTS
 uint16_t uniffi_sideb_core_checksum_method_sidebcore_get_library_playlists(void
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_GET_LIBRARY_SONGS
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_GET_LIBRARY_SONGS
 uint16_t uniffi_sideb_core_checksum_method_sidebcore_get_library_songs(void
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_GET_LYRICS
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_GET_LYRICS
 uint16_t uniffi_sideb_core_checksum_method_sidebcore_get_lyrics(void
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_GET_NEXT
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_GET_NEXT
 uint16_t uniffi_sideb_core_checksum_method_sidebcore_get_next(void
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_GET_PINNED_ITEMS
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_GET_PINNED_ITEMS
 uint16_t uniffi_sideb_core_checksum_method_sidebcore_get_pinned_items(void
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_GET_PLAYLIST
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_GET_PLAYLIST
 uint16_t uniffi_sideb_core_checksum_method_sidebcore_get_playlist(void
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_GET_PLAYLIST_CONTINUATION
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_GET_PLAYLIST_CONTINUATION
 uint16_t uniffi_sideb_core_checksum_method_sidebcore_get_playlist_continuation(void
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_GET_PLAYLIST_CONTINUATION_JSON
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_GET_PLAYLIST_CONTINUATION_JSON
 uint16_t uniffi_sideb_core_checksum_method_sidebcore_get_playlist_continuation_json(void
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_GET_PLAYLIST_JSON
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_GET_PLAYLIST_JSON
 uint16_t uniffi_sideb_core_checksum_method_sidebcore_get_playlist_json(void
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_GET_RADIO
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_GET_RADIO
 uint16_t uniffi_sideb_core_checksum_method_sidebcore_get_radio(void
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_GET_RADIO_CONTINUATION
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_GET_RADIO_CONTINUATION
 uint16_t uniffi_sideb_core_checksum_method_sidebcore_get_radio_continuation(void
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_GET_RELATED_ARTISTS
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_GET_RELATED_ARTISTS
 uint16_t uniffi_sideb_core_checksum_method_sidebcore_get_related_artists(void
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_GET_RELATED_TRACKS
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_GET_RELATED_TRACKS
 uint16_t uniffi_sideb_core_checksum_method_sidebcore_get_related_tracks(void
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_GET_SETTING
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_GET_SETTING
 uint16_t uniffi_sideb_core_checksum_method_sidebcore_get_setting(void
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_IS_LOGGED_IN
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_IS_LOGGED_IN
 uint16_t uniffi_sideb_core_checksum_method_sidebcore_is_logged_in(void
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_IS_PINNED
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_IS_PINNED
 uint16_t uniffi_sideb_core_checksum_method_sidebcore_is_pinned(void
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_LIKE_PLAYLIST
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_LIKE_PLAYLIST
 uint16_t uniffi_sideb_core_checksum_method_sidebcore_like_playlist(void
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_MOVE_PLAYLIST_TRACK
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_MOVE_PLAYLIST_TRACK
 uint16_t uniffi_sideb_core_checksum_method_sidebcore_move_playlist_track(void
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_PIN_ITEM
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_PIN_ITEM
 uint16_t uniffi_sideb_core_checksum_method_sidebcore_pin_item(void
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_RATE_SONG
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_RATE_SONG
 uint16_t uniffi_sideb_core_checksum_method_sidebcore_rate_song(void
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_RECORD_PLAYBACK
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_RECORD_PLAYBACK
 uint16_t uniffi_sideb_core_checksum_method_sidebcore_record_playback(void
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_REMOVE_FROM_PLAYLIST
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_REMOVE_FROM_PLAYLIST
 uint16_t uniffi_sideb_core_checksum_method_sidebcore_remove_from_playlist(void
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_REPORT_GENIUS_MISS
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_REPORT_GENIUS_MISS
 uint16_t uniffi_sideb_core_checksum_method_sidebcore_report_genius_miss(void
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_RESOLVE_GENIUS
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_RESOLVE_GENIUS
 uint16_t uniffi_sideb_core_checksum_method_sidebcore_resolve_genius(void
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_RESOLVE_STREAM
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_RESOLVE_STREAM
 uint16_t uniffi_sideb_core_checksum_method_sidebcore_resolve_stream(void
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_SEARCH_ALL
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_SEARCH_ALL
 uint16_t uniffi_sideb_core_checksum_method_sidebcore_search_all(void
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_SEARCH_ALL_JSON
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_SEARCH_ALL_JSON
 uint16_t uniffi_sideb_core_checksum_method_sidebcore_search_all_json(void
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_SEARCH_CARDS
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_SEARCH_CARDS
 uint16_t uniffi_sideb_core_checksum_method_sidebcore_search_cards(void
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_SEARCH_GENIUS
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_SEARCH_GENIUS
 uint16_t uniffi_sideb_core_checksum_method_sidebcore_search_genius(void
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_SEARCH_SONGS
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_SEARCH_SONGS
 uint16_t uniffi_sideb_core_checksum_method_sidebcore_search_songs(void
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_SEARCH_SONGS_JSON
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_SEARCH_SONGS_JSON
 uint16_t uniffi_sideb_core_checksum_method_sidebcore_search_songs_json(void
-
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_SEARCH_VIDEOS
+#define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_SEARCH_VIDEOS
+uint16_t uniffi_sideb_core_checksum_method_sidebcore_search_videos(void
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_SET_CIPHER_JS_RUNTIME
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_SET_CIPHER_JS_RUNTIME
 uint16_t uniffi_sideb_core_checksum_method_sidebcore_set_cipher_js_runtime(void
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_SET_COOKIE
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_SET_COOKIE
 uint16_t uniffi_sideb_core_checksum_method_sidebcore_set_cookie(void
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_SET_PLAYLIST_SORT
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_SET_PLAYLIST_SORT
 uint16_t uniffi_sideb_core_checksum_method_sidebcore_set_playlist_sort(void
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_SET_SETTING
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_SET_SETTING
 uint16_t uniffi_sideb_core_checksum_method_sidebcore_set_setting(void
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_SUBSCRIBE_ARTIST
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_SUBSCRIBE_ARTIST
 uint16_t uniffi_sideb_core_checksum_method_sidebcore_subscribe_artist(void
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_UNPIN_ITEM
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_UNPIN_ITEM
 uint16_t uniffi_sideb_core_checksum_method_sidebcore_unpin_item(void
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_CONSTRUCTOR_SIDEBCORE_NEW
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_CONSTRUCTOR_SIDEBCORE_NEW
 uint16_t uniffi_sideb_core_checksum_constructor_sidebcore_new(void
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_CIPHERJSRUNTIME_LOAD
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_CIPHERJSRUNTIME_LOAD
 uint16_t uniffi_sideb_core_checksum_method_cipherjsruntime_load(void
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_CIPHERJSRUNTIME_EVALUATE
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_CIPHERJSRUNTIME_EVALUATE
 uint16_t uniffi_sideb_core_checksum_method_cipherjsruntime_evaluate(void
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_FFI_SIDEB_CORE_UNIFFI_CONTRACT_VERSION
 #define UNIFFI_FFIDEF_FFI_SIDEB_CORE_UNIFFI_CONTRACT_VERSION
 uint32_t ffi_sideb_core_uniffi_contract_version(void
-
+    
 );
 #endif
 

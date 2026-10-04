@@ -1,6 +1,24 @@
 import AppKit
 import SwiftUI
 
+/// Paged content owns a whole gesture, including its start/end and momentum.
+/// Window history must not steal it before the content responder receives the event.
+@MainActor
+protocol HorizontalNavigationGestureOwner: AnyObject {
+    var ownsHorizontalNavigationGesture: Bool { get }
+}
+
+@MainActor
+enum HorizontalNavigationGestureRouting {
+    static func contentOwnsGesture(at point: NSPoint, in view: NSView) -> Bool {
+        guard !view.isHidden, view.alphaValue > 0.01, view.bounds.contains(point) else { return false }
+        if let owner = view as? HorizontalNavigationGestureOwner, owner.ownsHorizontalNavigationGesture { return true }
+        return view.subviews.reversed().contains { child in
+            contentOwnsGesture(at: child.convert(point, from: view), in: child)
+        }
+    }
+}
+
 /// Tracks one physical two-finger gesture. Vertical scrolling keeps its events; horizontal
 /// scrolling becomes navigation only after the content under the pointer reaches its edge.
 @MainActor
@@ -46,6 +64,7 @@ final class WindowNavigationCoordinator: NSObject {
     private var swipe = NavigationSwipeTracker()
     private weak var horizontalScrollView: NSScrollView?
     private var trackingGesture = false
+    private var contentOwnsGesture = false
 
     func setup(router: NavigationRouter, canNavigate: @escaping () -> Bool) {
         self.router = router
@@ -77,6 +96,7 @@ final class WindowNavigationCoordinator: NSObject {
         swipe.reset()
         horizontalScrollView = nil
         trackingGesture = false
+        contentOwnsGesture = false
     }
 
     @discardableResult
@@ -122,6 +142,10 @@ final class WindowNavigationCoordinator: NSObject {
             resetGesture()
             trackingGesture = true
             horizontalScrollView = findHorizontalScrollView(at: event.locationInWindow, in: window)
+            if let root = window.contentView {
+                contentOwnsGesture = HorizontalNavigationGestureRouting.contentOwnsGesture(
+                    at: root.convert(event.locationInWindow, from: nil), in: root)
+            }
         }
 
         if event.phase == .cancelled {
@@ -130,7 +154,7 @@ final class WindowNavigationCoordinator: NSObject {
         }
         if event.phase == .ended {
             defer { resetGesture() }
-            guard trackingGesture, swipe.axis == .horizontal,
+            guard !contentOwnsGesture, trackingGesture, swipe.axis == .horizontal,
                   abs(swipe.pull) >= NavigationSwipeTracker.navigationThreshold,
                   let router else { return event }
             if swipe.pull > 0, router.canGoBack {
@@ -149,8 +173,12 @@ final class WindowNavigationCoordinator: NSObject {
         if !trackingGesture, event.phase == .changed {
             trackingGesture = true
             horizontalScrollView = findHorizontalScrollView(at: event.locationInWindow, in: window)
+            if let root = window.contentView {
+                contentOwnsGesture = HorizontalNavigationGestureRouting.contentOwnsGesture(
+                    at: root.convert(event.locationInWindow, from: nil), in: root)
+            }
         }
-        guard trackingGesture else { return event }
+        guard trackingGesture, !contentOwnsGesture else { return event }
         let dx = event.scrollingDeltaX
         let dy = event.scrollingDeltaY
         swipe.observeAxis(deltaX: dx, deltaY: dy)

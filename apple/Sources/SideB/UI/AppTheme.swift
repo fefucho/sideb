@@ -4,6 +4,13 @@ import AppKit
 // MARK: - AppTheme (Side B Design System)
 
 public enum AppTheme {
+    // MARK: - Home artwork geometry and surface
+    public static let artworkThumbnailRadius: CGFloat = 2
+    public static let artworkCardRadius: CGFloat = 5
+    public static let artworkHeroRadius: CGFloat = 8
+    public static let homeBackground = Color(red: 23/255, green: 23/255, blue: 23/255)
+    public static let nsHomeBackground = NSColor(srgbRed: 23/255, green: 23/255, blue: 23/255, alpha: 1.0)
+
     // MARK: - Acento discreto para superficies seleccionadas
     /// Rojo suave mate (#A33D45): mantiene contraste con texto blanco sin dominar el contenido.
     public static let accent = Color(red: 163/255, green: 61/255, blue: 69/255)

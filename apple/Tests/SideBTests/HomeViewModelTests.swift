@@ -1,5 +1,6 @@
 import Testing
 import Foundation
+import AppKit
 import SideBCore
 @testable import SideB
 
@@ -56,6 +57,10 @@ private actor HomeFeedStub {
     func failContinuation(_ index: Int) {
         continuationRequests[index].1.resume(throwing: StubError.failed)
     }
+
+    func requestedContinuationTokens() -> [String] {
+        continuationRequests.map { $0.0 }
+    }
 }
 
 private enum StubError: Error { case failed }
@@ -91,6 +96,9 @@ private final class HomeCoreStub: SideBCore, @unchecked Sendable {
 
     override func getHomeContinuation(token: String) async throws -> HomePageRecord {
         let (title, continuation) = try await feed.requestContinuation(token: token)
+        if title.isEmpty {
+            return HomePageRecord(chips: [], sections: [], continuation: continuation)
+        }
         return HomePageRecord(
             chips: [],
             sections: [HomeSectionRecord(
@@ -109,9 +117,151 @@ private final class HomeCoreStub: SideBCore, @unchecked Sendable {
 @MainActor private func makeHomeModel() -> HomeViewModel {
     let directory = FileManager.default.temporaryDirectory
         .appendingPathComponent("sideb-home-tests-\(UUID().uuidString)", isDirectory: true)
-    let model = HomeViewModel(cacheStore: HomeFeedCacheStore(directory: directory))
+    let preferences = UserDefaults(suiteName: "HomeFeedTests.\(UUID().uuidString)")!
+    let model = HomeViewModel(cacheStore: HomeFeedCacheStore(directory: directory), preferences: preferences)
     model.prepareSession(identity: "test-account", purgePrevious: false)
     return model
+}
+
+@MainActor private func loadFilteredHome(_ model: HomeViewModel, core: HomeCoreStub) async {
+    let initial = Task { await model.loadHomeFeed(core: core, chipParams: "focus") }
+    await core.feed.waitForCount(1)
+    await core.feed.succeed(0, title: "Focus", continuation: "token-1")
+    await initial.value
+}
+
+@Test @MainActor func homeManualPaginationSkipsDuplicatePagesAndIgnoresConcurrentClicks() async {
+    let core = HomeCoreStub()
+    let model = makeHomeModel()
+    await loadFilteredHome(model, core: core)
+
+    let more = Task { await model.loadMoreContent(core: core) }
+    await core.feed.waitForContinuationCount(1)
+    await model.loadMoreContent(core: core)
+    #expect(await core.feed.requestedContinuationTokens() == ["token-1"])
+    await core.feed.succeedContinuation(0, title: "Focus", continuation: "token-2")
+    await core.feed.waitForContinuationCount(2)
+    #expect(model.isLoadingMore)
+    await core.feed.succeedContinuation(1, title: "New recommendations", continuation: nil)
+    await more.value
+
+    #expect(model.sections.map(\.title) == ["Focus", "New recommendations"])
+    #expect(await core.feed.requestedContinuationTokens() == ["token-1", "token-2"])
+    #expect(!model.isLoadingMore)
+    #expect(model.continuationToken == nil)
+    #expect(model.loadMoreMessage == "No hay más recomendaciones por ahora.")
+}
+
+@Test @MainActor func homeManualPaginationReportsFailureAndAllowsImmediateRetry() async {
+    let core = HomeCoreStub()
+    let model = makeHomeModel()
+    await loadFilteredHome(model, core: core)
+
+    let failed = Task { await model.loadMoreContent(core: core) }
+    await core.feed.waitForContinuationCount(1)
+    await core.feed.failContinuation(0)
+    await failed.value
+    #expect(!model.isLoadingMore)
+    #expect(model.continuationToken == "token-1")
+    #expect(model.loadMoreMessage == "No se pudieron cargar más recomendaciones. Volvé a intentarlo.")
+
+    let retry = Task { await model.loadMoreContent(core: core) }
+    await core.feed.waitForContinuationCount(2)
+    #expect(model.loadMoreMessage == nil)
+    await core.feed.succeedContinuation(1, title: "Retry succeeded", continuation: "token-2")
+    await retry.value
+    #expect(model.sections.map(\.title) == ["Focus", "Retry succeeded"])
+    #expect(model.continuationToken == "token-2")
+    #expect(!model.isLoadingMore)
+}
+
+@Test @MainActor func homeManualPaginationCapsDuplicatePagesAndContinuesFromLatestToken() async {
+    let core = HomeCoreStub()
+    let model = makeHomeModel()
+    await loadFilteredHome(model, core: core)
+    let revision = model.contentRevision
+    let more = Task { await model.loadMoreContent(core: core) }
+    for index in 0..<3 {
+        await core.feed.waitForContinuationCount(index + 1)
+        await core.feed.succeedContinuation(index, title: "Focus", continuation: "token-\(index + 2)")
+    }
+    await more.value
+    #expect(await core.feed.requestedContinuationTokens() == ["token-1", "token-2", "token-3"])
+    #expect(model.contentRevision == revision)
+    #expect(model.continuationToken == "token-4")
+    #expect(!model.isLoadingMore)
+    #expect(model.loadMoreMessage != nil)
+
+    let next = Task { await model.loadMoreContent(core: core) }
+    await core.feed.waitForContinuationCount(4)
+    await core.feed.succeedContinuation(3, title: "Next batch", continuation: nil)
+    await next.value
+    #expect(model.sections.map(\.title) == ["Focus", "Next batch"])
+}
+
+@Test @MainActor func homeManualPaginationStopsContinuationCycleAndExplainsEnd() async {
+    let core = HomeCoreStub()
+    let model = makeHomeModel()
+    await loadFilteredHome(model, core: core)
+    let more = Task { await model.loadMoreContent(core: core) }
+    await core.feed.waitForContinuationCount(1)
+    await core.feed.succeedContinuation(0, title: "Focus", continuation: "token-2")
+    await core.feed.waitForContinuationCount(2)
+    await core.feed.succeedContinuation(1, title: "Focus", continuation: "token-1")
+    await more.value
+    #expect(model.sections.map(\.title) == ["Focus"])
+    #expect(model.continuationToken == nil)
+    #expect(!model.isLoadingMore)
+    #expect(model.loadMoreMessage == "No hay más recomendaciones por ahora.")
+}
+
+@Test @MainActor func homeEmptyFinalContinuationReportsEndWithoutReloadingCards() async {
+    let core = HomeCoreStub()
+    let model = makeHomeModel()
+    await loadFilteredHome(model, core: core)
+    let revision = model.contentRevision
+    let more = Task { await model.loadMoreContent(core: core) }
+    await core.feed.waitForContinuationCount(1)
+    await core.feed.succeedContinuation(0, title: "", continuation: nil)
+    await more.value
+    #expect(model.sections.map(\.title) == ["Focus"])
+    #expect(model.contentRevision == revision)
+    #expect(model.continuationToken == nil)
+    #expect(!model.isLoadingMore)
+    #expect(model.loadMoreMessage == "No hay más recomendaciones por ahora.")
+}
+
+@Test @MainActor func homeCancelledManualPaginationUnlocksButtonWithoutApplyingResponse() async {
+    let core = HomeCoreStub()
+    let model = makeHomeModel()
+    await loadFilteredHome(model, core: core)
+    let more = Task { await model.loadMoreContent(core: core) }
+    await core.feed.waitForContinuationCount(1)
+    more.cancel()
+    await core.feed.succeedContinuation(0, title: "Cancelled", continuation: nil)
+    await more.value
+    #expect(model.sections.map(\.title) == ["Focus"])
+    #expect(model.continuationToken == "token-1")
+    #expect(!model.isLoadingMore)
+    #expect(model.loadMoreMessage == nil)
+}
+
+@Test @MainActor func homeChipChangeDiscardsPendingManualContinuationAndItsStatus() async {
+    let core = HomeCoreStub()
+    let model = makeHomeModel()
+    await loadFilteredHome(model, core: core)
+    let more = Task { await model.loadMoreContent(core: core) }
+    await core.feed.waitForContinuationCount(1)
+    let chip = Task { await model.loadHomeFeed(core: core, chipParams: "relax") }
+    await core.feed.waitForCount(2)
+    await core.feed.succeed(1, title: "Relax")
+    await chip.value
+    await core.feed.succeedContinuation(0, title: "Old feed", continuation: nil)
+    await more.value
+    #expect(model.selectedChipParams == "relax")
+    #expect(model.sections.map(\.title) == ["Relax"])
+    #expect(model.loadMoreMessage == nil)
+    #expect(!model.isLoadingMore)
 }
 
 @Test @MainActor func homeDiscardsOlderChipResponse() async {
@@ -144,6 +294,7 @@ private final class HomeCoreStub: SideBCore, @unchecked Sendable {
     await pending.value
 
     #expect(model.sections.isEmpty)
+    #expect(model.featured == .empty)
     #expect(model.selectedChipParams == nil)
     #expect(!model.isLoading)
 }
@@ -420,6 +571,56 @@ import SwiftUI
     #expect(narrow.artist.frame.maxY <= narrow.bounds.maxY)
 }
 
+@Test @MainActor func testHomeArtworkCornersRemainIndependentFromCardMaskAfterReuseAndResize() {
+    func configure(_ card: HomeItemView, kind: String, id: String, title: String) {
+        card.configure(
+            record: HomeItemRecord(
+                kind: kind, id: id, title: title, subtitle: "Artist", thumbnail: nil,
+                duration: nil, artists: "Artist", artistId: "artist_1", album: nil,
+                albumId: nil, artistRuns: [], explicit: false
+            ),
+            style: .largeCard, currentTrackID: nil, isPlaying: false,
+            onCard: {}, onCover: {}, onTitle: {}, onArtist: {}, onAlbum: {}, menuProvider: { nil }
+        )
+    }
+
+    func artworkButton(in card: HomeItemView) -> NSButton? {
+        card.subviews.compactMap { $0 as? NSButton }.first { $0.imagePosition == .imageOnly }
+    }
+
+    let card = HomeItemView(frame: NSRect(x: 0, y: 0, width: 140, height: 234))
+    configure(card, kind: "album", id: "album_1", title: "808s & Heartbreak")
+    card.layout()
+
+    #expect(card.layer?.cornerRadius == 14)
+    #expect(card.clipsToBounds == false)
+    #expect(card.layer?.masksToBounds == false)
+    guard let albumCover = artworkButton(in: card) else {
+        Issue.record("No se encontró el botón de portada del álbum")
+        return
+    }
+    #expect(albumCover.frame == NSRect(x: 0, y: 0, width: 140, height: 140))
+    #expect(albumCover.layer?.masksToBounds == true)
+    #expect(albumCover.layer?.cornerRadius == AppTheme.artworkCardRadius)
+    #expect(card.equalizerOverlay.layer?.cornerRadius == AppTheme.artworkCardRadius)
+
+    card.setFrameSize(NSSize(width: 120, height: 214))
+    card.prepareForReuse()
+    configure(card, kind: "artist", id: "artist_2", title: "Artist")
+    card.layout()
+
+    #expect(card.clipsToBounds == false)
+    #expect(card.layer?.masksToBounds == false)
+    guard let artistCover = artworkButton(in: card) else {
+        Issue.record("No se encontró el botón de portada del artista")
+        return
+    }
+    #expect(artistCover.frame == NSRect(x: 0, y: 0, width: 120, height: 120))
+    #expect(artistCover.layer?.masksToBounds == true)
+    #expect(artistCover.layer?.cornerRadius == 60)
+    #expect(card.equalizerOverlay.layer?.cornerRadius == 60)
+}
+
 @Test func testHomePresentationFactorySectionOrdering() {
     let dummyItem = HomeItemRecord(
         kind: "song",
@@ -513,6 +714,7 @@ import SwiftUI
         currentAlbumBrowseId: nil,
         currentPlaylistBrowseId: nil,
         isPlaying: true,
+        queueContext: .radio(seedVideoId: "song_123", title: "Radio", seedName: "Pink + White"),
         onCard: {}, onCover: {}, onTitle: {}, onArtist: {}, onAlbum: {},
         onDirectPlay: { songDirectPlayClicked = true },
         menuProvider: { nil }
@@ -524,12 +726,15 @@ import SwiftUI
     #expect(songCard.equalizerOverlay.hitTest(NSPoint(x: 20, y: 20)) == nil)
 
     // 2. Verificación de pausa
-    songCard.updatePlayback(currentTrackID: "song_123", isPlaying: false)
+    songCard.updatePlayback(currentTrackID: "song_123", isPlaying: false, queueContext: .radio(seedVideoId: "song_123", title: "Radio", seedName: "Pink + White"))
     #expect(!songCard.equalizerOverlay.isHidden) // en pausa se mantiene pero congelado
 
     // 3. Verificación de otra canción
-    songCard.updatePlayback(currentTrackID: "other_song", isPlaying: true)
-    #expect(songCard.equalizerOverlay.isHidden) // ya no es la activa
+    songCard.updatePlayback(currentTrackID: "other_song", isPlaying: true,
+                           queueContext: .radio(seedVideoId: "song_123", title: "Radio", seedName: "Pink + White"))
+    #expect(!songCard.equalizerOverlay.isHidden) // la radio sigue perteneciendo a su canción origen
+    songCard.updatePlayback(currentTrackID: "other_song", isPlaying: true, queueContext: nil)
+    #expect(songCard.equalizerOverlay.isHidden) // cambiar de contexto retira el indicador
 
     // 4. Verificación de álbum activo y reproducción directa
     var albumDirectPlayClicked = false
@@ -541,6 +746,7 @@ import SwiftUI
         currentAlbumBrowseId: "MPREb_blonde",
         currentPlaylistBrowseId: nil,
         isPlaying: true,
+        queueContext: .album(browseId: "MPREb_blonde", title: "Blonde"),
         onCard: {}, onCover: {}, onTitle: {}, onArtist: {}, onAlbum: {},
         onDirectPlay: { albumDirectPlayClicked = true },
         menuProvider: { nil }
@@ -550,6 +756,7 @@ import SwiftUI
     #expect(!albumCard.equalizerOverlay.isHidden)
 
     // Simular clic en el área táctil de play de la tarjeta del álbum
+    albumCard.hovered = true
     guard let playHitBtn = albumCard.subviews.compactMap({ $0 as? HomePlayHitButton }).first else {
         Issue.record("No se encontró HomePlayHitButton en la tarjeta")
         return
@@ -566,6 +773,7 @@ import SwiftUI
         currentAlbumBrowseId: nil,
         currentPlaylistBrowseId: "PL_my_playlist",
         isPlaying: true,
+        queueContext: .playlist(browseId: "PL_my_playlist", title: "Favoritos"),
         onCard: {}, onCover: {}, onTitle: {}, onArtist: {}, onAlbum: {},
         onDirectPlay: {},
         menuProvider: { nil }
@@ -577,4 +785,3 @@ import SwiftUI
     playlistCard.prepareForReuse()
     #expect(playlistCard.equalizerOverlay.isHidden)
 }
-

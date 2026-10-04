@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 import SideBCore
 
 struct LibraryView: View {
@@ -202,44 +203,7 @@ struct LibraryView: View {
             ScrollView {
                 LazyVGrid(columns: columns, alignment: .leading, spacing: 24) {
                     ForEach(cards, id: \.id) { card in
-                        Button {
-                            switch libraryViewModel.selectedPageTab {
-                            case .playlists: router.navigate(to: .playlist(browseId: card.id))
-                            case .albums: router.navigate(to: .album(browseId: card.id))
-                            case .artists: router.navigate(to: .artist(browseId: card.id))
-                            case .songs: break
-                            }
-                        } label: {
-                            VStack(alignment: .leading, spacing: 7) {
-                                if let thumbnail = card.thumbnail, let url = URL(string: thumbnail) {
-                                    CachedAsyncImage(url: url, targetSize: CGSize(width: 200, height: 200)) { image in
-                                        image.resizable().aspectRatio(contentMode: .fill)
-                                    } placeholder: {
-                                        artworkPlaceholder(icon)
-                                    }
-                                    .frame(maxWidth: .infinity)
-                                    .aspectRatio(1, contentMode: .fit)
-                                    .clipShape(RoundedRectangle(cornerRadius: libraryViewModel.selectedPageTab == .artists ? 100 : 10))
-                                } else {
-                                    artworkPlaceholder(icon)
-                                        .frame(maxWidth: .infinity)
-                                        .aspectRatio(1, contentMode: .fit)
-                                }
-                                Text(card.title)
-                                    .font(.system(size: 13, weight: .semibold))
-                                    .lineLimit(2)
-                                if let subtitle = card.subtitle {
-                                    Text(subtitle)
-                                        .font(.system(size: 11))
-                                        .foregroundStyle(.secondary)
-                                        .lineLimit(1)
-                                }
-                            }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .browseCardContextMenu(card: card, player: playerViewModel, router: router, core: rustCore, origin: .library)
+                        libraryCard(card, icon: icon)
                     }
                 }
                 .padding(.horizontal, 32)
@@ -247,6 +211,75 @@ struct LibraryView: View {
                 .padding(.bottom, 130)
             }
         }
+    }
+
+    private func openLibraryCard(_ card: BrowseCardRecord) {
+        switch libraryViewModel.selectedPageTab {
+        case .playlists: router.navigate(to: .playlist(browseId: card.id))
+        case .albums: router.navigate(to: .album(browseId: card.id))
+        case .artists: router.navigate(to: .artist(browseId: card.id))
+        case .songs: break
+        }
+    }
+
+    private func libraryCard(_ card: BrowseCardRecord, icon: String) -> some View {
+        let isArtist = libraryViewModel.selectedPageTab == .artists
+        let kind = libraryViewModel.selectedPageTab == .albums ? "album" : "playlist"
+        return VStack(alignment: .leading, spacing: 7) {
+            if isArtist {
+                Button { openLibraryCard(card) } label: {
+                    libraryArtwork(card, icon: icon, isArtist: true)
+                }.buttonStyle(.plain).mediaCardFocusControl()
+            } else {
+                MediaArtworkControls(
+                    isCollection: true,
+                    isActive: MediaPlaybackIdentity.isCollectionActive(kind: kind, id: card.id,
+                                                                       context: playerViewModel.queueManager.context),
+                    isPlaying: playerViewModel.isPlaying,
+                    isLoading: (kind == "album" ? playerViewModel.loadingRecommendedAlbumID : playerViewModel.loadingRecommendedPlaylistID)
+                        .map(MenuIDNormalizer.normalize) == MenuIDNormalizer.normalize(card.id),
+                    showsIndicator: true, accessibilityTitle: card.title,
+                    onOpen: { openLibraryCard(card) },
+                    onPlay: { playerViewModel.activateMediaCollection(id: card.id, kind: kind) },
+                    menuProvider: { libraryCardMenu(card, kind: kind) }
+                ) {
+                    libraryArtwork(card, icon: icon, isArtist: false)
+                }.aspectRatio(1, contentMode: .fit)
+            }
+            Button { openLibraryCard(card) } label: {
+                Text(card.title).font(.system(size: 13, weight: .semibold))
+                    .lineLimit(2).frame(maxWidth: .infinity, alignment: .leading)
+            }.buttonStyle(.plain).mediaCardFocusControl()
+            if let subtitle = card.subtitle {
+                Text(subtitle).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
+                    .allowsHitTesting(false)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
+        .mediaCardActivation(label: "Abrir \(card.title)") { openLibraryCard(card) }
+        .mediaCardSurface()
+        .browseCardContextMenu(card: card, player: playerViewModel, router: router, core: rustCore, origin: .library)
+    }
+
+    private func libraryArtwork(_ card: BrowseCardRecord, icon: String, isArtist: Bool) -> some View {
+        CachedAsyncImage(url: ImageURLHelper.optimizedThumbnailURL(from: card.thumbnail, targetPixelSize: 400),
+                         targetSize: CGSize(width: 200, height: 200)) { image in
+            image.resizable().aspectRatio(contentMode: .fill)
+        } placeholder: { artworkPlaceholder(icon) }
+        .frame(maxWidth: .infinity).aspectRatio(1, contentMode: .fit)
+        .clipShape(RoundedRectangle(cornerRadius: isArtist ? 100 : AppTheme.artworkCardRadius))
+    }
+
+    private func libraryCardMenu(_ card: BrowseCardRecord, kind: String) -> NSMenu {
+        if kind == "album" {
+            return AppContextMenuFactory.shared.buildAlbumNSMenu(browseId: card.id, playlistId: nil,
+                title: card.title, artist: card.subtitle, thumbnail: card.thumbnail,
+                origin: .library, player: playerViewModel, router: router, core: rustCore)
+        }
+        return AppContextMenuFactory.shared.buildPlaylistNSMenu(id: card.id, title: card.title,
+            subtitle: card.subtitle, thumbnail: card.thumbnail, origin: .library,
+            player: playerViewModel, router: router, core: rustCore)
     }
 
     private var cardError: String? {
@@ -262,7 +295,7 @@ struct LibraryView: View {
         Rectangle()
             .fill(Color.primary.opacity(0.07))
             .overlay { Image(systemName: icon).font(.system(size: 36)).foregroundStyle(.secondary) }
-            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .clipShape(RoundedRectangle(cornerRadius: libraryViewModel.selectedPageTab == .artists ? 100 : AppTheme.artworkCardRadius))
     }
 
     private func emptyState(_ title: String, icon: String) -> some View {

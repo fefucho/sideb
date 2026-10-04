@@ -1,6 +1,9 @@
 import AppKit
 import WebKit
 
+/// Native media links handle Space as activation rather than as the global playback shortcut.
+protocol PlaybackSpaceControl: AnyObject {}
+
 /// Routes an unmodified Space key to playback while the app is active and text is not being edited.
 @MainActor
 final class PlaybackSpaceShortcut {
@@ -23,7 +26,7 @@ final class PlaybackSpaceShortcut {
         guard let window = event.window, window.isKeyWindow,
               let player, player.currentTrack != nil,
               Self.isPlainSpace(event),
-              !Self.isEditingText(window.firstResponder) else {
+              Self.canHandleSpace(responder: window.firstResponder, windowID: ObjectIdentifier(window)) else {
             return event
         }
 
@@ -35,6 +38,12 @@ final class PlaybackSpaceShortcut {
     static func isPlainSpace(_ event: NSEvent) -> Bool {
         event.keyCode == 49 &&
         event.modifierFlags.intersection([.command, .control, .option, .shift]).isEmpty
+    }
+
+    static func canHandleSpace(responder: NSResponder?, windowID: ObjectIdentifier,
+                               focusRegistry: PlaybackSpaceFocusRegistry? = nil) -> Bool {
+        !isEditingText(responder) && !(responder is NSButton) && !(responder is NSSegmentedControl) &&
+            !(responder is PlaybackSpaceControl) && !(focusRegistry ?? .shared).preservesNativeSpace(in: windowID)
     }
 
     static func isEditingText(_ responder: NSResponder?) -> Bool {
@@ -49,5 +58,46 @@ final class PlaybackSpaceShortcut {
         default:
             return false
         }
+    }
+}
+
+/// Explicit SwiftUI focus scopes avoid guessing whether an NSHostingView's
+/// first responder belongs to a focused button or to the page beneath it.
+@MainActor
+final class PlaybackSpaceFocusRegistry {
+    static let shared = PlaybackSpaceFocusRegistry()
+    private var scopes: [UUID: ObjectIdentifier] = [:]
+
+    func update(scope: UUID, windowID: ObjectIdentifier?, isFocused: Bool) {
+        if isFocused, let windowID { scopes[scope] = windowID }
+        else { scopes.removeValue(forKey: scope) }
+    }
+
+    func preservesNativeSpace(in windowID: ObjectIdentifier) -> Bool {
+        scopes.values.contains(windowID)
+    }
+}
+
+/// A noninteractive marker whose lifetime and window attachment bound the scope.
+final class PlaybackSpaceFocusView: NSView {
+    private let scope = UUID()
+    var isControlFocused = false {
+        didSet { updateScope() }
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        updateScope()
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    func clearScope() {
+        PlaybackSpaceFocusRegistry.shared.update(scope: scope, windowID: nil, isFocused: false)
+    }
+
+    private func updateScope() {
+        PlaybackSpaceFocusRegistry.shared.update(scope: scope, windowID: window.map(ObjectIdentifier.init),
+                                                 isFocused: isControlFocused)
     }
 }

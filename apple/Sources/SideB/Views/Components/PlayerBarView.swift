@@ -15,7 +15,6 @@ struct PlayerBarView: View {
     @State private var isVolumeExpanded: Bool = false
     @State private var isHoveringVolumeCapsule: Bool = false
     @State private var isDraggingVolume: Bool = false
-    @State private var isHoveringArtist: Bool = false
     @State private var isHoveringAlbum: Bool = false
 
     init(viewModel: PlayerViewModel, router: NavigationRouter? = nil) {
@@ -251,9 +250,9 @@ struct PlayerBarView: View {
                 }
                 .id(viewModel.currentTrack?.videoId ?? url.absoluteString)
                 .frame(width: artworkSize, height: artworkSize)
-                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: AppTheme.artworkThumbnailRadius, style: .continuous))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    RoundedRectangle(cornerRadius: AppTheme.artworkThumbnailRadius, style: .continuous)
                         .stroke(Color.white.opacity(0.10), lineWidth: 0.5)
                 )
                 .shadow(color: .black.opacity(0.25), radius: 6, y: 2)
@@ -301,17 +300,9 @@ struct PlayerBarView: View {
                 } else {
                     HStack(spacing: 6) {
                         if let track = viewModel.currentTrack, !track.displayArtist.isEmpty {
-                            Button {
-                                navigateToArtist(track: track)
-                            } label: {
-                                Text(track.displayArtist)
-                                    .font(.system(size: 11.5, weight: .medium))
-                                    .foregroundStyle(isHoveringArtist ? Color.primary : Color.secondary)
-                                    .lineLimit(1)
+                            TrackArtistLinks(track: track, font: .system(size: 11.5, weight: .medium), color: .secondary, hoverColor: .primary) { id, name in
+                                navigateToArtist(track: track, artistId: id, name: name)
                             }
-                            .buttonStyle(.plain)
-                            .onHover { isHoveringArtist = $0 }
-                            .help("Ver artista: \(track.displayArtist)")
                         } else {
                             Text("Selecciona una pista")
                                 .font(.system(size: 11.5, weight: .regular))
@@ -595,16 +586,16 @@ struct PlayerBarView: View {
     }
 
     // MARK: - Navegación
-    private func navigateToArtist(track: SongItemRecord) {
+    private func navigateToArtist(track: SongItemRecord, artistId: String?, name: String) {
         if viewModel.isFullscreenPresented {
             withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
                 viewModel.isFullscreenPresented = false
             }
         }
-        if let browseId = track.artistId ?? viewModel.currentArtistBrowseId {
+        if let browseId = artistId ?? (track.artistRuns.isEmpty ? track.artistId ?? viewModel.currentArtistBrowseId : nil) {
             router?.navigate(to: .artist(browseId: browseId))
         } else {
-            router?.navigate(to: .search(query: track.artists))
+            router?.navigate(to: .search(query: name))
         }
     }
 
@@ -622,7 +613,7 @@ struct PlayerBarView: View {
     }
 
     private func fallbackArtwork(size: CGFloat) -> some View {
-        RoundedRectangle(cornerRadius: 7, style: .continuous)
+        RoundedRectangle(cornerRadius: AppTheme.artworkThumbnailRadius, style: .continuous)
             .fill(Color.secondary.opacity(0.18))
             .frame(width: size, height: size)
             .overlay(

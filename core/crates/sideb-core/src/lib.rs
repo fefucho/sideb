@@ -115,9 +115,6 @@ pub struct SongItemRecord {
     pub is_video: bool,
     pub is_upload: bool,
     pub library: Option<LibraryToggleRecord>,
-    /// Run-by-run linked artist credits for Windows' local Tauri bridge. Kept out of the
-    /// default UniFFI record so the macOS ABI and generated XCFramework stay unchanged.
-    #[cfg(feature = "windows-bridge")]
     pub artist_runs: Vec<HomeArtistRunRecord>,
 }
 
@@ -131,6 +128,7 @@ impl From<innertube::SongItem> for SongItemRecord {
             duration: item.duration,
             thumbnail: item.thumbnail,
             artist_id: item.artist_id,
+            artist_runs: item.artist_runs.into_iter().map(|run| HomeArtistRunRecord { text: run.text, id: run.id }).collect(),
             album_id: item.album_id,
             set_video_id: item.set_video_id,
             is_video: item.is_video,
@@ -140,15 +138,28 @@ impl From<innertube::SongItem> for SongItemRecord {
                 add_token: toggle.add_token,
                 remove_token: toggle.remove_token,
             }),
-            #[cfg(feature = "windows-bridge")]
-            artist_runs: item
-                .artist_runs
-                .into_iter()
-                .map(|run| HomeArtistRunRecord {
-                    text: run.text,
-                    id: run.id,
-                })
-                .collect(),
+        }
+    }
+}
+
+impl From<innertube::BrowseItem> for SongItemRecord {
+    fn from(item: innertube::BrowseItem) -> Self {
+        let artists = item.artists.unwrap_or_else(|| item.subtitle.unwrap_or_default());
+        let artist_id = item.artist_id.or_else(|| item.artist_runs.iter().find_map(|run| run.id.clone()));
+        Self {
+            video_id: item.id,
+            title: item.title,
+            artists,
+            album: item.album,
+            duration: item.duration,
+            thumbnail: item.thumbnail,
+            artist_id,
+            album_id: item.album_id,
+            set_video_id: None,
+            is_video: item.is_video,
+            is_upload: item.is_upload,
+            library: None,
+            artist_runs: item.artist_runs.into_iter().map(|run| HomeArtistRunRecord { text: run.text, id: run.id }).collect(),
         }
     }
 }
@@ -374,11 +385,17 @@ pub struct ArtistDetailRecord {
 
 #[derive(Clone, Debug, uniffi::Record)]
 pub struct SearchResultsRecord {
+    /// Every song in the provider's top-result section, in provider order, including a song hero.
+    pub top_songs: Vec<SongItemRecord>,
     pub top: Vec<BrowseCardRecord>,
     pub songs: Vec<SongItemRecord>,
     pub albums: Vec<BrowseCardRecord>,
     pub artists: Vec<BrowseCardRecord>,
     pub playlists: Vec<BrowseCardRecord>,
+}
+
+fn search_top_songs(items: &[innertube::BrowseItem]) -> Vec<SongItemRecord> {
+    items.iter().filter(|item| item.kind == "song").cloned().map(SongItemRecord::from).collect()
 }
 
 #[derive(Clone, Debug, uniffi::Record)]
@@ -1388,25 +1405,17 @@ impl SideBCore {
                                 .map(|i| SongItemRecord {
                                     video_id: i.id,
                                     title: i.title,
-                                    artists: i.artists.or(i.subtitle).unwrap_or_default(),
+                                    artists: i.artists.unwrap_or_else(|| i.subtitle.unwrap_or_default()),
                                     album: i.album,
                                     duration: i.duration,
                                     thumbnail: i.thumbnail,
-                                    artist_id: i.artist_id,
+                                    artist_id: i.artist_id.or_else(|| i.artist_runs.iter().find_map(|r| r.id.clone())),
+                                    artist_runs: i.artist_runs.into_iter().map(|run| HomeArtistRunRecord { text: run.text, id: run.id }).collect(),
                                     album_id: i.album_id,
                                     set_video_id: None,
                                     is_video: i.is_video,
                                     is_upload: i.is_upload,
                                     library: None,
-                                    #[cfg(feature = "windows-bridge")]
-                                    artist_runs: i
-                                        .artist_runs
-                                        .into_iter()
-                                        .map(|run| HomeArtistRunRecord {
-                                            text: run.text,
-                                            id: run.id,
-                                        })
-                                        .collect(),
                                 })
                                 .collect();
                             if !songs.is_empty() {
@@ -1481,6 +1490,18 @@ impl SideBCore {
             .collect())
     }
 
+    /// Search video uploads, returning a typed list of SongItemRecord.
+    pub async fn search_videos(&self, query: String) -> Result<Vec<SongItemRecord>, SideBError> {
+        let client = self
+            .clients
+            .get(METADATA_CLIENT)
+            .ok_or_else(|| SideBError::Other {
+                message: "Metadata client missing".into(),
+            })?;
+        let results = self.it.search_videos(client, &query).await?;
+        Ok(results.items.into_iter().map(SongItemRecord::from).collect())
+    }
+
     /// Search songs, returning a JSON array of SongItem (legacy/compat).
     pub async fn search_songs_json(
         &self,
@@ -1511,6 +1532,7 @@ impl SideBCore {
             })?;
         let results = self.it.search_all(client, &query, record_history).await?;
         Ok(SearchResultsRecord {
+            top_songs: search_top_songs(&results.top),
             top: results
                 .top
                 .into_iter()
@@ -1519,29 +1541,7 @@ impl SideBCore {
             songs: results
                 .songs
                 .into_iter()
-                .map(|i| SongItemRecord {
-                    video_id: i.id,
-                    title: i.title,
-                    artists: i.subtitle.unwrap_or_default(),
-                    album: i.album,
-                    duration: i.duration,
-                    thumbnail: i.thumbnail,
-                    artist_id: i.artist_runs.first().and_then(|r| r.id.clone()),
-                    album_id: i.album_id,
-                    set_video_id: None,
-                    is_video: i.is_video,
-                    is_upload: i.is_upload,
-                    library: None,
-                    #[cfg(feature = "windows-bridge")]
-                    artist_runs: i
-                        .artist_runs
-                        .into_iter()
-                        .map(|run| HomeArtistRunRecord {
-                            text: run.text,
-                            id: run.id,
-                        })
-                        .collect(),
-                })
+                .map(SongItemRecord::from)
                 .collect(),
             albums: results
                 .albums
@@ -2020,6 +2020,7 @@ fn parse_song_record(json: &str) -> Option<SongItemRecord> {
         title,
         artists,
         artist_id,
+        artist_runs: Vec::new(),
         album,
         album_id,
         duration,
@@ -2028,8 +2029,6 @@ fn parse_song_record(json: &str) -> Option<SongItemRecord> {
         is_video: false,
         is_upload: false,
         library: None,
-        #[cfg(feature = "windows-bridge")]
-        artist_runs: Vec::new(),
     })
 }
 
@@ -2104,36 +2103,89 @@ impl SideBCore {
     }
 }
 
-// UniFFI's `export` macro expands method wrappers before Rust applies method-level `cfg`s. Keep
-// the feature gate on the entire extension impl so default/macOS builds never generate a wrapper
-// for a method that was compiled out.
-#[cfg(feature = "windows-bridge")]
-#[uniffi::export(async_runtime = "tokio")]
-impl SideBCore {
-    /// Search music videos for the Windows bridge. The mixed search owns history recording;
-    /// this filtered request is anonymous and respects the core's `hide_videos` setting.
-    pub async fn search_videos(
-        &self,
-        query: String,
-    ) -> Result<Vec<SongItemRecord>, SideBError> {
-        let client = self
-            .clients
-            .get(METADATA_CLIENT)
-            .ok_or_else(|| SideBError::Other {
-                message: "Metadata client missing".into(),
-            })?;
-        let results = self.it.search_videos(client, &query).await?;
-        Ok(results
-            .items
-            .into_iter()
-            .map(SongItemRecord::from)
-            .collect())
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn browse_item(kind: &'static str, id: &str, title: &str) -> innertube::BrowseItem {
+        innertube::BrowseItem {
+            kind,
+            id: id.into(),
+            title: title.into(),
+            subtitle: Some("Fallback artist line".into()),
+            thumbnail: Some("https://example.test/thumb.jpg".into()),
+            duration: Some("3:21".into()),
+            artist_runs: vec![innertube::ArtistRun {
+                text: "Linked Artist".into(),
+                id: Some("UC-linked".into()),
+            }],
+            play_count: None,
+            is_video: true,
+            is_upload: true,
+            explicit: false,
+            artists: Some("Structured Artist".into()),
+            artist_id: Some("UC-explicit".into()),
+            album: Some("Structured Album".into()),
+            album_id: Some("MPRE-album".into()),
+        }
+    }
+
+    #[test]
+    fn browse_song_record_keeps_structured_search_metadata() {
+        let record = SongItemRecord::from(browse_item("song", "video-1", "Search song"));
+        assert_eq!(record.video_id, "video-1");
+        assert_eq!(record.artists, "Structured Artist");
+        assert_eq!(record.artist_id.as_deref(), Some("UC-explicit"));
+        assert_eq!(record.artist_runs[0].id.as_deref(), Some("UC-linked"));
+        assert_eq!(record.album.as_deref(), Some("Structured Album"));
+        assert_eq!(record.album_id.as_deref(), Some("MPRE-album"));
+        assert_eq!(record.duration.as_deref(), Some("3:21"));
+        assert_eq!(record.thumbnail.as_deref(), Some("https://example.test/thumb.jpg"));
+        assert!(record.is_video);
+        assert!(record.is_upload);
+    }
+
+    #[test]
+    fn top_search_songs_include_song_hero_and_preserve_provider_order() {
+        let items = vec![
+            browse_item("song", "hero-song", "Hero song"),
+            browse_item("album", "album", "Album"),
+            browse_item("song", "second-song", "Second song"),
+        ];
+        let songs = search_top_songs(&items);
+        assert_eq!(
+            songs.iter().map(|song| song.video_id.as_str()).collect::<Vec<_>>(),
+            ["hero-song", "second-song"]
+        );
+    }
+
+    #[test]
+    fn browse_song_uses_subtitle_and_artist_run_id_as_fallbacks() {
+        let mut item = browse_item("song", "video-2", "Search song");
+        item.artists = None;
+        item.artist_id = None;
+        let record = SongItemRecord::from(item);
+        assert_eq!(record.artists, "Fallback artist line");
+        assert_eq!(record.artist_id.as_deref(), Some("UC-linked"));
+    }
+
+    #[test]
+    fn song_record_preserves_each_artist_destination() {
+        let item: innertube::SongItem = serde_json::from_str(r#"{
+            "video_id":"collab", "title":"Song", "artists":"Future & Metro Boomin",
+            "artist_id":"UCfuture", "artist_runs":[
+                {"text":"Future", "id":"UCfuture"},
+                {"text":" & "},
+                {"text":"Metro Boomin", "id":"UCmetro"}
+            ]
+        }"#).unwrap();
+        let record = SongItemRecord::from(item);
+        assert_eq!(record.artist_runs.len(), 3);
+        assert_eq!(record.artist_runs[0].id.as_deref(), Some("UCfuture"));
+        assert_eq!(record.artist_runs[1].text, " & ");
+        assert!(record.artist_runs[1].id.is_none());
+        assert_eq!(record.artist_runs[2].id.as_deref(), Some("UCmetro"));
+    }
 
     #[test]
     fn civil_date_calculation() {

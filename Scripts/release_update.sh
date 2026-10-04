@@ -5,10 +5,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR/.."
 
 VERSION_FILE="version.env"
-FIXES_FILE="documentation/FIXES_LOG.md"
-if [ ! -f "$FIXES_FILE" ]; then
-    FIXES_FILE="FIXES_LOG.md"
-fi
 
 if [ ! -f "$VERSION_FILE" ]; then
     echo "❌ Error: no se encontró $VERSION_FILE"
@@ -75,18 +71,10 @@ GITHUB_REPO_OWNER="$GITHUB_REPO_OWNER"
 GITHUB_REPO_NAME="$GITHUB_REPO_NAME"
 EOF
 
-# Extraer el reporte acumulado de fixes de FIXES_LOG.md desde el último release
+# Extraer correcciones generales y Mac desde los registros activos
 NOTES_FILE="RELEASE_NOTES.tmp"
 
-if [ -f "$SCRIPT_DIR/generate_recap.py" ]; then
-    python3 "$SCRIPT_DIR/generate_recap.py" "$NEW_VERSION" > "$NOTES_FILE"
-else
-    cat > "$NOTES_FILE" <<EOF
-### 🎵 Novedades en Side B v$NEW_VERSION
-- Mejoras generales de rendimiento y estabilidad en macOS.
-- Corrección de errores y optimización de reproducción de audio.
-EOF
-fi
+python3 "$SCRIPT_DIR/generate_recap.py" "$NEW_VERSION" --platform macos > "$NOTES_FILE"
 
 echo ""
 echo "📝 Fix Report generado para el Release:"

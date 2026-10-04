@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 import SideBCore
 
 // MARK: - RecommendedContentView
@@ -271,7 +272,7 @@ struct RecommendedContentView: View {
                                 VStack(spacing: 8) {
                                     ForEach(0..<3, id: \.self) { _ in
                                         HStack(spacing: 10) {
-                                            RoundedRectangle(cornerRadius: 6)
+                                            RoundedRectangle(cornerRadius: AppTheme.artworkThumbnailRadius)
                                                 .fill(Color.white.opacity(0.10))
                                                 .frame(width: 44, height: 44)
                                             VStack(alignment: .leading, spacing: 4) {
@@ -348,86 +349,61 @@ private struct RecommendedTrackRow: View {
     @State private var isHovered: Bool = false
     
     var body: some View {
-        Button {
-            viewModel.playSong(track)
-        } label: {
-            HStack(spacing: 10) {
-                // Miniatura con Overlay de Play/Pause al Hover
-                ZStack {
-                    if let thumb = track.thumbnail,
-                       let url = ImageURLHelper.optimizedThumbnailURL(from: thumb, targetPixelSize: 96) {
-                        CachedAsyncImage(url: url, targetSize: CGSize(width: 44, height: 44)) { img in
-                            img
-                                .resizable()
-                                .aspectRatio(contentMode: .fill)
-                                .frame(width: 44, height: 44)
-                                .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-                        } placeholder: {
-                            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                .fill(Color.white.opacity(0.08))
-                                .frame(width: 44, height: 44)
-                        }
-                    } else {
-                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+        HStack(spacing: 10) {
+            MediaArtworkControls(
+                isCollection: false,
+                isActive: false,
+                isPlaying: false,
+                showsIndicator: false,
+                accessibilityTitle: track.title,
+                onOpen: { viewModel.activateMediaRadio(track) },
+                onPlay: { viewModel.activateMediaRadio(track) },
+                menuProvider: {
+                    AppContextMenuFactory.shared.buildSongNSMenu(song: track, player: viewModel,
+                        router: router, core: viewModel.rustCore, origin: .recommendations)
+                }
+            ) {
+                if let thumb = track.thumbnail,
+                   let url = ImageURLHelper.optimizedThumbnailURL(from: thumb, targetPixelSize: 96) {
+                    CachedAsyncImage(url: url, targetSize: CGSize(width: 44, height: 44)) { image in
+                        image.resizable().aspectRatio(contentMode: .fill)
+                    } placeholder: {
+                        RoundedRectangle(cornerRadius: AppTheme.artworkThumbnailRadius, style: .continuous)
                             .fill(Color.white.opacity(0.08))
-                            .frame(width: 44, height: 44)
                     }
-                    
-                    if isHovered || isCurrent {
-                        RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .fill(Color.black.opacity(0.40))
-                            .overlay {
-                                Image(systemName: isPlaying ? "pause.fill" : "play.fill")
-                                    .font(.system(size: 13, weight: .bold))
-                                    .foregroundStyle(.white)
-                            }
-                    }
-                }
-                .frame(width: 44, height: 44)
-                
-                // Textos: Título y Subtítulo (Artista • Álbum)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(track.title)
-                        .font(.system(size: 12.5, weight: isCurrent ? .semibold : .medium))
-                        .foregroundStyle(Color.white.opacity(0.95))
-                        .lineLimit(1)
-                    
-                    Text(subtitleText)
-                        .font(.system(size: 11, weight: .regular))
-                        .foregroundStyle(Color.white.opacity(0.55))
-                        .lineLimit(1)
-                }
-                
-                Spacer(minLength: 4)
-                
-                // Botón Rápido de Reproducir a Continuación en Hover
-                if isHovered {
-                    Button {
-                        viewModel.playNext(tracks: [track])
-                    } label: {
-                        Image(systemName: "text.line.first.and.arrowtriangle.forward")
-                            .font(.system(size: 11.5, weight: .medium))
-                            .foregroundStyle(.white.opacity(0.70))
-                            .frame(width: 22, height: 22)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .help("Reproducir a continuación")
+                    .frame(width: 44, height: 44)
+                    .clipShape(RoundedRectangle(cornerRadius: AppTheme.artworkThumbnailRadius, style: .continuous))
+                } else {
+                    RoundedRectangle(cornerRadius: AppTheme.artworkThumbnailRadius, style: .continuous)
+                        .fill(Color.white.opacity(0.08))
+                        .frame(width: 44, height: 44)
                 }
             }
-            .padding(.horizontal, 6)
-            .padding(.vertical, 4)
-            .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(isCurrent ? Color.sidebActiveRowBackground : (isHovered ? Color.white.opacity(0.09) : Color.clear))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .stroke(isCurrent ? Color.sidebActiveRowBorder : Color.clear, lineWidth: AppTheme.cardBorderWidth)
-                    )
-            )
-            .contentShape(Rectangle())
+            .frame(width: 44, height: 44)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(track.title)
+                    .font(.system(size: 12.5, weight: isCurrent ? .semibold : .medium))
+                    .foregroundStyle(Color.white.opacity(0.95))
+                    .lineLimit(1)
+                    .allowsHitTesting(false)
+                metadataLinks
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .buttonStyle(.plain)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 4)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(isCurrent ? Color.sidebActiveRowBackground : (isHovered ? Color.white.opacity(0.09) : Color.clear))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .stroke(isCurrent ? Color.sidebActiveRowBorder : Color.clear, lineWidth: AppTheme.cardBorderWidth)
+                )
+        )
+        .contentShape(Rectangle())
+        .mediaCardActivation(label: "Reproducir \(track.title)") { viewModel.activateMediaRadio(track) }
+        .mediaCardSurface()
         .onHover { isHovered = $0 }
         .songContextMenu(
             song: track,
@@ -438,12 +414,49 @@ private struct RecommendedTrackRow: View {
         )
     }
     
-    private var subtitleText: String {
-        let artist = track.displayArtist
-        if let album = track.displayAlbum, !album.isEmpty {
-            return "\(artist) • \(album)"
+    @ViewBuilder
+    private var metadataLinks: some View {
+        HStack(spacing: 4) {
+            let linkedRuns = track.artistRuns.filter { $0.id?.isEmpty == false }
+            if !linkedRuns.isEmpty {
+                ForEach(Array(track.artistRuns.enumerated()), id: \.offset) { index, run in
+                    if index > 0 {
+                        Text("•").foregroundStyle(.white.opacity(0.45)).allowsHitTesting(false)
+                    }
+                    if let id = run.id, !id.isEmpty {
+                        Button { router?.navigate(to: .artist(browseId: id)) } label: {
+                            Text(run.text).foregroundStyle(.white.opacity(0.55)).lineLimit(1)
+                        }
+                        .buttonStyle(.plain)
+                        .mediaCardFocusControl()
+                    } else {
+                        Text(run.text).foregroundStyle(.white.opacity(0.55)).lineLimit(1).allowsHitTesting(false)
+                    }
+                }
+            } else if let artistId = track.artistId, !artistId.isEmpty {
+                Button { router?.navigate(to: .artist(browseId: artistId)) } label: {
+                    Text(track.displayArtist).foregroundStyle(.white.opacity(0.55)).lineLimit(1)
+                }
+                .buttonStyle(.plain)
+                .mediaCardFocusControl()
+            } else {
+                Text(track.displayArtist).foregroundStyle(.white.opacity(0.55)).lineLimit(1).allowsHitTesting(false)
+            }
+
+            if let album = track.displayAlbum, !album.isEmpty {
+                Text("•").foregroundStyle(.white.opacity(0.45)).allowsHitTesting(false)
+                if let albumId = track.albumId, !albumId.isEmpty {
+                    Button { router?.navigate(to: .album(browseId: albumId)) } label: {
+                        Text(album).foregroundStyle(.white.opacity(0.55)).lineLimit(1)
+                    }
+                    .buttonStyle(.plain)
+                    .mediaCardFocusControl()
+                } else {
+                    Text(album).foregroundStyle(.white.opacity(0.55)).lineLimit(1).allowsHitTesting(false)
+                }
+            }
         }
-        return artist
+        .font(.system(size: 11, weight: .regular))
     }
 }
 

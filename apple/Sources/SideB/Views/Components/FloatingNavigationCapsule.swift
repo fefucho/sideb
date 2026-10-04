@@ -7,7 +7,7 @@ struct FloatingNavigationCapsule: View {
     @State private var isSpinning: Bool = false
     
     var body: some View {
-        HStack(spacing: 3) {
+        HStack(spacing: 2) {
             // En la pantalla de Inicio, el botón de Refresh se acopla a la izquierda de [ ◀ ▶ ]
             if router.currentPage == .home {
                 Button {
@@ -20,10 +20,10 @@ struct FloatingNavigationCapsule: View {
                     }
                 } label: {
                     Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 11.5, weight: .semibold))
+                        .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(.primary)
                         .rotationEffect(.degrees(isSpinning ? 360 : 0))
-                        .frame(width: 26, height: 26)
+                        .frame(width: ShellLayout.navigationControlHeight, height: ShellLayout.navigationControlHeight)
                         .contentShape(Circle())
                 }
                 .buttonStyle(.plain)
@@ -37,7 +37,7 @@ struct FloatingNavigationCapsule: View {
                 Divider()
                     .frame(height: 14)
                     .opacity(0.3)
-                    .padding(.horizontal, 2)
+                    .padding(.horizontal, 1)
                     .transition(.opacity)
             }
             
@@ -46,9 +46,9 @@ struct FloatingNavigationCapsule: View {
                 router.goBack()
             } label: {
                 Image(systemName: "chevron.left")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(.primary)
-                    .frame(width: 26, height: 26)
+                    .frame(width: ShellLayout.navigationControlHeight, height: ShellLayout.navigationControlHeight)
                     .contentShape(Circle())
             }
             .buttonStyle(.plain)
@@ -62,9 +62,9 @@ struct FloatingNavigationCapsule: View {
                 router.goForward()
             } label: {
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(.primary)
-                    .frame(width: 26, height: 26)
+                    .frame(width: ShellLayout.navigationControlHeight, height: ShellLayout.navigationControlHeight)
                     .contentShape(Circle())
             }
             .buttonStyle(.plain)
@@ -73,10 +73,10 @@ struct FloatingNavigationCapsule: View {
             .help("Adelante (⌘])")
             .keyboardShortcut("]", modifiers: .command)
         }
-        .padding(.horizontal, 7)
-        .padding(.vertical, 5)
+        .padding(.horizontal, 3)
+        .padding(.vertical, 3)
         .compatGlass(interactive: true, in: Capsule())
-        .shadow(color: Color.black.opacity(0.18), radius: 10, x: 0, y: 3)
+        .shadow(color: Color.black.opacity(0.12), radius: 6, x: 0, y: 2)
         .animation(.spring(response: 0.32, dampingFraction: 0.82), value: router.currentPage == .home)
     }
 }

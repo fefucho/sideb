@@ -16,7 +16,8 @@ final class PlaylistDetailViewModel {
 
     init() {}
 
-    func loadPlaylist(core: SideBCore, playlistId: String) async {
+    func loadPlaylist(core: SideBCore, playlistId: String, forceRefresh: Bool = false) async {
+        if forceRefresh { PlaylistCatalog.shared.invalidate(playlistId) }
         loadGeneration &+= 1
         let generation = loadGeneration
         self.isLoading = self.playlist == nil
@@ -67,13 +68,20 @@ final class PlaylistDetailViewModel {
     func loadMore(core: SideBCore) async {
         guard let continuation = playlist?.continuation, !continuation.isEmpty, !isLoadingMore else { return }
         let playlistID = playlist?.id
+        let generation = loadGeneration
         isLoadingMore = true
         do {
             let res = try await core.getPlaylistContinuation(token: continuation)
+            guard generation == loadGeneration else { return }
+            guard res.continuation != continuation else {
+                errorMessage = "La playlist devolvió una continuación repetida"
+                isLoadingMore = false
+                return
+            }
             if var current = self.playlist,
                current.id == playlistID, current.continuation == continuation {
                 current.items.append(contentsOf: res.items)
-                current.continuation = res.continuation == continuation ? nil : res.continuation
+                current.continuation = res.continuation
                 self.playlist = current
             }
         } catch {
@@ -116,8 +124,9 @@ final class PlaylistDetailViewModel {
 
     func setSort(_ sort: String, core: SideBCore) async throws {
         guard let playlist, playlist.owned, playlist.sortEditable else { return }
+        PlaylistCatalog.shared.invalidate(playlist.id)
         try await core.setPlaylistSort(playlistId: playlist.id, sort: sort)
-        await loadPlaylist(core: core, playlistId: playlist.id)
+        await loadPlaylist(core: core, playlistId: playlist.id, forceRefresh: true)
     }
 
     func moveTrack(from source: Int, to destination: Int, core: SideBCore) async throws {
@@ -133,6 +142,7 @@ final class PlaylistDetailViewModel {
         playlist.items.insert(moved, at: destination)
         let successor = playlist.items.dropFirst(destination + 1).first?.setVideoId
         self.playlist = playlist
+        PlaylistCatalog.shared.invalidate(playlist.id)
         isMovingTrack = true
         defer { isMovingTrack = false }
         do {
@@ -141,7 +151,7 @@ final class PlaylistDetailViewModel {
                 setVideoId: setVideoId,
                 successorSetVideoId: successor
             )
-            await loadPlaylist(core: core, playlistId: playlist.id)
+            await loadPlaylist(core: core, playlistId: playlist.id, forceRefresh: true)
         } catch {
             playlist.items = original
             self.playlist = playlist
@@ -152,9 +162,11 @@ final class PlaylistDetailViewModel {
     func removeTrack(track: SongItemRecord, core: SideBCore) async throws {
         guard var pl = playlist, pl.owned,
               let setVideoId = track.setVideoId, !setVideoId.isEmpty else { return }
+        PlaylistCatalog.shared.invalidate(pl.id)
         try await core.removeFromPlaylist(
             playlistId: pl.id, videoId: track.videoId, setVideoId: setVideoId
         )
+        PlaylistCatalog.shared.invalidate(pl.id)
         pl.items.removeAll { $0.setVideoId == setVideoId }
         self.playlist = pl
         NotificationCenter.default.post(
@@ -170,9 +182,7 @@ final class PlaylistDetailViewModel {
 
     func shuffle(player: PlayerViewModel) {
         guard let items = playlist?.items, !items.isEmpty, let pl = playlist else { return }
-        let shuffled = items.shuffled()
-        player.playPlaylist(browseId: pl.id, title: pl.title, tracks: shuffled, startingAt: 0, continuation: pl.continuation)
-        player.queueManager.isShuffle = true
+        player.playPlaylist(browseId: pl.id, title: pl.title, tracks: items, startingAt: 0, continuation: pl.continuation, shuffle: true)
     }
 
     func playTrack(at index: Int, player: PlayerViewModel) {

@@ -3,7 +3,7 @@ import SideBCore
 
 /// Feed fijo para comparar dos implementaciones de Inicio en Release, sin depender de la red.
 enum HomeBenchmarkFixture {
-    static func page(chipParams: String? = nil, continuation: Bool = false) -> HomePageRecord {
+    static func page(chipParams: String? = nil, continuation: Bool = false, categoryCount: Int? = nil) -> HomePageRecord {
         let names: [(String, String, Int)] = continuation
             ? [("Más para escuchar", "playlist", 24), ("Más artistas", "artist", 24)]
             : [
@@ -44,13 +44,23 @@ enum HomeBenchmarkFixture {
                 moreParams: nil
             )
         }
+        let requestedCount = categoryCount ?? (HomeLabConfiguration.usesFixture
+            ? Int(ProcessInfo.processInfo.environment["SIDEB_HOME_FIXTURE_CATEGORIES"] ?? "") : nil)
+        let feedSections: [HomeSectionRecord]
+        if !continuation, let count = requestedCount, (1...5000).contains(count) {
+            // Repeated data, distinct occurrence identities from the presentation factory.
+            // No extra network requests; useful for viewport/reuse stress tests.
+            feedSections = (0..<count).map { sections[$0 % sections.count] }
+        } else {
+            feedSections = sections
+        }
         return HomePageRecord(
             chips: continuation ? [] : [
                 HomeChipRecord(title: "Relax", params: "relax"),
                 HomeChipRecord(title: "Focus", params: "focus"),
                 HomeChipRecord(title: "Workout", params: "workout"),
             ],
-            sections: sections,
+            sections: feedSections,
             continuation: continuation ? nil : "fixture-next"
         )
     }

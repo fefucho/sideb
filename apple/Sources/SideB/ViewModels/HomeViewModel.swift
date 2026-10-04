@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 import Observation
 import os
 import SideBCore
@@ -14,6 +15,16 @@ final class HomeViewModel {
     var chips: [HomeChipRecord] = []
     var selectedChipParams: String?
     var sections: [HomeSectionPresentation] = []
+    private(set) var featured = HomeFeaturedPresentation.empty
+    private(set) var featuredCollectionKind: HomeFeaturedCollectionKind
+    private(set) var recommendationSettings = HomeRecommendationSettings()
+    private(set) var receivedCategories: [HomeCategoryOption] = []
+    private(set) var selectionRevision: UInt64 = 0
+    private(set) var featuredCapacity = 2
+    private(set) var supplementalError: String?
+    @ObservationIgnored private var supplemental: [HomeRecommendationSource: [HomeItemRecord]] = [:]
+    @ObservationIgnored private var didRequestSupplemental = false
+    @ObservationIgnored private var forceSupplementalReload = false
     var continuationToken: String?
     var isLoading = false
     var isLoadingChip = false
@@ -21,10 +32,12 @@ final class HomeViewModel {
     var isLoadingMore = false
     var isShowingSavedFeed = false
     var errorMessage: String?
+    private(set) var loadMoreMessage: String?
     private(set) var contentRevision: UInt64 = 0
 
     @ObservationIgnored private let signposter = OSSignposter(subsystem: "com.fefucho.SideB", category: .pointsOfInterest)
     @ObservationIgnored private let cacheStore: HomeFeedCacheStore
+    @ObservationIgnored private let preferences: UserDefaults
     @ObservationIgnored private var cacheTransition: Task<Void, Never>?
     @ObservationIgnored private var priorityPrefetchTask: Task<Void, Never>?
     @ObservationIgnored private var sessionKey = "guest"
@@ -34,20 +47,141 @@ final class HomeViewModel {
     @ObservationIgnored private var snapshots: [String: FeedSnapshot] = [:]
     @ObservationIgnored private var snapshotOrder: [String] = []
     @ObservationIgnored private var requestGeneration: UInt64 = 0
-    @ObservationIgnored private var lastLoadMoreTimestamp: Date = .distantPast
 
-    init(cacheStore: HomeFeedCacheStore = HomeFeedCacheStore()) {
+    init(cacheStore: HomeFeedCacheStore = HomeFeedCacheStore(), preferences: UserDefaults? = nil) {
         self.cacheStore = cacheStore
+        let preferences = preferences ?? (HomeLabConfiguration.enabled
+            ? UserDefaults(suiteName: "com.fefucho.SideB.HomeLab.HomePreferences")!
+            : .standard)
+        self.preferences = preferences
+        featuredCollectionKind = preferences.string(forKey: Self.collectionPreferenceKey)
+            .flatMap(HomeFeaturedCollectionKind.init(rawValue:)) ?? .albums
+        recommendationSettings = readSettings(for: sessionKey)
+        featured = HomeFeaturedPresentation.make(from: [], collectionKind: featuredCollectionKind)
+    }
+
+    private static let collectionPreferenceKey = "sideb.home.featuredCollectionKind"
+
+    func setFeaturedCollectionKind(_ kind: HomeFeaturedCollectionKind) {
+        guard featuredCollectionKind != kind else { return }
+        featuredCollectionKind = kind
+        preferences.set(kind.rawValue, forKey: Self.collectionPreferenceKey)
+        selectionRevision &+= 1
+        rebuildProjection(forceRevision: true)
+    }
+
+    private func settingsKey(for identity: String) -> String {
+        let hash = SHA256.hash(data: Data(identity.utf8)).map { String(format: "%02x", $0) }.joined()
+        return "sideb.home.recommendations.v1.\(hash)"
+    }
+
+    private func readSettings(for identity: String) -> HomeRecommendationSettings {
+        guard let data = preferences.data(forKey: settingsKey(for: identity)),
+              let settings = try? JSONDecoder().decode(HomeRecommendationSettings.self, from: data) else { return HomeRecommendationSettings() }
+        return settings
+    }
+
+    func setRecommendationSettings(_ settings: HomeRecommendationSettings) {
+        guard settings != recommendationSettings else { return }
+        let sourcesChanged = settings.sources(for: featuredCollectionKind) != recommendationSettings.sources(for: featuredCollectionKind)
+        recommendationSettings = settings
+        if let data = try? JSONEncoder().encode(settings) { preferences.set(data, forKey: settingsKey(for: sessionKey)) }
+        if sourcesChanged { selectionRevision &+= 1 }
+        rebuildProjection()
+    }
+
+    func setFeaturedCapacity(_ capacity: Int) {
+        let capacity = [2, 4, 6].contains(capacity) ? capacity : 2
+        guard capacity != featuredCapacity else { return }
+        featuredCapacity = capacity
+        rebuildProjection()
+    }
+
+    private func rebuildProjection(forceRevision: Bool = false) {
+        let providerSections = HomePresentationFactory.sections(from: sectionRecords, chip: selectedChipParams)
+        let shelfRecords = recommendationSettings.visibleFeedRecords(recommendationSettings.orderedFeedRecords(sectionRecords))
+        let shelfSections = HomePresentationFactory.sections(from: shelfRecords, chip: selectedChipParams,
+            preserveProviderOrder: recommendationSettings.categoryOrderMode != .sideB)
+        let projected = HomeFeaturedPresentation.make(from: providerSections, collectionKind: featuredCollectionKind,
+            settings: recommendationSettings, capacity: featuredCapacity, supplemental: supplemental, shelfSections: shelfSections)
+        sections = providerSections
+        var seen = Set<String>()
+        let categoryOptions = recommendationSettings.categoryOrderMode == .sideB
+            ? providerSections.map { HomeCategoryOption(id: HomeRecommendationSettings.categoryKey(forTitle: $0.title), title: $0.title) }
+            : recommendationSettings.orderedFeedRecords(sectionRecords).map {
+                HomeCategoryOption(id: HomeRecommendationSettings.categoryKey(forTitle: $0.title), title: $0.title)
+            }
+        receivedCategories = categoryOptions.filter { seen.insert($0.id).inserted }
+        let visibleChanged = forceRevision || projected != featured
+        featured = projected
+        if visibleChanged { contentRevision &+= 1 }
+    }
+
+    /// Uses already loaded library/history lists; no collection catalogs are requested.
+    func updateSupplemental(albums: [BrowseCardRecord], playlists: [BrowseCardRecord], history: [HistoryGroupRecord]) {
+        func item(_ card: BrowseCardRecord) -> HomeItemRecord {
+            HomeItemRecord(kind: card.kind, id: card.id, title: card.title, subtitle: card.subtitle,
+                thumbnail: card.thumbnail, duration: card.duration, artists: nil, artistId: nil,
+                album: nil, albumId: nil, artistRuns: [], explicit: false)
+        }
+        let albumCards = Dictionary(albums.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        var seen = Set<String>()
+        let recent = history.flatMap(\.items).compactMap { song -> HomeItemRecord? in
+            guard let id = song.albumId, !id.isEmpty, seen.insert(id).inserted else { return nil }
+            if let card = albumCards[id] { return item(card) }
+            return HomeItemRecord(kind: "album", id: id, title: song.album ?? "Álbum", subtitle: song.artists,
+                thumbnail: nil, duration: nil, artists: song.artists, artistId: song.artistId,
+                album: nil, albumId: nil, artistRuns: song.artistRuns, explicit: false)
+        }
+        let next: [HomeRecommendationSource: [HomeItemRecord]] = [
+            .libraryAlbums: albums.map(item), .libraryPlaylists: playlists.map(item), .recentAlbums: recent
+        ]
+        guard next != supplemental else { return }
+        supplemental = next
+        rebuildProjection()
+    }
+
+    func loadSupplementalIfNeeded(core: SideBCore, library: LibraryViewModel) async {
+        let externalSources: Set<HomeRecommendationSource> = [.libraryAlbums, .libraryPlaylists, .recentAlbums]
+        guard recommendationSettings.sources(for: featuredCollectionKind).contains(where: { $0.enabled && externalSources.contains($0.source) }),
+              !didRequestSupplemental, core.isLoggedIn(), !library.isLoading else { return }
+        didRequestSupplemental = true
+        let requestedSession = sessionToken
+        supplementalError = nil
+        if forceSupplementalReload || (library.albums.isEmpty && library.playlists.isEmpty && library.historyGroups.isEmpty) {
+            forceSupplementalReload = false
+            await library.loadLibrary(core: core)
+            guard requestedSession == sessionToken, !Task.isCancelled else { return }
+        }
+        supplementalError = library.errorMessage
+        updateSupplemental(albums: library.albums, playlists: library.playlists, history: library.historyGroups)
+    }
+
+    func retrySupplemental() {
+        didRequestSupplemental = false
+        forceSupplementalReload = true
+        selectionRevision &+= 1
+    }
+
+    var allFeaturedSourcesDisabled: Bool {
+        !recommendationSettings.sources(for: featuredCollectionKind).contains(where: \.enabled)
     }
 
     /// Se llama después de instalar la cookie en Core y antes de mostrar Inicio.
     func prepareSession(identity: String, purgePrevious: Bool = true) {
         priorityPrefetchTask?.cancel()
         priorityPrefetchTask = nil
+        supplemental.removeAll()
+        didRequestSupplemental = false
+        supplementalError = nil
+        forceSupplementalReload = false
+        receivedCategories = []
         let oldKey = sessionKey
         let oldToken = sessionToken
         let previousTransition = cacheTransition
         sessionKey = identity
+        recommendationSettings = readSettings(for: identity)
+        selectionRevision &+= 1
         sessionToken = UUID().uuidString
         let newToken = sessionToken
         requestGeneration &+= 1
@@ -58,6 +192,7 @@ final class HomeViewModel {
         chips = []
         selectedChipParams = nil
         sections = []
+        featured = HomeFeaturedPresentation.make(from: [], collectionKind: featuredCollectionKind)
         continuationToken = nil
         isLoading = false
         isLoadingChip = false
@@ -65,7 +200,7 @@ final class HomeViewModel {
         isLoadingMore = false
         isShowingSavedFeed = false
         errorMessage = nil
-        lastLoadMoreTimestamp = .distantPast
+        loadMoreMessage = nil
         contentRevision &+= 1
         cacheTransition = Task { [cacheStore] in
             await previousTransition?.value
@@ -80,6 +215,7 @@ final class HomeViewModel {
         priorityPrefetchTask?.cancel()
         priorityPrefetchTask = nil
         isLoadingMore = false
+        loadMoreMessage = nil
         requestGeneration &+= 1
         let generation = requestGeneration
         let key = chipParams ?? ""
@@ -111,6 +247,11 @@ final class HomeViewModel {
                 let oldKey = sessionKey
                 let oldToken = sessionToken
                 sessionKey = "guest"
+                recommendationSettings = readSettings(for: "guest")
+                supplemental.removeAll()
+                receivedCategories = []
+                didRequestSupplemental = false
+                selectionRevision &+= 1
                 sessionToken = UUID().uuidString
                 let newToken = sessionToken
                 snapshots.removeAll()
@@ -150,25 +291,47 @@ final class HomeViewModel {
     }
 
     func loadMoreContent(core: SideBCore) async {
-        guard let token = continuationToken,
-              !isLoadingMore, !isLoading, !isLoadingChip, !isRefreshing,
-              Date().timeIntervalSince(lastLoadMoreTimestamp) > 2 else { return }
+        guard var token = continuationToken,
+              !isLoadingMore, !isLoading, !isLoadingChip, !isRefreshing else { return }
         let generation = requestGeneration
         let key = selectedChipParams ?? ""
-        lastLoadMoreTimestamp = Date()
+        loadMoreMessage = nil
         isLoadingMore = true
-        do {
-            let page = try await fetchContinuation(core: core, token: token)
-            guard generation == requestGeneration, continuationToken == token, !Task.isCancelled else { return }
-            var existing = Set(sectionRecords.map(Self.sectionSignature))
-            let fresh = page.sections.filter { existing.insert(Self.sectionSignature($0)).inserted }
-            sectionRecords.append(contentsOf: fresh)
-            let next = page.continuation.flatMap { $0.isEmpty || $0 == token ? nil : $0 }
-            apply(records: sectionRecords, continuation: next, chip: selectedChipParams)
-            remember(FeedSnapshot(records: sectionRecords, continuation: next), for: key)
-            isLoadingMore = false
-        } catch {
+        defer {
             if generation == requestGeneration { isLoadingMore = false }
+        }
+        do {
+            let visibleRevision = contentRevision
+            var existing = Set(sectionRecords.map(Self.sectionSignature))
+            var usedTokens = Set<String>()
+            // Some pages only repeat shelves already prefetched. Advance to new
+            // content within this click, with the same three-request cap as preload.
+            for _ in 0..<3 {
+                guard usedTokens.insert(token).inserted else { break }
+                let page = try await fetchContinuation(core: core, token: token)
+                guard generation == requestGeneration, continuationToken == token, !Task.isCancelled else { return }
+                let fresh = page.sections.filter { existing.insert(Self.sectionSignature($0)).inserted }
+                let next = page.continuation.flatMap {
+                    $0.isEmpty || usedTokens.contains($0) ? nil : $0
+                }
+                if fresh.isEmpty {
+                    continuationToken = next
+                } else {
+                    sectionRecords.append(contentsOf: fresh)
+                    apply(records: sectionRecords, continuation: next, chip: selectedChipParams)
+                }
+                remember(FeedSnapshot(records: sectionRecords, continuation: next), for: key)
+                guard let next else {
+                    loadMoreMessage = "No hay más recomendaciones por ahora."
+                    return
+                }
+                if contentRevision != visibleRevision { return }
+                token = next
+            }
+            loadMoreMessage = "Esta tanda no trajo recomendaciones visibles nuevas. Podés cargar la siguiente."
+        } catch {
+            guard generation == requestGeneration, !Task.isCancelled else { return }
+            loadMoreMessage = "No se pudieron cargar más recomendaciones. Volvé a intentarlo."
         }
     }
 
@@ -189,9 +352,8 @@ final class HomeViewModel {
 
     private func apply(records: [HomeSectionRecord], continuation: String?, chip: String?) {
         sectionRecords = records
-        sections = HomePresentationFactory.sections(from: records, chip: chip)
         continuationToken = continuation
-        contentRevision &+= 1
+        rebuildProjection()
     }
 
     private func finishLoading() {
@@ -227,14 +389,15 @@ final class HomeViewModel {
     }
 
     private func startPriorityPrefetch(core: SideBCore, token: String, generation: UInt64, chip: String?) {
-        guard chip == nil, !Self.containsAllNamedPrioritySections(sectionRecords) else { return }
+        guard chip == nil, !hasReceivedEnabledSources else { return }
         priorityPrefetchTask = Task { [weak self] in
             await self?.prefetchPrioritySections(core: core, token: token, generation: generation)
         }
     }
 
     private func prefetchPrioritySections(core: SideBCore, token initialToken: String, generation: UInt64) async {
-        guard generation == requestGeneration, !Task.isCancelled else { return }
+        guard generation == requestGeneration, continuationToken == initialToken,
+              !isLoadingMore, !Task.isCancelled else { return }
         let interval = signposter.beginInterval("HomePriorityPrefetch")
         isLoadingMore = true
         defer {
@@ -270,7 +433,7 @@ final class HomeViewModel {
                     break
                 }
                 token = next
-                if Self.containsAllNamedPrioritySections(sectionRecords) { break }
+                if hasReceivedEnabledSources { break }
             } catch {
                 break
             }
@@ -286,16 +449,21 @@ final class HomeViewModel {
         )
     }
 
-    private static func containsAllNamedPrioritySections(_ sections: [HomeSectionRecord]) -> Bool {
-        let titles = Set(sections.map { $0.title.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() })
-        let groups: [[String]] = [
-            ["listen again", "vuelve a escucharlo", "volver a escuchar", "escuchar de nuevo"],
-            ["forgotten favorites", "forgotten favourites", "favoritos olvidados"],
-            ["albums for you", "albumes para ti", "álbumes para ti"],
-            ["from your library", "de tu biblioteca", "de la biblioteca"],
-            ["quick picks", "selecciones rapidas", "selecciones rápidas"],
-        ]
-        return groups.allSatisfy { names in names.contains(where: titles.contains) }
+    private var hasReceivedEnabledSources: Bool {
+        let keys = Set(sectionRecords.map { HomeRecommendationSettings.categoryKey(forTitle: $0.title) })
+        let required = recommendationSettings.sources(for: featuredCollectionKind).filter { $0.enabled }.compactMap { rule -> String? in
+            switch rule.source {
+            case .recommendedAlbums: return HomeRecommendationSettings.categoryKey(forTitle: "Albums for you")
+            case .mixesForYou: return HomeRecommendationSettings.categoryKey(forTitle: "Mixed for you")
+            case .listenAgain: return HomeRecommendationSettings.categoryKey(forTitle: "Listen again")
+            case .forgottenFavorites: return HomeRecommendationSettings.categoryKey(forTitle: "Forgotten favorites")
+            case .fromLibrary: return HomeRecommendationSettings.categoryKey(forTitle: "From your library")
+            case .newReleases: return HomeRecommendationSettings.categoryKey(forTitle: "New releases")
+            case .fromCommunity: return HomeRecommendationSettings.categoryKey(forTitle: "From the community")
+            default: return nil
+            }
+        }
+        return required.allSatisfy(keys.contains)
     }
 
     private func remember(_ snapshot: FeedSnapshot, for key: String) {
@@ -304,4 +472,9 @@ final class HomeViewModel {
         snapshotOrder.append(key)
         if snapshotOrder.count > 4 { snapshots.removeValue(forKey: snapshotOrder.removeFirst()) }
     }
+}
+
+struct HomeCategoryOption: Identifiable, Equatable {
+    let id: String
+    let title: String
 }

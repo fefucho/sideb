@@ -115,7 +115,7 @@ struct PlaylistDetailView: View {
                         message: error,
                         onRetry: {
                             Task {
-                                await viewModel.loadPlaylist(core: rustCore, playlistId: playlistId)
+                                await viewModel.loadPlaylist(core: rustCore, playlistId: playlistId, forceRefresh: true)
                             }
                         }
                     )
@@ -137,7 +137,7 @@ struct PlaylistDetailView: View {
                 }
             }
             .onReceive(NotificationCenter.default.publisher(for: .sideBPlaylistsChanged)) { _ in
-                Task { await viewModel.loadPlaylist(core: rustCore, playlistId: playlistId) }
+                Task { await viewModel.loadPlaylist(core: rustCore, playlistId: playlistId, forceRefresh: true) }
             }
 
             // Modal flotante de descripción expandida Liquid Glass
@@ -153,7 +153,7 @@ struct PlaylistDetailView: View {
         .sheet(isPresented: $showEditor) {
             if let playlist = viewModel.playlist {
                 PlaylistEditorSheet(core: rustCore, playlist: playlist) { _ in
-                    Task { await viewModel.loadPlaylist(core: rustCore, playlistId: playlistId) }
+                    Task { await viewModel.loadPlaylist(core: rustCore, playlistId: playlistId, forceRefresh: true) }
                 }
             }
         }
@@ -193,12 +193,12 @@ struct PlaylistDetailView: View {
                     placeholderArtwork
                 }
                 .frame(width: 180, height: 180)
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: AppTheme.artworkHeroRadius, style: .continuous))
                 .shadow(color: .black.opacity(0.35), radius: 16, y: 8)
             } else {
                 placeholderArtwork
                     .frame(width: 180, height: 180)
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .clipShape(RoundedRectangle(cornerRadius: AppTheme.artworkHeroRadius, style: .continuous))
                     .shadow(color: .black.opacity(0.35), radius: 16, y: 8)
             }
 
@@ -397,7 +397,7 @@ struct PlaylistDetailView: View {
     }
 
     private var placeholderArtwork: some View {
-        RoundedRectangle(cornerRadius: 10, style: .continuous)
+        RoundedRectangle(cornerRadius: AppTheme.artworkHeroRadius, style: .continuous)
             .fill(
                 LinearGradient(
                     colors: [Color.pink.opacity(0.6), Color.purple.opacity(0.8)],

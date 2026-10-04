@@ -1,9 +1,23 @@
-# Rust compartido
+# Core Rust compartido y protegido
 
-Consultar `../.agents/rules/10-backend.md`. Red, parseo, persistencia y resolución de streams permanecen aquí; la integración de ventana y sistema pertenece a cada shell.
+Aplicar [instrucciones comunes](../AGENTS.md). No modificar este ámbito salvo para corregir un problema que afecte a ambas plataformas. Compilar el core existente o regenerar bindings no cambia esa restricción. UI, empaquetado y necesidades de un solo sistema se resuelven fuera del core.
 
-Usar `cargo test --locked --manifest-path core/Cargo.toml -p innertube -p sideb-core` desde la raíz para pruebas sin cuenta. `player` usa libmpv y su verificación Windows está incluida en `windows/scripts/windows.ps1 -Action verify`.
+Antes de un fix compartido, identificar el problema en ambas apps, contrato y consumidores. Mantener un solo core que converge en `main`.
 
-Si cambia un record/API compartido, actualizar sus consumidores y verificar cada plataforma disponible. En Windows se puede verificar Tauri; no afirmar que Swift compila sin hacerlo en macOS. Los tests en vivo ignorados no son una condición para trabajar sin sesión de usuario.
+- Red, parseo InnerTube, persistencia y resolución de streams permanecen aquí; ventana, sesión del sistema e integración de reproducción pertenecen al shell.
+- Usar records/errores UniFFI tipados. Preservar `CipherJsRuntime` y constructor Apple; `windows-bridge` sigue siendo optativo.
+- Conservar compatibilidad AVPlayer/libmpv. Comprobar formatos/alternativas antes de convertir una preferencia en restricción global.
+- Mantener identidad de cuenta/petición/continuación; descartar respuestas obsoletas y acotar concurrencia/reintentos.
+- Usar fixtures para orden, duplicados, vacíos y continuaciones. Medir red, parseo, conversión y renderizado por separado.
+- Side B anterior/limusic son referencias de lectura; adaptar sólo comportamiento comprobado contra la implementación vigente.
 
-Ambas apps consumen el mismo `core/` de la rama común. Conservar `CipherJsRuntime` y el constructor Apple al adaptar Windows; las extensiones Tauri se activan con `windows-bridge`. Ejecutar pruebas de `sideb-core` con y sin esa feature. La CI macOS regenera bindings/XCFramework antes de compilar Swift; no usar un binario antiguo para validar un cambio compartido.
+Desde la raíz, sin cuenta:
+
+```sh
+cargo test --locked --manifest-path core/Cargo.toml -p innertube -p sideb-core
+cargo test --locked --manifest-path core/Cargo.toml -p sideb-core --features windows-bridge
+```
+
+Si cambia UniFFI, regenerar XCFramework/bindings y comprobar Swift en Mac; actualizar/comprobar Tauri en Windows. Una build contra un binario viejo no valida el cambio. `player` requiere libmpv y se verifica con `windows/scripts/windows.ps1 -Action verify`. Informar plataformas no disponibles; no inferir compatibilidad verificada. Tests en vivo ignorados son optativos.
+
+Consultar antecedentes y registrar el fix en [FIXES.md único](../FIXES.md) con tag `[Compartido]` y componente Core; registrar evidencia de ambas plataformas en [PARIDAD.md](../PARIDAD.md).

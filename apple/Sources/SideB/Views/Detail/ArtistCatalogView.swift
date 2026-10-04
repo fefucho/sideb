@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 import SideBCore
 
 /// The filtered browse page behind an artist carousel's "Ver todo" action.
@@ -77,28 +78,63 @@ struct CatalogCardView: View {
     var artistBrowseId: String? = nil
 
     var body: some View {
-        Button(action: open) {
-            VStack(alignment: .leading, spacing: 7) {
-                if let thumbnail = card.thumbnail,
-                   let url = ImageURLHelper.optimizedThumbnailURL(from: thumbnail, targetPixelSize: 360) {
-                    CachedAsyncImage(url: url, targetSize: CGSize(width: 180, height: 180)) { image in
-                        image.resizable().aspectRatio(contentMode: .fill)
-                    } placeholder: {
-                        placeholder
-                    }
+        let isArtist = card.kind.lowercased() == "artist"
+        let isCollection = ["album", "playlist"].contains(card.kind.lowercased())
+        let isActive = MediaPlaybackIdentity.isCollectionActive(
+            kind: card.kind, id: card.id, context: playerViewModel.queueManager.context
+        )
+        let artwork = Group {
+            if let thumbnail = card.thumbnail,
+               let url = ImageURLHelper.optimizedThumbnailURL(from: thumbnail, targetPixelSize: 360) {
+                CachedAsyncImage(url: url, targetSize: CGSize(width: 180, height: 180)) { image in
+                    image.resizable().aspectRatio(contentMode: .fill)
+                } placeholder: { placeholder }
                     .frame(maxWidth: .infinity)
                     .aspectRatio(1, contentMode: .fit)
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
-                } else {
-                    placeholder
-                        .frame(maxWidth: .infinity)
-                        .aspectRatio(1, contentMode: .fit)
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
-                }
+                    .clipShape(isArtist ? AnyShape(Circle()) : AnyShape(RoundedRectangle(cornerRadius: AppTheme.artworkCardRadius)))
+            } else {
+                placeholder
+                    .frame(maxWidth: .infinity)
+                    .aspectRatio(1, contentMode: .fit)
+                    .clipShape(isArtist ? AnyShape(Circle()) : AnyShape(RoundedRectangle(cornerRadius: AppTheme.artworkCardRadius)))
+            }
+        }
+
+        let content = VStack(alignment: .leading, spacing: 7) {
+            if isCollection {
+                MediaArtworkControls(
+                    isCollection: true,
+                    isActive: isActive,
+                    isPlaying: isActive && playerViewModel.isPlaying,
+                    isLoading: isCollectionLoading,
+                    showsIndicator: isActive,
+                    accessibilityTitle: card.title,
+                    onOpen: open,
+                    onPlay: { playerViewModel.activateMediaCollection(id: card.id, kind: card.kind) },
+                    menuProvider: collectionMenu
+                ) { artwork }
+                    .aspectRatio(1, contentMode: .fit)
+            } else if isArtist {
+                Button(action: open) { artwork }
+                    .buttonStyle(.plain)
+                    .mediaCardFocusControl()
+            } else {
+                MediaArtworkControls(
+                    isCollection: false,
+                    accessibilityTitle: card.title,
+                    onOpen: open,
+                    onPlay: open,
+                    menuProvider: songMenu
+                ) { artwork }
+                    .aspectRatio(1, contentMode: .fit)
+            }
+
+            Button(action: open) {
                 Text(card.title)
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(.primary)
                     .lineLimit(2)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 if let subtitle = card.subtitle {
                     Text(subtitle)
                         .font(.system(size: 11))
@@ -106,10 +142,13 @@ struct CatalogCardView: View {
                         .lineLimit(1)
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .contentShape(Rectangle())
+            .buttonStyle(.plain)
+            .mediaCardFocusControl()
         }
-        .buttonStyle(.plain)
+
+        content
+        .mediaCardActivation(label: "Abrir \(card.title)", action: open)
+        .mediaCardSurface()
         .browseCardContextMenu(
             card: card,
             player: playerViewModel,
@@ -120,8 +159,43 @@ struct CatalogCardView: View {
         )
     }
 
+    private func collectionMenu() -> NSMenu? {
+        let factory = AppContextMenuFactory.shared
+        if card.kind.lowercased() == "album" {
+            return factory.buildAlbumNSMenu(browseId: card.id, playlistId: nil, title: card.title,
+                artist: card.subtitle, thumbnail: card.thumbnail,
+                origin: cardMenuOrigin,
+                player: playerViewModel, router: router, core: rustCore)
+        }
+        return factory.buildPlaylistNSMenu(id: card.id, title: card.title, subtitle: card.subtitle,
+            thumbnail: card.thumbnail, origin: cardMenuOrigin,
+            player: playerViewModel, router: router, core: rustCore)
+    }
+
+    private var isCollectionLoading: Bool {
+        if card.kind.lowercased() == "album" {
+            return playerViewModel.loadingRecommendedAlbumID.map(MenuIDNormalizer.normalize) == MenuIDNormalizer.normalize(card.id)
+        }
+        return playerViewModel.loadingRecommendedPlaylistID.map(MenuIDNormalizer.canonicalPlaylistId) == MenuIDNormalizer.canonicalPlaylistId(card.id)
+    }
+
+    private var cardMenuOrigin: MenuOrigin {
+        if let artistBrowseId { return .artist(channelId: artistBrowseId) }
+        if card.kind.lowercased() == "album" { return .album(browseId: card.id) }
+        return .playlist(id: card.id)
+    }
+
+    private func songMenu() -> NSMenu? {
+        guard card.kind == "song" || card.kind == "video" else { return nil }
+        return AppContextMenuFactory.shared.buildSongNSMenu(
+            song: SongItemRecord(fromCard: card, knownArtistId: artistBrowseId),
+            player: playerViewModel, router: router, core: rustCore,
+            origin: cardMenuOrigin
+        )
+    }
+
     private var placeholder: some View {
-        RoundedRectangle(cornerRadius: 10)
+        RoundedRectangle(cornerRadius: AppTheme.artworkCardRadius)
             .fill(Color.secondary.opacity(0.12))
             .overlay(Image(systemName: "opticaldisc").foregroundStyle(.secondary))
     }
@@ -132,7 +206,7 @@ struct CatalogCardView: View {
         case "artist": router?.navigate(to: .artist(browseId: card.id))
         case "playlist": router?.navigate(to: .playlist(browseId: card.id))
         case "song", "video":
-            playerViewModel.playSong(SongItemRecord(fromCard: card, knownArtistId: artistBrowseId))
+            playerViewModel.activateMediaRadio(SongItemRecord(fromCard: card, knownArtistId: artistBrowseId))
         default: break
         }
     }

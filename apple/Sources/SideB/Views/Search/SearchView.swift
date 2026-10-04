@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 import SideBCore
 
 // MARK: - SearchView
@@ -10,6 +11,7 @@ struct SearchView: View {
     @Bindable var router: NavigationRouter
     @Bindable var searchViewModel: SearchViewModel
     @FocusState private var isSearchBarFocused: Bool
+    @State private var hoveredRelatedSongID: String?
     
     init(
         initialQuery: String,
@@ -65,13 +67,25 @@ struct SearchView: View {
                         case .all:
                             allResultsView
                         case .songs:
-                            songsFilterView
+                            filteredResultsView(error: searchViewModel.partialErrors[.songs]) {
+                                songsFilterView
+                            }
+                        case .videos:
+                            filteredResultsView(error: searchViewModel.partialErrors[.videos]) {
+                                videosFilterView
+                            }
                         case .albums:
-                            cardsGridView(cards: searchViewModel.filteredCards, kind: "album")
+                            filteredResultsView(error: searchViewModel.partialErrors[.categories]) {
+                                cardsGridView(cards: searchViewModel.filteredCards, kind: "album")
+                            }
                         case .artists:
-                            cardsGridView(cards: searchViewModel.filteredCards, kind: "artist")
+                            filteredResultsView(error: searchViewModel.partialErrors[.categories]) {
+                                cardsGridView(cards: searchViewModel.filteredCards, kind: "artist")
+                            }
                         case .playlists:
-                            cardsGridView(cards: searchViewModel.filteredCards, kind: "playlist")
+                            filteredResultsView(error: searchViewModel.partialErrors[.categories]) {
+                                cardsGridView(cards: searchViewModel.filteredCards, kind: "playlist")
+                            }
                         }
                     }
                 }
@@ -90,6 +104,9 @@ struct SearchView: View {
             if !searchViewModel.committedQuery.isEmpty {
                 searchViewModel.commitSearch(query: searchViewModel.committedQuery, core: rustCore, force: true)
             }
+        }
+        .onDisappear {
+            searchViewModel.cancelPreview()
         }
     }
     
@@ -124,6 +141,7 @@ struct SearchView: View {
                         }
                     } else {
                         searchViewModel.isTopdownVisible = false
+                        searchViewModel.cancelPreview()
                     }
                 }
                 .onKeyPress(.escape) {
@@ -161,6 +179,10 @@ struct SearchView: View {
                 } else if searchViewModel.isQuickSearching {
                     topdownLoadingView
                         .padding(.top, 42)
+                } else if let message = searchViewModel.quickErrorMessage {
+                    searchErrorBanner(message)
+                        .frame(width: 520)
+                        .padding(.top, 42)
                 }
             }
         }
@@ -189,7 +211,9 @@ struct SearchView: View {
     
     private func topdownDropdownView(results: SearchResultsRecord) -> some View {
         let categories = searchViewModel.dynamicCategories(for: results)
+        let relatedSongs = searchViewModel.relatedSongs(for: results)
         let totalItems = (results.top.isEmpty ? 0 : 1)
+            + relatedSongs.count
             + min(results.artists.count, 2)
             + min(results.songs.count, 3)
             + min(results.albums.count, 2)
@@ -232,11 +256,41 @@ struct SearchView: View {
                                 switch category {
                                 case .topResult:
                                     if let hero = results.top.first {
-                                        QuickResultCardRow(card: hero, isHero: true) {
+                                        let row = QuickResultCardRow(
+                                            card: hero,
+                                            isHero: true,
+                                            isActive: isActiveCollection(hero),
+                                            isPlaying: isActiveCollection(hero) && playerViewModel.isPlaying,
+                                            isLoading: isCollectionLoading(hero),
+                                            onPlay: quickCardPlayAction(hero, results: results),
+                                            menuProvider: {
+                                                ["song", "video"].contains(hero.kind.lowercased())
+                                                    ? quickSongMenu(searchViewModel.song(for: hero, in: results))
+                                                    : browseCardMenu(hero)
+                                            }
+                                        ) {
                                             isSearchBarFocused = false
-                                            handleQuickSelect(hero)
+                                            handleQuickSelect(hero, results: results)
                                         }
-                                        .browseCardContextMenu(card: hero, player: playerViewModel, router: router, core: rustCore, origin: .search)
+                                        if hero.kind.lowercased() == "song" {
+                                            row.songContextMenu(song: searchViewModel.song(for: hero, in: results), player: playerViewModel, router: router, core: rustCore, origin: .search)
+                                        } else {
+                                            row.browseCardContextMenu(card: hero, player: playerViewModel, router: router, core: rustCore, origin: .search)
+                                        }
+                                        ForEach(relatedSongs, id: \.videoId) { song in
+                                            QuickResultSongRow(
+                                            song: song,
+                                                onArtist: quickArtistAction(song),
+                                                onAlbum: quickAlbumAction(song),
+                                                menuProvider: { quickSongMenu(song) },
+                                                onSelect: {
+                                                    isSearchBarFocused = false
+                                                    searchViewModel.isTopdownVisible = false
+                                                    playerViewModel.activateMediaRadio(song)
+                                                }
+                                            )
+                                            .songContextMenu(song: song, player: playerViewModel, router: router, core: rustCore, origin: .search)
+                                        }
                                     }
                                 case .artists:
                                     ForEach(Array(results.artists.prefix(2)), id: \.id) { a in
@@ -249,16 +303,29 @@ struct SearchView: View {
                                     }
                                 case .songs:
                                     ForEach(Array(results.songs.prefix(3)), id: \.videoId) { s in
-                                        QuickResultSongRow(song: s) {
-                                            isSearchBarFocused = false
-                                            searchViewModel.isTopdownVisible = false
-                                            playerViewModel.playWithRadio(s)
-                                        }
+                                        QuickResultSongRow(
+                                            song: s,
+                                            onArtist: quickArtistAction(s),
+                                            onAlbum: quickAlbumAction(s),
+                                            menuProvider: { quickSongMenu(s) },
+                                            onSelect: {
+                                                isSearchBarFocused = false
+                                                searchViewModel.isTopdownVisible = false
+                                                playerViewModel.activateMediaRadio(s)
+                                            }
+                                        )
                                         .songContextMenu(song: s, player: playerViewModel, router: router, core: rustCore, origin: .search)
                                     }
                                 case .albums:
                                     ForEach(Array(results.albums.prefix(2)), id: \.id) { alb in
-                                        QuickResultCardRow(card: alb) {
+                                        QuickResultCardRow(
+                                            card: alb,
+                                            isActive: isActiveCollection(alb),
+                                            isPlaying: isActiveCollection(alb) && playerViewModel.isPlaying,
+                                            isLoading: isCollectionLoading(alb),
+                                            onPlay: collectionPlayAction(for: alb),
+                                            menuProvider: { browseCardMenu(alb) }
+                                        ) {
                                             isSearchBarFocused = false
                                             searchViewModel.isTopdownVisible = false
                                             router.navigate(to: .album(browseId: alb.id))
@@ -267,7 +334,14 @@ struct SearchView: View {
                                     }
                                 case .playlists:
                                     ForEach(Array(results.playlists.prefix(2)), id: \.id) { pl in
-                                        QuickResultCardRow(card: pl) {
+                                        QuickResultCardRow(
+                                            card: pl,
+                                            isActive: isActiveCollection(pl),
+                                            isPlaying: isActiveCollection(pl) && playerViewModel.isPlaying,
+                                            isLoading: isCollectionLoading(pl),
+                                            onPlay: collectionPlayAction(for: pl),
+                                            menuProvider: { browseCardMenu(pl) }
+                                        ) {
                                             isSearchBarFocused = false
                                             searchViewModel.isTopdownVisible = false
                                             router.navigate(to: .playlist(browseId: pl.id))
@@ -281,6 +355,11 @@ struct SearchView: View {
                     .padding(10)
                 }
                 .frame(height: calculatedHeight)
+            }
+
+            if let message = searchViewModel.quickErrorMessage {
+                searchErrorBanner(message)
+                    .padding(.horizontal, 10)
             }
             
             Divider().opacity(0.15)
@@ -315,7 +394,7 @@ struct SearchView: View {
         .transition(.opacity.combined(with: .scale(scale: 0.98)))
     }
     
-    private func handleQuickSelect(_ card: BrowseCardRecord) {
+    private func handleQuickSelect(_ card: BrowseCardRecord, results: SearchResultsRecord) {
         searchViewModel.isTopdownVisible = false
         switch card.kind.lowercased() {
         case "artist":
@@ -324,9 +403,8 @@ struct SearchView: View {
             router.navigate(to: .album(browseId: card.id))
         case "playlist":
             router.navigate(to: .playlist(browseId: card.id))
-        case "song":
-            let song = SongItemRecord(fromCard: card)
-            playerViewModel.playWithRadio(song)
+        case "song", "video":
+            playerViewModel.activateMediaRadio(searchViewModel.song(for: card, in: results))
         default:
             searchViewModel.commitSearch(query: card.title, core: rustCore, force: true)
         }
@@ -371,14 +449,15 @@ struct SearchView: View {
     private var allResultsView: some View {
         ScrollView(.vertical, showsIndicators: false) {
             VStack(alignment: .leading, spacing: 24) {
-                if let results = searchViewModel.committedResults {
-                    // 1. Top Result / Hero Card si existe
-                    if let hero = results.top.first {
-                        heroCardView(hero)
+                if !searchViewModel.committedQuery.isEmpty {
+                    let results = searchViewModel.committedResults
+                    if let results, let hero = results.top.first {
+                        topResultSection(hero, results: results)
                     }
-                    
-                    // 2. Sección Canciones (Hasta 5 pistas destacadas)
-                    if !results.songs.isEmpty {
+
+                    // Las canciones filtradas son la fuente principal; las del resultado mixto quedan como respaldo.
+                    let todoSongs = searchViewModel.committedSongs
+                    if !todoSongs.isEmpty {
                         VStack(alignment: .leading, spacing: 10) {
                             HStack {
                                 Text("Canciones")
@@ -395,38 +474,62 @@ struct SearchView: View {
                                 .buttonStyle(.plain)
                             }
                             
-                            let topSongs: [SongItemRecord] = Array(results.songs.prefix(5))
+                            let topSongs: [SongItemRecord] = Array(todoSongs.prefix(5))
                             VStack(spacing: 4) {
                                 ForEach(topSongs, id: \.videoId) { song in
-                                    let row = songInlineRow(song: song)
-                                    row.songContextMenu(
-                                        song: song,
-                                        player: playerViewModel,
-                                        router: router,
-                                        core: rustCore,
-                                        origin: .search
-                                    )
+                                    songInlineRow(song: song)
+                                }
+                            }
+                        }
+                    }
+
+                    if !searchViewModel.committedVideos.isEmpty {
+                        VStack(alignment: .leading, spacing: 10) {
+                            HStack {
+                                Text("Videos")
+                                    .font(.system(size: 16, weight: .bold))
+                                    .foregroundStyle(.primary)
+                                Spacer()
+                                Button("Ver todos") {
+                                    searchViewModel.selectFilter(.videos, core: rustCore)
+                                }
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(.primary)
+                                .buttonStyle(.plain)
+                            }
+                            VStack(spacing: 4) {
+                                ForEach(Array(searchViewModel.committedVideos.prefix(4)), id: \.videoId) { video in
+                                    songInlineRow(song: video)
                                 }
                             }
                         }
                     }
                     
-                    // 3. Sección Álbumes
-                    if !results.albums.isEmpty {
-                        cardsSection(title: "Álbumes", cards: results.albums, kind: "album")
+                    if let results {
+                        if !results.albums.isEmpty {
+                            cardsSection(title: "Álbumes", cards: results.albums, kind: "album")
+                        }
+                        if !results.artists.isEmpty {
+                            cardsSection(title: "Artistas", cards: results.artists, kind: "artist")
+                        }
+                        if !results.playlists.isEmpty {
+                            cardsSection(title: "Playlists", cards: results.playlists, kind: "playlist")
+                        }
                     }
-                    
-                    // 4. Sección Artistas
-                    if !results.artists.isEmpty {
-                        cardsSection(title: "Artistas", cards: results.artists, kind: "artist")
+                    ForEach(Array(searchViewModel.partialErrors.keys), id: \.self) { error in
+                        if let message = searchViewModel.partialErrors[error] {
+                            searchErrorBanner(message)
+                        }
                     }
-                    
-                    // 5. Sección Playlists
-                    if !results.playlists.isEmpty {
-                        cardsSection(title: "Playlists", cards: results.playlists, kind: "playlist")
+                    let hasMixedResults = results.map {
+                        !$0.top.isEmpty || !$0.albums.isEmpty || !$0.artists.isEmpty || !$0.playlists.isEmpty
+                    } ?? false
+                    if !hasMixedResults,
+                       searchViewModel.committedSongs.isEmpty,
+                       searchViewModel.committedVideos.isEmpty,
+                       searchViewModel.partialErrors.isEmpty {
+                        noResultsView
                     }
-                } else if !searchViewModel.committedQuery.isEmpty {
-                    noResultsView
                 } else {
                     initialEmptyStateView
                 }
@@ -439,73 +542,428 @@ struct SearchView: View {
     
     // MARK: - Tarjeta Hero / Top Result
     
-    private func heroCardView(_ card: BrowseCardRecord) -> some View {
+    @ViewBuilder
+    private func heroCardView(_ card: BrowseCardRecord, results: SearchResultsRecord) -> some View {
+        if ["album", "playlist"].contains(card.kind.lowercased()) {
+            collectionHeroCard(card, results: results)
+        } else if ["song", "video"].contains(card.kind.lowercased()) {
+            songHeroCard(card, results: results)
+        } else {
+            standardHeroCard(card, results: results)
+        }
+    }
+
+    private func standardHeroCard(_ card: BrowseCardRecord, results: SearchResultsRecord) -> some View {
         let isArtist = card.kind.lowercased() == "artist"
+        let subtitle = card.subtitle.flatMap { value in
+            value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : value
+        } ?? (isArtist ? "Artista" : card.kind.capitalized)
         
+        let actionButton = Button {
+            handleCardClick(card, results: results)
+        } label: {
+            HStack(spacing: 16) {
+                if let thumb = card.thumbnail,
+                   let url = ImageURLHelper.optimizedThumbnailURL(from: thumb, targetPixelSize: 180) {
+                    CachedAsyncImage(url: url, targetSize: CGSize(width: 80, height: 80)) { img in
+                        img.resizable().aspectRatio(contentMode: .fill)
+                    } placeholder: {
+                        Color.secondary.opacity(0.12)
+                    }
+                    .frame(width: 80, height: 80)
+                    .clipShape(isArtist ? AnyShape(Circle()) : AnyShape(RoundedRectangle(cornerRadius: AppTheme.artworkHeroRadius, style: .continuous)))
+                    .shadow(color: Color.black.opacity(0.2), radius: 8, x: 0, y: 4)
+                }
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(card.title)
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                    Text(subtitle)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                    Text(isArtist ? "Ver discografía completa" : "Reproducir ahora")
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(.secondary)
+                        .padding(.top, 2)
+                }
+                Spacer()
+                Image(systemName: isArtist ? "arrow.right.circle.fill" : "play.circle.fill")
+                    .font(.system(size: 36))
+                    .foregroundStyle(.primary)
+                    .padding(.trailing, 8)
+            }
+            .padding(16)
+            .compatGlass(interactive: true, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+        .buttonStyle(.plain)
+
         return VStack(alignment: .leading, spacing: 8) {
             Text("Mejor resultado")
                 .font(.system(size: 16, weight: .bold))
                 .foregroundStyle(.primary)
             
-            Button {
-                handleCardClick(card)
-            } label: {
-                HStack(spacing: 16) {
-                    if let thumb = card.thumbnail,
-                       let url = ImageURLHelper.optimizedThumbnailURL(from: thumb, targetPixelSize: 180) {
-                        CachedAsyncImage(url: url, targetSize: CGSize(width: 80, height: 80)) { img in
-                            img
-                                .resizable()
-                                .aspectRatio(contentMode: .fill)
-                        } placeholder: {
-                            Color.secondary.opacity(0.12)
-                        }
-                        .frame(width: 80, height: 80)
-                        .clipShape(isArtist ? AnyShape(Circle()) : AnyShape(RoundedRectangle(cornerRadius: 10, style: .continuous)))
-                        .shadow(color: Color.black.opacity(0.2), radius: 8, x: 0, y: 4)
-                    }
-                    
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(card.title)
-                            .font(.system(size: 18, weight: .bold))
-                            .foregroundStyle(.primary)
-                            .lineLimit(1)
-                        
-                        Text(isArtist ? "Artista" : (card.subtitle ?? card.kind.capitalized))
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundStyle(.primary)
-                            .lineLimit(1)
-                        
-                        Text(isArtist ? "Ver discografía completa" : "Reproducir ahora")
-                            .font(.system(size: 11.5))
-                            .foregroundStyle(.secondary)
-                            .padding(.top, 2)
-                    }
-                    
-                    Spacer()
-                    
-                    Image(systemName: isArtist ? "arrow.right.circle.fill" : "play.circle.fill")
-                        .font(.system(size: 36))
-                        .foregroundStyle(.primary)
-                        .padding(.trailing, 8)
-                }
-                .padding(16)
-                .compatGlass(interactive: true, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            if card.kind.lowercased() == "song" {
+                actionButton.songContextMenu(song: searchViewModel.song(for: card, in: results), player: playerViewModel, router: router, core: rustCore, origin: .search)
+            } else {
+                actionButton.browseCardContextMenu(card: card, player: playerViewModel, router: router, core: rustCore, origin: .search)
             }
-            .buttonStyle(.plain)
-            .browseCardContextMenu(card: card, player: playerViewModel, router: router, core: rustCore, origin: .search)
         }
+    }
+
+    private func collectionHeroCard(_ card: BrowseCardRecord, results: SearchResultsRecord) -> some View {
+        let isActive = isActiveCollection(card)
+        let artwork = Group {
+            if let thumb = card.thumbnail,
+               let url = ImageURLHelper.optimizedThumbnailURL(from: thumb, targetPixelSize: 180) {
+                CachedAsyncImage(url: url, targetSize: CGSize(width: 80, height: 80)) { image in
+                    image.resizable().aspectRatio(contentMode: .fill)
+                } placeholder: {
+                    Color.secondary.opacity(0.12)
+                }
+                .frame(width: 80, height: 80)
+                .clipShape(RoundedRectangle(cornerRadius: AppTheme.artworkHeroRadius, style: .continuous))
+            } else {
+                RoundedRectangle(cornerRadius: AppTheme.artworkHeroRadius, style: .continuous)
+                    .fill(Color.secondary.opacity(0.12))
+                    .frame(width: 80, height: 80)
+                    .overlay(Image(systemName: "music.note").foregroundStyle(.secondary))
+            }
+        }
+
+        let hero = HStack(spacing: 16) {
+            MediaArtworkControls(
+                isCollection: true,
+                isActive: isActive,
+                isPlaying: isActive && playerViewModel.isPlaying,
+                isLoading: isCollectionLoading(card),
+                showsIndicator: isActive,
+                accessibilityTitle: card.title,
+                onOpen: { handleCardClick(card, results: results) },
+                onPlay: { playerViewModel.activateMediaCollection(id: card.id, kind: card.kind) },
+                menuProvider: { browseCardMenu(card) }
+            ) { artwork }
+                .frame(width: 80, height: 80)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(card.title)
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                    .allowsHitTesting(false)
+                Text(card.subtitle?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+                     ? card.subtitle! : card.kind.capitalized)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                    .allowsHitTesting(false)
+                Text("Abrir detalle")
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(.secondary)
+                    .padding(.top, 2)
+                    .allowsHitTesting(false)
+            }
+            Spacer()
+        }
+        .padding(16)
+        .compatGlass(interactive: true, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .mediaCardActivation(label: "Abrir \(card.title)") { handleCardClick(card, results: results) }
+        .mediaCardSurface()
+
+        return VStack(alignment: .leading, spacing: 8) {
+            Text("Mejor resultado")
+                .font(.system(size: 16, weight: .bold))
+                .foregroundStyle(.primary)
+            hero.browseCardContextMenu(card: card, player: playerViewModel, router: router, core: rustCore, origin: .search)
+        }
+    }
+
+    private func songHeroCard(_ card: BrowseCardRecord, results: SearchResultsRecord) -> some View {
+        let song = searchViewModel.song(for: card, in: results)
+        let artwork = Group {
+            if let thumb = card.thumbnail,
+               let url = ImageURLHelper.optimizedThumbnailURL(from: thumb, targetPixelSize: 180) {
+                CachedAsyncImage(url: url, targetSize: CGSize(width: 80, height: 80)) { image in
+                    image.resizable().aspectRatio(contentMode: .fill)
+                } placeholder: {
+                    RoundedRectangle(cornerRadius: AppTheme.artworkHeroRadius).fill(Color.white.opacity(0.08))
+                }
+                .frame(width: 80, height: 80)
+                .clipShape(RoundedRectangle(cornerRadius: AppTheme.artworkHeroRadius, style: .continuous))
+            } else {
+                RoundedRectangle(cornerRadius: AppTheme.artworkHeroRadius)
+                    .fill(Color.white.opacity(0.08)).frame(width: 80, height: 80)
+                    .overlay(Image(systemName: card.kind.lowercased() == "video" ? "play.rectangle" : "music.note")
+                        .foregroundStyle(.secondary))
+            }
+        }
+
+        let hero = HStack(spacing: 16) {
+            MediaArtworkControls(
+                isCollection: false,
+                accessibilityTitle: card.title,
+                onOpen: { playerViewModel.activateMediaRadio(song) },
+                onPlay: { playerViewModel.activateMediaRadio(song) },
+                menuProvider: { quickSongMenu(song) }
+            ) { artwork }
+                .frame(width: 80, height: 80)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(card.title)
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                    .allowsHitTesting(false)
+                HStack(spacing: 4) {
+                    Text(card.kind.capitalized)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(.primary)
+                        .allowsHitTesting(false)
+                    if !song.artists.isEmpty {
+                        Text("·").font(.system(size: 12)).foregroundStyle(.secondary)
+                        if let onArtist = quickArtistAction(song) {
+                            Button(action: onArtist) {
+                                Text(song.artists).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
+                            }
+                            .buttonStyle(.plain)
+                            .mediaCardFocusControl()
+                        } else {
+                            Text(song.artists).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
+                                .allowsHitTesting(false)
+                        }
+                    }
+                }
+                if let album = song.album, !album.isEmpty, let onAlbum = quickAlbumAction(song) {
+                    Button(action: onAlbum) { Text(album).font(.system(size: 11.5)).foregroundStyle(.tertiary).lineLimit(1) }
+                        .buttonStyle(.plain)
+                        .mediaCardFocusControl()
+                }
+            }
+            Spacer()
+        }
+        .padding(16)
+        .compatGlass(interactive: true, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .mediaCardActivation(label: "Reproducir \(song.title)") { playerViewModel.activateMediaRadio(song) }
+        .mediaCardSurface()
+
+        return VStack(alignment: .leading, spacing: 8) {
+            Text("Mejor resultado")
+                .font(.system(size: 16, weight: .bold))
+                .foregroundStyle(.primary)
+            hero.songContextMenu(song: song, player: playerViewModel, router: router, core: rustCore, origin: .search)
+        }
+    }
+
+    @ViewBuilder
+    private func topResultSection(_ card: BrowseCardRecord, results: SearchResultsRecord) -> some View {
+        let relatedSongs = searchViewModel.relatedSongs(for: results)
+        if card.kind.lowercased() == "artist", !relatedSongs.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Mejor resultado")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(.primary)
+
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .center, spacing: 16) {
+                        artistHeroCard(card, results: results, artworkSize: 104)
+                            .frame(minWidth: 300, maxWidth: .infinity, alignment: .leading)
+                        relatedSongRows(relatedSongs)
+                            .frame(minWidth: 315, maxWidth: .infinity, alignment: .leading)
+                    }
+                    .frame(minWidth: 631)
+
+                    VStack(alignment: .leading, spacing: 12) {
+                        artistHeroCard(card, results: results, artworkSize: 84)
+                        relatedSongRows(relatedSongs)
+                    }
+                }
+                .padding(14)
+                .background(Color.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .stroke(Color.white.opacity(0.08), lineWidth: 0.7)
+                }
+            }
+        } else if !relatedSongs.isEmpty {
+            VStack(alignment: .leading, spacing: 24) {
+                heroCardView(card, results: results)
+                ForEach(relatedSongs, id: \.videoId) { song in
+                    songInlineRow(song: song)
+                }
+            }
+        } else {
+            heroCardView(card, results: results)
+        }
+    }
+
+    private func artistHeroCard(_ card: BrowseCardRecord, results: SearchResultsRecord, artworkSize: CGFloat) -> some View {
+        let actionButton = Button {
+            handleCardClick(card, results: results)
+        } label: {
+            HStack(spacing: 14) {
+                if let thumb = card.thumbnail,
+                   let url = ImageURLHelper.optimizedThumbnailURL(from: thumb, targetPixelSize: Int(artworkSize * 2)) {
+                    CachedAsyncImage(url: url, targetSize: CGSize(width: artworkSize, height: artworkSize)) { image in
+                        image.resizable().aspectRatio(contentMode: .fill)
+                    } placeholder: {
+                        Circle().fill(Color.white.opacity(0.08))
+                    }
+                    .frame(width: artworkSize, height: artworkSize)
+                    .clipShape(Circle())
+                } else {
+                    Circle()
+                        .fill(Color.white.opacity(0.08))
+                        .frame(width: artworkSize, height: artworkSize)
+                        .overlay {
+                            Image(systemName: "person.crop.circle")
+                                .font(.system(size: artworkSize * 0.36))
+                                .foregroundStyle(.secondary)
+                        }
+                }
+
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(card.title)
+                        .font(.system(size: artworkSize >= 100 ? 24 : 20, weight: .bold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
+                    if let subtitle = card.subtitle, !subtitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        Text(subtitle)
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                            .multilineTextAlignment(.leading)
+                    }
+                    Text("Ver discografía completa")
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(.tertiary)
+                }
+
+                Spacer(minLength: 4)
+                Image(systemName: "arrow.right.circle.fill")
+                    .font(.system(size: 30))
+                    .foregroundStyle(.primary)
+            }
+            .contentShape(Rectangle())
+            .padding(.vertical, 8)
+        }
+        .buttonStyle(.plain)
+
+        return actionButton
+            .frame(maxWidth: .infinity, minHeight: 90, alignment: .leading)
+            .browseCardContextMenu(card: card, player: playerViewModel, router: router, core: rustCore, origin: .search)
+    }
+
+    private func relatedSongRows(_ songs: [SongItemRecord]) -> some View {
+        VStack(spacing: 4) {
+            ForEach(songs, id: \.videoId) { song in
+                relatedSongRow(song)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func relatedSongRow(_ song: SongItemRecord) -> some View {
+        let artistText = song.artists.trimmingCharacters(in: .whitespacesAndNewlines)
+        let typeText = song.isVideo ? "Video" : "Canción"
+        let row = HStack(spacing: 10) {
+            MediaArtworkControls(
+                isCollection: false,
+                accessibilityTitle: song.title,
+                onOpen: { playerViewModel.activateMediaRadio(song) },
+                onPlay: { playerViewModel.activateMediaRadio(song) },
+                menuProvider: { quickSongMenu(song) }
+            ) {
+                if let thumb = song.thumbnail,
+                   let url = ImageURLHelper.optimizedThumbnailURL(from: thumb, targetPixelSize: 104) {
+                    CachedAsyncImage(url: url, targetSize: CGSize(width: 52, height: 52)) { image in
+                        image.resizable().aspectRatio(contentMode: .fill)
+                    } placeholder: {
+                        RoundedRectangle(cornerRadius: AppTheme.artworkThumbnailRadius, style: .continuous)
+                            .fill(Color.white.opacity(0.07))
+                    }
+                    .frame(width: 52, height: 52)
+                    .clipShape(RoundedRectangle(cornerRadius: AppTheme.artworkThumbnailRadius, style: .continuous))
+                } else {
+                    RoundedRectangle(cornerRadius: AppTheme.artworkThumbnailRadius, style: .continuous)
+                        .fill(Color.white.opacity(0.07))
+                        .frame(width: 52, height: 52)
+                        .overlay(Image(systemName: song.isVideo ? "play.rectangle" : "music.note").foregroundStyle(.secondary))
+                }
+            }
+            .frame(width: 52, height: 52)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(song.title)
+                    .font(.system(size: 14, weight: playerViewModel.currentTrack?.videoId == song.videoId ? .semibold : .medium))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                    .allowsHitTesting(false)
+                HStack(spacing: 4) {
+                    Text(typeText).font(.system(size: 12)).foregroundStyle(.secondary).allowsHitTesting(false)
+                    if !artistText.isEmpty {
+                        Text("·").font(.system(size: 12)).foregroundStyle(.secondary).allowsHitTesting(false)
+                        if let onArtist = quickArtistAction(song) {
+                            Button(action: onArtist) {
+                                Text(artistText).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
+                            }
+                            .buttonStyle(.plain)
+                            .mediaCardFocusControl()
+                        } else {
+                            Text(artistText).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
+                                .allowsHitTesting(false)
+                        }
+                    }
+                    if let album = song.album, !album.isEmpty, let onAlbum = quickAlbumAction(song) {
+                        Text("·").font(.system(size: 12)).foregroundStyle(.secondary).allowsHitTesting(false)
+                        Button(action: onAlbum) {
+                            Text(album).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
+                        }
+                        .buttonStyle(.plain)
+                        .mediaCardFocusControl()
+                    }
+                    if let album = song.album, !album.isEmpty, quickAlbumAction(song) == nil {
+                        Text("·").font(.system(size: 12)).foregroundStyle(.secondary).allowsHitTesting(false)
+                        Text(album).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1).allowsHitTesting(false)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            if let duration = song.duration, !duration.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                Text(duration).font(.system(size: 10.5, weight: .medium)).foregroundStyle(.tertiary).lineLimit(1).fixedSize().allowsHitTesting(false)
+            }
+        }
+        .padding(.horizontal, 8)
+        .frame(height: 62)
+        .background(hoveredRelatedSongID == song.videoId ? Color.white.opacity(0.075) : Color.clear,
+                    in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+        .contentShape(Rectangle())
+        .mediaCardActivation(label: "Reproducir \(song.title)") { playerViewModel.activateMediaRadio(song) }
+        .mediaCardSurface()
+        .onHover { hovering in hoveredRelatedSongID = hovering ? song.videoId : nil }
+
+        return row.songContextMenu(song: song, player: playerViewModel, router: router, core: rustCore, origin: .search)
     }
     
     // MARK: - Filtro de Canciones (NativeTrackTableView a 120 FPS)
     
     private var songsFilterView: some View {
+        nativeTrackTableView(tracks: searchViewModel.filteredSongs)
+    }
+
+    private var videosFilterView: some View {
+        nativeTrackTableView(tracks: searchViewModel.committedVideos)
+    }
+
+    private func nativeTrackTableView(tracks: [SongItemRecord]) -> some View {
         Group {
-            if searchViewModel.filteredSongs.isEmpty {
+            if tracks.isEmpty {
                 noResultsView
             } else {
                 NativeTrackTableView(
-                    tracks: searchViewModel.filteredSongs,
+                    tracks: tracks,
                     currentTrackVideoId: playerViewModel.currentTrack?.videoId,
                     isPlaying: playerViewModel.isPlaying,
                     playerViewModel: playerViewModel,
@@ -517,8 +975,8 @@ struct SearchView: View {
                     likedVideoIds: playerViewModel.likedVideoIds,
                     menuOrigin: { _ in .search },
                     onPlayTrack: { index in
-                        if index >= 0 && index < searchViewModel.filteredSongs.count {
-                            playerViewModel.playWithRadio(searchViewModel.filteredSongs[index])
+                        if index >= 0 && index < tracks.count {
+                            playerViewModel.activateMediaRadio(tracks[index])
                         }
                     },
                     onLikeTrack: { track in
@@ -580,122 +1038,184 @@ struct SearchView: View {
     private func browseCardItem(card: BrowseCardRecord) -> some View {
         let isArtist = card.kind.lowercased() == "artist"
         let cardSize: CGFloat = isArtist ? 130 : 144
-        
-        let cardButton = Button {
-            handleCardClick(card)
-        } label: {
-            VStack(alignment: .leading, spacing: 7) {
-                ZStack(alignment: .bottomTrailing) {
-                    if let thumb = card.thumbnail,
-                       let url = ImageURLHelper.optimizedThumbnailURL(from: thumb, targetPixelSize: 288) {
-                        CachedAsyncImage(url: url, targetSize: CGSize(width: cardSize, height: cardSize)) { img in
-                            img
-                                .resizable()
-                                .aspectRatio(contentMode: .fill)
-                        } placeholder: {
-                            Color.secondary.opacity(0.12)
-                        }
-                        .frame(width: cardSize, height: cardSize)
-                        .clipShape(isArtist ? AnyShape(Circle()) : AnyShape(RoundedRectangle(cornerRadius: 10, style: .continuous)))
-                        .overlay(
-                            isArtist
-                                ? AnyView(Circle().stroke(Color.white.opacity(0.12), lineWidth: 0.5))
-                                : AnyView(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(Color.white.opacity(0.12), lineWidth: 0.5))
-                        )
+        let isCollection = ["album", "playlist"].contains(card.kind.lowercased())
+        let isActive = isActiveCollection(card)
+        let artwork = Group {
+            if let thumb = card.thumbnail,
+               let url = ImageURLHelper.optimizedThumbnailURL(from: thumb, targetPixelSize: 288) {
+                CachedAsyncImage(url: url, targetSize: CGSize(width: cardSize, height: cardSize)) { image in
+                    image.resizable().aspectRatio(contentMode: .fill)
+                } placeholder: {
+                    Color.secondary.opacity(0.12)
+                }
+                .frame(width: cardSize, height: cardSize)
+                .clipShape(isArtist ? AnyShape(Circle()) : AnyShape(RoundedRectangle(cornerRadius: AppTheme.artworkCardRadius, style: .continuous)))
+                .overlay {
+                    if isArtist {
+                        Circle().stroke(Color.white.opacity(0.12), lineWidth: 0.5)
                     } else {
-                        RoundedRectangle(cornerRadius: isArtist ? cardSize / 2 : 10, style: .continuous)
-                            .fill(Color.secondary.opacity(0.15))
-                            .frame(width: cardSize, height: cardSize)
-                            .overlay(Image(systemName: isArtist ? "person.crop.circle" : "music.note").font(.system(size: 28)))
+                        RoundedRectangle(cornerRadius: AppTheme.artworkCardRadius, style: .continuous)
+                            .stroke(Color.white.opacity(0.12), lineWidth: 0.5)
                     }
-                    
-                    // Botón de reproducción flotante
-                    Image(systemName: isArtist ? "arrow.right.circle.fill" : "play.circle.fill")
-                        .font(.system(size: 26))
-                        .foregroundStyle(Color.white)
-                        .shadow(color: .black.opacity(0.4), radius: 4)
-                        .padding(6)
                 }
-                
-                Text(card.title)
-                    .font(.system(size: 12.5, weight: .semibold))
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
-                
-                if let subtitle = card.subtitle, !subtitle.isEmpty {
-                    Text(subtitle)
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
+            } else {
+                RoundedRectangle(cornerRadius: isArtist ? cardSize / 2 : AppTheme.artworkCardRadius, style: .continuous)
+                    .fill(Color.secondary.opacity(0.15))
+                    .frame(width: cardSize, height: cardSize)
+                    .overlay(Image(systemName: isArtist ? "person.crop.circle" : "music.note").font(.system(size: 28)))
             }
-            .frame(width: cardSize)
         }
-        .buttonStyle(.plain)
-        
-        cardButton.browseCardContextMenu(card: card, player: playerViewModel, router: router, core: rustCore, origin: .search)
+
+        let cardView = VStack(alignment: .leading, spacing: 7) {
+            if isCollection {
+                MediaArtworkControls(
+                    isCollection: true,
+                    isActive: isActive,
+                    isPlaying: isActive && playerViewModel.isPlaying,
+                    isLoading: isCollectionLoading(card),
+                    showsIndicator: isActive,
+                    accessibilityTitle: card.title,
+                    onOpen: { handleCardClick(card) },
+                    onPlay: { playerViewModel.activateMediaCollection(id: card.id, kind: card.kind) },
+                    menuProvider: { browseCardMenu(card) }
+                ) {
+                    artwork
+                }
+                .frame(width: cardSize, height: cardSize)
+            } else if isArtist {
+                Button { handleCardClick(card) } label: { artwork }
+                    .buttonStyle(.plain)
+                    .mediaCardFocusControl()
+            } else {
+                MediaArtworkControls(
+                    isCollection: false,
+                    accessibilityTitle: card.title,
+                    onOpen: { handleCardClick(card) },
+                    onPlay: { handleCardClick(card) },
+                    menuProvider: { browseCardMenu(card) }
+                ) {
+                    artwork
+                }
+                .frame(width: cardSize, height: cardSize)
+            }
+
+            Button { handleCardClick(card) } label: {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(card.title)
+                        .font(.system(size: 12.5, weight: .semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                    if let subtitle = card.subtitle, !subtitle.isEmpty {
+                        Text(subtitle)
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .mediaCardFocusControl()
+        }
+        .frame(width: cardSize, alignment: .leading)
+        .mediaCardActivation(label: "Abrir \(card.title)") { handleCardClick(card) }
+        .mediaCardSurface()
+
+        cardView.browseCardContextMenu(card: card, player: playerViewModel, router: router, core: rustCore, origin: .search)
+    }
+
+    private func browseCardMenu(_ card: BrowseCardRecord) -> NSMenu? {
+        let factory = AppContextMenuFactory.shared
+        switch card.kind.lowercased() {
+        case "album":
+            return factory.buildAlbumNSMenu(browseId: card.id, playlistId: nil, title: card.title,
+                artist: card.subtitle, thumbnail: card.thumbnail, origin: .search,
+                player: playerViewModel, router: router, core: rustCore)
+        case "playlist":
+            return factory.buildPlaylistNSMenu(id: card.id, title: card.title, subtitle: card.subtitle,
+                thumbnail: card.thumbnail, origin: .search, player: playerViewModel,
+                router: router, core: rustCore)
+        case "song", "video":
+            return factory.buildSongNSMenu(song: SongItemRecord(fromCard: card), player: playerViewModel,
+                router: router, core: rustCore, origin: .search)
+        default:
+            return nil
+        }
     }
     
     // MARK: - Fila de Canción Inline (para Vista "Todo")
     
     private func songInlineRow(song: SongItemRecord) -> some View {
-        Button {
-            playerViewModel.playWithRadio(song)
-        } label: {
-            HStack(spacing: 12) {
+        HStack(spacing: 12) {
+            MediaArtworkControls(
+                isCollection: false,
+                accessibilityTitle: song.title,
+                onOpen: { playerViewModel.activateMediaRadio(song) },
+                onPlay: { playerViewModel.activateMediaRadio(song) },
+                menuProvider: { quickSongMenu(song) }
+            ) {
                 if let thumb = song.thumbnail,
                    let url = ImageURLHelper.optimizedThumbnailURL(from: thumb, targetPixelSize: 96) {
-                    CachedAsyncImage(url: url, targetSize: CGSize(width: 40, height: 40)) { img in
-                        img
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
+                    CachedAsyncImage(url: url, targetSize: CGSize(width: 40, height: 40)) { image in
+                        image.resizable().aspectRatio(contentMode: .fill)
                     } placeholder: {
-                        RoundedRectangle(cornerRadius: 6, style: .continuous).fill(Color.white.opacity(0.06))
+                        RoundedRectangle(cornerRadius: AppTheme.artworkThumbnailRadius, style: .continuous).fill(Color.white.opacity(0.06))
                     }
                     .frame(width: 40, height: 40)
-                    .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                    .clipShape(RoundedRectangle(cornerRadius: AppTheme.artworkThumbnailRadius, style: .continuous))
+                } else {
+                    RoundedRectangle(cornerRadius: AppTheme.artworkThumbnailRadius, style: .continuous)
+                        .fill(Color.white.opacity(0.06)).frame(width: 40, height: 40)
                 }
-                
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(song.title)
-                        .font(.system(size: 13, weight: playerViewModel.currentTrack?.videoId == song.videoId ? .semibold : .medium))
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
-                    
-                    Text(song.artists)
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-                
-                Spacer()
-                
-                if let dur = song.duration {
-                    Text(dur)
-                        .font(.system(size: 11))
-                        .foregroundStyle(.tertiary)
-                }
-                
-                Image(systemName: playerViewModel.currentTrack?.videoId == song.videoId && playerViewModel.isPlaying ? "pause.fill" : "play.fill")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.primary)
-                    .padding(.trailing, 6)
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(Color.white.opacity(0.04))
-            )
-            .contentShape(Rectangle())
+            .frame(width: 40, height: 40)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(song.title)
+                    .font(.system(size: 13, weight: playerViewModel.currentTrack?.videoId == song.videoId ? .semibold : .medium))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                    .allowsHitTesting(false)
+                HStack(spacing: 4) {
+                    if let onArtist = quickArtistAction(song) {
+                        Button(action: onArtist) { Text(song.artists).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1) }
+                            .buttonStyle(.plain)
+                            .mediaCardFocusControl()
+                    } else {
+                        Text(song.artists).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
+                            .allowsHitTesting(false)
+                    }
+                    if let album = song.album, !album.isEmpty, let onAlbum = quickAlbumAction(song) {
+                        Text("·").font(.system(size: 11)).foregroundStyle(.tertiary)
+                        Button(action: onAlbum) { Text(album).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1) }
+                            .buttonStyle(.plain)
+                            .mediaCardFocusControl()
+                    }
+                    if let album = song.album, !album.isEmpty, quickAlbumAction(song) == nil {
+                        Text("·").font(.system(size: 11)).foregroundStyle(.tertiary).allowsHitTesting(false)
+                        Text(album).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1).allowsHitTesting(false)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            if let dur = song.duration {
+                Text(dur).font(.system(size: 11)).foregroundStyle(.tertiary).allowsHitTesting(false)
+            }
         }
-        .buttonStyle(.plain)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color.white.opacity(0.04)))
+        .contentShape(Rectangle())
+        .mediaCardActivation(label: "Reproducir \(song.title)") { playerViewModel.activateMediaRadio(song) }
+        .mediaCardSurface()
         .songContextMenu(song: song, player: playerViewModel, router: router, core: rustCore, origin: .search)
     }
     
     // MARK: - Navegación de Tarjeta
     
-    private func handleCardClick(_ card: BrowseCardRecord) {
+    private func handleCardClick(_ card: BrowseCardRecord, results: SearchResultsRecord? = nil) {
         switch card.kind.lowercased() {
         case "artist":
             router.navigate(to: .artist(browseId: card.id))
@@ -703,11 +1223,98 @@ struct SearchView: View {
             router.navigate(to: .album(browseId: card.id))
         case "playlist":
             router.navigate(to: .playlist(browseId: card.id))
-        case "song":
-            let song = SongItemRecord(fromCard: card)
-            playerViewModel.playWithRadio(song)
+        case "song", "video":
+            let song = searchViewModel.song(for: card, in: results ?? searchViewModel.committedResults)
+            playerViewModel.activateMediaRadio(song)
         default:
             searchViewModel.commitSearch(query: card.title, core: rustCore, force: true)
+        }
+    }
+
+    private func isActiveCollection(_ card: BrowseCardRecord) -> Bool {
+        MediaPlaybackIdentity.isCollectionActive(
+            kind: card.kind,
+            id: card.id,
+            context: playerViewModel.queueManager.context
+        )
+    }
+
+    private func isCollectionLoading(_ card: BrowseCardRecord) -> Bool {
+        switch card.kind.lowercased() {
+        case "album":
+            return playerViewModel.loadingRecommendedAlbumID.map(MenuIDNormalizer.normalize) == MenuIDNormalizer.normalize(card.id)
+        case "playlist":
+            return playerViewModel.loadingRecommendedPlaylistID.map(MenuIDNormalizer.canonicalPlaylistId) == MenuIDNormalizer.canonicalPlaylistId(card.id)
+        default:
+            return false
+        }
+    }
+
+    private func collectionPlayAction(for card: BrowseCardRecord) -> (() -> Void)? {
+        guard ["album", "playlist"].contains(card.kind.lowercased()) else { return nil }
+        return {
+            isSearchBarFocused = false
+            searchViewModel.isTopdownVisible = false
+            playerViewModel.activateMediaCollection(id: card.id, kind: card.kind)
+        }
+    }
+
+    private func quickCardPlayAction(_ card: BrowseCardRecord, results: SearchResultsRecord) -> (() -> Void)? {
+        switch card.kind.lowercased() {
+        case "album", "playlist":
+            return collectionPlayAction(for: card)
+        case "song", "video":
+            return {
+                isSearchBarFocused = false
+                searchViewModel.isTopdownVisible = false
+                playerViewModel.activateMediaRadio(searchViewModel.song(for: card, in: results))
+            }
+        default:
+            return nil
+        }
+    }
+
+    private func quickArtistAction(_ song: SongItemRecord) -> (() -> Void)? {
+        guard let id = song.artistId, !id.isEmpty else { return nil }
+        return {
+            isSearchBarFocused = false
+            searchViewModel.isTopdownVisible = false
+            router.navigate(to: .artist(browseId: id))
+        }
+    }
+
+    private func quickAlbumAction(_ song: SongItemRecord) -> (() -> Void)? {
+        guard let id = song.albumId, !id.isEmpty else { return nil }
+        return {
+            isSearchBarFocused = false
+            searchViewModel.isTopdownVisible = false
+            router.navigate(to: .album(browseId: id))
+        }
+    }
+
+    private func quickSongMenu(_ song: SongItemRecord) -> NSMenu? {
+        AppContextMenuFactory.shared.buildSongNSMenu(
+            song: song, player: playerViewModel, router: router, core: rustCore, origin: .search
+        )
+    }
+
+    private func searchErrorBanner(_ message: String) -> some View {
+        Label(message, systemImage: "exclamationmark.circle")
+            .font(.system(size: 12))
+            .foregroundStyle(.secondary)
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 10))
+    }
+
+    private func filteredResultsView<Content: View>(error: String?, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if let error {
+                searchErrorBanner(error)
+                    .padding(.horizontal, 24)
+                    .padding(.top, 10)
+            }
+            content()
         }
     }
     

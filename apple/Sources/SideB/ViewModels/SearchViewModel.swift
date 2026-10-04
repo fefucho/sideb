@@ -6,16 +6,18 @@ import SideBCore
 public enum SearchFilter: String, CaseIterable, Identifiable, Sendable {
     case all = "Todo"
     case songs = "Canciones"
+    case videos = "Videos"
     case albums = "Álbumes"
     case artists = "Artistas"
     case playlists = "Playlists"
-    
+
     public var id: String { rawValue }
-    
+
     public var icon: String {
         switch self {
         case .all: return "sparkles"
         case .songs: return "music.note"
+        case .videos: return "play.rectangle"
         case .albums: return "opticaldisc"
         case .artists: return "person.2.fill"
         case .playlists: return "music.note.list"
@@ -31,9 +33,9 @@ public enum SearchCategory: String, Identifiable, Sendable {
     case songs = "Canciones"
     case albums = "Álbumes"
     case playlists = "Playlists"
-    
+
     public var id: String { rawValue }
-    
+
     public var icon: String {
         switch self {
         case .topResult: return "star.fill"
@@ -45,225 +47,249 @@ public enum SearchCategory: String, Identifiable, Sendable {
     }
 }
 
+public enum SearchPartialError: Hashable, Sendable {
+    case global
+    case songs
+    case videos
+    case categories
+}
+
 // MARK: - SearchViewModel
 
 @MainActor
 @Observable
 public final class SearchViewModel {
-    // MARK: - Estado de Consulta
-    public var query: String = ""
-    public var committedQuery: String = ""
-    
-    // MARK: - Resultados Rápidos (Spotlight & Topdown Dropdown)
-    public var quickResults: SearchResultsRecord? = nil
-    public private(set) var associatedQuickQuery: String = ""
-    public var isQuickSearching: Bool = false
-    public var isTopdownVisible: Bool = false
-    
-    // MARK: - Resultados Comprometidos (Página Completa SearchView)
-    public var committedResults: SearchResultsRecord? = nil
-    public var isCommittedLoading: Bool = false
-    
-    // MARK: - Filtros de Categoría
+    public var query = ""
+    public var committedQuery = ""
+
+    public var quickResults: SearchResultsRecord?
+    public private(set) var associatedQuickQuery = ""
+    public private(set) var quickErrorMessage: String?
+    public var isQuickSearching = false
+    public var isTopdownVisible = false
+
+    public var committedResults: SearchResultsRecord?
+    public private(set) var committedSongs: [SongItemRecord] = []
+    public private(set) var committedVideos: [SongItemRecord] = []
+    public private(set) var isCommittedLoading = false
+    public private(set) var errorMessage: String?
+    public private(set) var partialErrors: [SearchPartialError: String] = [:]
+
     public var selectedFilter: SearchFilter = .all
     public var filteredSongs: [SongItemRecord] = []
     public var filteredCards: [BrowseCardRecord] = []
-    public var isFilterLoading: Bool = false
-    
-    // MARK: - Tareas y Cancelación Atómica
+    public private(set) var isFilterLoading = false
+
     @ObservationIgnored private var debounceTask: Task<Void, Never>?
     @ObservationIgnored private var commitTask: Task<Void, Never>?
     @ObservationIgnored private var filterTask: Task<Void, Never>?
-    @ObservationIgnored private var searchGeneration: UInt = 0
-    @ObservationIgnored private var commitGeneration: UInt = 0
+    @ObservationIgnored private var previewGeneration: UInt = 0
+    @ObservationIgnored private var queryGeneration: UInt = 0
     @ObservationIgnored private var filterGeneration: UInt = 0
-    
+
     public init() {}
-    
-    // MARK: - Búsqueda Rápida Dinámica (Debounce 250ms)
-    
+
+    // MARK: Preview
+
     public func onQueryChanged(_ newQuery: String, core: SideBCore) {
         query = newQuery
-        debounceTask?.cancel()
-        searchGeneration &+= 1
-        let currentGen = searchGeneration
-        
+        quickErrorMessage = nil
         let trimmed = newQuery.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.isEmpty {
+        debounceTask?.cancel()
+        previewGeneration &+= 1
+        let generation = previewGeneration
+
+        guard !trimmed.isEmpty else {
             quickResults = nil
             associatedQuickQuery = ""
             isQuickSearching = false
             isTopdownVisible = false
             return
         }
-        
-        // Si ya tenemos resultados cacheados para esta consulta exacta, mostrarlos inmediatamente
-        if trimmed == associatedQuickQuery && quickResults != nil {
+
+        if trimmed == associatedQuickQuery, quickResults != nil {
             isQuickSearching = false
             isTopdownVisible = true
             return
         }
-        
-        // Si el texto cambió respecto a los resultados cacheados, invalidar inmediatamente
-        if trimmed != associatedQuickQuery {
-            quickResults = nil
-        }
-        
+
+        if trimmed != associatedQuickQuery { quickResults = nil }
         isQuickSearching = true
         isTopdownVisible = true
-        
         debounceTask = Task {
-            try? await Task.sleep(nanoseconds: 250_000_000)
-            guard !Task.isCancelled, currentGen == self.searchGeneration else { return }
-            
+            try? await Task.sleep(for: .milliseconds(250))
+            guard !Task.isCancelled, generation == previewGeneration else { return }
             do {
                 let results = try await core.searchAll(query: trimmed, recordHistory: false)
-                guard !Task.isCancelled, currentGen == self.searchGeneration else { return }
-                self.quickResults = results
-                self.associatedQuickQuery = trimmed
-                self.isQuickSearching = false
-                self.isTopdownVisible = true
+                guard !Task.isCancelled, generation == previewGeneration else { return }
+                quickResults = results
+                associatedQuickQuery = trimmed
+                quickErrorMessage = nil
+                isQuickSearching = false
+                isTopdownVisible = true
             } catch {
-                guard !Task.isCancelled, currentGen == self.searchGeneration else { return }
-                self.isQuickSearching = false
+                guard !Task.isCancelled, generation == previewGeneration else { return }
+                quickErrorMessage = "No se pudieron cargar los resultados rápidos. Intenta de nuevo."
+                isQuickSearching = false
             }
         }
     }
-    
-    // MARK: - Confirmar Búsqueda (Enter / Navegación a SearchView)
-    
+
+    /// Invalidates a pending preview when the dropdown is dismissed or a search is submitted.
+    public func cancelPreview() {
+        debounceTask?.cancel()
+        debounceTask = nil
+        previewGeneration &+= 1
+        quickErrorMessage = nil
+        isQuickSearching = false
+        isTopdownVisible = false
+    }
+
+    // MARK: Full search
+
     public func commitSearch(query text: String, core: SideBCore, force: Bool = false) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        
-        // Ocultar dropdown flotante y cancelar debounce al confirmar
-        debounceTask?.cancel()
-        isQuickSearching = false
-        isTopdownVisible = false
-        
-        if committedQuery == trimmed && !force && committedResults != nil {
-            return
-        }
-        
+
+        cancelPreview()
+        if committedQuery == trimmed, !force, committedResults != nil, !isCommittedLoading { return }
+        if committedQuery == trimmed, isCommittedLoading, !force { return }
+
+        queryGeneration &+= 1
+        let generation = queryGeneration
+        filterGeneration &+= 1
+        commitTask?.cancel()
+        filterTask?.cancel()
+
         committedQuery = trimmed
         query = trimmed
+        committedResults = nil
+        committedSongs = []
+        committedVideos = []
+        filteredSongs = []
+        filteredCards = []
+        errorMessage = nil
+        partialErrors = [:]
         isCommittedLoading = true
-        
-        // Si el filtro actual es .all y ya tenemos quickResults verificados para esta misma query exacta
-        if selectedFilter == .all, let cached = quickResults, associatedQuickQuery == trimmed && !force {
-            committedResults = cached
-            isCommittedLoading = false
-            return
-        }
-        
-        commitTask?.cancel()
-        commitGeneration &+= 1
-        let currentCommitGen = commitGeneration
-        
+        isFilterLoading = false
+
         commitTask = Task {
-            switch selectedFilter {
-            case .all:
-                do {
-                    let results = try await core.searchAll(query: trimmed, recordHistory: false)
-                    guard !Task.isCancelled, currentCommitGen == self.commitGeneration, self.committedQuery == trimmed else { return }
-                    self.committedResults = results
-                    self.quickResults = results
-                    self.associatedQuickQuery = trimmed
-                } catch {
-                    // Manejo silencioso o estado vacío
-                }
-            case .songs:
-                await fetchFilteredSongs(query: trimmed, core: core, generation: currentCommitGen)
-            case .albums:
-                await fetchFilteredCards(query: trimmed, category: "albums", core: core, expectedFilter: .albums, generation: currentCommitGen)
-            case .artists:
-                await fetchFilteredCards(query: trimmed, category: "artists", core: core, expectedFilter: .artists, generation: currentCommitGen)
-            case .playlists:
-                await fetchFilteredCards(query: trimmed, category: "playlists", core: core, expectedFilter: .playlists, generation: currentCommitGen)
+            async let mixed = capture { try await core.searchAll(query: trimmed, recordHistory: true) }
+            async let songs = capture { try await core.searchSongs(query: trimmed, recordHistory: false) }
+            async let videos = capture { try await core.searchVideos(query: trimmed) }
+
+            let (mixedResult, songsResult, videosResult) = await (mixed, songs, videos)
+            guard !Task.isCancelled, generation == queryGeneration, committedQuery == trimmed else { return }
+
+            var errors = partialErrors
+            switch mixedResult {
+            case .success(let results): committedResults = results
+            case .failure:
+                let message = "No se pudieron cargar los resultados generales. Las demás secciones siguen disponibles."
+                errorMessage = message
+                errors[.global] = message
             }
-            guard !Task.isCancelled, currentCommitGen == self.commitGeneration, self.committedQuery == trimmed else { return }
-            self.isCommittedLoading = false
+
+            switch songsResult {
+            case .success(let songs): committedSongs = songs
+            case .failure:
+                let message = "No se pudo completar la búsqueda de canciones."
+                errors[.songs] = message
+                committedSongs = (committedResults?.songs ?? []).filter { !$0.isVideo }
+            }
+
+            switch videosResult {
+            case .success(let videos): committedVideos = videos
+            case .failure: errors[.videos] = "No se pudieron cargar los videos."
+            }
+
+            partialErrors = errors
+            if selectedFilter == .songs { filteredSongs = committedSongs }
+            isCommittedLoading = false
+        }
+        if selectedFilter == .albums || selectedFilter == .artists || selectedFilter == .playlists {
+            loadCards(for: selectedFilter, query: trimmed, core: core, generation: filterGeneration)
         }
     }
-    
-    // MARK: - Cambio de Filtro de Categoría
-    
+
+    // MARK: Filters
+
     public func selectFilter(_ filter: SearchFilter, core: SideBCore) {
         guard selectedFilter != filter else { return }
         selectedFilter = filter
-        
-        // Limpiar resultados anteriores de categoría para evitar flasheos de tarjetas discordantes
-        switch filter {
-        case .all: break
-        case .songs: filteredSongs = []
-        case .albums, .artists, .playlists: filteredCards = []
-        }
-        
-        guard !committedQuery.isEmpty else { return }
-        
-        filterTask?.cancel()
         filterGeneration &+= 1
-        let currentFilterGen = filterGeneration
-        let targetQuery = committedQuery
-        
+        let generation = filterGeneration
+        filterTask?.cancel()
+        isFilterLoading = false
+        filteredCards = []
+
+        guard !committedQuery.isEmpty else {
+            filteredSongs = []
+            return
+        }
+
+        switch filter {
+        case .all:
+            filteredSongs = []
+        case .songs:
+            filteredSongs = committedSongs
+        case .videos:
+            filteredSongs = []
+        case .albums, .artists, .playlists:
+            loadCards(for: filter, query: committedQuery, core: core, generation: generation)
+        }
+    }
+
+    private func loadCards(for filter: SearchFilter, query: String, core: SideBCore, generation: UInt) {
+        guard let category = categoryName(for: filter) else { return }
+        filterTask?.cancel()
+        isFilterLoading = true
         filterTask = Task {
-            isFilterLoading = true
-            switch filter {
-            case .all:
-                if committedResults == nil {
-                    do {
-                        let res = try await core.searchAll(query: targetQuery, recordHistory: false)
-                        guard !Task.isCancelled, currentFilterGen == self.filterGeneration, self.selectedFilter == .all, self.committedQuery == targetQuery else { return }
-                        self.committedResults = res
-                    } catch {}
-                }
-            case .songs:
-                await fetchFilteredSongs(query: targetQuery, core: core, generation: currentFilterGen)
-            case .albums:
-                await fetchFilteredCards(query: targetQuery, category: "albums", core: core, expectedFilter: .albums, generation: currentFilterGen)
-            case .artists:
-                await fetchFilteredCards(query: targetQuery, category: "artists", core: core, expectedFilter: .artists, generation: currentFilterGen)
-            case .playlists:
-                await fetchFilteredCards(query: targetQuery, category: "playlists", core: core, expectedFilter: .playlists, generation: currentFilterGen)
+            do {
+                let cards = try await core.searchCards(query: query, category: category)
+                guard !Task.isCancelled, generation == filterGeneration,
+                      queryGeneration > 0, committedQuery == query, selectedFilter == filter else { return }
+                filteredCards = cards
+                partialErrors[.categories] = nil
+            } catch {
+                guard !Task.isCancelled, generation == filterGeneration,
+                      committedQuery == query, selectedFilter == filter else { return }
+                partialErrors[.categories] = "No se pudo cargar esta categoría."
             }
-            guard !Task.isCancelled, currentFilterGen == self.filterGeneration, self.selectedFilter == filter else { return }
+            guard !Task.isCancelled, generation == filterGeneration,
+                  committedQuery == query, selectedFilter == filter else { return }
             isFilterLoading = false
         }
     }
-    
-    private func fetchFilteredSongs(query text: String, core: SideBCore, generation: UInt) async {
-        do {
-            let songs = try await core.searchSongs(query: text, recordHistory: false)
-            guard !Task.isCancelled, (generation == self.filterGeneration || generation == self.commitGeneration), self.selectedFilter == .songs, self.committedQuery == text else { return }
-            filteredSongs = songs
-        } catch {
-            guard !Task.isCancelled, (generation == self.filterGeneration || generation == self.commitGeneration), self.selectedFilter == .songs, self.committedQuery == text else { return }
-            filteredSongs = []
+
+    private func categoryName(for filter: SearchFilter) -> String? {
+        switch filter {
+        case .albums: return "albums"
+        case .artists: return "artists"
+        case .playlists: return "playlists"
+        case .all, .songs, .videos: return nil
         }
     }
-    
-    private func fetchFilteredCards(query text: String, category: String, core: SideBCore, expectedFilter: SearchFilter, generation: UInt) async {
-        do {
-            let cards = try await core.searchCards(query: text, category: category)
-            guard !Task.isCancelled, (generation == self.filterGeneration || generation == self.commitGeneration), self.selectedFilter == expectedFilter, self.committedQuery == text else { return }
-            filteredCards = cards
-        } catch {
-            guard !Task.isCancelled, (generation == self.filterGeneration || generation == self.commitGeneration), self.selectedFilter == expectedFilter, self.committedQuery == text else { return }
-            filteredCards = []
-        }
+
+    // MARK: Result helpers
+
+    public func relatedSongs(for results: SearchResultsRecord) -> [SongItemRecord] {
+        let byID = Dictionary(results.topSongs.map { ($0.videoId, $0) }, uniquingKeysWith: { first, _ in first })
+        return Array(results.top.dropFirst().compactMap { byID[$0.id] }.prefix(3))
     }
-    
-    // MARK: - Reordenamiento Dinámico Adaptativo de Categorías
-    
+
+    public func song(for card: BrowseCardRecord, in results: SearchResultsRecord?) -> SongItemRecord {
+        if let song = results?.topSongs.first(where: { $0.videoId == card.id }) { return song }
+        return SongItemRecord(fromCard: card)
+    }
+
+    // MARK: Categories
+
     public func dynamicCategories(for results: SearchResultsRecord) -> [SearchCategory] {
         var order: [SearchCategory] = []
-        
         let primaryKind = results.top.first?.kind.lowercased()
-        
-        if !results.top.isEmpty {
-            order.append(.topResult)
-        }
-        
+        if !results.top.isEmpty { order.append(.topResult) }
+
         switch primaryKind {
         case "artist":
             if !results.artists.isEmpty { order.append(.artists) }
@@ -286,20 +312,41 @@ public final class SearchViewModel {
             if !results.albums.isEmpty { order.append(.albums) }
             if !results.playlists.isEmpty { order.append(.playlists) }
         }
-        
         return order
     }
-    
-    // MARK: - Limpieza
-    
+
+    // MARK: Reset
+
     public func clear() {
-        query = ""
-        associatedQuickQuery = ""
-        quickResults = nil
-        isQuickSearching = false
-        isTopdownVisible = false
-        debounceTask?.cancel()
+        queryGeneration &+= 1
+        filterGeneration &+= 1
+        cancelPreview()
         commitTask?.cancel()
         filterTask?.cancel()
+        commitTask = nil
+        filterTask = nil
+
+        query = ""
+        committedQuery = ""
+        quickResults = nil
+        associatedQuickQuery = ""
+        quickErrorMessage = nil
+        committedResults = nil
+        committedSongs = []
+        committedVideos = []
+        filteredSongs = []
+        filteredCards = []
+        selectedFilter = .all
+        isQuickSearching = false
+        isTopdownVisible = false
+        isCommittedLoading = false
+        isFilterLoading = false
+        errorMessage = nil
+        partialErrors = [:]
     }
+}
+
+private func capture<Value>(_ operation: () async throws -> Value) async -> Result<Value, Error> {
+    do { return .success(try await operation()) }
+    catch { return .failure(error) }
 }

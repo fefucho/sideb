@@ -21,9 +21,10 @@ public enum FullscreenPanel: String, CaseIterable, Identifiable {
 
 // MARK: - FullscreenNowPlayingView (Proporcional 60/40, Sólido y Resistente a Resizing)
 
-struct FullscreenNowPlayingView: View {
+struct FullscreenNowPlayingView: View, Animatable {
     @Bindable var viewModel: PlayerViewModel
-    @Binding var isSidebarExpanded: Bool
+    let canvasSize: CGSize
+    var sidebarProgress: CGFloat
     var router: NavigationRouter? = nil
     
     private var selectedPanel: FullscreenPanel {
@@ -31,7 +32,6 @@ struct FullscreenNowPlayingView: View {
         nonmutating set { viewModel.selectedFullscreenPanel = newValue }
     }
     @State private var isHoveringArtwork: Bool = false
-    @State private var isHoveringArtist: Bool = false
     @State private var isHoveringAlbum: Bool = false
     @State private var failedOriginalURL: URL? = nil
     @State private var failedMaxQualityURL: URL? = nil
@@ -39,97 +39,44 @@ struct FullscreenNowPlayingView: View {
     
     @Namespace private var tabNamespace
     
+    var animatableData: CGFloat {
+        get { sidebarProgress }
+        set { sidebarProgress = newValue }
+    }
+
     var body: some View {
-        GeometryReader { proxy in
-            let windowWidth = proxy.size.width
-            let windowHeight = proxy.size.height
-            
-            // 1. Zonas de seguridad vertical
-            // Mantener las pestañas bajo los traffic lights nativos, mientras
-            // el fondo se extiende detrás de ellos.
-            let topPadding: CGFloat = 52
-            // Espacio inferior reservado para la PlayerBar fija de Capa 3 (74pt de cápsula + 20pt padding + 18pt respiro = 112pt)
-            let bottomReservedHeight: CGFloat = 112
-            
-            // Altura vertical disponible para el contenido (Cola / Letras / Artwork)
-            let availableContentHeight = max(200, windowHeight - topPadding - bottomReservedHeight)
-            
-            // 2. Márgenes horizontales y distribución entre columnas (52/48 adaptativo)
-            let horizontalPadding: CGFloat = max(24, min(48, windowWidth * 0.035))
-            let columnSpacing: CGFloat = max(24, min(40, windowWidth * 0.028))
-            let totalAvailableWidth = max(0, windowWidth - (horizontalPadding * 2) - columnSpacing)
-            
-            // Proporción adaptativa entre Columna Izquierda (Artwork) y Columna Derecha (Queue / Lyrics / Recommended)
-            // Se garantiza al menos 340pt para la cola/recomendados con un techo amplio de hasta 600pt para máxima amplitud
-            let idealRightWidth = totalAvailableWidth * 0.52
-            let maxAllowedRightWidth = max(300, totalAvailableWidth * 0.56)
-            let minRightWidth: CGFloat = min(340, maxAllowedRightWidth)
-            let rightWidth = min(maxAllowedRightWidth, max(minRightWidth, min(600, idealRightWidth)))
-            
-            // Ancho de la Columna Izquierda (restante)
-            let leftWidth = max(100, totalAvailableWidth - rightWidth)
-            
-            // 3. Dimensionamiento del Artwork (1:1 Cuadrado) y Metadata agrandada
-            let metadataSpacing: CGFloat = 16
-            let metadataHeight: CGFloat = 68
-            
-            // Altura máxima que puede tener la imagen sin desbordar verticalmente
-            let maxArtHeight = max(100, availableContentHeight - metadataSpacing - metadataHeight - 16)
-            
-            // El Artwork es 1:1: ligeramente más contenido (90% del ancho izquierdo) para dar respiro visual
-            let maxArtWidth = leftWidth * 0.90
-            let artworkSize = max(100, min(maxArtWidth, maxArtHeight))
-            
-            // 4. Altura del Panel de Contenido Derecho (Cola / Letras / Relacionado)
-            // Selector de pestañas cápsula (40pt) + spacing (14pt) = 54pt
-            let contentPanelHeight = max(80, availableContentHeight - 40 - 14)
-            
-            ZStack(alignment: .top) {
-                // 1. Fondo Dinámico 100% Sólido (Sin bordes transparentes ni difuminado hacia las puntas)
-                backgroundArtworkBlur(width: windowWidth, height: windowHeight)
-                
-                // 2. Contenedor de Contenido con Geometría Rígida
-                VStack(spacing: 0) {
-                    // Margen superior para los semáforos de macOS
-                    Color.clear.frame(height: topPadding)
-                    
-                    // Fila Principal con las 2 Columnas
-                    HStack(alignment: .top, spacing: columnSpacing) {
-                        // COLUMNA IZQUIERDA: Bloque Integrado Artwork + Metadata
-                        // Centrado verticalmente dentro de availableContentHeight para armonía visual
-                        VStack(alignment: .leading, spacing: metadataSpacing) {
-                            artworkView(size: artworkSize)
-                            trackInfoView(width: artworkSize)
-                        }
-                        .frame(width: artworkSize)
-                        .frame(maxWidth: leftWidth, maxHeight: availableContentHeight, alignment: .center)
-                        
-                        // COLUMNA DERECHA: Selector Centrado Arriba + Cola/Letras a Toda la Altura
-                        VStack(alignment: .center, spacing: 14) {
-                            // Selector de Pestañas Compacto Centrado (Estilo Cápsula)
-                            compactTabBar
-                            
-                            // Panel de Contenido Transparente
-                            contentPanelView(height: contentPanelHeight)
-                                .frame(width: rightWidth, height: contentPanelHeight)
-                        }
-                        .frame(width: rightWidth, height: availableContentHeight, alignment: .top)
-                    }
-                    .frame(height: availableContentHeight)
-                    .padding(.horizontal, horizontalPadding)
-                    
-                    Spacer(minLength: 0)
-                    
-                    // Espacio reservado para la PlayerBar fija de Capa 3
-                    Color.clear.frame(height: bottomReservedHeight)
+        let geometry = FullscreenSidebarGeometry(canvasSize: canvasSize, progress: sidebarProgress)
+        let layout = geometry.metrics
+        VStack(spacing: 0) {
+            Color.clear.frame(height: layout.topPadding)
+            HStack(alignment: .top, spacing: layout.columnSpacing) {
+                // One block and one interpolated coordinate system for
+                // artwork, title, credits and actions throughout resize.
+                VStack(alignment: .leading, spacing: layout.metadataSpacing) {
+                    artworkView(size: layout.artworkSize)
+                    trackInfoView(width: layout.artworkSize)
+                        .frame(height: layout.metadataHeight, alignment: .top)
                 }
-                .frame(width: windowWidth, height: windowHeight)
+                .frame(width: layout.artworkSize, height: layout.artworkBlockHeight)
+                .frame(width: layout.leftWidth, height: layout.availableContentHeight, alignment: .center)
+
+                VStack(alignment: .center, spacing: 14) {
+                    compactTabBar
+                    contentPanelView(height: layout.contentPanelHeight)
+                        .frame(width: layout.rightWidth, height: layout.contentPanelHeight)
+                }
+                .frame(width: layout.rightWidth, height: layout.availableContentHeight, alignment: .top)
             }
-            .frame(width: windowWidth, height: windowHeight)
-            .clipped()
+            .frame(height: layout.availableContentHeight)
+            .padding(.horizontal, layout.horizontalPadding)
+            Spacer(minLength: 0)
+            Color.clear.frame(height: layout.bottomReservedHeight)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .ignoresSafeArea(.container, edges: .top)
+        .frame(width: layout.viewport.width, height: layout.viewport.height)
+        .clipped()
+        .offset(x: geometry.contentOffset)
+        // Only the shared sidebar progress interpolates this scene's geometry.
+        .transaction { if geometry.isTransitioning { $0.animation = nil } }
         .compositingGroup()
         .onExitCommand {
             withAnimation(.spring(response: 0.38, dampingFraction: 0.85)) {
@@ -141,41 +88,6 @@ struct FullscreenNowPlayingView: View {
             failedMaxQualityURL = nil
             isArtworkFlipped = false
         }
-    }
-    
-    // MARK: - Fondo Difuminado Sólido (Cero transparencias, cero fugas en los bordes)
-    @ViewBuilder
-    private func backgroundArtworkBlur(width: CGFloat, height: CGFloat) -> some View {
-        ZStack {
-            // Capa 0: Fondo base totalmente opaco para bloquear la vista subyacente
-            Color.sidebDarkBackground
-            
-            // Capa 1: Carátula expandida y desenfocada
-            if let thumb = viewModel.currentTrack?.thumbnail,
-               let url = ImageURLHelper.optimizedThumbnailURL(from: thumb, targetPixelSize: 300) {
-                CachedAsyncImage(url: url, targetSize: CGSize(width: 300, height: 300)) { img in
-                    img
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                        .frame(width: width, height: height)
-                        .scaleEffect(1.4) // Expande la imagen un 40% más allá de los bordes para eliminar el feathering transparente
-                        .blur(radius: 75)
-                        .overlay(Color.black.opacity(0.72))
-                } placeholder: {
-                    Color.sidebDarkBackground
-                }
-                .id("blur_\(viewModel.currentTrack?.videoId ?? url.absoluteString)")
-            } else {
-                LinearGradient(
-                    colors: [Color(red: 0.07, green: 0.07, blue: 0.08), Color.sidebDarkBackground],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-            }
-        }
-        .frame(width: width, height: height)
-        .clipped()
-        .ignoresSafeArea(.container, edges: .top)
     }
     
     // MARK: - Módulo Artwork (1:1 Cuadrado con Play/Pause en click y oscurecimiento en hover)
@@ -243,14 +155,14 @@ struct FullscreenNowPlayingView: View {
                 }
                 .id("art_\(viewModel.currentTrack?.videoId ?? activeArtworkUrl.absoluteString)")
                 .frame(width: size, height: size)
-                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: AppTheme.artworkHeroRadius, style: .continuous))
             } else {
                 fallbackArtwork(size: size)
                     .frame(width: size, height: size)
             }
 
             // Capa de oscurecimiento sutil en hover
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            RoundedRectangle(cornerRadius: AppTheme.artworkHeroRadius, style: .continuous)
                 .fill(Color.black.opacity(isHoveringArtwork ? 0.22 : 0.0))
                 .animation(.easeInOut(duration: 0.18), value: isHoveringArtwork)
 
@@ -262,7 +174,7 @@ struct FullscreenNowPlayingView: View {
                 .animation(.easeInOut(duration: 0.18), value: isHoveringArtwork)
         }
         .frame(width: size, height: size)
-        .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: AppTheme.artworkHeroRadius, style: .continuous))
         .onHover { isHoveringArtwork = $0 }
         .onTapGesture {
             viewModel.togglePlayPause()
@@ -364,7 +276,7 @@ struct FullscreenNowPlayingView: View {
         .padding(size < 300 ? 16 : 22)
         .frame(width: size, height: size, alignment: .topLeading)
         .background(Color(red: 0.10, green: 0.10, blue: 0.12))
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: AppTheme.artworkHeroRadius, style: .continuous))
         .onAppear { if isArtworkFlipped { viewModel.genius.ensureNow() } }
     }
 
@@ -415,7 +327,7 @@ struct FullscreenNowPlayingView: View {
     }
     
     private func fallbackArtwork(size: CGFloat) -> some View {
-        RoundedRectangle(cornerRadius: 16, style: .continuous)
+        RoundedRectangle(cornerRadius: AppTheme.artworkHeroRadius, style: .continuous)
             .fill(Color.white.opacity(0.06))
             .aspectRatio(1, contentMode: .fit)
             .overlay(
@@ -427,8 +339,9 @@ struct FullscreenNowPlayingView: View {
     
     // MARK: - Módulo Track Info (Título + Artista • Álbum + Me Gusta, directo sobre el fondo)
     private func trackInfoView(width: CGFloat) -> some View {
-        let titleSize: CGFloat = width < 340 ? 21 : (width < 460 ? 25 : 28)
-        let subtitleSize: CGFloat = width < 340 ? 14.5 : (width < 460 ? 16 : 17.5)
+        let typography = FullscreenSceneMetrics.typography(artworkWidth: width)
+        let titleSize = typography.title
+        let subtitleSize = typography.subtitle
         
         return HStack(alignment: .center, spacing: 14) {
             VStack(alignment: .leading, spacing: 4) {
@@ -441,17 +354,9 @@ struct FullscreenNowPlayingView: View {
                 // Artista • Álbum con enlaces interactivos (sin subrayado)
                 HStack(spacing: 7) {
                     if let track = viewModel.currentTrack, !track.displayArtist.isEmpty {
-                        Button {
-                            navigateToArtist(track: track)
-                        } label: {
-                            Text(track.displayArtist)
-                                .font(.system(size: subtitleSize, weight: .semibold))
-                                .foregroundStyle(isHoveringArtist ? Color.white : Color.white.opacity(0.78))
-                                .lineLimit(1)
+                        TrackArtistLinks(track: track, font: .system(size: subtitleSize, weight: .semibold), color: .white.opacity(0.78), hoverColor: .white) { id, name in
+                            navigateToArtist(track: track, artistId: id, name: name)
                         }
-                        .buttonStyle(.plain)
-                        .onHover { isHoveringArtist = $0 }
-                        .help("Ir a la página del artista: \(track.displayArtist)")
                     } else {
                         Text("Selecciona una canción")
                             .font(.system(size: subtitleSize, weight: .medium))
@@ -490,7 +395,7 @@ struct FullscreenNowPlayingView: View {
                 viewModel.toggleCurrentTrackLike()
             } label: {
                 Image(systemName: viewModel.isCurrentTrackLiked ? "heart.fill" : "heart")
-                    .font(.system(size: width < 340 ? 20 : 22, weight: .semibold))
+                    .font(.system(size: typography.action, weight: .semibold))
                     .foregroundStyle(viewModel.isCurrentTrackLiked ? Color.white : Color.white.opacity(0.70))
                     .frame(width: 36, height: 36)
                     .contentShape(Rectangle())
@@ -503,7 +408,7 @@ struct FullscreenNowPlayingView: View {
                 if isArtworkFlipped { viewModel.genius.ensureNow() }
             } label: {
                 Image(systemName: isArtworkFlipped ? "info.circle.fill" : "info.circle")
-                    .font(.system(size: width < 340 ? 20 : 22, weight: .semibold))
+                    .font(.system(size: typography.action, weight: .semibold))
                     .foregroundStyle(isArtworkFlipped ? Color.white : Color.white.opacity(0.70))
                     .frame(width: 36, height: 36)
                     .contentShape(Rectangle())
@@ -631,7 +536,7 @@ struct FullscreenNowPlayingView: View {
                 .padding(.top, 2)
                 
                 NativeTrackTableView(
-                    tracks: viewModel.queueManager.queue,
+                    tracks: viewModel.queueManager.tracks,
                     currentTrackVideoId: viewModel.currentTrack?.videoId,
                     isPlaying: viewModel.isPlaying,
                     playerViewModel: viewModel,
@@ -718,14 +623,14 @@ struct FullscreenNowPlayingView: View {
     }
     
     // MARK: - Navegación
-    private func navigateToArtist(track: SongItemRecord) {
+    private func navigateToArtist(track: SongItemRecord, artistId: String?, name: String) {
         withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
             viewModel.isFullscreenPresented = false
         }
-        if let browseId = track.artistId ?? viewModel.currentArtistBrowseId {
+        if let browseId = artistId ?? (track.artistRuns.isEmpty ? track.artistId ?? viewModel.currentArtistBrowseId : nil) {
             router?.navigate(to: .artist(browseId: browseId))
         } else {
-            router?.navigate(to: .search(query: track.artists))
+            router?.navigate(to: .search(query: name))
         }
     }
     

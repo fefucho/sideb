@@ -125,6 +125,15 @@ public final class PlayerViewModel {
     private var radioTask: Task<Void, Never>?
     private var automixTask: Task<Void, Never>?
     private var collectionRadioTask: Task<Void, Never>?
+    private var playlistPlaybackTask: Task<Void, Never>?
+    private var isCompletingActivePlaylistSource = false
+    private var recommendedCollectionPlaybackTask: Task<Void, Never>?
+    private var recommendedCollectionRequest = UUID()
+    public private(set) var loadingRecommendedAlbumID: String?
+    public private(set) var loadingRecommendedPlaylistID: String?
+    private var likedHydrationTask: Task<Void, Never>?
+    private var accountGeneration = UUID()
+    private var playlistRequest = UUID()
     private var playlistContinuationTask: Task<Void, Never>?
     public private(set) var isLoadingPlaylistContinuation: Bool = false
     private var currentPlaybackToken: UUID = UUID()
@@ -142,6 +151,7 @@ public final class PlayerViewModel {
     }
     public let audioService: AudioPlayerService
     private let playbackStore: PlaybackStateStore
+    private let playlistCatalog: PlaylistCatalog
     private var currentPlaybackIdentity: String?
     private var isSwitchingPlaybackSession = false
 
@@ -149,10 +159,12 @@ public final class PlayerViewModel {
         self.init(rustCore: rustCore, audioService: audioService, playbackStore: PlaybackStateStore())
     }
 
-    init(rustCore: SideBCore?, audioService: AudioPlayerService, playbackStore: PlaybackStateStore) {
+    init(rustCore: SideBCore?, audioService: AudioPlayerService, playbackStore: PlaybackStateStore,
+         playlistCatalog: PlaylistCatalog? = nil) {
         self.rustCore = rustCore
         self.audioService = audioService
         self.playbackStore = playbackStore
+        self.playlistCatalog = playlistCatalog ?? .shared
         setupRemoteCommands()
         setupTrackEndListener()
         setupPlaybackProgressListener()
@@ -172,7 +184,8 @@ public final class PlayerViewModel {
             contextTitle: queueManager.contextTitle,
             radioSeed: queueManager.radioSeed,
             isShuffle: queueManager.isShuffle,
-            isRepeat: queueManager.isRepeat
+            isRepeat: queueManager.isRepeat,
+            order: queueManager.orderSnapshot
         )
     }
 
@@ -190,6 +203,15 @@ public final class PlayerViewModel {
         guard currentPlaybackIdentity != identity else { return }
         if currentPlaybackIdentity != nil { flushPlaybackState() }
         isSwitchingPlaybackSession = true
+        defer {
+            isSwitchingPlaybackSession = false
+            hydrateLikedSongs()
+        }
+        accountGeneration = UUID()
+        likedHydrationTask?.cancel()
+        playlistCatalog.invalidateAll()
+        likedVideoIds.removeAll()
+        PlaylistDetailViewModel.recentlyLikedTracks.removeAll()
         resolveStreamTask?.cancel()
         lyricsTask?.cancel()
         recommendedTask?.cancel()
@@ -201,7 +223,7 @@ public final class PlayerViewModel {
         streamInfo = nil
         currentTrack = nil
         queueManager.clearQueue()
-        queueManager.isShuffle = false
+        queueManager.setShuffle(false)
         queueManager.isRepeat = false
         queueManager.isLoadingRadio = false
         queueManager.isLoadingAutoplay = false
@@ -226,9 +248,14 @@ public final class PlayerViewModel {
                                   context: saved.context?.queueContext,
                                   contextTitle: saved.contextTitle,
                                   radioSeed: saved.radioSeed)
-        queueManager.isShuffle = saved.isShuffle
+        guard queueManager.restoreOrder(saved.order, isShuffle: saved.isShuffle) else {
+            queueManager.clearQueue()
+            isSwitchingPlaybackSession = false
+            updateNowPlayingInfo()
+            return
+        }
         queueManager.isRepeat = saved.isRepeat
-        currentTrack = saved.currentTrack?.song
+        currentTrack = queueManager.currentTrack ?? saved.currentTrack?.song
         currentPlaylistBrowseId = {
             if case .playlist(let id, _) = queueManager.context { return id }
             return nil
@@ -267,7 +294,8 @@ public final class PlayerViewModel {
                     "thumbnail": track.thumbnail ?? "",
                     "album": track.album ?? "",
                     "album_id": track.albumId ?? "",
-                    "artist_id": track.artistId ?? ""
+                    "artist_id": track.artistId ?? "",
+                    "artist_runs": track.artistRuns.map { ["text": $0.text, "id": $0.id as Any? ?? NSNull()] }
                 ]
                 let trackJson = try? JSONSerialization.data(withJSONObject: trackDict)
                 let jsonString = trackJson.flatMap { String(data: $0, encoding: .utf8) }
@@ -337,6 +365,15 @@ public final class PlayerViewModel {
     // MARK: - Acciones de Reproducción de Alto Nivel
 
     private func cancelInFlightRadioTasks() {
+        recommendedCollectionRequest = UUID()
+        recommendedCollectionPlaybackTask?.cancel()
+        recommendedCollectionPlaybackTask = nil
+        loadingRecommendedAlbumID = nil
+        loadingRecommendedPlaylistID = nil
+        playlistRequest = UUID()
+        playlistPlaybackTask?.cancel()
+        playlistPlaybackTask = nil
+        isCompletingActivePlaylistSource = false
         collectionRadioTask?.cancel()
         collectionRadioTask = nil
         radioTask?.cancel()
@@ -370,8 +407,114 @@ public final class PlayerViewModel {
         fetchRadio(for: song)
     }
     
+    /// A radio's originating card controls that radio, even after it advances to another track.
+    func activateMediaRadio(_ song: SongItemRecord) {
+        if MediaPlaybackIdentity.isRadioOrigin(videoID: song.videoId, context: queueManager.context), currentTrack != nil {
+            cancelPendingMediaCollectionLoad()
+            togglePlayPause()
+        } else {
+            playWithRadio(song)
+        }
+    }
+
+    /// All cards use the same collection identity and guarded catalog loading path.
+    func activateMediaCollection(id: String, kind: String) {
+        guard !id.isEmpty else { return }
+        if MediaPlaybackIdentity.isCollectionActive(kind: kind, id: id, context: queueManager.context), currentTrack != nil {
+            cancelPendingMediaCollectionLoad()
+            togglePlayPause()
+            return
+        }
+        let canonicalID = MenuIDNormalizer.normalize(id)
+        let loading = kind.lowercased() == "album" ? loadingRecommendedAlbumID : loadingRecommendedPlaylistID
+        guard loading.map(MenuIDNormalizer.normalize) != canonicalID else { return }
+        switch kind.lowercased() {
+        case "album": playRecommendedAlbum(browseId: id)
+        case "playlist", "mix": playRecommendedPlaylist(browseId: MenuIDNormalizer.canonicalPlaylistId(id))
+        default: break
+        }
+    }
+
+    private func cancelPendingMediaCollectionLoad() {
+        recommendedCollectionRequest = UUID()
+        recommendedCollectionPlaybackTask?.cancel()
+        recommendedCollectionPlaybackTask = nil
+        loadingRecommendedAlbumID = nil
+        loadingRecommendedPlaylistID = nil
+        // Pausing the current collection must not cancel completion of its own source.
+        if !isCompletingActivePlaylistSource {
+            playlistRequest = UUID()
+            playlistPlaybackTask?.cancel()
+            playlistPlaybackTask = nil
+            isLoadingPlaylistContinuation = false
+        }
+    }
+
+    /// Loads a Home recommendation without letting an older request replace a newer session/queue.
+    public func playRecommendedAlbum(browseId: String, shuffle: Bool = false) {
+        playRecommendedCollection(browseId: browseId, kind: .albums, shuffle: shuffle)
+    }
+
+    public func playRecommendedPlaylist(browseId: String, shuffle: Bool = false) {
+        playRecommendedCollection(browseId: browseId, kind: .playlists, shuffle: shuffle)
+    }
+
+    private func playRecommendedCollection(browseId: String, kind: HomeFeaturedCollectionKind, shuffle: Bool) {
+        guard !browseId.isEmpty, let core = rustCore else { return }
+        cancelInFlightRadioTasks()
+        let request = recommendedCollectionRequest
+        let generation = accountGeneration
+        let queueToken = queueManager.queueToken
+        let playbackToken = currentPlaybackToken
+        loadingRecommendedAlbumID = kind == .albums ? browseId : nil
+        loadingRecommendedPlaylistID = kind == .playlists ? browseId : nil
+        errorMessage = nil
+        recommendedCollectionPlaybackTask = Task { [weak self] in
+            guard let self else { return }
+            defer {
+                if self.recommendedCollectionRequest == request {
+                    self.loadingRecommendedAlbumID = nil
+                    self.loadingRecommendedPlaylistID = nil
+                    self.recommendedCollectionPlaybackTask = nil
+                }
+            }
+            do {
+                let collection = try await self.fetchRecommendedCollection(core: core, browseId: browseId, kind: kind)
+                guard !Task.isCancelled, self.recommendedCollectionRequest == request,
+                      self.accountGeneration == generation, self.queueManager.queueToken == queueToken,
+                      self.currentPlaybackToken == playbackToken else { return }
+                guard !collection.tracks.isEmpty else {
+                    self.errorMessage = kind == .albums ? "No se encontraron canciones para este álbum." : "No se encontraron canciones para esta playlist."
+                    return
+                }
+                if kind == .albums {
+                    self.playAlbum(browseId: collection.id, title: collection.title, tracks: collection.tracks,
+                                   artistBrowseId: collection.artistID, shuffle: shuffle)
+                } else {
+                    self.playPlaylist(browseId: browseId, title: collection.title, tracks: collection.tracks, shuffle: shuffle)
+                }
+            } catch {
+                guard !Task.isCancelled, self.recommendedCollectionRequest == request,
+                      self.accountGeneration == generation, self.queueManager.queueToken == queueToken,
+                      self.currentPlaybackToken == playbackToken else { return }
+                let name = kind == .albums ? "el álbum" : "la playlist"
+                self.errorMessage = "No se pudo cargar \(name): \(error.localizedDescription)"
+            }
+        }
+    }
+
+    private func fetchRecommendedCollection(core: SideBCore, browseId: String, kind: HomeFeaturedCollectionKind) async throws
+        -> (id: String, title: String, tracks: [SongItemRecord], artistID: String?) {
+        if kind == .albums {
+            let album = try await core.getAlbum(browseId: browseId)
+            return (album.browseId, album.title, album.items, album.artistId)
+        }
+        let playlist = try await playlistCatalog.load(id: browseId, core: core)
+        return (playlist.id, playlist.title, playlist.items, nil)
+    }
+
     /// Reproduce un álbum completo reemplazando la cola activa.
-    public func playAlbum(browseId: String, title: String, tracks: [SongItemRecord], startingAt: Int = 0, artistBrowseId: String? = nil) {
+    public func playAlbum(browseId: String, title: String, tracks: [SongItemRecord], startingAt: Int = 0, artistBrowseId: String? = nil, shuffle: Bool = false) {
         guard !tracks.isEmpty else { return }
         cancelInFlightRadioTasks()
         self.currentAlbumBrowseId = browseId
@@ -382,7 +525,8 @@ public final class PlayerViewModel {
             with: tracks,
             startingAt: startingAt,
             context: .album(browseId: browseId, title: title),
-            contextTitle: "Álbum: \(title)"
+            contextTitle: "Álbum: \(title)",
+            shuffle: shuffle
         )
         
         if let selected = queueManager.currentTrack {
@@ -390,27 +534,94 @@ public final class PlayerViewModel {
         }
     }
     
-    /// Reproduce una playlist completa reemplazando la cola activa.
-    public func playPlaylist(browseId: String, title: String, tracks: [SongItemRecord], startingAt: Int = 0, continuation: String? = nil) {
+    /// Normal playback starts from the loaded occurrence; the remaining catalog fills in without resetting audio.
+    /// Initial shuffle still waits for the whole catalog so every source occurrence can be selected.
+    public func playPlaylist(browseId: String, title: String, tracks: [SongItemRecord], startingAt: Int = 0, continuation: String? = nil, shuffle: Bool = false) {
         guard !tracks.isEmpty else { return }
         cancelInFlightRadioTasks()
-        self.currentAlbumBrowseId = nil
-        self.currentArtistBrowseId = nil
-        self.currentPlaylistBrowseId = browseId
-        
-        queueManager.replaceQueue(
-            with: tracks,
-            startingAt: startingAt,
-            context: .playlist(browseId: browseId, title: title),
-            contextTitle: "Lista: \(title)",
-            continuation: continuation
-        )
-        
-        if let selected = queueManager.currentTrack {
-            playSongNow(selected)
+        guard let continuation, !continuation.isEmpty else {
+            beginPlaylist(browseId: browseId, title: title, tracks: tracks, startingAt: startingAt, shuffle: shuffle)
+            return
+        }
+        if let cached = playlistCatalog.cached(id: browseId),
+           tracks == Array(cached.items.prefix(tracks.count)) {
+            beginPlaylist(browseId: browseId, title: title, tracks: cached.items, startingAt: startingAt, shuffle: shuffle)
+            return
+        }
+        guard let core = rustCore else {
+            errorMessage = "No se pudo completar la playlist: núcleo de Rust no inicializado"
+            return
+        }
+        let initial = PlaylistDetailRecord(id: browseId, title: title, subtitle: nil, thumbnail: nil,
+            description: nil, items: tracks, continuation: continuation, owned: false, inLibrary: false,
+            privacy: nil, collaborative: false, sort: nil, sortEditable: false)
+        let request = playlistRequest
+        let generation = accountGeneration
+        if !shuffle {
+            beginPlaylist(browseId: browseId, title: title, tracks: tracks, startingAt: startingAt,
+                          shuffle: false, continuation: continuation)
+        }
+        let queueToken = queueManager.queueToken
+        let playbackToken = currentPlaybackToken
+        isLoadingPlaylistContinuation = true
+        isCompletingActivePlaylistSource = !shuffle
+        if shuffle { errorMessage = nil }
+        playlistPlaybackTask = Task { [weak self] in
+            guard let self else { return }
+            defer {
+                if self.playlistRequest == request {
+                    self.isLoadingPlaylistContinuation = false
+                    self.isCompletingActivePlaylistSource = false
+                    self.playlistPlaybackTask = nil
+                }
+            }
+            do {
+                let complete = try await playlistCatalog.load(id: browseId, core: core, initial: initial)
+                guard !Task.isCancelled, self.playlistRequest == request,
+                      self.accountGeneration == generation, self.queueManager.queueToken == queueToken else { return }
+                if shuffle {
+                    guard self.currentPlaybackToken == playbackToken else { return }
+                    self.beginPlaylist(browseId: browseId, title: title, tracks: complete.items,
+                                       startingAt: startingAt, shuffle: true)
+                } else {
+                    guard case .playlist(let activeID, _) = self.queueManager.context,
+                          MenuIDNormalizer.canonicalPlaylistId(activeID) == MenuIDNormalizer.canonicalPlaylistId(browseId),
+                          tracks == Array(complete.items.prefix(tracks.count)) else { return }
+                    // Only append unseen source positions: moves/removals/manual insertions in the loaded prefix remain intact.
+                    self.queueManager.completePlaylistSource(Array(complete.items.dropFirst(tracks.count)))
+                    self.resumeAfterQueueExtension()
+                }
+            } catch {
+                guard !Task.isCancelled, self.playlistRequest == request,
+                      self.accountGeneration == generation, self.queueManager.queueToken == queueToken else { return }
+                self.errorMessage = "No se pudo completar la playlist: \(error.localizedDescription)"
+            }
         }
     }
-    
+
+    private func beginPlaylist(browseId: String, title: String, tracks: [SongItemRecord], startingAt: Int, shuffle: Bool,
+                               continuation: String? = nil) {
+        currentAlbumBrowseId = nil
+        currentArtistBrowseId = nil
+        currentPlaylistBrowseId = browseId
+        queueManager.replaceQueue(with: tracks, startingAt: startingAt,
+            context: .playlist(browseId: browseId, title: title), contextTitle: "Lista: \(title)",
+            continuation: continuation, shuffle: shuffle)
+        if let selected = queueManager.currentTrack { playSongNow(selected) }
+    }
+
+    public func playCollection(tracks: [SongItemRecord], title: String, artistBrowseId: String? = nil, shuffle: Bool = false, startingAt: Int = 0) {
+        guard !tracks.isEmpty else { return }
+        cancelInFlightRadioTasks()
+        currentAlbumBrowseId = nil
+        currentPlaylistBrowseId = nil
+        currentArtistBrowseId = artistBrowseId
+        queueManager.replaceQueue(with: tracks, startingAt: startingAt, context: .custom(title: title), shuffle: shuffle)
+        if let selected = queueManager.currentTrack {
+            playSongNow(selected, overrideArtistBrowseId: artistBrowseId)
+        }
+    }
+
     /// Inicia una sesión de radio continua o mix a partir de una colección (artista, playlist o álbum).
     public func startRadioForCollection(
         id: String,
@@ -430,9 +641,7 @@ public final class PlayerViewModel {
         }
         let radioTitle = "Radio de \(title)"
 
-        collectionRadioTask?.cancel()
-        radioTask?.cancel()
-        automixTask?.cancel()
+        cancelInFlightRadioTasks()
 
         let token = UUID()
         self.currentRadioToken = token
@@ -485,8 +694,10 @@ public final class PlayerViewModel {
     public func playNext(tracks: [SongItemRecord]) {
         guard !tracks.isEmpty else { return }
         if currentTrack == nil {
+            cancelInFlightRadioTasks()
             if let first = tracks.first {
-                queueManager.replaceQueue(with: tracks, startingAt: 0, context: .custom(title: "Cola manual"), contextTitle: "Cola manual")
+                queueManager.clearQueue()
+                queueManager.playNext(tracks)
                 playSongNow(first)
             }
         } else {
@@ -507,8 +718,10 @@ public final class PlayerViewModel {
     public func addToQueue(tracks: [SongItemRecord]) {
         guard !tracks.isEmpty else { return }
         if currentTrack == nil {
+            cancelInFlightRadioTasks()
             if let first = tracks.first {
-                queueManager.replaceQueue(with: tracks, startingAt: 0, context: .custom(title: "Cola manual"), contextTitle: "Cola manual")
+                queueManager.clearQueue()
+                queueManager.addTracksToQueue(tracks)
                 playSongNow(first)
             }
         } else {
@@ -691,6 +904,8 @@ public final class PlayerViewModel {
     }
 
     public func toggleTrackLike(_ track: SongItemRecord) {
+        playlistCatalog.invalidate("LM")
+        let generation = accountGeneration
         let wasLiked = likedVideoIds.contains(track.videoId)
         let newStatus = !wasLiked
         if newStatus {
@@ -713,9 +928,13 @@ public final class PlayerViewModel {
         Task {
             do {
                 try await core.rateSong(videoId: track.videoId, rating: newStatus ? "LIKE" : "INDIFFERENT")
+                guard self.accountGeneration == generation else { return }
+                playlistCatalog.invalidate("LM")
                 NotificationCenter.default.post(name: .sideBSongLibraryChanged, object: nil)
                 print("[PlayerViewModel] Calificación enviada para \(track.videoId): \(newStatus ? "LIKE" : "INDIFFERENT")")
             } catch {
+                guard self.accountGeneration == generation else { return }
+                playlistCatalog.invalidate("LM")
                 // Reversión optimista si la llamada remota falla
                 if wasLiked {
                     self.likedVideoIds.insert(track.videoId)
@@ -737,6 +956,8 @@ public final class PlayerViewModel {
     }
 
     public func dislikeTrack(_ track: SongItemRecord) {
+        playlistCatalog.invalidate("LM")
+        let generation = accountGeneration
         let wasLiked = likedVideoIds.contains(track.videoId)
         likedVideoIds.remove(track.videoId)
         if currentTrack?.videoId == track.videoId {
@@ -754,9 +975,13 @@ public final class PlayerViewModel {
             Task {
                 do {
                     try await core.rateSong(videoId: track.videoId, rating: "DISLIKE")
+                    guard self.accountGeneration == generation else { return }
+                    playlistCatalog.invalidate("LM")
                     NotificationCenter.default.post(name: .sideBSongLibraryChanged, object: nil)
                     print("[PlayerViewModel] Calificación DISLIKE enviada para \(track.videoId)")
                 } catch {
+                    guard self.accountGeneration == generation else { return }
+                    playlistCatalog.invalidate("LM")
                     if wasLiked {
                         self.likedVideoIds.insert(track.videoId)
                     }
@@ -774,25 +999,13 @@ public final class PlayerViewModel {
             }
         }
 
-        // 2. Si es la pista activa, skipearla y sacarla de la cola
+        // Eliminar la ocurrencia activa, no la primera canción que comparte videoId.
         if currentTrack?.videoId == track.videoId {
-            let nextAvailable = queueManager.upNextTracks.first
-            queueManager.removeTrack(videoId: track.videoId)
-            if let next = nextAvailable {
-                playSongNow(next)
-                checkAutomixTrigger()
-            } else if let prev = queueManager.queue.first {
-                playSongNow(prev)
-            } else {
-                audioService.stop()
-                currentTrack = nil
-                updateNowPlayingInfo()
-            }
+            removeQueueTrack(at: queueManager.currentIndex)
         } else {
-            // Si no es la que suena, simplemente remover de la cola
             queueManager.removeTrack(videoId: track.videoId)
         }
-        
+
         // 3. Remover también de recomendaciones si estaba presente
         recommendedTracks.removeAll(where: { $0.videoId == track.videoId })
         if var data = recommendedData {
@@ -815,8 +1028,8 @@ public final class PlayerViewModel {
             if let next = nextAvailable {
                 playSongNow(next)
                 checkAutomixTrigger()
-            } else if let prev = queueManager.queue.first {
-                playSongNow(prev)
+            } else if let first = queueManager.selectTrack(at: 0) {
+                playSongNow(first)
             } else {
                 audioService.stop()
                 currentTrack = nil
@@ -829,51 +1042,53 @@ public final class PlayerViewModel {
 
     public func rateSong(videoId: String, rating: String) {
         guard let core = rustCore else { return }
+        let generation = accountGeneration
+        playlistCatalog.invalidate("LM")
         Task {
             do {
                 try await core.rateSong(videoId: videoId, rating: rating)
+                guard self.accountGeneration == generation else { return }
+                playlistCatalog.invalidate("LM")
                 NotificationCenter.default.post(name: .sideBSongLibraryChanged, object: nil)
                 print("[PlayerViewModel] Calificación enviada para \(videoId): \(rating)")
             } catch {
+                guard self.accountGeneration == generation else { return }
+                playlistCatalog.invalidate("LM")
                 self.errorMessage = "Error al calificar canción: \(error.localizedDescription)"
                 print("[PlayerViewModel] Error al calificar \(videoId): \(error)")
             }
         }
     }
 
-    /// Hidrata el conjunto de canciones gustadas desde la playlist "LM" (Liked Music).
+    /// Reutiliza el mismo catálogo completo que las acciones de reproducción de Tus Me Gusta.
     public func hydrateLikedSongs() {
         guard let core = rustCore, core.isLoggedIn() else { return }
-        Task {
+        likedHydrationTask?.cancel()
+        let generation = accountGeneration
+        let catalog = playlistCatalog
+        likedHydrationTask = Task { [weak self] in
             do {
-                let lm = try await core.getPlaylist(playlistId: "LM")
-                var ids = Set(lm.items.map(\.videoId))
-                var token = lm.continuation
-                var pages = 0
-                while let currentToken = token, !currentToken.isEmpty, pages < 10 {
-                    pages += 1
-                    if let res = try? await core.getPlaylistContinuation(token: currentToken) {
-                        ids.formUnion(res.items.map(\.videoId))
-                        token = res.continuation
-                    } else {
-                        break
-                    }
+                let lm = try await catalog.load(id: "LM", core: core)
+                guard let self, !Task.isCancelled, self.accountGeneration == generation else { return }
+                self.likedVideoIds.formUnion(lm.items.map(\.videoId))
+                if let current = self.currentTrack {
+                    self.isCurrentTrackLiked = self.likedVideoIds.contains(current.videoId)
                 }
-                self.likedVideoIds.formUnion(ids)
-                if let cur = self.currentTrack {
-                    self.isCurrentTrackLiked = self.likedVideoIds.contains(cur.videoId)
-                }
-                print("[PlayerViewModel] Hidratadas \(self.likedVideoIds.count) canciones gustadas desde LM")
             } catch {
+                guard !Task.isCancelled else { return }
                 print("[PlayerViewModel] No se pudo hidratar Tus Me Gusta: \(error)")
             }
         }
     }
 
-    /// Limpia el estado de valoraciones asociado a la cuenta activa al cerrar sesión.
+    /// Limpia datos privados y rechaza respuestas de la sesión anterior.
     public func clearAccountState() {
-        self.likedVideoIds.removeAll()
-        self.isCurrentTrackLiked = false
+        accountGeneration = UUID()
+        likedHydrationTask?.cancel()
+        playlistCatalog.invalidateAll()
+        PlaylistDetailViewModel.recentlyLikedTracks.removeAll()
+        likedVideoIds.removeAll()
+        isCurrentTrackLiked = false
     }
 
     public func rateSong(rating: String) {
@@ -956,15 +1171,15 @@ public final class PlayerViewModel {
                     // Si el audio finalizó mientras se cargaba la radio y la cola quedó a la espera, reanudar de inmediato
                     self.resumeAfterQueueExtension()
 
-                    // Si el tema actual no traía álbum (ej. iniciado desde Quick Picks), retroalimentar con el devuelto por la radio
-                    if let cur = self.currentTrack, cur.videoId == targetVideoId && cur.album == nil {
-                        if let match = radioResult.items.first(where: { $0.videoId == targetVideoId }),
-                           let matchAlbum = match.album, !matchAlbum.isEmpty {
+                    // Completar álbum y enlaces ausentes con los metadatos de la misma pista en la radio.
+                    if let cur = self.currentTrack, cur.videoId == targetVideoId,
+                       cur.album == nil || cur.artistRuns.isEmpty {
+                        if let match = radioResult.items.first(where: { $0.videoId == targetVideoId }) {
                             self.currentTrack = SongItemRecord(
                                 videoId: cur.videoId,
                                 title: cur.title,
                                 artists: cur.artists,
-                                album: matchAlbum,
+                                album: cur.album ?? match.album,
                                 duration: cur.duration,
                                 thumbnail: cur.thumbnail,
                                 artistId: cur.artistId ?? match.artistId,
@@ -972,7 +1187,8 @@ public final class PlayerViewModel {
                                 setVideoId: cur.setVideoId,
                                 isVideo: cur.isVideo,
                                 isUpload: cur.isUpload,
-                                library: cur.library
+                                library: cur.library,
+                                artistRuns: cur.artistRuns.isEmpty ? match.artistRuns : cur.artistRuns
                             )
                             if let albId = self.currentTrack?.albumId {
                                 self.currentAlbumBrowseId = albId
@@ -1143,6 +1359,10 @@ public final class PlayerViewModel {
                       case .playlist = self.queueManager.context else {
                     return
                 }
+                guard res.continuation != continuation else {
+                    self.errorMessage = "La playlist devolvió una continuación repetida"
+                    return
+                }
                 if !res.items.isEmpty {
                     self.queueManager.appendPlaylistTracks(res.items, nextContinuation: res.continuation)
                     print("[PlayerViewModel] Playlist extendida con \(res.items.count) temas adicionales.")
@@ -1154,8 +1374,8 @@ public final class PlayerViewModel {
                 }
             } catch {
                 guard !Task.isCancelled else { return }
-                print("[PlayerViewModel] Error al cargar continuación de playlist: \(error)")
-                self.queueManager.continuationToken = nil
+                guard self.queueManager.queueToken == targetQueueToken else { return }
+                self.errorMessage = "No se pudo completar la playlist: \(error.localizedDescription)"
             }
         }
     }
@@ -1364,6 +1584,18 @@ extension SongItemRecord {
             isVideo: false, isUpload: false, library: nil
         )
     }
+    public init(
+        videoId: String, title: String, artists: String, album: String?, duration: String?,
+        thumbnail: String?, artistId: String?, albumId: String?, setVideoId: String?,
+        isVideo: Bool, isUpload: Bool, library: LibraryToggleRecord?
+    ) {
+        self.init(
+            videoId: videoId, title: title, artists: artists, album: album, duration: duration,
+            thumbnail: thumbnail, artistId: artistId, albumId: albumId, setVideoId: setVideoId,
+            isVideo: isVideo, isUpload: isUpload, library: library, artistRuns: []
+        )
+    }
+
     /// Devuelve el nombre limpio del artista desprendiendo el álbum si venía compuesto en la cadena ("Artista • Álbum")
     public var displayArtist: String {
         if let alb = album, !alb.isEmpty, artists.contains(" • ") {
@@ -1412,7 +1644,9 @@ extension SongItemRecord {
             thumbnail: item.thumbnail,
             artistId: item.artistId,
             albumId: item.albumId,
-            setVideoId: nil
+            setVideoId: nil,
+            isVideo: false, isUpload: false, library: nil,
+            artistRuns: item.artistRuns
         )
     }
 

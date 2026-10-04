@@ -4,7 +4,7 @@ import SideBCore
 
 /// Solo metadata durable: las URLs de streaming y las cookies nunca se escriben aquí.
 struct SavedPlaybackState: Codable {
-    static let currentVersion = 1
+    static let currentVersion = 2
     let version: Int
     let tracks: [Track]
     let currentIndex: Int
@@ -14,6 +14,7 @@ struct SavedPlaybackState: Codable {
     let radioSeed: String?
     let isShuffle: Bool
     let isRepeat: Bool
+    var order: QueueOrderSnapshot? = nil
 
     struct Track: Codable {
         let videoId: String
@@ -22,6 +23,12 @@ struct SavedPlaybackState: Codable {
         let album: String?
         let duration: String?
         let thumbnail: String?
+        struct Artist: Codable {
+            let text: String
+            let id: String?
+        }
+        // Optional to read sessions saved before per-artist links were introduced.
+        let artistRuns: [Artist]?
         let artistId: String?
         let albumId: String?
         let setVideoId: String?
@@ -33,13 +40,15 @@ struct SavedPlaybackState: Codable {
             album = song.album; duration = song.duration; thumbnail = song.thumbnail
             artistId = song.artistId; albumId = song.albumId; setVideoId = song.setVideoId
             isVideo = song.isVideo; isUpload = song.isUpload
+            artistRuns = song.artistRuns.map { Artist(text: $0.text, id: $0.id) }
         }
 
         var song: SongItemRecord {
             SongItemRecord(videoId: videoId, title: title, artists: artists, album: album,
                            duration: duration, thumbnail: thumbnail, artistId: artistId,
                            albumId: albumId, setVideoId: setVideoId, isVideo: isVideo,
-                           isUpload: isUpload, library: nil)
+                           isUpload: isUpload, library: nil,
+                           artistRuns: (artistRuns ?? []).map { HomeArtistRunRecord(text: $0.text, id: $0.id) })
         }
     }
 
@@ -118,7 +127,7 @@ final class PlaybackStateStore {
         guard let activeIdentity,
               let data = try? Data(contentsOf: fileURL(for: activeIdentity)),
               let state = try? JSONDecoder().decode(SavedPlaybackState.self, from: data),
-              state.version == SavedPlaybackState.currentVersion,
+              (1...SavedPlaybackState.currentVersion).contains(state.version),
               state.currentIndex >= 0,
               state.tracks.isEmpty || state.currentIndex < state.tracks.count else { return nil }
         return state

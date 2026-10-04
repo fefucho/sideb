@@ -31,9 +31,7 @@ final class AlbumDetailViewModel {
 
     func shuffle(player: PlayerViewModel) {
         guard let items = album?.items, !items.isEmpty, let alb = album else { return }
-        let shuffled = items.shuffled()
-        player.playAlbum(browseId: alb.browseId, title: alb.title, tracks: shuffled, startingAt: 0, artistBrowseId: alb.artistId)
-        player.queueManager.isShuffle = true
+        player.playAlbum(browseId: alb.browseId, title: alb.title, tracks: items, startingAt: 0, artistBrowseId: alb.artistId, shuffle: true)
     }
 
     func playTrack(at index: Int, player: PlayerViewModel) {
@@ -67,9 +65,10 @@ final class AlbumDetailViewModel {
             ]
         )
 
-        let targetId = alb.playlistId ?? alb.browseId
+        let targetId = MenuIDNormalizer.canonicalPlaylistId(alb.playlistId ?? alb.browseId)
         do {
             try await core.likePlaylist(playlistId: targetId, like: newStatus)
+            PlaylistCatalog.shared.invalidate(targetId)
             NotificationCenter.default.post(name: .sideBSongLibraryChanged, object: nil)
         } catch {
             print("[AlbumDetailViewModel] Error al cambiar estado en biblioteca: \(error)")

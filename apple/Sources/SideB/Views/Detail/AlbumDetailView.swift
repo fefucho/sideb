@@ -146,12 +146,12 @@ struct AlbumDetailView: View {
                     placeholderArtwork
                 }
                 .frame(width: 180, height: 180)
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: AppTheme.artworkHeroRadius, style: .continuous))
                 .shadow(color: .black.opacity(0.35), radius: 16, y: 8)
             } else {
                 placeholderArtwork
                     .frame(width: 180, height: 180)
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .clipShape(RoundedRectangle(cornerRadius: AppTheme.artworkHeroRadius, style: .continuous))
                     .shadow(color: .black.opacity(0.35), radius: 16, y: 8)
             }
 
@@ -327,7 +327,7 @@ struct AlbumDetailView: View {
     }
 
     private var placeholderArtwork: some View {
-        RoundedRectangle(cornerRadius: 10, style: .continuous)
+        RoundedRectangle(cornerRadius: AppTheme.artworkHeroRadius, style: .continuous)
             .fill(
                 LinearGradient(
                     colors: [Color.sidebAccent.opacity(0.30), Color.white.opacity(0.06)],

@@ -529,281 +529,286 @@ fileprivate struct FfiConverterString: FfiConverter {
 
 
 public protocol SideBCoreProtocol : AnyObject {
-
+    
     /**
      * Add a track to a user playlist.
      */
-    func addToPlaylist(playlistId: String, videoId: String) async throws
-
+    func addToPlaylist(playlistId: String, videoId: String) async throws 
+    
     /**
      * Apply the library action token supplied with a track row. This is separate from liking.
      */
-    func applySongLibraryAction(token: String) async throws
-
+    func applySongLibraryAction(token: String) async throws 
+    
     func chooseGenius(track: GeniusTrackRecord, songId: Int64) async throws  -> GeniusResolutionRecord
-
-    func clearGeniusChoice(track: GeniusTrackRecord)
-
+    
+    func clearGeniusChoice(track: GeniusTrackRecord) 
+    
     /**
      * Create a playlist and return the server's playlist ID.
      */
     func createPlaylist(title: String, description: String, privacy: String) async throws  -> String
-
-    func deletePlaylist(playlistId: String) async throws
-
-    func editPlaylistDetails(playlistId: String, name: String?, description: String?, privacy: String?) async throws
-
+    
+    func deletePlaylist(playlistId: String) async throws 
+    
+    func editPlaylistDetails(playlistId: String, name: String?, description: String?, privacy: String?) async throws 
+    
     /**
      * Fetch logged in user account info via InnerTube account_menu.
      */
     func getAccountInfo() async throws  -> AccountInfoRecord
-
+    
     /**
      * Fetch album detail and tracks by album browseId (e.g. "MPREb_...").
      */
     func getAlbum(browseId: String) async throws  -> AlbumDetailRecord
-
+    
     /**
      * Album page by browse ID.
      */
     func getAlbumJson(browseId: String) async throws  -> String
-
+    
     /**
      * Fetch artist detail, top songs, and carousels by browseId (e.g. "UC...").
      */
     func getArtist(browseId: String) async throws  -> ArtistDetailRecord
-
+    
     /**
      * Artist page by browse ID.
      */
     func getArtistJson(browseId: String) async throws  -> String
-
+    
     /**
      * Cards behind an artist carousel's "See all" browse endpoint.
      */
     func getBrowseGrid(browseId: String, params: String?) async throws  -> [BrowseCardRecord]
-
+    
     func getCookie()  -> String?
-
+    
     func getGeniusAnnotations(songId: Int64, page: UInt32, force: Bool) async throws  -> GeniusAnnotationsRecord
-
+    
     /**
      * Read-only cache probe used before the delayed background network lookup.
      */
     func getGeniusCached(track: GeniusTrackRecord) async  -> GeniusResolutionRecord?
-
+    
     func getGeniusCachedAnnotations(songId: Int64, page: UInt32) async  -> GeniusAnnotationsRecord?
-
+    
     func getGeniusCachedLyrics(songId: Int64) async  -> GeniusLyricsRecord?
-
+    
     func getGeniusLyrics(songId: Int64, songUrl: String, force: Bool) async throws  -> GeniusLyricsRecord
-
+    
     func getGeniusMetrics()  -> GeniusMetricsRecord
-
+    
     /**
      * Fetch user's playback history grouped by day.
      * If online and logged in, merges remote YouTube Music history with recent local plays.
      * If offline or logged out, builds daily groups from the local SQLite history for the last 30 days.
      */
     func getHistory() async throws  -> [HistoryGroupRecord]
-
+    
     /**
      * History page.
      */
     func getHistoryJson() async throws  -> String
-
+    
     /**
      * Fetch next batch of home shelves via continuation token.
      */
     func getHomeContinuation(token: String) async throws  -> HomePageRecord
-
+    
     /**
      * Fetch YouTube Music Home Page as JSON.
      */
     func getHomeJson() async throws  -> String
-
+    
     /**
      * Fetch YouTube Music Home Page with mood chips, sections, and continuation token.
      */
     func getHomePage(chipParams: String?) async throws  -> HomePageRecord
-
+    
     /**
      * Fetch YouTube Music Home Page as typed sections.
      */
     func getHomeSections() async throws  -> [HomeSectionRecord]
-
+    
     /**
      * Fetch user's saved library albums.
      */
     func getLibraryAlbums() async throws  -> [BrowseCardRecord]
-
+    
     func getLibraryArtists() async throws  -> [BrowseCardRecord]
-
+    
     /**
      * Fetch user's saved library playlists.
      */
     func getLibraryPlaylists() async throws  -> [BrowseCardRecord]
-
+    
     /**
      * Library Songs is a track shelf with continuation, rather than a card grid.
      */
     func getLibrarySongs() async throws  -> PlaylistContinuationRecord
-
+    
     /**
      * Fetch synced or plain lyrics (LRCLIB, YouTube timed, etc.).
      */
     func getLyrics(videoId: String, title: String, artist: String, album: String?, durationSecs: UInt64?) async throws  -> LyricsInfo?
-
+    
     /**
      * Get up next queue / related tracks.
      */
     func getNext(videoId: String?, playlistId: String?) async throws  -> NextResultRecord
-
+    
     /**
      * Get all pinned items.
      */
     func getPinnedItems()  -> [BrowseCardRecord]
-
+    
     /**
      * Fetch playlist detail and tracks by id (e.g. "LM" for Liked Music, or VL...).
      */
     func getPlaylist(playlistId: String) async throws  -> PlaylistDetailRecord
-
+    
     /**
      * Fetch continuation tracks for a playlist (typed record).
      */
     func getPlaylistContinuation(token: String) async throws  -> PlaylistContinuationRecord
-
+    
     /**
      * Continue fetching playlist items.
      */
     func getPlaylistContinuationJson(token: String) async throws  -> String
-
+    
     /**
      * Playlist page by browse ID.
      */
     func getPlaylistJson(browseId: String) async throws  -> String
-
+    
     /**
      * Get dynamic radio for a track.
      * First tries the canonical YouTube Music radio RDAMVM{video_id}.
      * If empty or only 1 item, falls back to bare /next + automix_playlist_id.
      */
     func getRadio(videoId: String) async throws  -> NextResultRecord
-
+    
     /**
      * Extend a radio queue seamlessly using the last played video and the radio playlist seed.
      */
     func getRadioContinuation(lastVideoId: String, radioSeed: String?) async throws  -> NextResultRecord
-
+    
     /**
      * Fetches similar artists for a track using YouTube Music's dedicated Related page (`MPTR...`).
      */
     func getRelatedArtists(videoId: String) async throws  -> [BrowseCardRecord]
-
+    
     /**
      * Fetches genuinely related songs for a track using YouTube Music's dedicated Related page (`MPTR...`).
      * Returns the songs from the "You might also like" shelf (musically and stylistically similar songs).
      * Falls back to dynamic radio if the related shelf is unavailable.
      */
     func getRelatedTracks(videoId: String) async throws  -> [SongItemRecord]
-
+    
     /**
      * Read or write settings in local SQLite database.
      */
     func getSetting(key: String)  -> String?
-
+    
     func isLoggedIn()  -> Bool
-
+    
     /**
      * Check if an item is pinned in SQLite.
      */
     func isPinned(id: String)  -> Bool
-
+    
     /**
      * Like or unlike a playlist / album.
      */
-    func likePlaylist(playlistId: String, like: Bool) async throws
-
-    func movePlaylistTrack(playlistId: String, setVideoId: String, successorSetVideoId: String?) async throws
-
+    func likePlaylist(playlistId: String, like: Bool) async throws 
+    
+    func movePlaylistTrack(playlistId: String, setVideoId: String, successorSetVideoId: String?) async throws 
+    
     /**
      * Pin an item in SQLite for quick access.
      */
-    func pinItem(id: String, kind: String, title: String, subtitle: String?, thumbnail: String?) throws
-
+    func pinItem(id: String, kind: String, title: String, subtitle: String?, thumbnail: String?) throws 
+    
     /**
      * Rate song (LIKE, DISLIKE, INDIFFERENT).
      */
-    func rateSong(videoId: String, rating: String) async throws
-
+    func rateSong(videoId: String, rating: String) async throws 
+    
     /**
      * Register a completed or threshold-crossing playback in watch history and local SQLite.
      */
-    func recordPlayback(videoId: String, songJson: String?, playlistId: String?) async throws
-
+    func recordPlayback(videoId: String, songJson: String?, playlistId: String?) async throws 
+    
     /**
      * Remove a track from a user playlist.
      */
-    func removeFromPlaylist(playlistId: String, videoId: String, setVideoId: String) async throws
-
-    func reportGeniusMiss(track: GeniusTrackRecord, status: GeniusMatchStatusRecord, candidateIds: [Int64]) throws
-
+    func removeFromPlaylist(playlistId: String, videoId: String, setVideoId: String) async throws 
+    
+    func reportGeniusMiss(track: GeniusTrackRecord, status: GeniusMatchStatusRecord, candidateIds: [Int64]) throws 
+    
     func resolveGenius(track: GeniusTrackRecord, force: Bool) async throws  -> GeniusResolutionRecord
-
+    
     /**
      * Resolve a video ID to a validated, high-quality audio stream URL for native AVPlayer.
      */
     func resolveStream(videoId: String, isUpload: Bool) async throws  -> StreamPlaybackInfo
-
+    
     /**
      * Full search across songs, albums, artists, playlists (typed).
      */
     func searchAll(query: String, recordHistory: Bool) async throws  -> SearchResultsRecord
-
+    
     /**
      * Full search across songs, albums, artists, playlists (legacy JSON).
      */
     func searchAllJson(query: String, recordHistory: Bool) async throws  -> String
-
+    
     /**
      * Search cards filtered by category ("albums", "artists", "playlists").
      */
     func searchCards(query: String, category: String) async throws  -> [BrowseCardRecord]
-
+    
     func searchGenius(query: String) async throws  -> [GeniusCandidateRecord]
-
+    
     /**
      * Search songs, returning a typed list of SongItemRecord.
      */
     func searchSongs(query: String, recordHistory: Bool) async throws  -> [SongItemRecord]
-
+    
     /**
      * Search songs, returning a JSON array of SongItem (legacy/compat).
      */
     func searchSongsJson(query: String, recordHistory: Bool) async throws  -> String
-
-    func setCipherJsRuntime(runtime: CipherJsRuntime)
-
+    
+    /**
+     * Search video uploads, returning a typed list of SongItemRecord.
+     */
+    func searchVideos(query: String) async throws  -> [SongItemRecord]
+    
+    func setCipherJsRuntime(runtime: CipherJsRuntime) 
+    
     /**
      * Set session cookie extracted from Swift WKWebView or login flow.
      */
-    func setCookie(cookie: String?)
-
-    func setPlaylistSort(playlistId: String, sort: String) async throws
-
-    func setSetting(key: String, value: String)
-
+    func setCookie(cookie: String?) 
+    
+    func setPlaylistSort(playlistId: String, sort: String) async throws 
+    
+    func setSetting(key: String, value: String) 
+    
     /**
      * Subscribe or unsubscribe to an artist channel.
      */
-    func subscribeArtist(channelId: String, subscribe: Bool) async throws
-
+    func subscribeArtist(channelId: String, subscribe: Bool) async throws 
+    
     /**
      * Unpin an item from SQLite.
      */
-    func unpinItem(id: String) throws
-
+    func unpinItem(id: String) throws 
+    
 }
 
 open class SideBCore:
@@ -861,9 +866,9 @@ public convenience init(dataDir: String)throws  {
         try! rustCall { uniffi_sideb_core_fn_free_sidebcore(pointer, $0) }
     }
 
+    
 
-
-
+    
     /**
      * Add a track to a user playlist.
      */
@@ -883,7 +888,7 @@ open func addToPlaylist(playlistId: String, videoId: String)async throws  {
             errorHandler: FfiConverterTypeSideBError.lift
         )
 }
-
+    
     /**
      * Apply the library action token supplied with a track row. This is separate from liking.
      */
@@ -903,7 +908,7 @@ open func applySongLibraryAction(token: String)async throws  {
             errorHandler: FfiConverterTypeSideBError.lift
         )
 }
-
+    
 open func chooseGenius(track: GeniusTrackRecord, songId: Int64)async throws  -> GeniusResolutionRecord {
     return
         try  await uniffiRustCallAsync(
@@ -920,14 +925,14 @@ open func chooseGenius(track: GeniusTrackRecord, songId: Int64)async throws  -> 
             errorHandler: FfiConverterTypeSideBError.lift
         )
 }
-
+    
 open func clearGeniusChoice(track: GeniusTrackRecord) {try! rustCall() {
     uniffi_sideb_core_fn_method_sidebcore_clear_genius_choice(self.uniffiClonePointer(),
         FfiConverterTypeGeniusTrackRecord.lower(track),$0
     )
 }
 }
-
+    
     /**
      * Create a playlist and return the server's playlist ID.
      */
@@ -947,7 +952,7 @@ open func createPlaylist(title: String, description: String, privacy: String)asy
             errorHandler: FfiConverterTypeSideBError.lift
         )
 }
-
+    
 open func deletePlaylist(playlistId: String)async throws  {
     return
         try  await uniffiRustCallAsync(
@@ -964,7 +969,7 @@ open func deletePlaylist(playlistId: String)async throws  {
             errorHandler: FfiConverterTypeSideBError.lift
         )
 }
-
+    
 open func editPlaylistDetails(playlistId: String, name: String?, description: String?, privacy: String?)async throws  {
     return
         try  await uniffiRustCallAsync(
@@ -981,7 +986,7 @@ open func editPlaylistDetails(playlistId: String, name: String?, description: St
             errorHandler: FfiConverterTypeSideBError.lift
         )
 }
-
+    
     /**
      * Fetch logged in user account info via InnerTube account_menu.
      */
@@ -991,7 +996,7 @@ open func getAccountInfo()async throws  -> AccountInfoRecord {
             rustFutureFunc: {
                 uniffi_sideb_core_fn_method_sidebcore_get_account_info(
                     self.uniffiClonePointer()
-
+                    
                 )
             },
             pollFunc: ffi_sideb_core_rust_future_poll_rust_buffer,
@@ -1001,7 +1006,7 @@ open func getAccountInfo()async throws  -> AccountInfoRecord {
             errorHandler: FfiConverterTypeSideBError.lift
         )
 }
-
+    
     /**
      * Fetch album detail and tracks by album browseId (e.g. "MPREb_...").
      */
@@ -1021,7 +1026,7 @@ open func getAlbum(browseId: String)async throws  -> AlbumDetailRecord {
             errorHandler: FfiConverterTypeSideBError.lift
         )
 }
-
+    
     /**
      * Album page by browse ID.
      */
@@ -1041,7 +1046,7 @@ open func getAlbumJson(browseId: String)async throws  -> String {
             errorHandler: FfiConverterTypeSideBError.lift
         )
 }
-
+    
     /**
      * Fetch artist detail, top songs, and carousels by browseId (e.g. "UC...").
      */
@@ -1061,7 +1066,7 @@ open func getArtist(browseId: String)async throws  -> ArtistDetailRecord {
             errorHandler: FfiConverterTypeSideBError.lift
         )
 }
-
+    
     /**
      * Artist page by browse ID.
      */
@@ -1081,7 +1086,7 @@ open func getArtistJson(browseId: String)async throws  -> String {
             errorHandler: FfiConverterTypeSideBError.lift
         )
 }
-
+    
     /**
      * Cards behind an artist carousel's "See all" browse endpoint.
      */
@@ -1101,14 +1106,14 @@ open func getBrowseGrid(browseId: String, params: String?)async throws  -> [Brow
             errorHandler: FfiConverterTypeSideBError.lift
         )
 }
-
+    
 open func getCookie() -> String? {
     return try!  FfiConverterOptionString.lift(try! rustCall() {
     uniffi_sideb_core_fn_method_sidebcore_get_cookie(self.uniffiClonePointer(),$0
     )
 })
 }
-
+    
 open func getGeniusAnnotations(songId: Int64, page: UInt32, force: Bool)async throws  -> GeniusAnnotationsRecord {
     return
         try  await uniffiRustCallAsync(
@@ -1125,7 +1130,7 @@ open func getGeniusAnnotations(songId: Int64, page: UInt32, force: Bool)async th
             errorHandler: FfiConverterTypeSideBError.lift
         )
 }
-
+    
     /**
      * Read-only cache probe used before the delayed background network lookup.
      */
@@ -1143,10 +1148,10 @@ open func getGeniusCached(track: GeniusTrackRecord)async  -> GeniusResolutionRec
             freeFunc: ffi_sideb_core_rust_future_free_rust_buffer,
             liftFunc: FfiConverterOptionTypeGeniusResolutionRecord.lift,
             errorHandler: nil
-
+            
         )
 }
-
+    
 open func getGeniusCachedAnnotations(songId: Int64, page: UInt32)async  -> GeniusAnnotationsRecord? {
     return
         try!  await uniffiRustCallAsync(
@@ -1161,10 +1166,10 @@ open func getGeniusCachedAnnotations(songId: Int64, page: UInt32)async  -> Geniu
             freeFunc: ffi_sideb_core_rust_future_free_rust_buffer,
             liftFunc: FfiConverterOptionTypeGeniusAnnotationsRecord.lift,
             errorHandler: nil
-
+            
         )
 }
-
+    
 open func getGeniusCachedLyrics(songId: Int64)async  -> GeniusLyricsRecord? {
     return
         try!  await uniffiRustCallAsync(
@@ -1179,10 +1184,10 @@ open func getGeniusCachedLyrics(songId: Int64)async  -> GeniusLyricsRecord? {
             freeFunc: ffi_sideb_core_rust_future_free_rust_buffer,
             liftFunc: FfiConverterOptionTypeGeniusLyricsRecord.lift,
             errorHandler: nil
-
+            
         )
 }
-
+    
 open func getGeniusLyrics(songId: Int64, songUrl: String, force: Bool)async throws  -> GeniusLyricsRecord {
     return
         try  await uniffiRustCallAsync(
@@ -1199,14 +1204,14 @@ open func getGeniusLyrics(songId: Int64, songUrl: String, force: Bool)async thro
             errorHandler: FfiConverterTypeSideBError.lift
         )
 }
-
+    
 open func getGeniusMetrics() -> GeniusMetricsRecord {
     return try!  FfiConverterTypeGeniusMetricsRecord.lift(try! rustCall() {
     uniffi_sideb_core_fn_method_sidebcore_get_genius_metrics(self.uniffiClonePointer(),$0
     )
 })
 }
-
+    
     /**
      * Fetch user's playback history grouped by day.
      * If online and logged in, merges remote YouTube Music history with recent local plays.
@@ -1218,7 +1223,7 @@ open func getHistory()async throws  -> [HistoryGroupRecord] {
             rustFutureFunc: {
                 uniffi_sideb_core_fn_method_sidebcore_get_history(
                     self.uniffiClonePointer()
-
+                    
                 )
             },
             pollFunc: ffi_sideb_core_rust_future_poll_rust_buffer,
@@ -1228,7 +1233,7 @@ open func getHistory()async throws  -> [HistoryGroupRecord] {
             errorHandler: FfiConverterTypeSideBError.lift
         )
 }
-
+    
     /**
      * History page.
      */
@@ -1238,7 +1243,7 @@ open func getHistoryJson()async throws  -> String {
             rustFutureFunc: {
                 uniffi_sideb_core_fn_method_sidebcore_get_history_json(
                     self.uniffiClonePointer()
-
+                    
                 )
             },
             pollFunc: ffi_sideb_core_rust_future_poll_rust_buffer,
@@ -1248,7 +1253,7 @@ open func getHistoryJson()async throws  -> String {
             errorHandler: FfiConverterTypeSideBError.lift
         )
 }
-
+    
     /**
      * Fetch next batch of home shelves via continuation token.
      */
@@ -1268,7 +1273,7 @@ open func getHomeContinuation(token: String)async throws  -> HomePageRecord {
             errorHandler: FfiConverterTypeSideBError.lift
         )
 }
-
+    
     /**
      * Fetch YouTube Music Home Page as JSON.
      */
@@ -1278,7 +1283,7 @@ open func getHomeJson()async throws  -> String {
             rustFutureFunc: {
                 uniffi_sideb_core_fn_method_sidebcore_get_home_json(
                     self.uniffiClonePointer()
-
+                    
                 )
             },
             pollFunc: ffi_sideb_core_rust_future_poll_rust_buffer,
@@ -1288,7 +1293,7 @@ open func getHomeJson()async throws  -> String {
             errorHandler: FfiConverterTypeSideBError.lift
         )
 }
-
+    
     /**
      * Fetch YouTube Music Home Page with mood chips, sections, and continuation token.
      */
@@ -1308,7 +1313,7 @@ open func getHomePage(chipParams: String?)async throws  -> HomePageRecord {
             errorHandler: FfiConverterTypeSideBError.lift
         )
 }
-
+    
     /**
      * Fetch YouTube Music Home Page as typed sections.
      */
@@ -1318,7 +1323,7 @@ open func getHomeSections()async throws  -> [HomeSectionRecord] {
             rustFutureFunc: {
                 uniffi_sideb_core_fn_method_sidebcore_get_home_sections(
                     self.uniffiClonePointer()
-
+                    
                 )
             },
             pollFunc: ffi_sideb_core_rust_future_poll_rust_buffer,
@@ -1328,7 +1333,7 @@ open func getHomeSections()async throws  -> [HomeSectionRecord] {
             errorHandler: FfiConverterTypeSideBError.lift
         )
 }
-
+    
     /**
      * Fetch user's saved library albums.
      */
@@ -1338,7 +1343,7 @@ open func getLibraryAlbums()async throws  -> [BrowseCardRecord] {
             rustFutureFunc: {
                 uniffi_sideb_core_fn_method_sidebcore_get_library_albums(
                     self.uniffiClonePointer()
-
+                    
                 )
             },
             pollFunc: ffi_sideb_core_rust_future_poll_rust_buffer,
@@ -1348,14 +1353,14 @@ open func getLibraryAlbums()async throws  -> [BrowseCardRecord] {
             errorHandler: FfiConverterTypeSideBError.lift
         )
 }
-
+    
 open func getLibraryArtists()async throws  -> [BrowseCardRecord] {
     return
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_sideb_core_fn_method_sidebcore_get_library_artists(
                     self.uniffiClonePointer()
-
+                    
                 )
             },
             pollFunc: ffi_sideb_core_rust_future_poll_rust_buffer,
@@ -1365,7 +1370,7 @@ open func getLibraryArtists()async throws  -> [BrowseCardRecord] {
             errorHandler: FfiConverterTypeSideBError.lift
         )
 }
-
+    
     /**
      * Fetch user's saved library playlists.
      */
@@ -1375,7 +1380,7 @@ open func getLibraryPlaylists()async throws  -> [BrowseCardRecord] {
             rustFutureFunc: {
                 uniffi_sideb_core_fn_method_sidebcore_get_library_playlists(
                     self.uniffiClonePointer()
-
+                    
                 )
             },
             pollFunc: ffi_sideb_core_rust_future_poll_rust_buffer,
@@ -1385,7 +1390,7 @@ open func getLibraryPlaylists()async throws  -> [BrowseCardRecord] {
             errorHandler: FfiConverterTypeSideBError.lift
         )
 }
-
+    
     /**
      * Library Songs is a track shelf with continuation, rather than a card grid.
      */
@@ -1395,7 +1400,7 @@ open func getLibrarySongs()async throws  -> PlaylistContinuationRecord {
             rustFutureFunc: {
                 uniffi_sideb_core_fn_method_sidebcore_get_library_songs(
                     self.uniffiClonePointer()
-
+                    
                 )
             },
             pollFunc: ffi_sideb_core_rust_future_poll_rust_buffer,
@@ -1405,7 +1410,7 @@ open func getLibrarySongs()async throws  -> PlaylistContinuationRecord {
             errorHandler: FfiConverterTypeSideBError.lift
         )
 }
-
+    
     /**
      * Fetch synced or plain lyrics (LRCLIB, YouTube timed, etc.).
      */
@@ -1425,7 +1430,7 @@ open func getLyrics(videoId: String, title: String, artist: String, album: Strin
             errorHandler: FfiConverterTypeSideBError.lift
         )
 }
-
+    
     /**
      * Get up next queue / related tracks.
      */
@@ -1445,7 +1450,7 @@ open func getNext(videoId: String?, playlistId: String?)async throws  -> NextRes
             errorHandler: FfiConverterTypeSideBError.lift
         )
 }
-
+    
     /**
      * Get all pinned items.
      */
@@ -1455,7 +1460,7 @@ open func getPinnedItems() -> [BrowseCardRecord] {
     )
 })
 }
-
+    
     /**
      * Fetch playlist detail and tracks by id (e.g. "LM" for Liked Music, or VL...).
      */
@@ -1475,7 +1480,7 @@ open func getPlaylist(playlistId: String)async throws  -> PlaylistDetailRecord {
             errorHandler: FfiConverterTypeSideBError.lift
         )
 }
-
+    
     /**
      * Fetch continuation tracks for a playlist (typed record).
      */
@@ -1495,7 +1500,7 @@ open func getPlaylistContinuation(token: String)async throws  -> PlaylistContinu
             errorHandler: FfiConverterTypeSideBError.lift
         )
 }
-
+    
     /**
      * Continue fetching playlist items.
      */
@@ -1515,7 +1520,7 @@ open func getPlaylistContinuationJson(token: String)async throws  -> String {
             errorHandler: FfiConverterTypeSideBError.lift
         )
 }
-
+    
     /**
      * Playlist page by browse ID.
      */
@@ -1535,7 +1540,7 @@ open func getPlaylistJson(browseId: String)async throws  -> String {
             errorHandler: FfiConverterTypeSideBError.lift
         )
 }
-
+    
     /**
      * Get dynamic radio for a track.
      * First tries the canonical YouTube Music radio RDAMVM{video_id}.
@@ -1557,7 +1562,7 @@ open func getRadio(videoId: String)async throws  -> NextResultRecord {
             errorHandler: FfiConverterTypeSideBError.lift
         )
 }
-
+    
     /**
      * Extend a radio queue seamlessly using the last played video and the radio playlist seed.
      */
@@ -1577,7 +1582,7 @@ open func getRadioContinuation(lastVideoId: String, radioSeed: String?)async thr
             errorHandler: FfiConverterTypeSideBError.lift
         )
 }
-
+    
     /**
      * Fetches similar artists for a track using YouTube Music's dedicated Related page (`MPTR...`).
      */
@@ -1597,7 +1602,7 @@ open func getRelatedArtists(videoId: String)async throws  -> [BrowseCardRecord] 
             errorHandler: FfiConverterTypeSideBError.lift
         )
 }
-
+    
     /**
      * Fetches genuinely related songs for a track using YouTube Music's dedicated Related page (`MPTR...`).
      * Returns the songs from the "You might also like" shelf (musically and stylistically similar songs).
@@ -1619,7 +1624,7 @@ open func getRelatedTracks(videoId: String)async throws  -> [SongItemRecord] {
             errorHandler: FfiConverterTypeSideBError.lift
         )
 }
-
+    
     /**
      * Read or write settings in local SQLite database.
      */
@@ -1630,14 +1635,14 @@ open func getSetting(key: String) -> String? {
     )
 })
 }
-
+    
 open func isLoggedIn() -> Bool {
     return try!  FfiConverterBool.lift(try! rustCall() {
     uniffi_sideb_core_fn_method_sidebcore_is_logged_in(self.uniffiClonePointer(),$0
     )
 })
 }
-
+    
     /**
      * Check if an item is pinned in SQLite.
      */
@@ -1648,7 +1653,7 @@ open func isPinned(id: String) -> Bool {
     )
 })
 }
-
+    
     /**
      * Like or unlike a playlist / album.
      */
@@ -1668,7 +1673,7 @@ open func likePlaylist(playlistId: String, like: Bool)async throws  {
             errorHandler: FfiConverterTypeSideBError.lift
         )
 }
-
+    
 open func movePlaylistTrack(playlistId: String, setVideoId: String, successorSetVideoId: String?)async throws  {
     return
         try  await uniffiRustCallAsync(
@@ -1685,7 +1690,7 @@ open func movePlaylistTrack(playlistId: String, setVideoId: String, successorSet
             errorHandler: FfiConverterTypeSideBError.lift
         )
 }
-
+    
     /**
      * Pin an item in SQLite for quick access.
      */
@@ -1699,7 +1704,7 @@ open func pinItem(id: String, kind: String, title: String, subtitle: String?, th
     )
 }
 }
-
+    
     /**
      * Rate song (LIKE, DISLIKE, INDIFFERENT).
      */
@@ -1719,7 +1724,7 @@ open func rateSong(videoId: String, rating: String)async throws  {
             errorHandler: FfiConverterTypeSideBError.lift
         )
 }
-
+    
     /**
      * Register a completed or threshold-crossing playback in watch history and local SQLite.
      */
@@ -1739,7 +1744,7 @@ open func recordPlayback(videoId: String, songJson: String?, playlistId: String?
             errorHandler: FfiConverterTypeSideBError.lift
         )
 }
-
+    
     /**
      * Remove a track from a user playlist.
      */
@@ -1759,7 +1764,7 @@ open func removeFromPlaylist(playlistId: String, videoId: String, setVideoId: St
             errorHandler: FfiConverterTypeSideBError.lift
         )
 }
-
+    
 open func reportGeniusMiss(track: GeniusTrackRecord, status: GeniusMatchStatusRecord, candidateIds: [Int64])throws  {try rustCallWithError(FfiConverterTypeSideBError.lift) {
     uniffi_sideb_core_fn_method_sidebcore_report_genius_miss(self.uniffiClonePointer(),
         FfiConverterTypeGeniusTrackRecord.lower(track),
@@ -1768,7 +1773,7 @@ open func reportGeniusMiss(track: GeniusTrackRecord, status: GeniusMatchStatusRe
     )
 }
 }
-
+    
 open func resolveGenius(track: GeniusTrackRecord, force: Bool)async throws  -> GeniusResolutionRecord {
     return
         try  await uniffiRustCallAsync(
@@ -1785,7 +1790,7 @@ open func resolveGenius(track: GeniusTrackRecord, force: Bool)async throws  -> G
             errorHandler: FfiConverterTypeSideBError.lift
         )
 }
-
+    
     /**
      * Resolve a video ID to a validated, high-quality audio stream URL for native AVPlayer.
      */
@@ -1805,7 +1810,7 @@ open func resolveStream(videoId: String, isUpload: Bool)async throws  -> StreamP
             errorHandler: FfiConverterTypeSideBError.lift
         )
 }
-
+    
     /**
      * Full search across songs, albums, artists, playlists (typed).
      */
@@ -1825,7 +1830,7 @@ open func searchAll(query: String, recordHistory: Bool)async throws  -> SearchRe
             errorHandler: FfiConverterTypeSideBError.lift
         )
 }
-
+    
     /**
      * Full search across songs, albums, artists, playlists (legacy JSON).
      */
@@ -1845,7 +1850,7 @@ open func searchAllJson(query: String, recordHistory: Bool)async throws  -> Stri
             errorHandler: FfiConverterTypeSideBError.lift
         )
 }
-
+    
     /**
      * Search cards filtered by category ("albums", "artists", "playlists").
      */
@@ -1865,7 +1870,7 @@ open func searchCards(query: String, category: String)async throws  -> [BrowseCa
             errorHandler: FfiConverterTypeSideBError.lift
         )
 }
-
+    
 open func searchGenius(query: String)async throws  -> [GeniusCandidateRecord] {
     return
         try  await uniffiRustCallAsync(
@@ -1882,7 +1887,7 @@ open func searchGenius(query: String)async throws  -> [GeniusCandidateRecord] {
             errorHandler: FfiConverterTypeSideBError.lift
         )
 }
-
+    
     /**
      * Search songs, returning a typed list of SongItemRecord.
      */
@@ -1902,7 +1907,7 @@ open func searchSongs(query: String, recordHistory: Bool)async throws  -> [SongI
             errorHandler: FfiConverterTypeSideBError.lift
         )
 }
-
+    
     /**
      * Search songs, returning a JSON array of SongItem (legacy/compat).
      */
@@ -1922,14 +1927,34 @@ open func searchSongsJson(query: String, recordHistory: Bool)async throws  -> St
             errorHandler: FfiConverterTypeSideBError.lift
         )
 }
-
+    
+    /**
+     * Search video uploads, returning a typed list of SongItemRecord.
+     */
+open func searchVideos(query: String)async throws  -> [SongItemRecord] {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_sideb_core_fn_method_sidebcore_search_videos(
+                    self.uniffiClonePointer(),
+                    FfiConverterString.lower(query)
+                )
+            },
+            pollFunc: ffi_sideb_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_sideb_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_sideb_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterSequenceTypeSongItemRecord.lift,
+            errorHandler: FfiConverterTypeSideBError.lift
+        )
+}
+    
 open func setCipherJsRuntime(runtime: CipherJsRuntime) {try! rustCall() {
     uniffi_sideb_core_fn_method_sidebcore_set_cipher_js_runtime(self.uniffiClonePointer(),
         FfiConverterCallbackInterfaceCipherJsRuntime.lower(runtime),$0
     )
 }
 }
-
+    
     /**
      * Set session cookie extracted from Swift WKWebView or login flow.
      */
@@ -1939,7 +1964,7 @@ open func setCookie(cookie: String?) {try! rustCall() {
     )
 }
 }
-
+    
 open func setPlaylistSort(playlistId: String, sort: String)async throws  {
     return
         try  await uniffiRustCallAsync(
@@ -1956,7 +1981,7 @@ open func setPlaylistSort(playlistId: String, sort: String)async throws  {
             errorHandler: FfiConverterTypeSideBError.lift
         )
 }
-
+    
 open func setSetting(key: String, value: String) {try! rustCall() {
     uniffi_sideb_core_fn_method_sidebcore_set_setting(self.uniffiClonePointer(),
         FfiConverterString.lower(key),
@@ -1964,7 +1989,7 @@ open func setSetting(key: String, value: String) {try! rustCall() {
     )
 }
 }
-
+    
     /**
      * Subscribe or unsubscribe to an artist channel.
      */
@@ -1984,7 +2009,7 @@ open func subscribeArtist(channelId: String, subscribe: Bool)async throws  {
             errorHandler: FfiConverterTypeSideBError.lift
         )
 }
-
+    
     /**
      * Unpin an item from SQLite.
      */
@@ -1994,7 +2019,7 @@ open func unpinItem(id: String)throws  {try rustCallWithError(FfiConverterTypeSi
     )
 }
 }
-
+    
 
 }
 
@@ -2107,10 +2132,10 @@ public struct FfiConverterTypeAccountInfoRecord: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AccountInfoRecord {
         return
             try AccountInfoRecord(
-                name: FfiConverterOptionString.read(from: &buf),
-                handle: FfiConverterOptionString.read(from: &buf),
-                email: FfiConverterOptionString.read(from: &buf),
-                thumbnail: FfiConverterOptionString.read(from: &buf),
+                name: FfiConverterOptionString.read(from: &buf), 
+                handle: FfiConverterOptionString.read(from: &buf), 
+                email: FfiConverterOptionString.read(from: &buf), 
+                thumbnail: FfiConverterOptionString.read(from: &buf), 
                 channelId: FfiConverterOptionString.read(from: &buf)
         )
     }
@@ -2239,17 +2264,17 @@ public struct FfiConverterTypeAlbumDetailRecord: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AlbumDetailRecord {
         return
             try AlbumDetailRecord(
-                browseId: FfiConverterString.read(from: &buf),
-                title: FfiConverterString.read(from: &buf),
-                artist: FfiConverterOptionString.read(from: &buf),
-                artistId: FfiConverterOptionString.read(from: &buf),
-                subtitle: FfiConverterOptionString.read(from: &buf),
-                secondSubtitle: FfiConverterOptionString.read(from: &buf),
-                description: FfiConverterOptionString.read(from: &buf),
-                thumbnail: FfiConverterOptionString.read(from: &buf),
-                playlistId: FfiConverterOptionString.read(from: &buf),
-                inLibrary: FfiConverterBool.read(from: &buf),
-                items: FfiConverterSequenceTypeSongItemRecord.read(from: &buf),
+                browseId: FfiConverterString.read(from: &buf), 
+                title: FfiConverterString.read(from: &buf), 
+                artist: FfiConverterOptionString.read(from: &buf), 
+                artistId: FfiConverterOptionString.read(from: &buf), 
+                subtitle: FfiConverterOptionString.read(from: &buf), 
+                secondSubtitle: FfiConverterOptionString.read(from: &buf), 
+                description: FfiConverterOptionString.read(from: &buf), 
+                thumbnail: FfiConverterOptionString.read(from: &buf), 
+                playlistId: FfiConverterOptionString.read(from: &buf), 
+                inLibrary: FfiConverterBool.read(from: &buf), 
+                items: FfiConverterSequenceTypeSongItemRecord.read(from: &buf), 
                 sections: FfiConverterSequenceTypeArtistCarouselRecord.read(from: &buf)
         )
     }
@@ -2337,9 +2362,9 @@ public struct FfiConverterTypeArtistCarouselRecord: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ArtistCarouselRecord {
         return
             try ArtistCarouselRecord(
-                title: FfiConverterString.read(from: &buf),
-                items: FfiConverterSequenceTypeBrowseCardRecord.read(from: &buf),
-                moreBrowseId: FfiConverterOptionString.read(from: &buf),
+                title: FfiConverterString.read(from: &buf), 
+                items: FfiConverterSequenceTypeBrowseCardRecord.read(from: &buf), 
+                moreBrowseId: FfiConverterOptionString.read(from: &buf), 
                 moreParams: FfiConverterOptionString.read(from: &buf)
         )
     }
@@ -2461,16 +2486,16 @@ public struct FfiConverterTypeArtistDetailRecord: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ArtistDetailRecord {
         return
             try ArtistDetailRecord(
-                channelId: FfiConverterString.read(from: &buf),
-                name: FfiConverterString.read(from: &buf),
-                thumbnail: FfiConverterOptionString.read(from: &buf),
-                description: FfiConverterOptionString.read(from: &buf),
-                subscribers: FfiConverterOptionString.read(from: &buf),
-                monthlyListeners: FfiConverterOptionString.read(from: &buf),
-                subscribed: FfiConverterBool.read(from: &buf),
-                radioPlaylistId: FfiConverterOptionString.read(from: &buf),
-                topSongs: FfiConverterSequenceTypeSongItemRecord.read(from: &buf),
-                topSongsId: FfiConverterOptionString.read(from: &buf),
+                channelId: FfiConverterString.read(from: &buf), 
+                name: FfiConverterString.read(from: &buf), 
+                thumbnail: FfiConverterOptionString.read(from: &buf), 
+                description: FfiConverterOptionString.read(from: &buf), 
+                subscribers: FfiConverterOptionString.read(from: &buf), 
+                monthlyListeners: FfiConverterOptionString.read(from: &buf), 
+                subscribed: FfiConverterBool.read(from: &buf), 
+                radioPlaylistId: FfiConverterOptionString.read(from: &buf), 
+                topSongs: FfiConverterSequenceTypeSongItemRecord.read(from: &buf), 
+                topSongsId: FfiConverterOptionString.read(from: &buf), 
                 sections: FfiConverterSequenceTypeArtistCarouselRecord.read(from: &buf)
         )
     }
@@ -2569,11 +2594,11 @@ public struct FfiConverterTypeBrowseCardRecord: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> BrowseCardRecord {
         return
             try BrowseCardRecord(
-                kind: FfiConverterString.read(from: &buf),
-                id: FfiConverterString.read(from: &buf),
-                title: FfiConverterString.read(from: &buf),
-                subtitle: FfiConverterOptionString.read(from: &buf),
-                thumbnail: FfiConverterOptionString.read(from: &buf),
+                kind: FfiConverterString.read(from: &buf), 
+                id: FfiConverterString.read(from: &buf), 
+                title: FfiConverterString.read(from: &buf), 
+                subtitle: FfiConverterOptionString.read(from: &buf), 
+                thumbnail: FfiConverterOptionString.read(from: &buf), 
                 duration: FfiConverterOptionString.read(from: &buf)
         )
     }
@@ -2691,15 +2716,15 @@ public struct FfiConverterTypeGeniusAnnotationRecord: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> GeniusAnnotationRecord {
         return
             try GeniusAnnotationRecord(
-                id: FfiConverterInt64.read(from: &buf),
-                referentId: FfiConverterInt64.read(from: &buf),
-                fragment: FfiConverterString.read(from: &buf),
-                body: FfiConverterString.read(from: &buf),
-                author: FfiConverterOptionString.read(from: &buf),
-                verified: FfiConverterBool.read(from: &buf),
-                votes: FfiConverterInt64.read(from: &buf),
-                shareUrl: FfiConverterOptionString.read(from: &buf),
-                bodySpans: FfiConverterSequenceTypeGeniusAnnotationSpanRecord.read(from: &buf),
+                id: FfiConverterInt64.read(from: &buf), 
+                referentId: FfiConverterInt64.read(from: &buf), 
+                fragment: FfiConverterString.read(from: &buf), 
+                body: FfiConverterString.read(from: &buf), 
+                author: FfiConverterOptionString.read(from: &buf), 
+                verified: FfiConverterBool.read(from: &buf), 
+                votes: FfiConverterInt64.read(from: &buf), 
+                shareUrl: FfiConverterOptionString.read(from: &buf), 
+                bodySpans: FfiConverterSequenceTypeGeniusAnnotationSpanRecord.read(from: &buf), 
                 imageUrls: FfiConverterSequenceString.read(from: &buf)
         )
     }
@@ -2773,7 +2798,7 @@ public struct FfiConverterTypeGeniusAnnotationSpanRecord: FfiConverterRustBuffer
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> GeniusAnnotationSpanRecord {
         return
             try GeniusAnnotationSpanRecord(
-                text: FfiConverterString.read(from: &buf),
+                text: FfiConverterString.read(from: &buf), 
                 url: FfiConverterOptionString.read(from: &buf)
         )
     }
@@ -2839,7 +2864,7 @@ public struct FfiConverterTypeGeniusAnnotationsRecord: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> GeniusAnnotationsRecord {
         return
             try GeniusAnnotationsRecord(
-                items: FfiConverterSequenceTypeGeniusAnnotationRecord.read(from: &buf),
+                items: FfiConverterSequenceTypeGeniusAnnotationRecord.read(from: &buf), 
                 nextPage: FfiConverterOptionUInt32.read(from: &buf)
         )
     }
@@ -2923,10 +2948,10 @@ public struct FfiConverterTypeGeniusCandidateRecord: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> GeniusCandidateRecord {
         return
             try GeniusCandidateRecord(
-                id: FfiConverterInt64.read(from: &buf),
-                title: FfiConverterString.read(from: &buf),
-                artist: FfiConverterString.read(from: &buf),
-                url: FfiConverterOptionString.read(from: &buf),
+                id: FfiConverterInt64.read(from: &buf), 
+                title: FfiConverterString.read(from: &buf), 
+                artist: FfiConverterString.read(from: &buf), 
+                url: FfiConverterOptionString.read(from: &buf), 
                 confidence: FfiConverterDouble.read(from: &buf)
         )
     }
@@ -3007,9 +3032,9 @@ public struct FfiConverterTypeGeniusLyricLineRecord: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> GeniusLyricLineRecord {
         return
             try GeniusLyricLineRecord(
-                text: FfiConverterString.read(from: &buf),
-                referentId: FfiConverterOptionInt64.read(from: &buf),
-                isHeader: FfiConverterBool.read(from: &buf),
+                text: FfiConverterString.read(from: &buf), 
+                referentId: FfiConverterOptionInt64.read(from: &buf), 
+                isHeader: FfiConverterBool.read(from: &buf), 
                 spans: FfiConverterSequenceTypeGeniusLyricSpanRecord.read(from: &buf)
         )
     }
@@ -3077,7 +3102,7 @@ public struct FfiConverterTypeGeniusLyricSpanRecord: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> GeniusLyricSpanRecord {
         return
             try GeniusLyricSpanRecord(
-                text: FfiConverterString.read(from: &buf),
+                text: FfiConverterString.read(from: &buf), 
                 referentId: FfiConverterOptionInt64.read(from: &buf)
         )
     }
@@ -3240,13 +3265,13 @@ public struct FfiConverterTypeGeniusMetricsRecord: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> GeniusMetricsRecord {
         return
             try GeniusMetricsRecord(
-                requests: FfiConverterUInt64.read(from: &buf),
-                responseHeaderMs: FfiConverterUInt64.read(from: &buf),
-                cacheHits: FfiConverterUInt64.read(from: &buf),
-                http429: FfiConverterUInt64.read(from: &buf),
-                http403: FfiConverterUInt64.read(from: &buf),
-                http5xx: FfiConverterUInt64.read(from: &buf),
-                transportErrors: FfiConverterUInt64.read(from: &buf),
+                requests: FfiConverterUInt64.read(from: &buf), 
+                responseHeaderMs: FfiConverterUInt64.read(from: &buf), 
+                cacheHits: FfiConverterUInt64.read(from: &buf), 
+                http429: FfiConverterUInt64.read(from: &buf), 
+                http403: FfiConverterUInt64.read(from: &buf), 
+                http5xx: FfiConverterUInt64.read(from: &buf), 
+                transportErrors: FfiConverterUInt64.read(from: &buf), 
                 parseErrors: FfiConverterUInt64.read(from: &buf)
         )
     }
@@ -3318,7 +3343,7 @@ public struct FfiConverterTypeGeniusPerformanceRecord: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> GeniusPerformanceRecord {
         return
             try GeniusPerformanceRecord(
-                label: FfiConverterString.read(from: &buf),
+                label: FfiConverterString.read(from: &buf), 
                 artists: FfiConverterSequenceString.read(from: &buf)
         )
     }
@@ -3396,9 +3421,9 @@ public struct FfiConverterTypeGeniusResolutionRecord: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> GeniusResolutionRecord {
         return
             try GeniusResolutionRecord(
-                status: FfiConverterTypeGeniusMatchStatusRecord.read(from: &buf),
-                song: FfiConverterOptionTypeGeniusSongRecord.read(from: &buf),
-                candidates: FfiConverterSequenceTypeGeniusCandidateRecord.read(from: &buf),
+                status: FfiConverterTypeGeniusMatchStatusRecord.read(from: &buf), 
+                song: FfiConverterOptionTypeGeniusSongRecord.read(from: &buf), 
+                candidates: FfiConverterSequenceTypeGeniusCandidateRecord.read(from: &buf), 
                 chosenByUser: FfiConverterBool.read(from: &buf)
         )
     }
@@ -3514,15 +3539,15 @@ public struct FfiConverterTypeGeniusSongRecord: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> GeniusSongRecord {
         return
             try GeniusSongRecord(
-                id: FfiConverterInt64.read(from: &buf),
-                title: FfiConverterString.read(from: &buf),
-                artist: FfiConverterString.read(from: &buf),
-                url: FfiConverterOptionString.read(from: &buf),
-                description: FfiConverterOptionString.read(from: &buf),
-                releaseDate: FfiConverterOptionString.read(from: &buf),
-                annotationCount: FfiConverterUInt64.read(from: &buf),
-                producers: FfiConverterSequenceString.read(from: &buf),
-                writers: FfiConverterSequenceString.read(from: &buf),
+                id: FfiConverterInt64.read(from: &buf), 
+                title: FfiConverterString.read(from: &buf), 
+                artist: FfiConverterString.read(from: &buf), 
+                url: FfiConverterOptionString.read(from: &buf), 
+                description: FfiConverterOptionString.read(from: &buf), 
+                releaseDate: FfiConverterOptionString.read(from: &buf), 
+                annotationCount: FfiConverterUInt64.read(from: &buf), 
+                producers: FfiConverterSequenceString.read(from: &buf), 
+                writers: FfiConverterSequenceString.read(from: &buf), 
                 performances: FfiConverterSequenceTypeGeniusPerformanceRecord.read(from: &buf)
         )
     }
@@ -3620,11 +3645,11 @@ public struct FfiConverterTypeGeniusTrackRecord: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> GeniusTrackRecord {
         return
             try GeniusTrackRecord(
-                videoId: FfiConverterString.read(from: &buf),
-                title: FfiConverterString.read(from: &buf),
-                artists: FfiConverterString.read(from: &buf),
-                album: FfiConverterOptionString.read(from: &buf),
-                durationSeconds: FfiConverterOptionUInt64.read(from: &buf),
+                videoId: FfiConverterString.read(from: &buf), 
+                title: FfiConverterString.read(from: &buf), 
+                artists: FfiConverterString.read(from: &buf), 
+                album: FfiConverterOptionString.read(from: &buf), 
+                durationSeconds: FfiConverterOptionUInt64.read(from: &buf), 
                 isUpload: FfiConverterBool.read(from: &buf)
         )
     }
@@ -3694,7 +3719,7 @@ public struct FfiConverterTypeHistoryGroupRecord: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HistoryGroupRecord {
         return
             try HistoryGroupRecord(
-                title: FfiConverterString.read(from: &buf),
+                title: FfiConverterString.read(from: &buf), 
                 items: FfiConverterSequenceTypeSongItemRecord.read(from: &buf)
         )
     }
@@ -3760,7 +3785,7 @@ public struct FfiConverterTypeHomeArtistRunRecord: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HomeArtistRunRecord {
         return
             try HomeArtistRunRecord(
-                text: FfiConverterString.read(from: &buf),
+                text: FfiConverterString.read(from: &buf), 
                 id: FfiConverterOptionString.read(from: &buf)
         )
     }
@@ -3826,7 +3851,7 @@ public struct FfiConverterTypeHomeChipRecord: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HomeChipRecord {
         return
             try HomeChipRecord(
-                title: FfiConverterString.read(from: &buf),
+                title: FfiConverterString.read(from: &buf), 
                 params: FfiConverterString.read(from: &buf)
         )
     }
@@ -3952,17 +3977,17 @@ public struct FfiConverterTypeHomeItemRecord: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HomeItemRecord {
         return
             try HomeItemRecord(
-                kind: FfiConverterString.read(from: &buf),
-                id: FfiConverterString.read(from: &buf),
-                title: FfiConverterString.read(from: &buf),
-                subtitle: FfiConverterOptionString.read(from: &buf),
-                thumbnail: FfiConverterOptionString.read(from: &buf),
-                duration: FfiConverterOptionString.read(from: &buf),
-                artists: FfiConverterOptionString.read(from: &buf),
-                artistId: FfiConverterOptionString.read(from: &buf),
-                album: FfiConverterOptionString.read(from: &buf),
-                albumId: FfiConverterOptionString.read(from: &buf),
-                artistRuns: FfiConverterSequenceTypeHomeArtistRunRecord.read(from: &buf),
+                kind: FfiConverterString.read(from: &buf), 
+                id: FfiConverterString.read(from: &buf), 
+                title: FfiConverterString.read(from: &buf), 
+                subtitle: FfiConverterOptionString.read(from: &buf), 
+                thumbnail: FfiConverterOptionString.read(from: &buf), 
+                duration: FfiConverterOptionString.read(from: &buf), 
+                artists: FfiConverterOptionString.read(from: &buf), 
+                artistId: FfiConverterOptionString.read(from: &buf), 
+                album: FfiConverterOptionString.read(from: &buf), 
+                albumId: FfiConverterOptionString.read(from: &buf), 
+                artistRuns: FfiConverterSequenceTypeHomeArtistRunRecord.read(from: &buf), 
                 explicit: FfiConverterBool.read(from: &buf)
         )
     }
@@ -4044,8 +4069,8 @@ public struct FfiConverterTypeHomePageRecord: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HomePageRecord {
         return
             try HomePageRecord(
-                chips: FfiConverterSequenceTypeHomeChipRecord.read(from: &buf),
-                sections: FfiConverterSequenceTypeHomeSectionRecord.read(from: &buf),
+                chips: FfiConverterSequenceTypeHomeChipRecord.read(from: &buf), 
+                sections: FfiConverterSequenceTypeHomeSectionRecord.read(from: &buf), 
                 continuation: FfiConverterOptionString.read(from: &buf)
         )
     }
@@ -4130,10 +4155,10 @@ public struct FfiConverterTypeHomeSectionRecord: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HomeSectionRecord {
         return
             try HomeSectionRecord(
-                title: FfiConverterString.read(from: &buf),
-                format: FfiConverterTypeHomeSectionFormatRecord.read(from: &buf),
-                items: FfiConverterSequenceTypeHomeItemRecord.read(from: &buf),
-                moreBrowseId: FfiConverterOptionString.read(from: &buf),
+                title: FfiConverterString.read(from: &buf), 
+                format: FfiConverterTypeHomeSectionFormatRecord.read(from: &buf), 
+                items: FfiConverterSequenceTypeHomeItemRecord.read(from: &buf), 
+                moreBrowseId: FfiConverterOptionString.read(from: &buf), 
                 moreParams: FfiConverterOptionString.read(from: &buf)
         )
     }
@@ -4208,8 +4233,8 @@ public struct FfiConverterTypeLibraryToggleRecord: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LibraryToggleRecord {
         return
             try LibraryToggleRecord(
-                inLibrary: FfiConverterBool.read(from: &buf),
-                addToken: FfiConverterOptionString.read(from: &buf),
+                inLibrary: FfiConverterBool.read(from: &buf), 
+                addToken: FfiConverterOptionString.read(from: &buf), 
                 removeToken: FfiConverterOptionString.read(from: &buf)
         )
     }
@@ -4282,8 +4307,8 @@ public struct FfiConverterTypeLyricLineInfo: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LyricLineInfo {
         return
             try LyricLineInfo(
-                timeMs: FfiConverterOptionUInt64.read(from: &buf),
-                endTimeMs: FfiConverterOptionUInt64.read(from: &buf),
+                timeMs: FfiConverterOptionUInt64.read(from: &buf), 
+                endTimeMs: FfiConverterOptionUInt64.read(from: &buf), 
                 text: FfiConverterString.read(from: &buf)
         )
     }
@@ -4356,8 +4381,8 @@ public struct FfiConverterTypeLyricsInfo: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LyricsInfo {
         return
             try LyricsInfo(
-                provider: FfiConverterString.read(from: &buf),
-                isSynced: FfiConverterBool.read(from: &buf),
+                provider: FfiConverterString.read(from: &buf), 
+                isSynced: FfiConverterBool.read(from: &buf), 
                 lines: FfiConverterSequenceTypeLyricLineInfo.read(from: &buf)
         )
     }
@@ -4442,10 +4467,10 @@ public struct FfiConverterTypeNextResultRecord: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> NextResultRecord {
         return
             try NextResultRecord(
-                items: FfiConverterSequenceTypeSongItemRecord.read(from: &buf),
-                lyricsBrowseId: FfiConverterOptionString.read(from: &buf),
-                relatedBrowseId: FfiConverterOptionString.read(from: &buf),
-                automixPlaylistId: FfiConverterOptionString.read(from: &buf),
+                items: FfiConverterSequenceTypeSongItemRecord.read(from: &buf), 
+                lyricsBrowseId: FfiConverterOptionString.read(from: &buf), 
+                relatedBrowseId: FfiConverterOptionString.read(from: &buf), 
+                automixPlaylistId: FfiConverterOptionString.read(from: &buf), 
                 continuation: FfiConverterOptionString.read(from: &buf)
         )
     }
@@ -4514,7 +4539,7 @@ public struct FfiConverterTypePlaylistContinuationRecord: FfiConverterRustBuffer
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> PlaylistContinuationRecord {
         return
             try PlaylistContinuationRecord(
-                items: FfiConverterSequenceTypeSongItemRecord.read(from: &buf),
+                items: FfiConverterSequenceTypeSongItemRecord.read(from: &buf), 
                 continuation: FfiConverterOptionString.read(from: &buf)
         )
     }
@@ -4646,18 +4671,18 @@ public struct FfiConverterTypePlaylistDetailRecord: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> PlaylistDetailRecord {
         return
             try PlaylistDetailRecord(
-                id: FfiConverterString.read(from: &buf),
-                title: FfiConverterString.read(from: &buf),
-                subtitle: FfiConverterOptionString.read(from: &buf),
-                thumbnail: FfiConverterOptionString.read(from: &buf),
-                description: FfiConverterOptionString.read(from: &buf),
-                items: FfiConverterSequenceTypeSongItemRecord.read(from: &buf),
-                continuation: FfiConverterOptionString.read(from: &buf),
-                owned: FfiConverterBool.read(from: &buf),
-                inLibrary: FfiConverterBool.read(from: &buf),
-                privacy: FfiConverterOptionString.read(from: &buf),
-                collaborative: FfiConverterBool.read(from: &buf),
-                sort: FfiConverterOptionString.read(from: &buf),
+                id: FfiConverterString.read(from: &buf), 
+                title: FfiConverterString.read(from: &buf), 
+                subtitle: FfiConverterOptionString.read(from: &buf), 
+                thumbnail: FfiConverterOptionString.read(from: &buf), 
+                description: FfiConverterOptionString.read(from: &buf), 
+                items: FfiConverterSequenceTypeSongItemRecord.read(from: &buf), 
+                continuation: FfiConverterOptionString.read(from: &buf), 
+                owned: FfiConverterBool.read(from: &buf), 
+                inLibrary: FfiConverterBool.read(from: &buf), 
+                privacy: FfiConverterOptionString.read(from: &buf), 
+                collaborative: FfiConverterBool.read(from: &buf), 
+                sort: FfiConverterOptionString.read(from: &buf), 
                 sortEditable: FfiConverterBool.read(from: &buf)
         )
     }
@@ -4696,6 +4721,10 @@ public func FfiConverterTypePlaylistDetailRecord_lower(_ value: PlaylistDetailRe
 
 
 public struct SearchResultsRecord {
+    /**
+     * Every song in the provider's top-result section, in provider order, including a song hero.
+     */
+    public var topSongs: [SongItemRecord]
     public var top: [BrowseCardRecord]
     public var songs: [SongItemRecord]
     public var albums: [BrowseCardRecord]
@@ -4704,7 +4733,11 @@ public struct SearchResultsRecord {
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(top: [BrowseCardRecord], songs: [SongItemRecord], albums: [BrowseCardRecord], artists: [BrowseCardRecord], playlists: [BrowseCardRecord]) {
+    public init(
+        /**
+         * Every song in the provider's top-result section, in provider order, including a song hero.
+         */topSongs: [SongItemRecord], top: [BrowseCardRecord], songs: [SongItemRecord], albums: [BrowseCardRecord], artists: [BrowseCardRecord], playlists: [BrowseCardRecord]) {
+        self.topSongs = topSongs
         self.top = top
         self.songs = songs
         self.albums = albums
@@ -4717,6 +4750,9 @@ public struct SearchResultsRecord {
 
 extension SearchResultsRecord: Equatable, Hashable {
     public static func ==(lhs: SearchResultsRecord, rhs: SearchResultsRecord) -> Bool {
+        if lhs.topSongs != rhs.topSongs {
+            return false
+        }
         if lhs.top != rhs.top {
             return false
         }
@@ -4736,6 +4772,7 @@ extension SearchResultsRecord: Equatable, Hashable {
     }
 
     public func hash(into hasher: inout Hasher) {
+        hasher.combine(topSongs)
         hasher.combine(top)
         hasher.combine(songs)
         hasher.combine(albums)
@@ -4752,15 +4789,17 @@ public struct FfiConverterTypeSearchResultsRecord: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SearchResultsRecord {
         return
             try SearchResultsRecord(
-                top: FfiConverterSequenceTypeBrowseCardRecord.read(from: &buf),
-                songs: FfiConverterSequenceTypeSongItemRecord.read(from: &buf),
-                albums: FfiConverterSequenceTypeBrowseCardRecord.read(from: &buf),
-                artists: FfiConverterSequenceTypeBrowseCardRecord.read(from: &buf),
+                topSongs: FfiConverterSequenceTypeSongItemRecord.read(from: &buf), 
+                top: FfiConverterSequenceTypeBrowseCardRecord.read(from: &buf), 
+                songs: FfiConverterSequenceTypeSongItemRecord.read(from: &buf), 
+                albums: FfiConverterSequenceTypeBrowseCardRecord.read(from: &buf), 
+                artists: FfiConverterSequenceTypeBrowseCardRecord.read(from: &buf), 
                 playlists: FfiConverterSequenceTypeBrowseCardRecord.read(from: &buf)
         )
     }
 
     public static func write(_ value: SearchResultsRecord, into buf: inout [UInt8]) {
+        FfiConverterSequenceTypeSongItemRecord.write(value.topSongs, into: &buf)
         FfiConverterSequenceTypeBrowseCardRecord.write(value.top, into: &buf)
         FfiConverterSequenceTypeSongItemRecord.write(value.songs, into: &buf)
         FfiConverterSequenceTypeBrowseCardRecord.write(value.albums, into: &buf)
@@ -4798,10 +4837,11 @@ public struct SongItemRecord {
     public var isVideo: Bool
     public var isUpload: Bool
     public var library: LibraryToggleRecord?
+    public var artistRuns: [HomeArtistRunRecord]
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(videoId: String, title: String, artists: String, album: String?, duration: String?, thumbnail: String?, artistId: String?, albumId: String?, setVideoId: String?, isVideo: Bool, isUpload: Bool, library: LibraryToggleRecord?) {
+    public init(videoId: String, title: String, artists: String, album: String?, duration: String?, thumbnail: String?, artistId: String?, albumId: String?, setVideoId: String?, isVideo: Bool, isUpload: Bool, library: LibraryToggleRecord?, artistRuns: [HomeArtistRunRecord]) {
         self.videoId = videoId
         self.title = title
         self.artists = artists
@@ -4814,6 +4854,7 @@ public struct SongItemRecord {
         self.isVideo = isVideo
         self.isUpload = isUpload
         self.library = library
+        self.artistRuns = artistRuns
     }
 }
 
@@ -4857,6 +4898,9 @@ extension SongItemRecord: Equatable, Hashable {
         if lhs.library != rhs.library {
             return false
         }
+        if lhs.artistRuns != rhs.artistRuns {
+            return false
+        }
         return true
     }
 
@@ -4873,6 +4917,7 @@ extension SongItemRecord: Equatable, Hashable {
         hasher.combine(isVideo)
         hasher.combine(isUpload)
         hasher.combine(library)
+        hasher.combine(artistRuns)
     }
 }
 
@@ -4884,18 +4929,19 @@ public struct FfiConverterTypeSongItemRecord: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SongItemRecord {
         return
             try SongItemRecord(
-                videoId: FfiConverterString.read(from: &buf),
-                title: FfiConverterString.read(from: &buf),
-                artists: FfiConverterString.read(from: &buf),
-                album: FfiConverterOptionString.read(from: &buf),
-                duration: FfiConverterOptionString.read(from: &buf),
-                thumbnail: FfiConverterOptionString.read(from: &buf),
-                artistId: FfiConverterOptionString.read(from: &buf),
-                albumId: FfiConverterOptionString.read(from: &buf),
-                setVideoId: FfiConverterOptionString.read(from: &buf),
-                isVideo: FfiConverterBool.read(from: &buf),
-                isUpload: FfiConverterBool.read(from: &buf),
-                library: FfiConverterOptionTypeLibraryToggleRecord.read(from: &buf)
+                videoId: FfiConverterString.read(from: &buf), 
+                title: FfiConverterString.read(from: &buf), 
+                artists: FfiConverterString.read(from: &buf), 
+                album: FfiConverterOptionString.read(from: &buf), 
+                duration: FfiConverterOptionString.read(from: &buf), 
+                thumbnail: FfiConverterOptionString.read(from: &buf), 
+                artistId: FfiConverterOptionString.read(from: &buf), 
+                albumId: FfiConverterOptionString.read(from: &buf), 
+                setVideoId: FfiConverterOptionString.read(from: &buf), 
+                isVideo: FfiConverterBool.read(from: &buf), 
+                isUpload: FfiConverterBool.read(from: &buf), 
+                library: FfiConverterOptionTypeLibraryToggleRecord.read(from: &buf), 
+                artistRuns: FfiConverterSequenceTypeHomeArtistRunRecord.read(from: &buf)
         )
     }
 
@@ -4912,6 +4958,7 @@ public struct FfiConverterTypeSongItemRecord: FfiConverterRustBuffer {
         FfiConverterBool.write(value.isVideo, into: &buf)
         FfiConverterBool.write(value.isUpload, into: &buf)
         FfiConverterOptionTypeLibraryToggleRecord.write(value.library, into: &buf)
+        FfiConverterSequenceTypeHomeArtistRunRecord.write(value.artistRuns, into: &buf)
     }
 }
 
@@ -5030,17 +5077,17 @@ public struct FfiConverterTypeStreamPlaybackInfo: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> StreamPlaybackInfo {
         return
             try StreamPlaybackInfo(
-                videoId: FfiConverterString.read(from: &buf),
-                streamUrl: FfiConverterString.read(from: &buf),
-                itag: FfiConverterInt64.read(from: &buf),
-                loudnessDb: FfiConverterOptionDouble.read(from: &buf),
-                expiresInSeconds: FfiConverterInt64.read(from: &buf),
-                isVideo: FfiConverterBool.read(from: &buf),
-                streamClient: FfiConverterString.read(from: &buf),
-                title: FfiConverterOptionString.read(from: &buf),
-                artists: FfiConverterOptionString.read(from: &buf),
-                duration: FfiConverterOptionString.read(from: &buf),
-                thumbnail: FfiConverterOptionString.read(from: &buf),
+                videoId: FfiConverterString.read(from: &buf), 
+                streamUrl: FfiConverterString.read(from: &buf), 
+                itag: FfiConverterInt64.read(from: &buf), 
+                loudnessDb: FfiConverterOptionDouble.read(from: &buf), 
+                expiresInSeconds: FfiConverterInt64.read(from: &buf), 
+                isVideo: FfiConverterBool.read(from: &buf), 
+                streamClient: FfiConverterString.read(from: &buf), 
+                title: FfiConverterOptionString.read(from: &buf), 
+                artists: FfiConverterOptionString.read(from: &buf), 
+                duration: FfiConverterOptionString.read(from: &buf), 
+                thumbnail: FfiConverterOptionString.read(from: &buf), 
                 headers: FfiConverterDictionaryStringString.read(from: &buf)
         )
     }
@@ -5080,7 +5127,7 @@ public func FfiConverterTypeStreamPlaybackInfo_lower(_ value: StreamPlaybackInfo
 // See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
 
 public enum GeniusMatchStatusRecord {
-
+    
     case matched
     case ambiguous
     case notFound
@@ -5096,32 +5143,32 @@ public struct FfiConverterTypeGeniusMatchStatusRecord: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> GeniusMatchStatusRecord {
         let variant: Int32 = try readInt(&buf)
         switch variant {
-
+        
         case 1: return .matched
-
+        
         case 2: return .ambiguous
-
+        
         case 3: return .notFound
-
+        
         default: throw UniffiInternalError.unexpectedEnumCase
         }
     }
 
     public static func write(_ value: GeniusMatchStatusRecord, into buf: inout [UInt8]) {
         switch value {
-
-
+        
+        
         case .matched:
             writeInt(&buf, Int32(1))
-
-
+        
+        
         case .ambiguous:
             writeInt(&buf, Int32(2))
-
-
+        
+        
         case .notFound:
             writeInt(&buf, Int32(3))
-
+        
         }
     }
 }
@@ -5151,7 +5198,7 @@ extension GeniusMatchStatusRecord: Equatable, Hashable {}
 // See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
 
 public enum HomeSectionFormatRecord {
-
+    
     case largeCards
     case compactSongs
     case mixed
@@ -5167,32 +5214,32 @@ public struct FfiConverterTypeHomeSectionFormatRecord: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HomeSectionFormatRecord {
         let variant: Int32 = try readInt(&buf)
         switch variant {
-
+        
         case 1: return .largeCards
-
+        
         case 2: return .compactSongs
-
+        
         case 3: return .mixed
-
+        
         default: throw UniffiInternalError.unexpectedEnumCase
         }
     }
 
     public static func write(_ value: HomeSectionFormatRecord, into buf: inout [UInt8]) {
         switch value {
-
-
+        
+        
         case .largeCards:
             writeInt(&buf, Int32(1))
-
-
+        
+        
         case .compactSongs:
             writeInt(&buf, Int32(2))
-
-
+        
+        
         case .mixed:
             writeInt(&buf, Int32(3))
-
+        
         }
     }
 }
@@ -5221,8 +5268,8 @@ extension HomeSectionFormatRecord: Equatable, Hashable {}
 
 public enum SideBError {
 
-
-
+    
+    
     case NetworkError(message: String
     )
     case ParseError(message: String
@@ -5248,9 +5295,9 @@ public struct FfiConverterTypeSideBError: FfiConverterRustBuffer {
         let variant: Int32 = try readInt(&buf)
         switch variant {
 
+        
 
-
-
+        
         case 1: return .NetworkError(
             message: try FfiConverterString.read(from: &buf)
             )
@@ -5277,39 +5324,39 @@ public struct FfiConverterTypeSideBError: FfiConverterRustBuffer {
     public static func write(_ value: SideBError, into buf: inout [UInt8]) {
         switch value {
 
+        
 
-
-
-
+        
+        
         case let .NetworkError(message):
             writeInt(&buf, Int32(1))
             FfiConverterString.write(message, into: &buf)
-
-
+            
+        
         case let .ParseError(message):
             writeInt(&buf, Int32(2))
             FfiConverterString.write(message, into: &buf)
-
-
+            
+        
         case let .StreamError(message):
             writeInt(&buf, Int32(3))
             FfiConverterString.write(message, into: &buf)
-
-
+            
+        
         case let .DbError(message):
             writeInt(&buf, Int32(4))
             FfiConverterString.write(message, into: &buf)
-
-
+            
+        
         case let .NotFound(message):
             writeInt(&buf, Int32(5))
             FfiConverterString.write(message, into: &buf)
-
-
+            
+        
         case let .Other(message):
             writeInt(&buf, Int32(6))
             FfiConverterString.write(message, into: &buf)
-
+            
         }
     }
 }
@@ -5330,11 +5377,11 @@ extension SideBError: Foundation.LocalizedError {
  * Runs YouTube's player.js in the native JavaScriptCore process on macOS.
  */
 public protocol CipherJsRuntime : AnyObject {
-
+    
     func load(script: String)  -> Bool
-
+    
     func evaluate(expression: String)  -> String?
-
+    
 }
 
 // Magic number for the Rust proxy to call using the same mechanism as every other method,
@@ -5367,7 +5414,7 @@ fileprivate struct UniffiCallbackInterfaceCipherJsRuntime {
                 )
             }
 
-
+            
             let writeReturn = { uniffiOutReturn.pointee = FfiConverterBool.lower($0) }
             uniffiTraitInterfaceCall(
                 callStatus: uniffiCallStatus,
@@ -5391,7 +5438,7 @@ fileprivate struct UniffiCallbackInterfaceCipherJsRuntime {
                 )
             }
 
-
+            
             let writeReturn = { uniffiOutReturn.pointee = FfiConverterOptionString.lower($0) }
             uniffiTraitInterfaceCall(
                 callStatus: uniffiCallStatus,
@@ -6408,6 +6455,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_sideb_core_checksum_method_sidebcore_search_songs_json() != 15936) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_sideb_core_checksum_method_sidebcore_search_videos() != 42948) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_sideb_core_checksum_method_sidebcore_set_cipher_js_runtime() != 26775) {

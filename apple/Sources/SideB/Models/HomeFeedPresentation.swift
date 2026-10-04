@@ -27,8 +27,28 @@ struct HomeSectionPresentation: Identifiable, Equatable {
     }
 }
 
+struct HomeFeedCategoryDescriptor: Identifiable, Equatable, Sendable {
+    let key: String
+    let title: String
+
+    var id: String { key }
+}
+
 enum HomePresentationFactory {
-    static func sections(from records: [HomeSectionRecord], chip: String?) -> [HomeSectionPresentation] {
+    static func categories(from records: [HomeSectionRecord]) -> [HomeFeedCategoryDescriptor] {
+        var seen = Set<String>()
+        return records.compactMap { record in
+            let key = HomeRecommendationSettings.categoryKey(forTitle: record.title)
+            guard seen.insert(key).inserted else { return nil }
+            return HomeFeedCategoryDescriptor(key: key, title: record.title)
+        }
+    }
+
+    static func sections(
+        from records: [HomeSectionRecord],
+        chip: String?,
+        preserveProviderOrder: Bool = false
+    ) -> [HomeSectionPresentation] {
         var identities: [String: Int] = [:]
         let rawSections = records.compactMap { section -> HomeSectionPresentation? in
             guard !section.items.isEmpty else { return nil }
@@ -59,7 +79,7 @@ enum HomePresentationFactory {
             )
         }
 
-        guard chip == nil else { return rawSections }
+        guard chip == nil, !preserveProviderOrder else { return rawSections }
         return rawSections.enumerated().sorted { left, right in
             let lhs = sectionPriority(for: left.element)
             let rhs = sectionPriority(for: right.element)

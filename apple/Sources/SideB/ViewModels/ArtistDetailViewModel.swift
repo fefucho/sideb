@@ -51,15 +51,12 @@ final class ArtistDetailViewModel {
 
     func shuffleTopSongs(player: PlayerViewModel) {
         guard let a = artist, !a.topSongs.isEmpty else { return }
-        let shuffled = a.topSongs.shuffled()
-        player.queueManager.replaceQueue(
-            with: shuffled,
-            startingAt: 0,
-            context: .custom(title: "\(a.name) (Aleatorio)"),
-            contextTitle: "\(a.name) (Aleatorio)"
+        player.playCollection(
+            tracks: a.topSongs,
+            title: "\(a.name) (Aleatorio)",
+            artistBrowseId: a.channelId,
+            shuffle: true
         )
-        player.playQueueIndex(0)
-        player.queueManager.isShuffle = true
     }
 
     func playTopSong(at index: Int, player: PlayerViewModel) {

@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 import SideBCore
 
 struct ArtistDetailView: View {
@@ -302,109 +303,90 @@ struct ArtistDetailView: View {
     }
 
     private func topSongRow(song: SongItemRecord, index: Int) -> some View {
-        let isCurrent = playerViewModel.currentTrack?.videoId == song.videoId
-        return Button {
-            viewModel.playTopSong(at: index - 1, player: playerViewModel)
-        } label: {
-            HStack(spacing: 14) {
-                // Indicador o número
-                ZStack {
-                    if isCurrent && playerViewModel.isPlaying {
-                        Image(systemName: "waveform")
-                            .font(.system(size: 12, weight: .bold))
-                            .foregroundStyle(.primary)
-                    } else {
-                        Text("\(index)")
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundStyle(.secondary)
-                    }
-                }
+        let origin = MenuOrigin.artist(channelId: viewModel.artist?.channelId ?? browseId)
+        let playSong = { viewModel.playTopSong(at: index - 1, player: playerViewModel) }
+        let row = HStack(spacing: 14) {
+            Text("\(index)")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(.secondary)
                 .frame(width: 24, alignment: .center)
+                .allowsHitTesting(false)
 
-                // Thumbnail
+            MediaArtworkControls(
+                isCollection: false,
+                accessibilityTitle: song.title,
+                onOpen: playSong,
+                onPlay: playSong,
+                menuProvider: {
+                    AppContextMenuFactory.shared.buildSongNSMenu(song: song, player: playerViewModel,
+                        router: router, core: rustCore, origin: origin)
+                }
+            ) {
                 if let thumb = song.thumbnail, let url = URL(string: thumb) {
                     CachedAsyncImage(url: url, targetSize: CGSize(width: 44, height: 44)) { image in
-                        image
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                    } placeholder: {
-                        Color.secondary.opacity(0.15)
-                    }
-                    .frame(width: 44, height: 44)
-                    .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+                        image.resizable().aspectRatio(contentMode: .fill)
+                    } placeholder: { Color.secondary.opacity(0.15) }
+                        .frame(width: 44, height: 44)
+                        .clipShape(RoundedRectangle(cornerRadius: AppTheme.artworkThumbnailRadius, style: .continuous))
                 } else {
-                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    RoundedRectangle(cornerRadius: AppTheme.artworkThumbnailRadius, style: .continuous)
                         .fill(Color.secondary.opacity(0.15))
                         .frame(width: 44, height: 44)
                         .overlay(Image(systemName: "music.note").font(.system(size: 16)))
                 }
+            }
+            .frame(width: 44, height: 44)
 
-                // Título y detalles
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(song.title)
-                        .font(.system(size: 13, weight: isCurrent ? .semibold : .medium))
-                        .foregroundStyle(Color.primary)
-                        .lineLimit(1)
-
-                    if let album = song.album, !album.isEmpty {
-                        Text(album)
-                            .font(.system(size: 12))
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(song.title).font(.system(size: 13, weight: .medium)).foregroundStyle(.primary).lineLimit(1)
+                    .allowsHitTesting(false)
+                HStack(spacing: 4) {
+                    if let artistId = song.artistId, !artistId.isEmpty {
+                        Button { router?.navigate(to: .artist(browseId: artistId)) } label: {
+                            Text(song.artists).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
+                        }
+                        .buttonStyle(.plain)
+                        .mediaCardFocusControl()
                     } else {
-                        Text(song.artists)
-                            .font(.system(size: 12))
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
+                        Text(song.artists).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
+                            .allowsHitTesting(false)
+                    }
+                    if let album = song.album, !album.isEmpty {
+                        Text("·").font(.system(size: 12)).foregroundStyle(.tertiary)
+                        if let albumId = song.albumId, !albumId.isEmpty {
+                            Button { router?.navigate(to: .album(browseId: albumId)) } label: {
+                                Text(album).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
+                            }
+                            .buttonStyle(.plain)
+                            .mediaCardFocusControl()
+                        } else {
+                            Text(album).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
+                                .allowsHitTesting(false)
+                        }
                     }
                 }
-
-                Spacer(minLength: 8)
-
-                if let duration = song.duration {
-                    Text(duration)
-                        .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
-                }
-
-                // Botón de elipsis discreto
-                Menu {
-                    SongMenuItems(
-                        song: song,
-                        player: playerViewModel,
-                        router: router,
-                        core: rustCore,
-                        origin: .artist(channelId: viewModel.artist?.channelId ?? browseId)
-                    )
-                } label: {
-                    SideBEllipsisLabel()
-                }
-                .menuStyle(.borderlessButton)
-                .menuIndicator(.hidden)
-                .accessibilityLabel("Más opciones")
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(isCurrent ? Color.sidebActiveRowBackground : (hoveredTopSongId == song.videoId ? Color.white.opacity(0.045) : Color.clear))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .stroke(isCurrent ? Color.sidebActiveRowBorder : Color.clear, lineWidth: AppTheme.cardBorderWidth)
-                    )
-            )
-            .contentShape(Rectangle())
-            .onHover { isH in
-                hoveredTopSongId = isH ? song.videoId : nil
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            if let duration = song.duration {
+                Text(duration).font(.system(size: 12)).foregroundStyle(.secondary).allowsHitTesting(false)
             }
         }
-        .buttonStyle(.plain)
-        .songContextMenu(
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(RoundedRectangle(cornerRadius: 10, style: .continuous)
+            .fill(hoveredTopSongId == song.videoId ? Color.white.opacity(0.045) : Color.clear))
+        .contentShape(Rectangle())
+        .mediaCardActivation(action: playSong)
+        .mediaCardSurface()
+        .onHover { hoveredTopSongId = $0 ? song.videoId : nil }
+
+        return row.songContextMenu(
             song: song,
             player: playerViewModel,
             router: router,
             core: rustCore,
-            origin: .artist(channelId: viewModel.artist?.channelId ?? browseId)
+            origin: origin
         )
     }
 
@@ -447,56 +429,91 @@ struct ArtistDetailView: View {
 
     @ViewBuilder
     private func artistCardItem(card: BrowseCardRecord) -> some View {
-        let isArtist = card.kind == "artist"
-        let isVideo = card.kind == "video"
+        let isArtist = card.kind.lowercased() == "artist"
+        let isVideo = card.kind.lowercased() == "video"
+        let isCollection = ["album", "playlist"].contains(card.kind.lowercased())
         let cardWidth: CGFloat = isVideo ? 200 : 144
         let cardHeight: CGFloat = isVideo ? 112 : 144
-
-        Button {
-            handleCardClick(card)
-        } label: {
-            VStack(alignment: .leading, spacing: 8) {
-                ZStack(alignment: .bottomTrailing) {
-                    if let thumb = card.thumbnail, let url = ImageURLHelper.optimizedThumbnailURL(from: thumb, targetPixelSize: isVideo ? 400 : 288) {
-                        CachedAsyncImage(url: url, targetSize: CGSize(width: cardWidth, height: cardHeight)) { img in
-                            img
-                                .resizable()
-                                .aspectRatio(contentMode: .fill)
-                        } placeholder: {
-                            Color.secondary.opacity(0.12)
-                        }
-                        .frame(width: cardWidth, height: cardHeight)
-                        .clipShape(RoundedRectangle(cornerRadius: isArtist ? cardWidth / 2 : 10, style: .continuous))
-                    } else {
-                        RoundedRectangle(cornerRadius: isArtist ? cardWidth / 2 : 10, style: .continuous)
-                            .fill(Color.secondary.opacity(0.15))
-                            .frame(width: cardWidth, height: cardHeight)
-                            .overlay(Image(systemName: isArtist ? "person.crop.circle" : "music.note").font(.system(size: 28)))
-                    }
-
-                    // Botón play superpuesto
-                    Image(systemName: "play.circle.fill")
-                        .font(.system(size: 28))
-                        .foregroundStyle(Color.white)
-                        .shadow(color: .black.opacity(0.4), radius: 4)
-                        .padding(8)
+        let isActive = MediaPlaybackIdentity.isCollectionActive(
+            kind: card.kind, id: card.id, context: playerViewModel.queueManager.context
+        )
+        let artwork = Group {
+            if let thumb = card.thumbnail,
+               let url = ImageURLHelper.optimizedThumbnailURL(from: thumb, targetPixelSize: isVideo ? 400 : 288) {
+                CachedAsyncImage(url: url, targetSize: CGSize(width: cardWidth, height: cardHeight)) { image in
+                    image.resizable().aspectRatio(contentMode: .fill)
+                } placeholder: {
+                    Color.secondary.opacity(0.12)
                 }
-
-                Text(card.title)
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
-
-                if let subtitle = card.subtitle {
-                    Text(subtitle)
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
+                .frame(width: cardWidth, height: cardHeight)
+                .clipShape(isArtist ? AnyShape(Circle()) : AnyShape(RoundedRectangle(cornerRadius: AppTheme.artworkCardRadius, style: .continuous)))
+            } else {
+                RoundedRectangle(cornerRadius: isArtist ? cardWidth / 2 : AppTheme.artworkCardRadius, style: .continuous)
+                    .fill(Color.secondary.opacity(0.15))
+                    .frame(width: cardWidth, height: cardHeight)
+                    .overlay(Image(systemName: isArtist ? "person.crop.circle" : "music.note").font(.system(size: 28)))
             }
-            .frame(width: cardWidth)
         }
-        .buttonStyle(.plain)
+
+        let cardView = VStack(alignment: .leading, spacing: 8) {
+            if isCollection {
+                MediaArtworkControls(
+                    isCollection: true,
+                    isActive: isActive,
+                    isPlaying: isActive && playerViewModel.isPlaying,
+                    isLoading: isCollectionLoading(card),
+                    showsIndicator: isActive,
+                    accessibilityTitle: card.title,
+                    onOpen: { handleCardClick(card) },
+                    onPlay: { playerViewModel.activateMediaCollection(id: card.id, kind: card.kind) },
+                    menuProvider: { artistCardMenu(card) }
+                ) { artwork }
+                    .frame(width: cardWidth, height: cardHeight)
+            } else if isArtist {
+                Button { handleCardClick(card) } label: { artwork }
+                    .buttonStyle(.plain)
+                    .mediaCardFocusControl()
+            } else {
+                let song = SongItemRecord(
+                    fromCard: card,
+                    fallbackArtist: viewModel.artist?.name,
+                    knownArtistId: viewModel.artist?.channelId ?? browseId
+                )
+                MediaArtworkControls(
+                    isCollection: false,
+                    accessibilityTitle: card.title,
+                    onOpen: { playerViewModel.activateMediaRadio(song) },
+                    onPlay: { playerViewModel.activateMediaRadio(song) },
+                    menuProvider: { artistCardMenu(card) }
+                ) { artwork }
+                    .frame(width: cardWidth, height: cardHeight)
+            }
+
+            Button { handleCardClick(card) } label: {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(card.title)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                    if let subtitle = card.subtitle {
+                        Text(subtitle)
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .mediaCardFocusControl()
+        }
+        .frame(width: cardWidth, alignment: .leading)
+
+        cardView
+        .mediaCardActivation(label: card.kind == "song" || card.kind == "video"
+            ? "Reproducir \(card.title)" : "Abrir \(card.title)") { handleCardClick(card) }
+        .mediaCardSurface()
         .browseCardContextMenu(
             card: card,
             player: playerViewModel,
@@ -506,6 +523,33 @@ struct ArtistDetailView: View {
             fallbackArtist: viewModel.artist?.name,
             knownArtistId: viewModel.artist?.channelId ?? browseId
         )
+    }
+
+    private func artistCardMenu(_ card: BrowseCardRecord) -> NSMenu? {
+        let factory = AppContextMenuFactory.shared
+        let origin = MenuOrigin.artist(channelId: viewModel.artist?.channelId ?? browseId)
+        switch card.kind.lowercased() {
+        case "album":
+            return factory.buildAlbumNSMenu(browseId: card.id, playlistId: nil, title: card.title,
+                artist: card.subtitle ?? viewModel.artist?.name, thumbnail: card.thumbnail, origin: origin,
+                player: playerViewModel, router: router, core: rustCore)
+        case "playlist":
+            return factory.buildPlaylistNSMenu(id: card.id, title: card.title, subtitle: card.subtitle,
+                thumbnail: card.thumbnail, origin: origin, player: playerViewModel, router: router, core: rustCore)
+        case "song", "video":
+            return factory.buildSongNSMenu(song: SongItemRecord(fromCard: card,
+                fallbackArtist: viewModel.artist?.name, knownArtistId: viewModel.artist?.channelId ?? browseId),
+                player: playerViewModel, router: router, core: rustCore, origin: origin)
+        default:
+            return nil
+        }
+    }
+
+    private func isCollectionLoading(_ card: BrowseCardRecord) -> Bool {
+        if card.kind.lowercased() == "album" {
+            return playerViewModel.loadingRecommendedAlbumID.map(MenuIDNormalizer.normalize) == MenuIDNormalizer.normalize(card.id)
+        }
+        return playerViewModel.loadingRecommendedPlaylistID.map(MenuIDNormalizer.canonicalPlaylistId) == MenuIDNormalizer.canonicalPlaylistId(card.id)
     }
 
     private func handleCardClick(_ card: BrowseCardRecord) {
@@ -521,7 +565,7 @@ struct ArtistDetailView: View {
                 fallbackArtist: viewModel.artist?.name,
                 knownArtistId: viewModel.artist?.channelId ?? browseId
             )
-            playerViewModel.playSong(song)
+            playerViewModel.activateMediaRadio(song)
         }
     }
 

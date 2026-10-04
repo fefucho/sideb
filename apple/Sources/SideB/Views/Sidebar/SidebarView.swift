@@ -6,21 +6,22 @@ import SideBCore
 struct SidebarView: View {
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Binding var isExpanded: Bool
+    var titlebarHeight: CGFloat = 0
     @Bindable var router: NavigationRouter
     @Bindable var accountViewModel: AccountViewModel
     @Bindable var libraryViewModel: LibraryViewModel
     let rustCore: SideBCore
     let cookieStorage: CookieStorage
     var playerViewModel: PlayerViewModel? = nil
+    var isSearchPresented: Bool = false
     var onOpenSearch: (() -> Void)? = nil
+    var onNavigate: ((PageDestination) -> Void)? = nil
     var onOpenLogin: () -> Void
     var onLogout: () -> Void
     
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Espacio superior para alojar los Traffic Lights y el botón de toolbar sobre el mismo fondo
-            Color.clear
-                .frame(height: 52)
+            Color.clear.frame(height: ShellLayout.sidebarHeaderInset(titlebarHeight: titlebarHeight))
 
             // Área scrolleable de navegación y biblioteca
             ScrollView(.vertical, showsIndicators: false) {
@@ -30,10 +31,14 @@ struct SidebarView: View {
                         sidebarRow(
                             title: "Inicio",
                             icon: "house.fill",
-                            isSelected: router.currentPage == .home
+                            isSelected: !isSearchPresented && router.currentPage == .home
                         ) {
                             navigate(to: .home)
                         }
+
+                        sidebarRow(title: "Explorar", icon: "sparkles", isSelected: false) {}
+                            .disabled(true)
+                            .help("Próximamente")
 
                         sidebarRow(
                             title: "Buscar",
@@ -87,19 +92,15 @@ struct SidebarView: View {
                         sidebarRow(
                             title: "Biblioteca",
                             icon: "books.vertical.fill",
-                            isSelected: router.currentPage == .library
+                            isSelected: !isSearchPresented && router.currentPage == .library
                         ) {
-                            if router.currentPage == .library {
-                                NotificationCenter.default.post(name: .sideBLibraryRefreshRequested, object: nil)
-                            } else {
-                                navigate(to: .library)
-                            }
+                            navigate(to: .library)
                         }
                         
                         sidebarRow(
                             title: "Historial",
                             icon: "clock.arrow.circlepath",
-                            isSelected: router.currentPage == .history
+                            isSelected: !isSearchPresented && router.currentPage == .history
                         ) {
                             navigate(to: .history)
                         }
@@ -300,42 +301,26 @@ struct SidebarView: View {
             .padding(.horizontal, 8)
             .padding(.bottom, 12)
         }
-        .frame(width: 230)
-        .background(alignment: .top) {
-            if !reduceTransparency,
-               let artwork = playerViewModel?.currentTrack?.thumbnail,
-               let url = ImageURLHelper.optimizedThumbnailURL(from: artwork, targetPixelSize: 256) {
-                CachedAsyncImage(url: url, targetSize: CGSize(width: 256, height: 256)) { image in
-                    image.resizable().aspectRatio(contentMode: .fill)
-                } placeholder: {
-                    Color.clear
-                }
-                .frame(width: 260, height: 260)
-                .blur(radius: 55)
-                .opacity(0.24)
-                .frame(width: 230, height: 420, alignment: .top)
-                .clipped()
-                .allowsHitTesting(false)
-            }
-        }
-        .compatTranslucentSidebar()
-        .overlay(alignment: .trailing) {
-            Divider()
-                .opacity(0.2)
-        }
-        .ignoresSafeArea(.container, edges: .top)
+        .frame(width: ShellLayout.sidebarWidth)
+        .frame(maxHeight: .infinity, alignment: .top)
+        .compatGlass(in: RoundedRectangle(cornerRadius: ShellLayout.sidebarCornerRadius, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: ShellLayout.sidebarCornerRadius, style: .continuous)
+            .strokeBorder(.white.opacity(0.10), lineWidth: 0.5))
+        .shadow(color: .black.opacity(0.18), radius: 12, x: 0, y: 4)
     }
     
     // MARK: - Navegación Segura (Cierre de Fullscreen)
 
     private func navigate(to destination: PageDestination) {
         playerViewModel?.dismissFullscreen()
-        router.navigate(to: destination)
+        if let onNavigate { onNavigate(destination) }
+        else { router.navigate(to: destination) }
     }
     
     // MARK: - Helpers de Selección
 
     private var isLikedMusicSelected: Bool {
+        guard !isSearchPresented else { return false }
         if case .playlist(let id) = router.currentPage, id == "LM" {
             return true
         }
@@ -343,6 +328,7 @@ struct SidebarView: View {
     }
 
     private func isPlaylistSelected(id: String) -> Bool {
+        guard !isSearchPresented else { return false }
         if case .playlist(let selId) = router.currentPage, selId == id {
             return true
         }
@@ -350,6 +336,7 @@ struct SidebarView: View {
     }
 
     private func isAlbumSelected(id: String) -> Bool {
+        guard !isSearchPresented else { return false }
         if case .album(let selId) = router.currentPage, selId == id {
             return true
         }
@@ -357,6 +344,7 @@ struct SidebarView: View {
     }
 
     private var isSearchSelected: Bool {
+        if isSearchPresented { return true }
         if case .search = router.currentPage {
             return true
         }
@@ -386,12 +374,12 @@ struct SidebarView: View {
             HStack(spacing: 11) {
                 Image(systemName: icon)
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(isSelected ? Color.white : Color.primary.opacity(0.68))
+                    .foregroundStyle(isSelected ? Color.sidebAccentHighlight : Color.primary.opacity(0.68))
                     .frame(width: 20)
                 
                 Text(title)
                     .font(.system(size: 13, weight: isSelected ? .semibold : .medium))
-                    .foregroundStyle(isSelected ? Color.white : Color.primary)
+                    .foregroundStyle(isSelected ? Color.sidebAccentHighlight : Color.primary)
                 
                 Spacer()
 
@@ -411,10 +399,10 @@ struct SidebarView: View {
             .padding(.vertical, 7)
             .background(
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(isSelected ? Color.sidebAccent.opacity(0.55) : Color.clear)
+                    .fill(isSelected ? Color.white.opacity(0.10) : Color.clear)
                     .overlay(
                         RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .stroke(isSelected ? Color.sidebAccent.opacity(0.65) : Color.clear, lineWidth: 0.5)
+                            .stroke(isSelected ? Color.white.opacity(0.08) : Color.clear, lineWidth: 0.5)
                     )
             )
             .contentShape(Rectangle())
@@ -442,9 +430,9 @@ struct SidebarView: View {
                         itemPlaceholder(icon: icon, isSelected: isSelected)
                     }
                     .frame(width: 22, height: 22)
-                    .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+                    .clipShape(RoundedRectangle(cornerRadius: AppTheme.artworkThumbnailRadius, style: .continuous))
                     .overlay(
-                        RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        RoundedRectangle(cornerRadius: AppTheme.artworkThumbnailRadius, style: .continuous)
                             .stroke(Color.white.opacity(0.12), lineWidth: 0.5)
                     )
                 } else {
@@ -453,7 +441,7 @@ struct SidebarView: View {
 
                 Text(title)
                     .font(.system(size: 12.5, weight: isSelected ? .semibold : .regular))
-                    .foregroundStyle(isSelected ? Color.white : Color.primary.opacity(0.9))
+                    .foregroundStyle(isSelected ? Color.sidebAccentHighlight : Color.primary.opacity(0.9))
                     .lineLimit(1)
 
                 Spacer()
@@ -462,10 +450,10 @@ struct SidebarView: View {
             .padding(.vertical, 5)
             .background(
                 RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .fill(isSelected ? Color.sidebAccent.opacity(0.55) : Color.clear)
+                    .fill(isSelected ? Color.white.opacity(0.10) : Color.clear)
                     .overlay(
                         RoundedRectangle(cornerRadius: 7, style: .continuous)
-                            .stroke(isSelected ? Color.sidebAccent.opacity(0.65) : Color.clear, lineWidth: 0.5)
+                            .stroke(isSelected ? Color.white.opacity(0.08) : Color.clear, lineWidth: 0.5)
                     )
             )
             .contentShape(Rectangle())
@@ -475,8 +463,8 @@ struct SidebarView: View {
 
     private func itemPlaceholder(icon: String, isSelected: Bool) -> some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 4, style: .continuous)
-                .fill(isSelected ? Color.sidebAccent.opacity(0.7) : Color.white.opacity(0.06))
+            RoundedRectangle(cornerRadius: AppTheme.artworkThumbnailRadius, style: .continuous)
+                .fill(isSelected ? Color.white.opacity(0.12) : Color.white.opacity(0.06))
             Image(systemName: icon)
                 .font(.system(size: 11, weight: .regular))
                 .foregroundStyle(isSelected ? Color.white : Color.secondary)

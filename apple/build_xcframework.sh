@@ -20,12 +20,12 @@ cd "$WORKSPACE_DIR"
 rustup target add $MAC_TARGET
 
 # 2. Compilar la librería estática
-cargo build --release --target $MAC_TARGET --package sideb-core
+cargo build --locked --release --target $MAC_TARGET --package sideb-core
 
 # 3. Generar los bindings de UniFFI
 # uniffi-bindgen extrae las interfaces de lib.rs y genera .swift y .h
 echo "Generando bindings para Swift..."
-cargo run --bin uniffi-bindgen -- generate \
+cargo run --locked --bin uniffi-bindgen -- generate \
   --library target/$MAC_TARGET/release/libsideb_core.dylib \
   --language swift \
   --out-dir ../apple/$OUTPUT_DIR

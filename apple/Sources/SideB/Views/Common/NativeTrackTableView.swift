@@ -23,18 +23,79 @@ enum TableRowItem: Equatable {
     case footer
 }
 
+/// Proyección pura de secciones a filas planas; `overallIndex` identifica la ocurrencia,
+/// incluso si dos filas contienen el mismo `videoId`.
+struct TrackTableRowProjection {
+    let tracks: [SongItemRecord]
+    let rows: [TableRowItem]
+
+    static func make(sections: [TrackTableSection], hasFooter: Bool = false) -> Self {
+        var tracks: [SongItemRecord] = []
+        var rows: [TableRowItem] = []
+        for (sectionIndex, section) in sections.enumerated() {
+            if let title = section.title, !title.isEmpty {
+                rows.append(.header(title: title, sectionIndex: sectionIndex))
+            }
+            for (itemIndex, track) in section.tracks.enumerated() {
+                let overallIndex = tracks.count
+                tracks.append(track)
+                rows.append(.track(track: track, overallIndex: overallIndex,
+                                   sectionIndex: sectionIndex, itemIndex: itemIndex))
+            }
+        }
+        if hasFooter { rows.append(.footer) }
+        return Self(tracks: tracks, rows: rows)
+    }
+}
+
+enum TrackTableInteractionPolicy {
+    enum Source { case row, thumbnailPlay, artistLink, albumLink, menu }
+
+    static func isSingleClick(clickCount: Int?) -> Bool {
+        guard let clickCount else { return true }
+        return clickCount <= 1
+    }
+
+    static func playbackIndex(for row: TableRowItem, source: Source, isSelectionGesture: Bool = false) -> Int? {
+        guard !isSelectionGesture else { return nil }
+        switch source {
+        case .row, .thumbnailPlay:
+            guard case .track(_, let overallIndex, _, _) = row else { return nil }
+            return overallIndex
+        case .artistLink, .albumLink, .menu:
+            return nil
+        }
+    }
+
+    @discardableResult
+    static func dispatchPlayback(
+        for row: TableRowItem,
+        source: Source,
+        isSelectionGesture: Bool = false,
+        play: (Int) -> Void
+    ) -> Bool {
+        guard let index = playbackIndex(for: row, source: source, isSelectionGesture: isSelectionGesture) else {
+            return false
+        }
+        play(index)
+        return true
+    }
+}
+
 /// Componente universal de lista de canciones de ultra-alto rendimiento respaldado por `NSTableView` de AppKit.
 /// - Soporte de secciones nativas con encabezados sticky/separadores sin overhead (`isGroupRow`).
 /// - Reciclaje estricto de celdas (`makeView(withIdentifier:owner:)`): solo ~15 vistas físicas creadas en memoria RAM.
 /// - Carga de imágenes desacoplada directamente en `NSImageView` sin mutar `@State` en SwiftUI ni saturar el hilo principal.
 /// - Hover de fuente única de verdad (`hoveredRowIndex`): solo una fila puede estar resaltada a la vez, a 120 FPS.
-/// - Soporte nativo para Drag & Drop (reordenamiento en la cola), botones Like/Dislike y cero scroll horizontal.
+/// - Reordenamiento de cola, enlaces y menú secundarios separados de la reproducción de fila.
 struct NativeTrackTableView: NSViewRepresentable {
     @Environment(\.sideBMenuContext) private var menuContext
     let sections: [TrackTableSection]
     let tracks: [SongItemRecord]
     let rowItems: [TableRowItem]
     let currentTrackVideoId: String?
+    let currentQueueOccurrenceID: String?
+    let currentQueueIndex: Int?
     let isPlaying: Bool
     let playerViewModel: PlayerViewModel?
     let router: NavigationRouter?
@@ -82,22 +143,12 @@ struct NativeTrackTableView: NSViewRepresentable {
         footerHeight: CGFloat = 0
     ) {
         self.sections = sections
-        var allTracks: [SongItemRecord] = []
-        var items: [TableRowItem] = []
-        for (sIdx, section) in sections.enumerated() {
-            if let title = section.title, !title.isEmpty {
-                items.append(.header(title: title, sectionIndex: sIdx))
-            }
-            for (tIdx, track) in section.tracks.enumerated() {
-                let overallIdx = allTracks.count
-                allTracks.append(track)
-                items.append(.track(track: track, overallIndex: overallIdx, sectionIndex: sIdx, itemIndex: tIdx))
-            }
-        }
-        if footer != nil { items.append(.footer) }
-        self.tracks = allTracks
-        self.rowItems = items
+        let projection = TrackTableRowProjection.make(sections: sections, hasFooter: footer != nil)
+        self.tracks = projection.tracks
+        self.rowItems = projection.rows
         self.currentTrackVideoId = currentTrackVideoId
+        self.currentQueueOccurrenceID = playerViewModel?.queueManager.currentOccurrenceID
+        self.currentQueueIndex = playerViewModel?.queueManager.currentIndex
         self.isPlaying = isPlaying
         self.playerViewModel = playerViewModel
         self.router = router
@@ -181,6 +232,7 @@ struct NativeTrackTableView: NSViewRepresentable {
         scrollView.backgroundColor = .clear
         scrollView.hasVerticalScroller = true
         scrollView.hasHorizontalScroller = false
+        scrollView.horizontalScroller = nil
         scrollView.autohidesScrollers = true
         scrollView.scrollerStyle = .overlay
         scrollView.horizontalScrollElasticity = .none
@@ -217,7 +269,6 @@ struct NativeTrackTableView: NSViewRepresentable {
         tableView.dataSource = context.coordinator
         tableView.target = context.coordinator
         tableView.coordinator = context.coordinator
-        tableView.doubleAction = #selector(Coordinator.onTableRowDoubleClicked(_:))
         tableView.action = #selector(Coordinator.onTableRowClicked(_:))
 
         scrollView.documentView = tableView
@@ -248,7 +299,9 @@ struct NativeTrackTableView: NSViewRepresentable {
            !tracks.contains(where: { $0.videoId == selected.videoId }) {
             menuContext?.clearSelection()
         }
-        let activeTrackChanged = oldParent.currentTrackVideoId != currentTrackVideoId
+        let activeTrackChanged = oldParent.currentTrackVideoId != currentTrackVideoId ||
+            oldParent.currentQueueOccurrenceID != currentQueueOccurrenceID ||
+            oldParent.currentQueueIndex != currentQueueIndex
         let isPlayingChanged = oldParent.isPlaying != isPlaying
         let likedChanged = oldParent.likedVideoIds != likedVideoIds
         let rowHeightChanged = oldParent.rowHeight != rowHeight || oldParent.footerHeight != footerHeight
@@ -276,23 +329,25 @@ struct NativeTrackTableView: NSViewRepresentable {
                     guard row < self.rowItems.count else { return }
                     if case .track(let track, let overallIndex, _, let itemIndex) = self.rowItems[row] {
                         if let trackRow = rowView as? NativeTrackRowView {
-                            trackRow.isCurrentTrack = (track.videoId == self.currentTrackVideoId)
+                            trackRow.isCurrentTrack = context.coordinator.isCurrentOccurrence(videoId: track.videoId, index: overallIndex)
                         }
                         if rowView.numberOfColumns > 0, let cellView = rowView.view(atColumn: 0) as? NativeTrackCellView {
-                            let isCurrent = (track.videoId == self.currentTrackVideoId)
-                            let isLiked = self.likedVideoIds.contains(track.videoId)
+                            let isCurrent = context.coordinator.isCurrentOccurrence(videoId: track.videoId, index: overallIndex)
                             let displayIndex = (self.sections.count > 1 && self.sections.contains(where: { $0.title != nil })) ? itemIndex : overallIndex
                             cellView.configure(
                                 track: track,
                                 index: displayIndex,
                                 isCurrentTrack: isCurrent,
                                 isPlaying: isCurrent && self.isPlaying,
-                                isLiked: isLiked,
                                 hideAlbum: self.hideAlbumColumn,
                                 showAlbumInSubtitle: self.showAlbumInSubtitle,
                                 isReorderable: self.isReorderable,
                                 rowHeight: self.rowHeight
                             )
+                            cellView.updateCreditFocus(cellView.containsKeyboardFocus)
+                            let hovered = (tableView as? NativeTrackTableViewInternal)?.hoveredRowIndex == row
+                            cellView.updateHover(isHovered: hovered)
+                            cellView.updateSelection(isSelected: tableView.selectedRow == row)
                         }
                     }
                 }
@@ -320,6 +375,15 @@ struct NativeTrackTableView: NSViewRepresentable {
 
         func update(parent: NativeTrackTableView) {
             self.parent = parent
+        }
+
+        func isCurrentOccurrence(videoId: String, index: Int) -> Bool {
+            guard videoId == parent.currentTrackVideoId else { return false }
+            if let origin = parent.menuOrigin?(index), case .queue(let occurrenceIndex) = origin {
+                guard let currentIndex = parent.currentQueueIndex else { return false }
+                return occurrenceIndex == currentIndex
+            }
+            return true
         }
 
         @objc func onClipViewBoundsChanged(_ notification: Notification) {
@@ -360,7 +424,14 @@ struct NativeTrackTableView: NSViewRepresentable {
         }
 
         public func tableViewSelectionDidChange(_ notification: Notification) {
-            guard let tableView, tableView.selectedRow >= 0,
+            guard let tableView else { return }
+            tableView.enumerateAvailableRowViews { rowView, row in
+                guard rowView.numberOfColumns > 0,
+                      let cell = rowView.view(atColumn: 0) as? NativeTrackCellView else { return }
+                cell.updateSelection(isSelected: row == tableView.selectedRow)
+                cell.updateHover(isHovered: (tableView as? NativeTrackTableViewInternal)?.hoveredRowIndex == row)
+            }
+            guard tableView.selectedRow >= 0,
                   tableView.selectedRow < parent.rowItems.count else { return }
             if case .track(let track, _, _, _) = parent.rowItems[tableView.selectedRow] {
                 parent.menuContext?.select(track)
@@ -382,14 +453,14 @@ struct NativeTrackTableView: NSViewRepresentable {
             case .footer:
                 return NativeTrackGroupRowView()
 
-            case .track(let track, _, _, _):
+            case .track(let track, let overallIndex, _, _):
                 let identifier = NSUserInterfaceItemIdentifier("NativeTrackRowView")
                 var rowView = tableView.makeView(withIdentifier: identifier, owner: self) as? NativeTrackRowView
                 if rowView == nil {
                     rowView = NativeTrackRowView()
                     rowView?.identifier = identifier
                 }
-                rowView?.isCurrentTrack = (track.videoId == parent.currentTrackVideoId)
+                rowView?.isCurrentTrack = isCurrentOccurrence(videoId: track.videoId, index: overallIndex)
                 if let customTable = tableView as? NativeTrackTableViewInternal {
                     rowView?.isHovered = (row == customTable.hoveredRowIndex)
                 } else {
@@ -420,15 +491,47 @@ struct NativeTrackTableView: NSViewRepresentable {
                     cell?.identifier = identifier
                 }
 
-                let isCurrent = (track.videoId == parent.currentTrackVideoId)
-                let isLiked = parent.likedVideoIds.contains(track.videoId)
+                let isCurrent = isCurrentOccurrence(videoId: track.videoId, index: overallIndex)
                 let isHovered = (tableView as? NativeTrackTableViewInternal)?.hoveredRowIndex == row
 
-                cell?.onLike = { [weak self] t in
-                    self?.parent.onLikeTrack?(t)
+                cell?.onPlay = { [weak self] in
+                    guard let self else { return }
+                    TrackTableInteractionPolicy.dispatchPlayback(for: self.parent.rowItems[row], source: .thumbnailPlay) {
+                        self.play(overallIndex: $0, row: row)
+                    }
                 }
-                cell?.onDislike = { [weak self] t in
-                    self?.parent.onDislikeTrack?(t)
+                cell?.onMenu = { [weak self] button in
+                    guard let self, let menu = self.menuForRow(row) else { return }
+                    menu.popUp(positioning: nil,
+                               at: NSPoint(x: button.bounds.maxX, y: button.bounds.maxY),
+                               in: button)
+                }
+                cell?.onSelectionMouseDown = { [weak self] event in
+                    self?.tableView?.mouseDown(with: event)
+                }
+                cell?.onCreditFocusChanged = { [weak self, weak cell] focused in
+                    guard let self, let cell, let tableView = self.tableView else { return }
+                    if focused {
+                        cell.updateCreditFocus(true)
+                        cell.updateHover(isHovered: (tableView as? NativeTrackTableViewInternal)?.hoveredRowIndex == row)
+                        cell.updateSelection(isSelected: tableView.selectedRow == row)
+                    } else {
+                        Task { @MainActor [weak self, weak cell] in
+                            guard let self, let cell, let tableView = self.tableView else { return }
+                            cell.updateCreditFocus(cell.containsKeyboardFocus)
+                            cell.updateHover(isHovered: (tableView as? NativeTrackTableViewInternal)?.hoveredRowIndex == row)
+                            cell.updateSelection(isSelected: tableView.selectedRow == row)
+                        }
+                    }
+                }
+                cell?.onArtist = { [weak self] track in
+                    guard let self, let router = self.parent.router,
+                          let browseId = track.artistId ?? track.artistRuns.first(where: { $0.id != nil })?.id else { return }
+                    router.navigate(to: .artist(browseId: browseId))
+                }
+                cell?.onAlbum = { [weak self] track in
+                    guard let self, let router = self.parent.router, let browseId = track.albumId else { return }
+                    router.navigate(to: .album(browseId: browseId))
                 }
 
                 let displayIndex = (parent.sections.count > 1 && parent.sections.contains(where: { $0.title != nil })) ? itemIndex : overallIndex
@@ -438,13 +541,14 @@ struct NativeTrackTableView: NSViewRepresentable {
                     index: displayIndex,
                     isCurrentTrack: isCurrent,
                     isPlaying: isCurrent && parent.isPlaying,
-                    isLiked: isLiked,
                     hideAlbum: parent.hideAlbumColumn,
                     showAlbumInSubtitle: parent.showAlbumInSubtitle,
                     isReorderable: parent.isReorderable,
                     rowHeight: parent.rowHeight
                 )
+                cell?.updateCreditFocus(cell?.containsKeyboardFocus == true)
                 cell?.updateHover(isHovered: isHovered)
+                cell?.updateSelection(isSelected: tableView.selectedRow == row)
 
                 // Centinela de paginación predictiva (15 items antes del final)
                 if overallIndex >= parent.tracks.count - 15 {
@@ -539,22 +643,27 @@ struct NativeTrackTableView: NSViewRepresentable {
 
         // MARK: - Actions
 
-        @objc func onTableRowDoubleClicked(_ sender: NSTableView) {
+        @objc func onTableRowClicked(_ sender: NSTableView) {
+            guard TrackTableInteractionPolicy.isSingleClick(clickCount: NSApp.currentEvent?.clickCount) else { return }
             let clickedRow = sender.clickedRow
             guard clickedRow >= 0 && clickedRow < parent.rowItems.count else { return }
-            if case .track(let track, let overallIndex, _, _) = parent.rowItems[clickedRow] {
-                parent.menuContext?.select(track)
-                parent.onPlayTrack(overallIndex)
-            }
+            let modifiers = NSApp.currentEvent?.modifierFlags ?? []
+            let selectionGesture = modifiers.contains(.command) || modifiers.contains(.shift) || modifiers.contains(.control)
+            TrackTableInteractionPolicy.dispatchPlayback(
+                for: parent.rowItems[clickedRow], source: .row, isSelectionGesture: selectionGesture
+            ) { self.play(overallIndex: $0, row: clickedRow) }
         }
 
-        @objc func onTableRowClicked(_ sender: NSTableView) {
-            let clickedRow = sender.clickedRow
-            guard clickedRow >= 0 && clickedRow < parent.rowItems.count else { return }
-            if case .track(let track, let overallIndex, _, _) = parent.rowItems[clickedRow] {
-                parent.menuContext?.select(track)
-                parent.onPlayTrack(overallIndex)
+        private func play(overallIndex: Int, row: Int) {
+            guard parent.rowItems.indices.contains(row),
+                  case .track(let track, _, _, _) = parent.rowItems[row] else { return }
+            tableView?.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+            if let event = NSApp.currentEvent, event.type == .leftMouseDown || event.type == .leftMouseUp {
+                // A mouse press does not leave the floating Play focused after leaving the row.
+                tableView?.window?.makeFirstResponder(tableView)
             }
+            parent.menuContext?.select(track)
+            parent.onPlayTrack(overallIndex)
         }
 
         deinit {
@@ -780,31 +889,36 @@ final class NativeTrackRowView: NSTableRowView {
 final class NativeTrackCellView: NSTableCellView {
     private let indexLabel = NSTextField(labelWithString: "")
     private let playingIconView = NSImageView()
-    private let artworkImageView = NSImageView()
-    private let titleLabel = NSTextField(labelWithString: "")
-    private let subtitleLabel = NSTextField(labelWithString: "")
-    private let albumLabel = NSTextField(labelWithString: "")
+    let artworkImageView = NativeTrackActionImageView(frame: .zero)
+    let titleLabel = NativeTrackActionField(frame: .zero)
+    private let subtitleLabel = NativeTrackCreditField(frame: .zero)
+    private let albumLabel = NativeTrackCreditField(frame: .zero)
     private let durationLabel = NSTextField(labelWithString: "")
     private let reorderHandleImageView = NSImageView()
     
-    private let likeButton = NSButton()
-    private let dislikeButton = NSButton()
+    private let thumbnailPlayButton = HomeFocusTrackingButton()
+    private let menuButton = HomeFocusTrackingButton()
 
     private var currentVideoId: String?
     private var imageFetchTask: Task<Void, Never>?
     private var boundTrack: SongItemRecord?
     private var isReorderable: Bool = false
-    private var isLiked: Bool = false
-
-    var onLike: ((SongItemRecord) -> Void)?
-    var onDislike: ((SongItemRecord) -> Void)?
+    private var isPointerHovered = false
+    private var isRowSelected = false
+    private var isCreditFocused = false
+    var onPlay: (() -> Void)?
+    var onMenu: ((NSButton) -> Void)?
+    var onArtist: ((SongItemRecord) -> Void)?
+    var onAlbum: ((SongItemRecord) -> Void)?
+    var onSelectionMouseDown: ((NSEvent) -> Void)?
+    var onCreditFocusChanged: ((Bool) -> Void)?
 
     private var artworkWidthConstraint: NSLayoutConstraint?
     private var artworkHeightConstraint: NSLayoutConstraint?
-    private var likeButtonWidthConstraint: NSLayoutConstraint?
-    private var likeButtonHeightConstraint: NSLayoutConstraint?
-    private var dislikeButtonWidthConstraint: NSLayoutConstraint?
-    private var dislikeButtonHeightConstraint: NSLayoutConstraint?
+    private var thumbnailPlayWidthConstraint: NSLayoutConstraint?
+    private var thumbnailPlayHeightConstraint: NSLayoutConstraint?
+    private var menuButtonWidthConstraint: NSLayoutConstraint?
+    private var menuButtonHeightConstraint: NSLayoutConstraint?
     private var reorderHandleWidthConstraint: NSLayoutConstraint?
     private var reorderHandleHeightConstraint: NSLayoutConstraint?
     private var playingIconWidthConstraint: NSLayoutConstraint?
@@ -813,6 +927,8 @@ final class NativeTrackCellView: NSTableCellView {
     private var titleTrailingNoAlbum: NSLayoutConstraint?
     private var subtitleTrailingWithAlbum: NSLayoutConstraint?
     private var subtitleTrailingNoAlbum: NSLayoutConstraint?
+    private var subtitleTrailingInlineAlbum: NSLayoutConstraint?
+    private var inlineAlbumLeading: NSLayoutConstraint?
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -831,10 +947,13 @@ final class NativeTrackCellView: NSTableCellView {
         currentVideoId = nil
         boundTrack = nil
         artworkImageView.image = nil
-        likeButton.alphaValue = 0.0
-        dislikeButton.alphaValue = 0.0
+        thumbnailPlayButton.isHidden = true
+        menuButton.isHidden = true
         reorderHandleImageView.isHidden = true
         durationLabel.isHidden = false
+        isPointerHovered = false
+        isRowSelected = false
+        isCreditFocused = false
     }
 
     private func setupViews() {
@@ -853,25 +972,35 @@ final class NativeTrackCellView: NSTableCellView {
         playingIconView.isHidden = true
         addSubview(playingIconView)
 
-        let playW = playingIconView.widthAnchor.constraint(equalToConstant: 14)
-        let playH = playingIconView.heightAnchor.constraint(equalToConstant: 14)
-        self.playingIconWidthConstraint = playW
-        self.playingIconHeightConstraint = playH
+        let playingW = playingIconView.widthAnchor.constraint(equalToConstant: 14)
+        let playingH = playingIconView.heightAnchor.constraint(equalToConstant: 14)
+        self.playingIconWidthConstraint = playingW
+        self.playingIconHeightConstraint = playingH
 
         // 2. Artwork (Dinámico: 36x36, 40x40 o 48x48)
         artworkImageView.wantsLayer = true
-        artworkImageView.layer?.cornerRadius = 8
+        artworkImageView.layer?.cornerRadius = AppTheme.artworkThumbnailRadius
         artworkImageView.layer?.masksToBounds = true
         artworkImageView.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.08).cgColor
         artworkImageView.imageScaling = .scaleProportionallyUpOrDown
         artworkImageView.translatesAutoresizingMaskIntoConstraints = false
+        artworkImageView.onActivate = { [weak self] in self?.performArtworkAction() }
+        artworkImageView.onSelectionMouseDown = { [weak self] in self?.onSelectionMouseDown?($0) }
         addSubview(artworkImageView)
 
         // 3. Título y Subtítulo
+        for field in [titleLabel, subtitleLabel, albumLabel] {
+            field.isEditable = false
+            field.isSelectable = false
+            field.isBezeled = false
+            field.drawsBackground = false
+        }
         titleLabel.font = .systemFont(ofSize: 14, weight: .medium)
         titleLabel.lineBreakMode = .byTruncatingTail
         titleLabel.maximumNumberOfLines = 1
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
+        titleLabel.onActivate = { [weak self] in self?.performTitleAction() }
+        titleLabel.onSelectionMouseDown = { [weak self] in self?.onSelectionMouseDown?($0) }
         addSubview(titleLabel)
 
         subtitleLabel.font = .systemFont(ofSize: 12, weight: .regular)
@@ -879,6 +1008,11 @@ final class NativeTrackCellView: NSTableCellView {
         subtitleLabel.lineBreakMode = .byTruncatingTail
         subtitleLabel.maximumNumberOfLines = 1
         subtitleLabel.translatesAutoresizingMaskIntoConstraints = false
+        subtitleLabel.onSelectionMouseDown = { [weak self] in self?.onSelectionMouseDown?($0) }
+        subtitleLabel.onFocusChanged = { [weak self] in
+            self?.isCreditFocused = $0
+            self?.onCreditFocusChanged?($0)
+        }
         addSubview(subtitleLabel)
 
         // 4. Álbum (Columna separada opcional para vistas de Playlist/Álbum)
@@ -887,44 +1021,63 @@ final class NativeTrackCellView: NSTableCellView {
         albumLabel.lineBreakMode = .byTruncatingTail
         albumLabel.maximumNumberOfLines = 1
         albumLabel.translatesAutoresizingMaskIntoConstraints = false
+        albumLabel.onSelectionMouseDown = { [weak self] in self?.onSelectionMouseDown?($0) }
+        albumLabel.onFocusChanged = { [weak self] in
+            self?.isCreditFocused = $0
+            self?.onCreditFocusChanged?($0)
+        }
         addSubview(albumLabel)
 
-        // 5. Botones Interactivos Like & Dislike
-        dislikeButton.bezelStyle = .regularSquare
-        dislikeButton.isBordered = false
-        dislikeButton.imagePosition = .imageOnly
-        dislikeButton.imageScaling = .scaleProportionallyDown
-        dislikeButton.image = NSImage(systemSymbolName: "hand.thumbsdown", accessibilityDescription: "No me gusta (quitar de la cola)")
-        dislikeButton.contentTintColor = NSColor.white.withAlphaComponent(0.65)
-        dislikeButton.alphaValue = 0.0
-        dislikeButton.target = self
-        dislikeButton.action = #selector(onDislikeClicked)
-        dislikeButton.toolTip = "No me gusta (quitar de la cola)"
-        dislikeButton.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(dislikeButton)
+        // 5. El play queda centrado en la miniatura; el menú ocupa el extremo derecho.
+        thumbnailPlayButton.bezelStyle = .regularSquare
+        thumbnailPlayButton.isBordered = false
+        thumbnailPlayButton.imagePosition = .imageOnly
+        thumbnailPlayButton.imageScaling = .scaleProportionallyDown
+        thumbnailPlayButton.image = NSImage(systemSymbolName: "play.fill", accessibilityDescription: "Reproducir canción")
+        thumbnailPlayButton.contentTintColor = .white
+        thumbnailPlayButton.wantsLayer = true
+        thumbnailPlayButton.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.58).cgColor
+        thumbnailPlayButton.layer?.cornerRadius = 7
+        thumbnailPlayButton.isHidden = true
+        thumbnailPlayButton.target = self
+        thumbnailPlayButton.action = #selector(onThumbnailPlayClicked)
+        thumbnailPlayButton.setAccessibilityLabel("Reproducir canción")
+        thumbnailPlayButton.identifier = NSUserInterfaceItemIdentifier("NativeTrackThumbnailPlay")
+        thumbnailPlayButton.translatesAutoresizingMaskIntoConstraints = false
+        for button in [thumbnailPlayButton, menuButton] {
+            button.onFocusChanged = { [weak self] in
+                Task { @MainActor [weak self] in
+                    await Task.yield()
+                    guard let self else { return }
+                    self.updateCreditFocus(self.containsKeyboardFocus)
+                }
+            }
+        }
+        addSubview(thumbnailPlayButton)
 
-        let dislikeW = dislikeButton.widthAnchor.constraint(equalToConstant: 22)
-        let dislikeH = dislikeButton.heightAnchor.constraint(equalToConstant: 22)
-        self.dislikeButtonWidthConstraint = dislikeW
-        self.dislikeButtonHeightConstraint = dislikeH
+        let thumbnailPlayW = thumbnailPlayButton.widthAnchor.constraint(equalToConstant: 28)
+        let thumbnailPlayH = thumbnailPlayButton.heightAnchor.constraint(equalToConstant: 28)
+        thumbnailPlayWidthConstraint = thumbnailPlayW
+        thumbnailPlayHeightConstraint = thumbnailPlayH
 
-        likeButton.bezelStyle = .regularSquare
-        likeButton.isBordered = false
-        likeButton.imagePosition = .imageOnly
-        likeButton.imageScaling = .scaleProportionallyDown
-        likeButton.image = NSImage(systemSymbolName: "heart", accessibilityDescription: "Me gusta")
-        likeButton.contentTintColor = NSColor.white.withAlphaComponent(0.65)
-        likeButton.alphaValue = 0.0
-        likeButton.target = self
-        likeButton.action = #selector(onLikeClicked)
-        likeButton.toolTip = "Me gusta"
-        likeButton.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(likeButton)
+        menuButton.bezelStyle = .regularSquare
+        menuButton.isBordered = false
+        menuButton.imagePosition = .imageOnly
+        menuButton.imageScaling = .scaleProportionallyDown
+        menuButton.image = NSImage(systemSymbolName: "ellipsis", accessibilityDescription: "Más opciones")
+        menuButton.contentTintColor = NSColor.white.withAlphaComponent(0.78)
+        menuButton.isHidden = true
+        menuButton.target = self
+        menuButton.action = #selector(onMenuClicked)
+        menuButton.setAccessibilityLabel("Más opciones de la canción")
+        menuButton.identifier = NSUserInterfaceItemIdentifier("NativeTrackMenu")
+        menuButton.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(menuButton)
 
-        let likeW = likeButton.widthAnchor.constraint(equalToConstant: 22)
-        let likeH = likeButton.heightAnchor.constraint(equalToConstant: 22)
-        self.likeButtonWidthConstraint = likeW
-        self.likeButtonHeightConstraint = likeH
+        let menuW = menuButton.widthAnchor.constraint(equalToConstant: 24)
+        let menuH = menuButton.heightAnchor.constraint(equalToConstant: 22)
+        menuButtonWidthConstraint = menuW
+        menuButtonHeightConstraint = menuH
 
         // 6. Duración y Grip Handle de Reordenamiento
         durationLabel.font = .systemFont(ofSize: 12, weight: .regular)
@@ -953,14 +1106,18 @@ final class NativeTrackCellView: NSTableCellView {
 
         // Constraints condicionales para cuando hay columna de álbum separada vs compacta
         let tWithAlbum = titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: albumLabel.leadingAnchor, constant: -14)
-        let tNoAlbum = titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: dislikeButton.leadingAnchor, constant: -12)
+        let tNoAlbum = titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: menuButton.leadingAnchor, constant: -12)
         let sWithAlbum = subtitleLabel.trailingAnchor.constraint(lessThanOrEqualTo: albumLabel.leadingAnchor, constant: -14)
-        let sNoAlbum = subtitleLabel.trailingAnchor.constraint(lessThanOrEqualTo: dislikeButton.leadingAnchor, constant: -12)
+        let sNoAlbum = subtitleLabel.trailingAnchor.constraint(lessThanOrEqualTo: menuButton.leadingAnchor, constant: -12)
+        let sInlineAlbum = subtitleLabel.trailingAnchor.constraint(lessThanOrEqualTo: albumLabel.leadingAnchor, constant: -4)
+        let inlineAlbumStart = albumLabel.leadingAnchor.constraint(equalTo: subtitleLabel.trailingAnchor, constant: 6)
 
         self.titleTrailingWithAlbum = tWithAlbum
         self.titleTrailingNoAlbum = tNoAlbum
         self.subtitleTrailingWithAlbum = sWithAlbum
         self.subtitleTrailingNoAlbum = sNoAlbum
+        self.subtitleTrailingInlineAlbum = sInlineAlbum
+        self.inlineAlbumLeading = inlineAlbumStart
 
         NSLayoutConstraint.activate([
             // Índice
@@ -970,14 +1127,18 @@ final class NativeTrackCellView: NSTableCellView {
 
             playingIconView.centerXAnchor.constraint(equalTo: indexLabel.centerXAnchor),
             playingIconView.centerYAnchor.constraint(equalTo: indexLabel.centerYAnchor),
-            playW,
-            playH,
+            playingW,
+            playingH,
 
             // Artwork
             artworkImageView.leadingAnchor.constraint(equalTo: indexLabel.trailingAnchor, constant: 10),
             artworkImageView.centerYAnchor.constraint(equalTo: centerYAnchor),
             artW,
             artH,
+            thumbnailPlayButton.centerXAnchor.constraint(equalTo: artworkImageView.centerXAnchor),
+            thumbnailPlayButton.centerYAnchor.constraint(equalTo: artworkImageView.centerYAnchor),
+            thumbnailPlayW,
+            thumbnailPlayH,
 
             // Título
             titleLabel.leadingAnchor.constraint(equalTo: artworkImageView.trailingAnchor, constant: 12),
@@ -988,24 +1149,17 @@ final class NativeTrackCellView: NSTableCellView {
             subtitleLabel.topAnchor.constraint(equalTo: centerYAnchor, constant: 1.5),
 
             // Álbum separado (opcional)
-            albumLabel.trailingAnchor.constraint(equalTo: dislikeButton.leadingAnchor, constant: -16),
+            albumLabel.trailingAnchor.constraint(equalTo: durationLabel.leadingAnchor, constant: -12),
             albumLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
             albumLabel.widthAnchor.constraint(lessThanOrEqualToConstant: 160),
 
-            // Botón Dislike
-            dislikeButton.trailingAnchor.constraint(equalTo: likeButton.leadingAnchor, constant: -6),
-            dislikeButton.centerYAnchor.constraint(equalTo: centerYAnchor),
-            dislikeW,
-            dislikeH,
-
-            // Botón Like
-            likeButton.trailingAnchor.constraint(equalTo: durationLabel.leadingAnchor, constant: -8),
-            likeButton.centerYAnchor.constraint(equalTo: centerYAnchor),
-            likeW,
-            likeH,
+            menuButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -18),
+            menuButton.topAnchor.constraint(equalTo: topAnchor, constant: 1),
+            menuW,
+            menuH,
 
             // Duración
-            durationLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -18),
+            durationLabel.trailingAnchor.constraint(equalTo: menuButton.leadingAnchor, constant: -8),
             durationLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
             durationLabel.widthAnchor.constraint(equalToConstant: 44),
 
@@ -1021,21 +1175,25 @@ final class NativeTrackCellView: NSTableCellView {
         ])
     }
 
-    @objc private func onLikeClicked() {
-        guard let track = boundTrack else { return }
-        DispatchQueue.main.async { [weak self] in
-            self?.onLike?(track)
-        }
+    @objc private func onThumbnailPlayClicked() {
+        guard TrackTableInteractionPolicy.isSingleClick(clickCount: NSApp.currentEvent?.clickCount) else { return }
+        performThumbnailPlayAction()
+    }
+    @objc private func onMenuClicked() {
+        guard TrackTableInteractionPolicy.isSingleClick(clickCount: NSApp.currentEvent?.clickCount) else { return }
+        performMenuAction()
     }
 
-    @objc private func onDislikeClicked() {
-        guard let track = boundTrack else { return }
-        DispatchQueue.main.async { [weak self] in
-            self?.onDislike?(track)
-        }
-    }
+    func performPrimaryAction() { onPlay?() }
+    func performTitleAction() { performPrimaryAction() }
+    func performArtworkAction() { performPrimaryAction() }
+    func performThumbnailPlayAction() { performPrimaryAction() }
+    func performArtistCreditAction() { if let boundTrack { onArtist?(boundTrack) } else { onPlay?() } }
+    func performAlbumCreditAction() { if let boundTrack { onAlbum?(boundTrack) } else { onPlay?() } }
+    func performMenuAction() { onMenu?(menuButton) }
 
     func updateHover(isHovered: Bool) {
+        isPointerHovered = isHovered
         if isReorderable {
             durationLabel.isHidden = isHovered
             reorderHandleImageView.isHidden = !isHovered
@@ -1044,9 +1202,35 @@ final class NativeTrackCellView: NSTableCellView {
             reorderHandleImageView.isHidden = true
         }
 
-        // Mostrar botones de like y dislike con opacidad suave en hover o si ya tiene like
-        dislikeButton.alphaValue = isHovered ? 0.70 : 0.0
-        likeButton.alphaValue = (isLiked || isHovered) ? 1.0 : 0.0
+        updateHoverControls()
+    }
+
+    func updateSelection(isSelected: Bool) {
+        isRowSelected = isSelected
+        updateHoverControls()
+    }
+
+    func updateCreditFocus(_ isFocused: Bool) {
+        isCreditFocused = isFocused
+        updateHoverControls()
+    }
+
+    var containsKeyboardFocus: Bool {
+        var responder = window?.firstResponder
+        while let current = responder {
+            guard let view = current as? NSView else { return false }
+            if view === self { return true }
+            responder = view.superview
+        }
+        return false
+    }
+
+    private func updateHoverControls() {
+        // La selección permanece resaltada en NSTableView, pero no mantiene acciones
+        // flotantes visibles después de que el puntero abandona la fila.
+        let showControls = isPointerHovered || isCreditFocused
+        thumbnailPlayButton.isHidden = !showControls
+        menuButton.isHidden = !showControls
     }
 
     func configure(
@@ -1054,7 +1238,6 @@ final class NativeTrackCellView: NSTableCellView {
         index: Int,
         isCurrentTrack: Bool,
         isPlaying: Bool,
-        isLiked: Bool = false,
         hideAlbum: Bool = false,
         showAlbumInSubtitle: Bool = false,
         isReorderable: Bool = false,
@@ -1063,7 +1246,13 @@ final class NativeTrackCellView: NSTableCellView {
         self.boundTrack = track
         self.currentVideoId = track.videoId
         self.isReorderable = isReorderable
-        self.isLiked = isLiked
+        let artistDestination = track.artistId ?? track.artistRuns.first(where: { $0.id != nil })?.id
+        subtitleLabel.configureLink(label: track.displayArtist, destinationExists: artistDestination != nil) { [weak self] in
+            self?.performArtistCreditAction()
+        } fallback: { [weak self] in self?.performPrimaryAction() }
+        albumLabel.configureLink(label: track.displayAlbum ?? "Álbum", destinationExists: track.albumId != nil) { [weak self] in
+            self?.performAlbumCreditAction()
+        } fallback: { [weak self] in self?.performPrimaryAction() }
 
         let isCompact = rowHeight <= 48.0
         let isLarge = rowHeight >= 60.0
@@ -1093,26 +1282,36 @@ final class NativeTrackCellView: NSTableCellView {
         // 2. Metadatos
         titleLabel.stringValue = track.title
 
-        if showAlbumInSubtitle, let album = track.displayAlbum, !album.isEmpty {
-            subtitleLabel.stringValue = "\(track.displayArtist) • \(album)"
-        } else {
-            subtitleLabel.stringValue = track.displayArtist
-        }
         subtitleLabel.font = .systemFont(ofSize: subtitleFontSize, weight: .regular)
 
-        let usesSeparateAlbum = !hideAlbum && !showAlbumInSubtitle
-        albumLabel.stringValue = usesSeparateAlbum ? (track.displayAlbum ?? "") : ""
+        let albumName = track.displayAlbum?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let hasAlbumName = albumName?.isEmpty == false
+        let usesSeparateAlbum = !hideAlbum && !showAlbumInSubtitle && hasAlbumName
+        let usesInlineAlbum = showAlbumInSubtitle && hasAlbumName
+        let showsAlbum = usesSeparateAlbum || usesInlineAlbum
+        albumLabel.stringValue = showsAlbum ? "\(usesInlineAlbum ? "• " : "")\(albumName ?? "")" : ""
         albumLabel.font = .systemFont(ofSize: subtitleFontSize, weight: .regular)
-        albumLabel.isHidden = !usesSeparateAlbum
+        albumLabel.isHidden = !showsAlbum
+        inlineAlbumLeading?.isActive = usesInlineAlbum
+        subtitleLabel.setAccessibilityLabel(track.displayArtist)
+        albumLabel.setAccessibilityLabel(albumName ?? "Álbum")
 
         if usesSeparateAlbum {
             titleTrailingNoAlbum?.isActive = false
             subtitleTrailingNoAlbum?.isActive = false
             titleTrailingWithAlbum?.isActive = true
             subtitleTrailingWithAlbum?.isActive = true
+            subtitleTrailingInlineAlbum?.isActive = false
+        } else if usesInlineAlbum {
+            titleTrailingNoAlbum?.isActive = false
+            subtitleTrailingNoAlbum?.isActive = false
+            titleTrailingWithAlbum?.isActive = true
+            subtitleTrailingWithAlbum?.isActive = false
+            subtitleTrailingInlineAlbum?.isActive = true
         } else {
             titleTrailingWithAlbum?.isActive = false
             subtitleTrailingWithAlbum?.isActive = false
+            subtitleTrailingInlineAlbum?.isActive = false
             titleTrailingNoAlbum?.isActive = true
             subtitleTrailingNoAlbum?.isActive = true
         }
@@ -1120,24 +1319,8 @@ final class NativeTrackCellView: NSTableCellView {
         durationLabel.stringValue = track.duration ?? ""
         durationLabel.font = .systemFont(ofSize: subtitleFontSize, weight: .regular)
 
-        // 3. Botones Like & Dislike adaptativos
-        let buttonSize: CGFloat = isCompact ? 18.0 : (isLarge ? 22.0 : 20.0)
-        likeButtonWidthConstraint?.constant = buttonSize
-        likeButtonHeightConstraint?.constant = buttonSize
-        dislikeButtonWidthConstraint?.constant = buttonSize
-        dislikeButtonHeightConstraint?.constant = buttonSize
-
-        let buttonSymbolPtSize: CGFloat = isCompact ? 12.0 : (isLarge ? 14.0 : 13.0)
-        let buttonSymbolConfig = NSImage.SymbolConfiguration(pointSize: buttonSymbolPtSize, weight: .regular)
-
-        let heartSymbol = isLiked ? "heart.fill" : "heart"
-        likeButton.image = NSImage(systemSymbolName: heartSymbol, accessibilityDescription: "Me gusta")?.withSymbolConfiguration(buttonSymbolConfig)
-        likeButton.contentTintColor = isLiked ? .white : NSColor.white.withAlphaComponent(0.65)
-        likeButton.alphaValue = isLiked ? 1.0 : 0.0
-
-        dislikeButton.image = NSImage(systemSymbolName: "hand.thumbsdown", accessibilityDescription: "No me gusta")?.withSymbolConfiguration(buttonSymbolConfig)
-        dislikeButton.contentTintColor = NSColor.white.withAlphaComponent(0.65)
-        dislikeButton.alphaValue = 0.0
+        menuButton.image = NSImage(systemSymbolName: "ellipsis", accessibilityDescription: "Más opciones")?
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: isCompact ? 12 : 13, weight: .semibold))
 
         // Handle de reordenar
         let handleW: CGFloat = isCompact ? 16.0 : 18.0
@@ -1156,11 +1339,17 @@ final class NativeTrackCellView: NSTableCellView {
         let artSize: CGFloat = isLarge ? 48.0 : (isCompact ? 36.0 : 40.0)
         artworkWidthConstraint?.constant = artSize
         artworkHeightConstraint?.constant = artSize
-        artworkImageView.layer?.cornerRadius = isLarge ? 8 : 6
+        thumbnailPlayWidthConstraint?.constant = min(28, artSize - 4)
+        thumbnailPlayHeightConstraint?.constant = min(28, artSize - 4)
+        menuButtonWidthConstraint?.constant = isCompact ? 22 : 24
+        menuButtonHeightConstraint?.constant = isCompact ? 20 : 22
+        artworkImageView.layer?.cornerRadius = AppTheme.artworkThumbnailRadius
 
         // 5. Estado inicial de hover
         durationLabel.isHidden = false
         reorderHandleImageView.isHidden = true
+        thumbnailPlayButton.isHidden = true
+        menuButton.isHidden = true
 
         // 6. Miniatura Desacoplada (0ms de impacto en SwiftUI)
         loadThumbnail(for: track, targetSize: CGSize(width: artSize, height: artSize))
@@ -1189,5 +1378,99 @@ final class NativeTrackCellView: NSTableCellView {
             guard let self, self.currentVideoId == expectedVideoId else { return }
             self.artworkImageView.image = loaded
         }
+    }
+}
+
+/// Texto de crédito que consume su propio clic cuando existe un destino de navegación.
+class NativeTrackActionField: NSTextField {
+    var onActivate: (() -> Void)?
+    var onSelectionMouseDown: ((NSEvent) -> Void)?
+
+    override func mouseDown(with event: NSEvent) {
+        guard TrackTableInteractionPolicy.isSingleClick(clickCount: event.clickCount) else { return }
+        let selectionModifiers: NSEvent.ModifierFlags = [.command, .shift, .control]
+        if !event.modifierFlags.intersection(selectionModifiers).isEmpty {
+            if let onSelectionMouseDown { onSelectionMouseDown(event) }
+            else { super.mouseDown(with: event) }
+            return
+        }
+        if let onActivate { onActivate() }
+        else { super.mouseDown(with: event) }
+    }
+}
+
+final class NativeTrackCreditField: NativeTrackActionField, PlaybackSpaceControl {
+    private var linkAction: (() -> Void)?
+    private var fallbackAction: (() -> Void)?
+    var onFocusChanged: ((Bool) -> Void)?
+
+    func configureLink(
+        label: String,
+        destinationExists: Bool,
+        action: @escaping () -> Void,
+        fallback: @escaping () -> Void
+    ) {
+        stringValue = label
+        linkAction = destinationExists ? action : nil
+        fallbackAction = fallback
+        onActivate = { [weak self] in self?.activateCredit() }
+        setAccessibilityLabel(label)
+        if destinationExists {
+            setAccessibilityRole(.link)
+            focusRingType = .exterior
+        } else {
+            setAccessibilityRole(.staticText)
+            focusRingType = .none
+        }
+    }
+
+    override var acceptsFirstResponder: Bool { linkAction != nil }
+
+    override func becomeFirstResponder() -> Bool {
+        let becameFirstResponder = super.becomeFirstResponder()
+        if becameFirstResponder { onFocusChanged?(true) }
+        return becameFirstResponder
+    }
+
+    override func resignFirstResponder() -> Bool {
+        let resigned = super.resignFirstResponder()
+        if resigned { onFocusChanged?(false) }
+        return resigned
+    }
+
+    override func keyDown(with event: NSEvent) {
+        if linkAction != nil && (event.keyCode == 36 || event.keyCode == 49) {
+            activateCredit()
+        } else {
+            super.keyDown(with: event)
+        }
+    }
+
+    override func accessibilityPerformPress() -> Bool {
+        guard linkAction != nil else { return false }
+        activateCredit()
+        return true
+    }
+
+    private func activateCredit() {
+        if let linkAction { linkAction() }
+        else { fallbackAction?() }
+    }
+}
+
+final class NativeTrackActionImageView: NSImageView {
+    var onActivate: (() -> Void)?
+    var onSelectionMouseDown: ((NSEvent) -> Void)?
+
+    override func mouseDown(with event: NSEvent) {
+        guard TrackTableInteractionPolicy.isSingleClick(clickCount: event.clickCount) else { return }
+        let selectionModifiers: NSEvent.ModifierFlags = [.command, .shift, .control]
+        if !event.modifierFlags.intersection(selectionModifiers).isEmpty {
+            if let onSelectionMouseDown { onSelectionMouseDown(event) }
+            else { super.mouseDown(with: event) }
+            return
+        }
+        if let onActivate { onActivate() }
+        else { super.mouseDown(with: event) }
     }
 }

@@ -114,13 +114,17 @@ struct HistoryView: View {
                     rustCore: rustCore,
                     likedVideoIds: playerViewModel.likedVideoIds,
                     onPlayTrack: { index in
-                        playerViewModel.queueManager.replaceQueue(
-                            with: allHistoryTracks,
-                            startingAt: index,
-                            context: .custom(title: "Historial"),
-                            contextTitle: "Historial"
+                        if playerViewModel.queueManager.context == .custom(title: "Historial"),
+                           playerViewModel.queueManager.queue == allHistoryTracks,
+                           playerViewModel.queueManager.currentIndex == index {
+                            playerViewModel.togglePlayPause()
+                            return
+                        }
+                        playerViewModel.playCollection(
+                            tracks: allHistoryTracks,
+                            title: "Historial",
+                            startingAt: index
                         )
-                        playerViewModel.playQueueIndex(index)
                     },
                     onLikeTrack: { track in
                         playerViewModel.toggleTrackLike(track)

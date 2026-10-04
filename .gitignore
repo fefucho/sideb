@@ -45,3 +45,6 @@ Updates/
 **/.env
 **/.env.*
 !**/.env.example
+
+# Builds locales numeradas: conservar en disco, no subir binarios ni logs
+/builds/

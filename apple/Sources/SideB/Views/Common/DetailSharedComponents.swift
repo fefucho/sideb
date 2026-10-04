@@ -3,7 +3,7 @@ import SwiftUI
 /// Placeholder para carátulas o avatares de colecciones y álbumes cuando aún no cargan o fallan.
 struct DetailArtworkPlaceholder: View {
     var size: CGFloat = 180
-    var cornerRadius: CGFloat = 10
+    var cornerRadius: CGFloat = AppTheme.artworkHeroRadius
     var iconSize: CGFloat = 48
     var systemImageName: String = "music.note"
 
@@ -24,7 +24,7 @@ struct DetailArtworkPlaceholder: View {
 struct DetailLoadingHeaderView: View {
     var body: some View {
         HStack(alignment: .top, spacing: 24) {
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
+            RoundedRectangle(cornerRadius: AppTheme.artworkHeroRadius, style: .continuous)
                 .fill(Color.secondary.opacity(0.12))
                 .frame(width: 180, height: 180)
 

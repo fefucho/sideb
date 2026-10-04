@@ -13,20 +13,6 @@ final class MenuActionExecutor {
     private weak var router: NavigationRouter?
     private let core: SideBCore?
 
-    private enum PlaylistLoadError: LocalizedError {
-        case repeatedContinuation
-        case tooManyPages
-
-        var errorDescription: String? {
-            switch self {
-            case .repeatedContinuation:
-                return "La playlist devolvió una página repetida. No se modificó la cola."
-            case .tooManyPages:
-                return "La playlist tiene demasiadas páginas para completar esta acción. No se modificó la cola."
-            }
-        }
-    }
-
     init(
         player: PlayerViewModel?,
         router: NavigationRouter?,
@@ -121,10 +107,12 @@ final class MenuActionExecutor {
         case .song(let song):
             player.playWithRadio(song)
         case .album(let browseId, _, _, _, _, _):
+            let queueToken = player.queueManager.queueToken
             Task {
                 guard let core, let album = try? await core.getAlbum(browseId: browseId), !album.items.isEmpty else {
                     return
                 }
+                guard !Task.isCancelled, player.queueManager.queueToken == queueToken else { return }
                 player.playAlbum(
                     browseId: album.browseId,
                     title: album.title,
@@ -135,10 +123,13 @@ final class MenuActionExecutor {
             }
         case .playlist(let id, _, _, _, _):
             let canonicalId = MenuIDNormalizer.canonicalPlaylistId(id)
+            let queueToken = player.queueManager.queueToken
             Task {
-                guard let core, let pl = try? await core.getPlaylist(playlistId: canonicalId), !pl.items.isEmpty else {
-                    return
-                }
+                guard let core else { return }
+                let pl: PlaylistDetailRecord
+                do { pl = try await PlaylistCatalog.shared.load(id: canonicalId, core: core) }
+                catch { return }
+                guard !Task.isCancelled, player.queueManager.queueToken == queueToken, !pl.items.isEmpty else { return }
                 player.playPlaylist(
                     browseId: pl.id,
                     title: pl.title,
@@ -166,33 +157,37 @@ final class MenuActionExecutor {
         case .song:
             break
         case .album(let browseId, _, _, _, _, _):
+            let queueToken = player.queueManager.queueToken
             Task {
                 guard let core, let album = try? await core.getAlbum(browseId: browseId), !album.items.isEmpty else {
                     return
                 }
+                guard !Task.isCancelled, player.queueManager.queueToken == queueToken else { return }
                 player.playAlbum(
                     browseId: album.browseId,
                     title: album.title,
-                    tracks: album.items.shuffled(),
+                    tracks: album.items,
                     startingAt: 0,
-                    artistBrowseId: album.artistId
+                    artistBrowseId: album.artistId,
+                    shuffle: true
                 )
-                player.queueManager.isShuffle = true
             }
         case .playlist(let id, _, _, _, _):
             let canonicalId = MenuIDNormalizer.canonicalPlaylistId(id)
+            let queueToken = player.queueManager.queueToken
             Task {
                 guard let core else { return }
                 do {
-                    let (playlist, tracks) = try await loadCompletePlaylist(id: canonicalId, core: core)
-                    guard !tracks.isEmpty else { return }
+                    let playlist = try await PlaylistCatalog.shared.load(id: canonicalId, core: core)
+                    guard !Task.isCancelled, player.queueManager.queueToken == queueToken, !playlist.items.isEmpty else { return }
                     player.playPlaylist(
                         browseId: playlist.id,
                         title: playlist.title,
-                        tracks: tracks.shuffled(),
-                        startingAt: 0
+                        tracks: playlist.items,
+                        startingAt: 0,
+                        continuation: playlist.continuation,
+                        shuffle: true
                     )
-                    player.queueManager.isShuffle = true
                 } catch {
                     Self.showErrorAlert(title: "No se pudo reproducir la playlist en aleatorio", detail: error.localizedDescription)
                 }
@@ -208,7 +203,7 @@ final class MenuActionExecutor {
         case .song(let song):
             player.playWithRadio(song)
         case .album(let browseId, let playlistId, let title, _, _, _):
-            let targetId = playlistId ?? browseId
+            let targetId = MenuIDNormalizer.canonicalPlaylistId(playlistId ?? browseId)
             let canonicalId = MenuIDNormalizer.canonicalPlaylistId(targetId)
             player.startRadioForCollection(id: canonicalId, title: title, prefix: "RDAMPL")
         case .playlist(let id, let title, _, _, _):
@@ -233,17 +228,21 @@ final class MenuActionExecutor {
         case .song(let song):
             player.playNext(song: song)
         case .album(let browseId, _, _, _, _, _):
+            let queueToken = player.queueManager.queueToken
             Task {
                 guard let core, let album = try? await core.getAlbum(browseId: browseId) else { return }
+                guard !Task.isCancelled, player.queueManager.queueToken == queueToken else { return }
                 player.playNext(tracks: album.items)
             }
         case .playlist(let id, _, _, _, _):
             let canonicalId = MenuIDNormalizer.canonicalPlaylistId(id)
+            let queueToken = player.queueManager.queueToken
             Task {
                 guard let core else { return }
                 do {
-                    let (_, tracks) = try await loadCompletePlaylist(id: canonicalId, core: core)
-                    player.playNext(tracks: tracks)
+                    let playlist = try await PlaylistCatalog.shared.load(id: canonicalId, core: core)
+                    guard !Task.isCancelled, player.queueManager.queueToken == queueToken else { return }
+                    player.playNext(tracks: playlist.items)
                 } catch {
                     Self.showErrorAlert(title: "No se pudo añadir la playlist a continuación", detail: error.localizedDescription)
                 }
@@ -259,17 +258,21 @@ final class MenuActionExecutor {
         case .song(let song):
             player.addToQueue(song: song)
         case .album(let browseId, _, _, _, _, _):
+            let queueToken = player.queueManager.queueToken
             Task {
                 guard let core, let album = try? await core.getAlbum(browseId: browseId) else { return }
+                guard !Task.isCancelled, player.queueManager.queueToken == queueToken else { return }
                 player.addToQueue(tracks: album.items)
             }
         case .playlist(let id, _, _, _, _):
             let canonicalId = MenuIDNormalizer.canonicalPlaylistId(id)
+            let queueToken = player.queueManager.queueToken
             Task {
                 guard let core else { return }
                 do {
-                    let (_, tracks) = try await loadCompletePlaylist(id: canonicalId, core: core)
-                    player.addToQueue(tracks: tracks)
+                    let playlist = try await PlaylistCatalog.shared.load(id: canonicalId, core: core)
+                    guard !Task.isCancelled, player.queueManager.queueToken == queueToken else { return }
+                    player.addToQueue(tracks: playlist.items)
                 } catch {
                     Self.showErrorAlert(title: "No se pudo añadir la playlist a la cola", detail: error.localizedDescription)
                 }
@@ -277,32 +280,6 @@ final class MenuActionExecutor {
         case .radioMix, .artist:
             break
         }
-    }
-
-    /// Las acciones masivas se ejecutan solo después de obtener la playlist completa.
-    private func loadCompletePlaylist(
-        id: String,
-        core: SideBCore
-    ) async throws -> (PlaylistDetailRecord, [SongItemRecord]) {
-        let playlist = try await core.getPlaylist(playlistId: id)
-        var tracks = playlist.items
-        var continuation = playlist.continuation
-        var seenTokens = Set<String>()
-
-        while let token = continuation, !token.isEmpty {
-            try Task.checkCancellation()
-            guard seenTokens.insert(token).inserted else {
-                throw PlaylistLoadError.repeatedContinuation
-            }
-            guard seenTokens.count <= 500 else {
-                throw PlaylistLoadError.tooManyPages
-            }
-            let page = try await core.getPlaylistContinuation(token: token)
-            tracks.append(contentsOf: page.items)
-            continuation = page.continuation
-        }
-
-        return (playlist, tracks)
     }
 
     // MARK: - Handlers de Colección
@@ -319,6 +296,7 @@ final class MenuActionExecutor {
             Task {
                 do {
                     try await core.applySongLibraryAction(token: token)
+                    PlaylistCatalog.shared.invalidate("LM")
                     NotificationCenter.default.post(name: .sideBSongLibraryChanged, object: nil)
                 } catch {
                     Self.showErrorAlert(
@@ -347,6 +325,7 @@ final class MenuActionExecutor {
             Task {
                 do {
                     try await core.likePlaylist(playlistId: targetId, like: newStatus)
+                    PlaylistCatalog.shared.invalidate(targetId)
                     NotificationCenter.default.post(name: .sideBSongLibraryChanged, object: nil)
                 } catch {
                     // Rollback optimista ante fallo
@@ -381,6 +360,7 @@ final class MenuActionExecutor {
             Task {
                 do {
                     try await core.likePlaylist(playlistId: canonicalId, like: newStatus)
+                    PlaylistCatalog.shared.invalidate(canonicalId)
                 } catch {
                     NotificationCenter.default.post(
                         name: .sideBLibraryPlaylistToggled,
@@ -405,6 +385,7 @@ final class MenuActionExecutor {
         Task {
             do {
                 try await core.addToPlaylist(playlistId: canonicalId, videoId: song.videoId)
+                PlaylistCatalog.shared.invalidate(canonicalId)
                 NotificationCenter.default.post(name: .sideBPlaylistsChanged, object: nil)
             } catch {
                 Self.showErrorAlert(
@@ -491,6 +472,7 @@ final class MenuActionExecutor {
             Task {
                 do {
                     try await core.deletePlaylist(playlistId: canonicalId)
+                    PlaylistCatalog.shared.invalidate(canonicalId)
                     NotificationCenter.default.post(name: .sideBPlaylistsChanged, object: nil)
                     router?.goBack()
                 } catch {

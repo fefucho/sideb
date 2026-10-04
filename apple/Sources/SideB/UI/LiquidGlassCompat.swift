@@ -36,6 +36,9 @@ public extension View {
 // MARK: - CompatGlassModifier
 
 public struct CompatGlassModifier<S: Shape>: ViewModifier {
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.controlActiveState) private var controlActiveState
+
     public let interactive: Bool
     public var tint: Color?
     public let shape: S
@@ -47,7 +50,11 @@ public struct CompatGlassModifier<S: Shape>: ViewModifier {
     }
 
     public func body(content: Content) -> some View {
-        if #available(macOS 26.0, *) {
+        if reduceTransparency {
+            content.background(Color(nsColor: .windowBackgroundColor), in: self.shape)
+        } else if controlActiveState == .inactive {
+            content.background(Color(nsColor: .windowBackgroundColor).opacity(0.94), in: self.shape)
+        } else if #available(macOS 26.0, *) {
             content.glassEffect(self.glass, in: self.shape)
         } else if let tint {
             content
@@ -170,4 +177,29 @@ private struct SidebarVisualEffect: NSViewRepresentable {
     }
 
     func updateNSView(_ view: NSVisualEffectView, context: Context) {}
+}
+
+extension ToolbarContent {
+    /// These items supply their own glass, so the native toolbar must not add
+    /// another shared plate behind them (including when their view is hidden).
+    @ToolbarContentBuilder
+    func compatToolbarBackgroundHidden() -> some ToolbarContent {
+        if #available(macOS 26.0, *) {
+            self.sharedBackgroundVisibility(.hidden)
+        } else {
+            self
+        }
+    }
+}
+
+
+extension View {
+    @ViewBuilder
+    func compatScrollEdgesHidden() -> some View {
+        if #available(macOS 26.0, *) {
+            self.scrollEdgeEffectHidden(true, for: .top)
+        } else {
+            self
+        }
+    }
 }

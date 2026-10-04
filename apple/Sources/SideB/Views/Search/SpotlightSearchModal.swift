@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 import SideBCore
 
 // MARK: - SpotlightSearchModal
@@ -83,6 +84,9 @@ struct SpotlightSearchModal: View {
                 searchViewModel.onQueryChanged(searchViewModel.query, core: rustCore)
             }
         }
+        .onDisappear {
+            searchViewModel.cancelPreview()
+        }
     }
     
     // MARK: - Cabecera de Entrada de Búsqueda
@@ -97,11 +101,16 @@ struct SpotlightSearchModal: View {
                 .font(.system(size: 16, weight: .regular))
                 .textFieldStyle(.plain)
                 .focused($isFieldFocused)
+                .onChange(of: isFieldFocused) { _, isFocused in
+                    if !isFocused { searchViewModel.cancelPreview() }
+                }
                 .onSubmit {
                     commitAndNavigate()
                 }
                 .onChange(of: searchViewModel.query) { _, newText in
-                    searchViewModel.onQueryChanged(newText, core: rustCore)
+                    if isPresented && isFieldFocused {
+                        searchViewModel.onQueryChanged(newText, core: rustCore)
+                    }
                 }
                 .onKeyPress(.escape) {
                     dismiss()
@@ -162,6 +171,11 @@ struct SpotlightSearchModal: View {
                     }
                 } else if searchViewModel.isQuickSearching {
                     searchLoadingPlaceholder
+                } else if let message = searchViewModel.quickErrorMessage {
+                    Label(message, systemImage: "exclamationmark.circle")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 8)
                 } else {
                     noResultsFoundView
                 }
@@ -196,10 +210,22 @@ struct SpotlightSearchModal: View {
             switch category {
             case .topResult:
                 if let hero = results.top.first {
-                    QuickResultCardRow(card: hero, isHero: true) {
-                        handleCardSelected(hero)
+                    let row = QuickResultCardRow(card: hero, isHero: true,
+                        isActive: MediaPlaybackIdentity.isCollectionActive(kind: hero.kind, id: hero.id, context: playerViewModel.queueManager.context),
+                        isPlaying: playerViewModel.isPlaying,
+                        onPlay: { playQuickCard(hero, results: results) },
+                        menuProvider: { quickCardMenu(hero, results: results) }) {
+                        handleCardSelected(hero, results: results)
                     }
-                    .browseCardContextMenu(card: hero, player: playerViewModel, router: router, core: rustCore, origin: .search)
+                    if hero.kind.lowercased() == "song" {
+                        row.songContextMenu(song: searchViewModel.song(for: hero, in: results), player: playerViewModel, router: router, core: rustCore, origin: .search)
+                    } else {
+                        row.browseCardContextMenu(card: hero, player: playerViewModel, router: router, core: rustCore, origin: .search)
+                    }
+                    ForEach(searchViewModel.relatedSongs(for: results), id: \.videoId) { song in
+                        quickSongRow(song)
+                        .songContextMenu(song: song, player: playerViewModel, router: router, core: rustCore, origin: .search)
+                    }
                 }
                 
             case .artists:
@@ -214,16 +240,17 @@ struct SpotlightSearchModal: View {
                 
             case .songs:
                 ForEach(Array(results.songs.prefix(8)), id: \.videoId) { song in
-                    QuickResultSongRow(song: song) {
-                        playerViewModel.playWithRadio(song)
-                        dismiss()
-                    }
+                    quickSongRow(song)
                     .songContextMenu(song: song, player: playerViewModel, router: router, core: rustCore, origin: .search)
                 }
                 
             case .albums:
                 ForEach(Array(results.albums.prefix(5)), id: \.id) { album in
-                    QuickResultCardRow(card: album) {
+                    QuickResultCardRow(card: album,
+                        isActive: MediaPlaybackIdentity.isCollectionActive(kind: album.kind, id: album.id, context: playerViewModel.queueManager.context),
+                        isPlaying: playerViewModel.isPlaying,
+                        onPlay: { playerViewModel.activateMediaCollection(id: album.id, kind: album.kind) },
+                        menuProvider: { quickCardMenu(album, results: results) }) {
                         playerViewModel.dismissFullscreen()
                         dismiss()
                         router.navigate(to: .album(browseId: album.id))
@@ -233,7 +260,11 @@ struct SpotlightSearchModal: View {
                 
             case .playlists:
                 ForEach(Array(results.playlists.prefix(5)), id: \.id) { pl in
-                    QuickResultCardRow(card: pl) {
+                    QuickResultCardRow(card: pl,
+                        isActive: MediaPlaybackIdentity.isCollectionActive(kind: pl.kind, id: pl.id, context: playerViewModel.queueManager.context),
+                        isPlaying: playerViewModel.isPlaying,
+                        onPlay: { playerViewModel.activateMediaCollection(id: pl.id, kind: pl.kind) },
+                        menuProvider: { quickCardMenu(pl, results: results) }) {
                         playerViewModel.dismissFullscreen()
                         dismiss()
                         router.navigate(to: .playlist(browseId: pl.id))
@@ -244,9 +275,57 @@ struct SpotlightSearchModal: View {
         }
     }
     
+    private func quickSongRow(_ song: SongItemRecord) -> some View {
+        let artistID = (song.artistId ?? song.artistRuns.first(where: { $0.id != nil })?.id)
+            .flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0 }
+        let albumID = song.albumId.flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0 }
+        return QuickResultSongRow(song: song,
+            onArtist: artistID.map { id in { openQuickDestination(.artist(browseId: id)) } },
+            onAlbum: albumID.map { id in { openQuickDestination(.album(browseId: id)) } },
+            menuProvider: { AppContextMenuFactory.shared.buildSongNSMenu(song: song, player: playerViewModel,
+                router: router, core: rustCore, origin: .search) }) {
+                playerViewModel.activateMediaRadio(song)
+                dismiss()
+            }
+    }
+
+    private func openQuickDestination(_ destination: PageDestination) {
+        playerViewModel.dismissFullscreen()
+        dismiss()
+        router.navigate(to: destination)
+    }
+
+    private func playQuickCard(_ card: BrowseCardRecord, results: SearchResultsRecord) {
+        if ["song", "video"].contains(card.kind.lowercased()) {
+            playerViewModel.activateMediaRadio(searchViewModel.song(for: card, in: results))
+        } else {
+            playerViewModel.activateMediaCollection(id: card.id, kind: card.kind)
+        }
+    }
+
+    private func quickCardMenu(_ card: BrowseCardRecord, results: SearchResultsRecord) -> NSMenu {
+        switch card.kind.lowercased() {
+        case "song", "video":
+            return AppContextMenuFactory.shared.buildSongNSMenu(song: searchViewModel.song(for: card, in: results),
+                player: playerViewModel, router: router, core: rustCore, origin: .search)
+        case "album":
+            return AppContextMenuFactory.shared.buildAlbumNSMenu(browseId: card.id, playlistId: nil,
+                title: card.title, artist: card.subtitle, thumbnail: card.thumbnail,
+                origin: .search, player: playerViewModel, router: router, core: rustCore)
+        case "artist":
+            return AppContextMenuFactory.shared.buildArtistNSMenu(channelId: card.id, name: card.title,
+                thumbnail: card.thumbnail, radioPlaylistId: nil, origin: .search,
+                player: playerViewModel, router: router, core: rustCore)
+        default:
+            return AppContextMenuFactory.shared.buildPlaylistNSMenu(id: card.id, title: card.title,
+                subtitle: card.subtitle, thumbnail: card.thumbnail, origin: .search,
+                player: playerViewModel, router: router, core: rustCore)
+        }
+    }
+
     // MARK: - Manejo de Clic en Tarjeta Top
     
-    private func handleCardSelected(_ card: BrowseCardRecord) {
+    private func handleCardSelected(_ card: BrowseCardRecord, results: SearchResultsRecord) {
         playerViewModel.dismissFullscreen()
         switch card.kind.lowercased() {
         case "artist":
@@ -258,9 +337,8 @@ struct SpotlightSearchModal: View {
         case "playlist":
             dismiss()
             router.navigate(to: .playlist(browseId: card.id))
-        case "song":
-            let song = SongItemRecord(fromCard: card)
-            playerViewModel.playWithRadio(song)
+        case "song", "video":
+            playerViewModel.activateMediaRadio(searchViewModel.song(for: card, in: results))
             dismiss()
         default:
             dismiss()
@@ -348,7 +426,7 @@ struct SpotlightSearchModal: View {
         VStack(spacing: 12) {
             ForEach(0..<3) { _ in
                 HStack(spacing: 12) {
-                    RoundedRectangle(cornerRadius: 6)
+                    RoundedRectangle(cornerRadius: AppTheme.artworkThumbnailRadius)
                         .fill(Color.white.opacity(0.06))
                         .frame(width: 38, height: 38)
                     
@@ -373,6 +451,7 @@ struct SpotlightSearchModal: View {
     // MARK: - Acciones
     
     private func dismiss() {
+        searchViewModel.cancelPreview()
         withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
             isPresented = false
         }
