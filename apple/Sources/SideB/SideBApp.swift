@@ -141,6 +141,23 @@ struct WindowRootView: View {
     @State private var pendingPlaylistVideoId: String?
     @State private var playlistCreationError: String?
     @State private var menuContext = AppMenuContext()
+    @State private var collectionBackground = CollectionBackgroundController()
+
+    private var collectionBackgroundIdentity: String? {
+        let session = playerViewModel.mediaSessionIdentity.uuidString
+        switch router.currentPage {
+        case .album(let id): return session + ":album:" + id
+        case .playlist(let id): return session + ":playlist:" + id
+        default: return nil
+        }
+    }
+
+    private var pageTopInset: CGFloat {
+        switch router.currentPage {
+        case .home, .album, .playlist: return 0
+        default: return titlebarHeight
+        }
+    }
 
     private var sidebarBinding: Binding<Bool> {
         Binding(get: { isSidebarExpanded }, set: { expanded in
@@ -246,7 +263,8 @@ struct WindowRootView: View {
                                     playlistId: id,
                                     rustCore: rustCore,
                                     playerViewModel: playerViewModel,
-                                    router: router
+                                    router: router,
+                                    topContentInset: titlebarHeight
                                 )
                                 .id(id)
                             case .album(let id):
@@ -254,7 +272,8 @@ struct WindowRootView: View {
                                     browseId: id,
                                     rustCore: rustCore,
                                     playerViewModel: playerViewModel,
-                                    router: router
+                                    router: router,
+                                    topContentInset: titlebarHeight
                                 )
                                 .id(id)
                             case .artist(let id):
@@ -314,7 +333,7 @@ struct WindowRootView: View {
                                 )
                             }
                         }
-                        .padding(.top, router.currentPage == .home ? 0 : titlebarHeight)
+                        .padding(.top, pageTopInset)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
 
                     }
@@ -414,11 +433,18 @@ struct WindowRootView: View {
             .allowsHitTesting(false)
         }
         .background {
-            if router.currentPage == .home {
-                HomeAmbientBackground(thumbnails: homeViewModel.featured.ambientThumbnails,
-                                      sessionRevision: homeSessionRevision)
-            } else {
-                Color.sidebDarkBackground
+            ZStack {
+                if router.currentPage == .home {
+                    HomeAmbientBackground(thumbnails: homeViewModel.featured.ambientThumbnails,
+                                          sessionRevision: homeSessionRevision)
+                } else {
+                    Color.sidebDarkBackground
+                }
+                CollectionWindowBackground(controller: collectionBackground,
+                                           identity: collectionBackgroundIdentity,
+                                           enabled: !playerViewModel.isFullscreenPresented)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .ignoresSafeArea(.container, edges: .top)
             }
         }
         .frame(minWidth: 960, minHeight: 640)
@@ -441,6 +467,7 @@ struct WindowRootView: View {
             )
         )
         .environment(\.sideBMenuContext, menuContext)
+        .environment(\.collectionBackgroundController, collectionBackground)
         .focusedSceneValue(\.sideBMenuContext, menuContext)
         .onAppear {
             menuContext.player = playerViewModel

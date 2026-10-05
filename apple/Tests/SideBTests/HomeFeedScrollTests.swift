@@ -97,14 +97,10 @@ final class HomeFeedScrollTests: XCTestCase {
     }
 
     func testFeaturedUsesNativeViewportAtEverySidebarWidthAndRetainsHostingIdentity() throws {
-        var widths: [CGFloat] = []
         let base = makeFeed(hasHeader: true)
         let feed = HomeFeedTableView(
             headerContent: base.headerContent, headerHeight: 158,
-            featuredContent: { width in
-                widths.append(width)
-                return AnyView(Text("Destacados"))
-            },
+            featuredContent: { width in AnyView(HomeFeaturedWidthProbe(width: width)) },
             featuredHeight: { HomeFeaturedLayout.height(width: $0, hasSongs: true, hasAlbums: true) },
             sections: base.sections, isObscured: false, revision: 1, selectedChip: nil,
             hasMore: true, isLoadingMore: false, currentTrackID: nil, isPlaying: false,
@@ -126,7 +122,10 @@ final class HomeFeedScrollTests: XCTestCase {
             scroll.contentView.setBoundsSize(NSSize(width: width, height: 300))
             table.frame.size.width = width
             coordinator.boundsChanged(Notification(name: NSView.boundsDidChangeNotification, object: scroll.contentView))
-            XCTAssertEqual(widths.last, width)
+            XCTAssertEqual(coordinator.featuredViewport.width, width)
+            host.layoutSubtreeIfNeeded()
+            let probe = try XCTUnwrap(descendants(host).compactMap { $0 as? HomeFeaturedWidthProbeView }.first)
+            XCTAssertEqual(probe.renderedWidth, width)
             let expected = HomeFeaturedLayout.height(width: width, hasSongs: true, hasAlbums: true)
             XCTAssertEqual(coordinator.tableView(table, heightOfRow: 0), 158)
             XCTAssertEqual(coordinator.tableView(table, heightOfRow: 1), expected)
@@ -136,6 +135,58 @@ final class HomeFeedScrollTests: XCTestCase {
         }
         XCTAssertNil(scroll.window) // No app interaction or window mounting.
         XCTAssertFalse(scroll.hasHorizontalScroller)
+    }
+
+    private func descendants(_ view: NSView) -> [NSView] {
+        [view] + view.subviews.flatMap(descendants)
+    }
+
+    func testFeaturedRevisionDoesNotReloadUnchangedShelvesAndOnlyChangedShelfIsReloaded() throws {
+        let base = makeFeed(hasHeader: false)
+        func feed(revision: UInt64, sections: [HomeSectionPresentation]) -> HomeFeedTableView {
+            HomeFeedTableView(featuredContent: { AnyView(Text("Destacados \($0)")) },
+                featuredHeight: { _ in 300 }, sections: sections, isObscured: false,
+                revision: revision, selectedChip: nil, hasMore: true, isLoadingMore: false,
+                currentTrackID: nil, isPlaying: false, player: base.player, router: nil,
+                onNavigate: { _ in }, onLoadMore: {})
+        }
+        let first = feed(revision: 1, sections: base.sections)
+        let coordinator = first.makeCoordinator()
+        let scroll = first.makeNativeScrollView(coordinator: coordinator)
+        defer { HomeFeedTableView.dismantleNSView(scroll, coordinator: coordinator) }
+        let table = HomeReloadTrackingTableView()
+        table.headerView = nil
+        table.addTableColumn(NSTableColumn(identifier: NSUserInterfaceItemIdentifier("test")))
+        table.delegate = coordinator
+        table.dataSource = coordinator
+        scroll.documentView = table
+        coordinator.table = table
+        scroll.frame = NSRect(x: 0, y: 0, width: 1100, height: 640)
+        scroll.contentView.setBoundsSize(NSSize(width: 1100, height: 640))
+        table.frame.size.width = 1100
+        table.reloadData()
+        scroll.layoutSubtreeIfNeeded()
+        table.layoutSubtreeIfNeeded()
+        XCTAssertGreaterThan(scroll.contentView.bounds.width, 900)
+        coordinator.wasCompact = scroll.contentView.bounds.width < 760
+        table.fullReloads = 0
+        table.reloadedRows.removeAll()
+
+        feed(revision: 2, sections: base.sections).updateNativeScrollView(scroll, coordinator: coordinator)
+        XCTAssertEqual(table.fullReloads, 0)
+        XCTAssertTrue(table.reloadedRows.isEmpty)
+
+        var changed = base.sections
+        changed[1] = HomeSectionPresentation(id: "updated", title: "Actualizada", style: .compactSong,
+            items: [], moreBrowseId: nil, moreParams: nil)
+        feed(revision: 3, sections: changed).updateNativeScrollView(scroll, coordinator: coordinator)
+        XCTAssertEqual(table.fullReloads, 0)
+        XCTAssertEqual(table.reloadedRows, [IndexSet(integer: 2)]) // Feature row + second shelf.
+
+        feed(revision: 4, sections: Array(changed.prefix(1))).updateNativeScrollView(scroll, coordinator: coordinator)
+        XCTAssertEqual(table.fullReloads, 1)
+        XCTAssertEqual(table.numberOfRows, 3)
+        XCTAssertNil(scroll.window)
     }
 
     func testRemountReconcilesCachedHeightEvenWhenDelegateBuiltAtNewWidthFirst() throws {
@@ -214,5 +265,29 @@ final class HomeFeedScrollTests: XCTestCase {
         scroll.contentView.scroll(to: NSPoint(x: 0, y: 150))
         feed.updateNativeScrollView(scroll, coordinator: coordinator)
         XCTAssertEqual(scroll.contentView.bounds.minY, 150)
+    }
+}
+
+private struct HomeFeaturedWidthProbe: NSViewRepresentable {
+    let width: CGFloat
+    func makeNSView(context: Context) -> HomeFeaturedWidthProbeView { HomeFeaturedWidthProbeView() }
+    func updateNSView(_ view: HomeFeaturedWidthProbeView, context: Context) { view.renderedWidth = width }
+}
+
+private final class HomeFeaturedWidthProbeView: NSView {
+    var renderedWidth: CGFloat = 0
+}
+
+@MainActor
+private final class HomeReloadTrackingTableView: NSTableView {
+    var fullReloads = 0
+    var reloadedRows: [IndexSet] = []
+    override func reloadData() {
+        fullReloads += 1
+        super.reloadData()
+    }
+    override func reloadData(forRowIndexes rowIndexes: IndexSet, columnIndexes: IndexSet) {
+        reloadedRows.append(rowIndexes)
+        super.reloadData(forRowIndexes: rowIndexes, columnIndexes: columnIndexes)
     }
 }

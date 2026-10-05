@@ -84,3 +84,15 @@ Usuario confirma fluidez en 0017 y reporta que Cargar más no funciona. La prueb
 Build [build-0018](../../builds/macos/build-0018/BUILD.json), app `builds/macos/build-0018/Side B.app`; compiled/sourceChangedDuringBuild false, firma verificada. Runner: 180 Rust aprobados (7 live ignorados), 40 XCTest y 135 Swift Testing/5 suites aprobados. Ocho regresiones nuevas cubren botón nativo, duplicados, límite/ciclo, página vacía terminal, reintento inmediato, cancelación y respuesta de filtro anterior.
 
 En app real (PID 92039), bajar y pulsar Cargar más termina con «No hay más recomendaciones por ahora». AX y captura confirman el mensaje visible sobre la barra flotante, sin spinner atascado. Esa continuación no añadió categorías; no se registra como prueba de nuevas categorías del proveedor. Error/reintento y salto de páginas repetidas se validan con dobles de Core. Cantidad de contenido y FPS no se deducen de esta comprobación; no hay feed infinito garantizado por el endpoint.
+
+## Seguimiento FIX-119 (2026-10-05)
+
+- Pedido: abrir/cerrar sidebar no debe bloquear Inicio al cruzar de una a dos columnas de destacados.
+- [x] Subagente Sol: identificar desmontaje por ID de página/ForEach por columnas, reemplazo de root por ancho y reload total por revisión de capacidad.
+- [x] Layout plano con IDs estables y AnyLayout entre paneles, geometría observable separada del snapshot, recarga acotada a estantes cambiados.
+- [x] Añadir regresiones de identidad nativa 1→2→3 columnas y breakpoint de paneles; conteo de reload total/parcial.
+- [x] Focal/suite y build numerada.
+- [ ] Escenario sidebar en app (Mac bloqueado).
+- [x] Registrar FIX-119/PAR-003/006, conservando PAR-004 pendiente; no inferir FPS de pruebas o compilación.
+
+Build final build-0039: runner `node Scripts/build-version.mjs macos` aprobado, 180 Rust (7 live ignorados), 58 XCTest y 224 Swift Testing/5 suites (462 total). `builds/macos/build-0039/Side B.app`, BUILD.json/build.log; compiled/sourceChangedDuringBuild false, release arm64, SDK 27.0/macOS mínimo 15/firma ad hoc verificada. Focal final 11 XCTest/29 Swift Testing aprobada; revisión Sol e integradora. Código conservado tras runner; documentación posterior. Comprobación de app detenida por Mac bloqueado al seleccionar la nueva build con CUA; se pidió desbloqueo. Mantener pendiente la apariencia/fluidez física y medición Instruments; las pruebas no certifican FPS ni audio.

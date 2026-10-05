@@ -133,6 +133,7 @@ public final class PlayerViewModel {
     public private(set) var loadingRecommendedPlaylistID: String?
     private var likedHydrationTask: Task<Void, Never>?
     private var accountGeneration = UUID()
+    var mediaSessionIdentity: UUID { accountGeneration }
     private var playlistRequest = UUID()
     private var playlistContinuationTask: Task<Void, Never>?
     public private(set) var isLoadingPlaylistContinuation: Bool = false

@@ -6,10 +6,11 @@ struct PlaylistDetailView: View {
     let rustCore: SideBCore
     @Bindable var playerViewModel: PlayerViewModel
     var router: NavigationRouter? = nil
+    var topContentInset: CGFloat = 0
 
     @State private var viewModel = PlaylistDetailViewModel()
     @State private var showDescriptionModal = false
-    @State private var isHoveringDesc = false
+    @State private var headerHeight: CGFloat = 360
     @State private var showEditor = false
     @State private var showDeleteConfirmation = false
     @State private var mutationError: String?
@@ -27,72 +28,62 @@ struct PlaylistDetailView: View {
                                 .padding(.top, 40)
                         }
                         .padding(.horizontal, 32)
-                        .padding(.top, 36)
+                        .padding(.top, 36 + topContentInset)
                     }
                 } else if let playlist = viewModel.playlist {
-                    VStack(alignment: .leading, spacing: 0) {
-                        // Cabecera SwiftUI nativa interactiva
-                        headerView(playlist: playlist)
-                            .padding(.horizontal, 32)
-                            .padding(.top, 28)
-                            .padding(.bottom, 16)
-
-                        Divider()
-                            .opacity(0.2)
-                            .padding(.horizontal, 32)
-                            .padding(.bottom, 8)
-
-                        // Tabla AppKit nativa a 120 FPS con Cell Recycling, soporte de Click Derecho y Álbum
-                        NativeTrackTableView(
-                            tracks: playlist.items,
-                            currentTrackVideoId: playerViewModel.currentTrack?.videoId,
-                            isPlaying: playerViewModel.isPlaying,
-                            playerViewModel: playerViewModel,
-                            router: router,
-                            rustCore: rustCore,
-                            hideAlbumColumn: false,
-                            isReorderable: playlist.owned
-                                && (playlist.sort == nil || playlist.sort == "default")
-                                && !viewModel.isMovingTrack
-                                && playlist.items.allSatisfy { $0.setVideoId?.isEmpty == false },
-                            likedVideoIds: playerViewModel.likedVideoIds,
-                            playlistContext: (playlistId: playlist.id, isOwned: playlist.owned),
-                            menuOrigin: { _ in .playlist(id: playlist.id) },
-                            onPlayTrack: { index in
-                                viewModel.playTrack(at: index, player: playerViewModel)
-                            },
-                            onLikeTrack: { track in
-                                playerViewModel.toggleTrackLike(track)
-                            },
-                            onDislikeTrack: { track in
-                                playerViewModel.dislikeTrack(track)
-                            },
-                            onRemoveTrackFromPlaylist: { track in
-                                Task {
-                                    do {
-                                        try await viewModel.removeTrack(track: track, core: rustCore)
-                                    } catch {
-                                        mutationError = error.localizedDescription
-                                    }
-                                }
-                            },
-                            onMoveTrack: { from, to in
-                                Task {
-                                    do {
-                                        try await viewModel.moveTrack(from: from, to: to, core: rustCore)
-                                    } catch {
-                                        mutationError = error.localizedDescription
-                                    }
-                                }
-                            },
-                            onNearBottom: {
-                                Task {
-                                    await viewModel.loadMore(core: rustCore)
-                                }
+                    NativeTrackTableView(
+                        tracks: viewModel.displayedTracks,
+                        currentTrackVideoId: playerViewModel.currentTrack?.videoId,
+                        isPlaying: playerViewModel.isPlaying,
+                        playerViewModel: playerViewModel,
+                        router: router,
+                        rustCore: rustCore,
+                        presentation: .collectionPlaylist,
+                        hideAlbumColumn: false,
+                        isReorderable: viewModel.canReorderDisplayedTracks,
+                        rowHeight: CollectionTrackMetrics.rowHeight,
+                        likedVideoIds: playerViewModel.likedVideoIds,
+                        playlistContext: (playlistId: playlist.id,
+                                          isOwned: playlist.owned && playlist.id != "LM" && playlist.id != "VLLM"),
+                        menuOrigin: { _ in .playlist(id: playlist.id) },
+                        onPlayTrack: { index in
+                            viewModel.playDisplayedTrack(at: index, player: playerViewModel)
+                        },
+                        onLikeTrack: { playerViewModel.toggleTrackLike($0) },
+                        onDislikeTrack: { playerViewModel.dislikeTrack($0) },
+                        onRemoveTrackFromPlaylist: { track in
+                            Task {
+                                do { try await viewModel.removeTrack(track: track, core: rustCore) }
+                                catch { mutationError = error.localizedDescription }
                             }
-                        )
-                    }
+                        },
+                        onMoveTrack: { from, to in
+                            Task {
+                                do { try await viewModel.moveDisplayedTrack(from: from, to: to, core: rustCore) }
+                                catch { mutationError = error.localizedDescription }
+                            }
+                        },
+                        onNearBottom: {
+                            guard playlist.continuation?.isEmpty == false else { return }
+                            Task { await viewModel.loadMore(core: rustCore) }
+                        },
+                        contentInsets: NSEdgeInsets(top: 0, left: 0, bottom: 120, right: 0),
+                        scrollingHeader: AnyView(headerView(playlist: playlist)),
+                        scrollingHeaderHeight: headerHeight,
+                        scrollingBackground: { visible in
+                            AnyView(CollectionAmbientBackground(thumbnail: playlist.thumbnail,
+                                                                identity: playerViewModel.mediaSessionIdentity.uuidString + ":playlist:" + playlistId,
+                                                                isInViewport: visible))
+                        },
+                        scrollingBackgroundIdentity: playerViewModel.mediaSessionIdentity.uuidString + ":playlist:" + playlistId,
+                        footer: viewModel.displayedTracks.isEmpty && playlist.continuation?.isEmpty != false
+                            ? AnyView(CollectionDetailEmptyResultsView(query: viewModel.searchQuery)) : nil,
+                        footerHeight: 72
+                    )
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .task(id: playlist.id + "|" + viewModel.searchQuery + "|" + viewModel.selectedOrder.rawValue + "|" + (playlist.continuation ?? "complete") + "|" + String(playlist.items.count)) {
+                        await viewModel.prepareDisplayedTracks(core: rustCore)
+                    }
                     .overlay(alignment: .bottom) {
                         if viewModel.isLoadingMore {
                             HStack(spacing: 8) {
@@ -121,7 +112,8 @@ struct PlaylistDetailView: View {
                     )
                 }
             }
-            .task(id: playlistId) {
+            .task(id: playlistId + ":" + playerViewModel.mediaSessionIdentity.uuidString) {
+                viewModel.resetForSession()
                 await viewModel.loadPlaylist(core: rustCore, playlistId: playlistId)
             }
             .onReceive(NotificationCenter.default.publisher(for: .sideBLikedTrackToggled)) { notification in
@@ -180,211 +172,111 @@ struct PlaylistDetailView: View {
 
     // MARK: - Subviews
 
-    @ViewBuilder
     private func headerView(playlist: PlaylistDetailRecord) -> some View {
-        HStack(alignment: .top, spacing: 24) {
-            // Artwork con ImageCache y aplanado GPU
-            if let thumb = playlist.thumbnail, let url = URL(string: thumb) {
-                CachedAsyncImage(url: url, targetSize: CGSize(width: 180, height: 180)) { image in
-                    image
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                } placeholder: {
-                    placeholderArtwork
+        CollectionDetailHeaderView(
+            kind: playlist.id == "LM" || playlist.id == "VLLM" ? "COLECCIÓN" : "PLAYLIST",
+            title: playlist.title,
+            thumbnail: playlist.thumbnail,
+            artworkSymbol: playlist.id == "LM" || playlist.id == "VLLM" ? "heart.fill" : "music.note.list",
+            credit: playlist.subtitle,
+            creditFontSize: 16.8,
+            metadata: ["\(playlist.items.count) canciones\(playlist.continuation?.isEmpty == false ? " cargadas" : "")"],
+            description: playlist.description,
+            onExpandDescription: {
+                withAnimation(.easeInOut(duration: 0.2)) { showDescriptionModal = true }
+            },
+            onPlay: { viewModel.playAll(player: playerViewModel) },
+            onShuffle: { viewModel.shuffle(player: playerViewModel) },
+            showsSave: !playlist.owned && playlist.id != "LM" && playlist.id != "VLLM",
+            isSaved: viewModel.inLibrary,
+            onSave: { Task { await viewModel.toggleLibrary(core: rustCore) } },
+            additionalActions: AnyView(playlistActions(playlist)),
+            query: $viewModel.searchQuery,
+            selectedOrder: viewModel.selectedOrder,
+            canSort: { viewModel.sortIsAvailable($0) },
+            onSelectOrder: { order in
+                Task {
+                    do { try await viewModel.selectOrder(order, core: rustCore) }
+                    catch { mutationError = error.localizedDescription }
                 }
-                .frame(width: 180, height: 180)
-                .clipShape(RoundedRectangle(cornerRadius: AppTheme.artworkHeroRadius, style: .continuous))
-                .shadow(color: .black.opacity(0.35), radius: 16, y: 8)
-            } else {
-                placeholderArtwork
-                    .frame(width: 180, height: 180)
-                    .clipShape(RoundedRectangle(cornerRadius: AppTheme.artworkHeroRadius, style: .continuous))
-                    .shadow(color: .black.opacity(0.35), radius: 16, y: 8)
-            }
-
-            // Metadata
-            VStack(alignment: .leading, spacing: 8) {
-                Text(playlist.id == "LM" ? "COLECCIÓN" : "PLAYLIST")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(.secondary)
-                    .tracking(1.2)
-
-                Text(playlist.title)
-                    .font(.system(size: 32, weight: .bold))
-                    .foregroundStyle(.primary)
-                    .lineLimit(2)
-
-                if let subtitle = playlist.subtitle {
-                    Text(subtitle)
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(.secondary)
-                }
-
-                if let desc = playlist.description, !desc.isEmpty {
-                    Button {
-                        withAnimation(.easeInOut(duration: 0.2)) {
-                            showDescriptionModal = true
-                        }
-                    } label: {
-                        HStack(alignment: .bottom, spacing: 4) {
-                            Text(desc)
-                                .font(.system(size: 12))
-                                .foregroundStyle(isHoveringDesc ? .secondary : .tertiary)
-                                .lineLimit(2)
-                                .multilineTextAlignment(.leading)
-
-                            Text("más")
-                                .font(.system(size: 11, weight: .semibold))
-                                .foregroundStyle(.primary)
-                        }
-                        .padding(.top, 2)
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .onHover { hovering in
-                        isHoveringDesc = hovering
-                        if hovering {
-                            NSCursor.pointingHand.push()
-                        } else {
-                            NSCursor.pop()
-                        }
-                    }
-                    .help("Haz clic para leer la descripción completa")
-                }
-
-                Text("\(playlist.items.count) canciones")
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-
-                Spacer(minLength: 8)
-
-                // Botones de reproducción y acciones
-                HStack(spacing: 12) {
-                    Button {
-                        viewModel.playAll(player: playerViewModel)
-                    } label: {
-                        HStack(spacing: 6) {
-                            Image(systemName: "play.fill")
-                                .font(.system(size: 13, weight: .semibold))
-                            Text("Reproducir")
-                                .font(.system(size: 13, weight: .semibold))
-                        }
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 8)
-                        .compatGlass(interactive: true, in: Capsule())
-                        .foregroundStyle(.white)
-                    }
-                    .buttonStyle(.plain)
-
-                    Button {
-                        viewModel.shuffle(player: playerViewModel)
-                    } label: {
-                        HStack(spacing: 6) {
-                            Image(systemName: "shuffle")
-                                .font(.system(size: 13, weight: .medium))
-                            Text("Aleatorio")
-                                .font(.system(size: 13, weight: .medium))
-                        }
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 8)
-                        .foregroundStyle(.primary)
-                        .compatGlass(interactive: true, in: Capsule())
-                    }
-                    .buttonStyle(.plain)
-
-                    if !playlist.owned && playlist.id != "LM" {
-                        Button {
-                            Task {
-                                await viewModel.toggleLibrary(core: rustCore)
-                            }
-                        } label: {
-                            HStack(spacing: 6) {
-                                Image(systemName: viewModel.inLibrary ? "bookmark.fill" : "bookmark")
-                                    .font(.system(size: 13, weight: .medium))
-                                Text(viewModel.inLibrary ? "En biblioteca" : "Guardar")
-                                    .font(.system(size: 13, weight: .medium))
-                            }
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 8)
-                            .foregroundStyle(.primary)
-                            .compatGlass(interactive: true, in: Capsule())
-                        }
-                        .buttonStyle(.plain)
-                    }
-
-                    // Botón de más opciones (•••)
-                    Menu {
-                        let isMix = MenuIDNormalizer.isDynamicRadioMix(id: playlist.id)
-                        let target = MenuTarget.playlist(
-                            id: playlist.id,
-                            title: playlist.title,
-                            subtitle: playlist.subtitle,
-                            thumbnail: playlist.thumbnail,
-                            isRadioMix: isMix
-                        )
-                        let facts = MenuFacts(
-                            isLoggedIn: rustCore.isLoggedIn(),
-                            inLibrary: .known(viewModel.inLibrary),
-                            isOwned: .known(playlist.owned),
-                            sortEditable: playlist.sortEditable,
-                            userPlaylists: AppContextMenuFactory.cachedUserPlaylists,
-                            onEditPlaylist: { showEditor = true },
-                            onDeletePlaylist: { showDeleteConfirmation = true },
-                            onSortPlaylist: { value in
-                                Task {
-                                    do {
-                                        try await viewModel.setSort(value, core: rustCore)
-                                    } catch {
-                                        mutationError = error.localizedDescription
-                                    }
-                                }
-                            }
-                        )
-                        let executor = MenuActionExecutor(player: playerViewModel, router: router, core: rustCore)
-                        let sections = MenuPolicy.resolveSections(
-                            target: target,
-                            origin: .playlist(id: playlist.id),
-                            facts: facts
-                        )
-                        MenuSectionContentView(
-                            sections: sections,
-                            target: target,
-                            facts: facts,
-                            executor: executor
-                        )
-                    } label: {
-                        SideBEllipsisLabel()
-                    }
-                    .menuStyle(.borderlessButton)
-                    .menuIndicator(.hidden)
-                    .accessibilityLabel("Más opciones")
-                }
-            }
-            .frame(height: 180, alignment: .leading)
-            Spacer()
+            },
+            isCompletingCatalog: viewModel.isCompletingCatalog || viewModel.isChangingOrder,
+            isPlaybackUnavailable: viewModel.needsCompletePlaybackOrder || viewModel.isChangingOrder,
+            catalogError: viewModel.errorMessage,
+            onRetryCatalog: { Task { await viewModel.prepareDisplayedTracks(core: rustCore) } }
+        )
+        .padding(.top, topContentInset)
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { measuredHeight in
+            if abs(headerHeight - measuredHeight) > 0.5 { headerHeight = measuredHeight }
         }
     }
 
-    private func sortButton(_ title: String, value: String, playlist: PlaylistDetailRecord) -> some View {
-        Button {
-            Task {
-                do {
-                    try await viewModel.setSort(value, core: rustCore)
-                } catch {
-                    mutationError = error.localizedDescription
+    private func playlistActions(_ playlist: PlaylistDetailRecord) -> some View {
+        Menu {
+            let isMix = MenuIDNormalizer.isDynamicRadioMix(id: playlist.id)
+            let target = MenuTarget.playlist(
+                id: playlist.id,
+                title: playlist.title,
+                subtitle: playlist.subtitle,
+                thumbnail: playlist.thumbnail,
+                isRadioMix: isMix
+            )
+            let facts = MenuFacts(
+                isLoggedIn: rustCore.isLoggedIn(),
+                inLibrary: .known(viewModel.inLibrary),
+                isOwned: .known(playlist.owned && playlist.id != "LM" && playlist.id != "VLLM"),
+                sortEditable: playlist.sortEditable && playlist.id != "LM" && playlist.id != "VLLM",
+                userPlaylists: AppContextMenuFactory.cachedUserPlaylists,
+                onEditPlaylist: { showEditor = true },
+                onDeletePlaylist: { showDeleteConfirmation = true },
+                onSortPlaylist: { value in
+                    Task {
+                        do {
+                            let order: DetailTrackOrder? = switch value {
+                            case "default": .custom
+                            case "newest": .recentlyAdded
+                            case "oldest": .oldestAdded
+                            case "title": .title
+                            case "artist": .artist
+                            case "album": .album
+                            default: nil
+                            }
+                            if let order {
+                                try await viewModel.selectOrder(order, core: rustCore)
+                            } else {
+                                try await viewModel.setSort(value, core: rustCore)
+                            }
+                        } catch {
+                            mutationError = error.localizedDescription
+                        }
+                    }
                 }
-            }
+            )
+            let executor = MenuActionExecutor(player: playerViewModel, router: router, core: rustCore)
+            let sections = MenuPolicy.resolveSections(
+                target: target,
+                origin: .playlist(id: playlist.id),
+                facts: facts
+            )
+            MenuSectionContentView(
+                sections: sections,
+                target: target,
+                facts: facts,
+                executor: executor
+            )
         } label: {
-            if playlist.sort == value {
-                Label(title, systemImage: "checkmark")
-            } else {
-                Text(title)
-            }
+            SideBEllipsisLabel(iconSize: 15.6)
+                .frame(width: 33.6, height: 33.6)
         }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .accessibilityLabel("Más opciones")
+        .font(.system(size: 15.6))
     }
 
     private func deletePlaylist() async {
-        guard let playlist = viewModel.playlist, playlist.owned, !isDeleting else { return }
+        guard let playlist = viewModel.playlist, playlist.owned,
+              playlist.id != "LM", playlist.id != "VLLM", !isDeleting else { return }
         isDeleting = true
         do {
             try await rustCore.deletePlaylist(playlistId: playlist.id)
@@ -394,22 +286,6 @@ struct PlaylistDetailView: View {
             mutationError = error.localizedDescription
         }
         isDeleting = false
-    }
-
-    private var placeholderArtwork: some View {
-        RoundedRectangle(cornerRadius: AppTheme.artworkHeroRadius, style: .continuous)
-            .fill(
-                LinearGradient(
-                    colors: [Color.pink.opacity(0.6), Color.purple.opacity(0.8)],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-            )
-            .overlay {
-                Image(systemName: playlistId == "LM" ? "heart.fill" : "music.note.list")
-                    .font(.system(size: 56))
-                    .foregroundStyle(.white.opacity(0.8))
-            }
     }
 
 }

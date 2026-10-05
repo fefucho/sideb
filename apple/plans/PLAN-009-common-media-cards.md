@@ -1,7 +1,7 @@
 # PLAN-009: cartas comunes y reproducción contextual
 
 - Fecha: 2026-10-04 (America/Montevideo).
-- Estado: implementado en Apple por pedido del usuario; verificación automática completada en build-0030 y correcciones FIX-112 en build-0031. Validación visual, teclado en ventana real, audio y consumo pendientes.
+- Estado: implementado en Apple por pedido del usuario; verificación automática completada en build-0030 y correcciones FIX-112 en build-0031 y cola propia FIX-113 en build-0033. Validación visual, teclado en ventana real, audio y consumo pendientes.
 - Objetivo: una presentación y unas interacciones consistentes para cada tipo de ítem en toda la app; reducir controles visibles y rehacer el indicador de reproducción.
 - Ámbito inicial: Apple. Registrar el comportamiento acordado para Windows con implementación propia cuando se ejecute; no modificar core ni contratos de reproducción por una necesidad visual.
 - Referencias: [FIXES](../../FIXES.md) (FIX-097–100, 103, 105–106), [PARIDAD](../../PARIDAD.md), [guía actual](../../PORTEO-INICIO.md), [PLAN-008](PLAN-008-home-cleanup-efficiency.md). Este plan no ejecuta ni sustituye la limpieza propuesta en PLAN-008.
@@ -36,7 +36,7 @@
 | Alcance del indicador | Inicio/Speed Dial identifica la radio por su canción origen; no trasladar automáticamente esas barras a la canción que suena en todas las vistas | Confirmado; indicador de fila actual conserva la ocurrencia real de la cola |
 | Radio pausada sin hover | Barras quietas y más tenues en carta origen; Play al hover/foco | Confirmado por el usuario |
 | Colección activa | Estado común en todas sus cartas; Pausa/Reanudar si es el contexto activo, otra colección empieza desde el principio | Confirmado por el usuario |
-| Canciones horizontales/filas | Toda la tarjeta reproduce con un clic; artista/álbum navegan por separado y `…` abre el menú | Confirmado por el usuario; conservar teclado y selección sin exigir doble clic para reproducir |
+| Canciones horizontales/filas | Toda la tarjeta reproduce con un clic; artista/álbum navegan por separado y `…` abre el menú | Confirmado; cola exceptuada por FIX-113: subtítulo conjunto, Like/Dislike y grip al hover, clic derecho para menú |
 | Búsqueda rápida | Conservar navegación de resultados y teclado; aplicar las mismas reglas por tipo con densidad compacta | Aplicado conservando la navegación y la acción contextual existentes |
 | Artistas/videos | Artista abre página; video usa reproducción contextual y miniatura panorámica | Aplicado conservando la navegación y la acción contextual existentes |
 
@@ -114,3 +114,7 @@ Rediseño de shell/reproductor/fullscreen, cambios de fuentes/categorías, ejecu
 ## Correcciones tras probar build-0030 — FIX-112
 
 El usuario aprobó el aspecto general y reportó Play persistente en la fila pulsada y ~5–6 s al cambiar canciones de Biblioteca/Likeados. Play/menú de tabla ahora se revelan por hover/foco de control, sin usar la selección persistente; el estado de pista actual queda independiente. Con tracks ya cargados y continuación, reproducción normal comienza en la ocurrencia elegida mientras se completa la fuente en segundo plano; fuente/ocurrencias/anclas y audio se conservan al completar. Aleatorio inicial conserva catálogo completo antes de elegir. [FIX-112](../../FIXES.md#fix-112), [PAR-010](../../PARIDAD.md); [build-0031](../../builds/macos/build-0031/BUILD.json) compilada con fuentes estables: 180 Rust (7 live ignorados), 52 XCTest y 194 Swift Testing aprobados. Verificación real de los dos reportes pendiente; documentación actualizada después de compilar, sin cambios posteriores de código.
+
+## Cola especial restaurada — FIX-113
+
+Pedido posterior del usuario (2026-10-05): la cola tiene presentación propia como antes de build-0030, con Like/Dislike dedicados y control de reordenamiento al hover, título arriba y artista • álbum juntos debajo. No usar Play flotante ni `…` de las cartas comunes en la cola. Like marcado visible fuera del hover; foco permite operar controles. Clic derecho, selección, ocurrencias duplicadas y arrastre conservan el coordinador/player actuales. Las cartas comunes de otras superficies y el inicio progresivo de FIX-112 siguen vigentes. La celda histórica se recupera de Git en una clase separada con un contrato compartido de refresco. [FIX-113](../../FIXES.md#fix-113), [PAR-009](../../PARIDAD.md); [build-0033](../../builds/macos/build-0033/BUILD.json) compilada con fuentes estables: 180 Rust (7 live ignorados), 52 XCTest y 198 Swift Testing aprobados; cinco focales aprobadas. Documentación actualizada después de compilar, código sin cambios posteriores; validación visual/arrastre físico pendiente.

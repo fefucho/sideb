@@ -98,27 +98,19 @@ struct HomeFeaturedView: View {
     private var collectionIDs: [String] { collections.map(Self.identity) }
 
     var body: some View {
-        Group {
-            if wide {
-                if !songs.isEmpty && !collections.isEmpty {
-                    HStack(alignment: .top, spacing: HomeFeaturedLayout.sectionGap) {
-                        songsPanel.frame(width: leftWidth, alignment: .leading)
-                        collectionsPanel.frame(maxWidth: .infinity)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                } else if !songs.isEmpty {
-                    songsPanel.frame(maxWidth: .infinity, alignment: .leading)
-                } else {
-                    collectionsPanel.frame(maxWidth: .infinity)
-                }
-            } else {
-                VStack(spacing: HomeFeaturedLayout.stackGap) {
-                    if !songs.isEmpty { songsPanel.frame(maxWidth: .infinity, alignment: .leading) }
-                    if !collections.isEmpty { collectionsPanel.frame(maxWidth: .infinity) }
-                }
-                .frame(maxWidth: .infinity, alignment: .top)
+        // AnyLayout preserves the panels (and their artwork/tasks) across the
+        // stacked/side-by-side breakpoint instead of replacing the view tree.
+        let panelLayout = wide
+            ? AnyLayout(HStackLayout(alignment: .top, spacing: HomeFeaturedLayout.sectionGap))
+            : AnyLayout(VStackLayout(alignment: .leading, spacing: HomeFeaturedLayout.stackGap))
+        panelLayout {
+            if !songs.isEmpty {
+                songsPanel.frame(width: wide && !collections.isEmpty ? leftWidth : nil,
+                                 alignment: .leading)
             }
+            if !collections.isEmpty { collectionsPanel }
         }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
         .padding(.horizontal, HomeFeaturedLayout.horizontalInset)
         .frame(width: width, height: layout.totalHeight, alignment: .topLeading)
         .task(id: metadataRequest) {
@@ -187,19 +179,14 @@ struct HomeFeaturedView: View {
             VStack(spacing: 0) {
                 sectionHeader(collectionKind.title)
                 ZStack(alignment: .topLeading) {
-                    HStack(alignment: .top, spacing: HomeFeaturedLayout.sectionGap) {
-                        ForEach(0..<layout.albumColumns, id: \.self) { column in
-                            VStack(spacing: HomeFeaturedLayout.albumGap) {
-                                ForEach(collectionColumn(column).map(FeaturedItem.init), id: \.id) { item in
-                                    collectionCard(item.record, width: layout.albumColumnWidth, height: albumCardHeight)
-                                        .overlay { NativeContextMenuOverlay { menuProvider?(item.record) } }
-                                }
-                            }
-                            .frame(width: layout.albumColumnWidth, alignment: .topLeading)
+                    HomeFeaturedCollectionLayout(columnWidth: layout.albumColumnWidth,
+                                                 cardHeight: albumCardHeight) {
+                        ForEach(currentCollectionPage.map(FeaturedItem.init), id: \.id) { item in
+                            collectionCard(item.record, width: layout.albumColumnWidth, height: albumCardHeight)
+                                .overlay { NativeContextMenuOverlay { menuProvider?(item.record) } }
+                                .transition(.opacity)
                         }
                     }
-                    .id(currentCollectionPage.map(\.id))
-                    .transition(.opacity)
                 }
                 .frame(width: albumWidth, height: layout.albumContentHeight, alignment: .topLeading)
                 .clipped()
@@ -225,9 +212,6 @@ struct HomeFeaturedView: View {
 
     private var currentSongPage: [HomeItemRecord] { songPages.indices.contains(songPage) ? songPages[songPage] : [] }
     private var currentCollectionPage: [HomeItemRecord] { collectionPages.indices.contains(collectionPage) ? collectionPages[collectionPage] : [] }
-    private func collectionColumn(_ column: Int) -> [HomeItemRecord] {
-        Array(currentCollectionPage.dropFirst(column * 2).prefix(2))
-    }
     private var albumCardHeight: CGFloat { layout.albumCardHeight }
 
     private func songTile(_ record: HomeItemRecord) -> some View {
@@ -402,6 +386,29 @@ struct HomeFeaturedView: View {
     private static func pages(_ records: [HomeItemRecord], size: Int, limit: Int) -> [[HomeItemRecord]] {
         stride(from: 0, to: min(records.count, size * limit), by: size).map { start in
             Array(records[start..<min(start + size, records.count)])
+        }
+    }
+}
+
+/// One identity domain for the visible collections. Adding a column only mounts
+/// the new cards; existing cards never move to a different ForEach parent.
+struct HomeFeaturedCollectionLayout: Layout {
+    let columnWidth: CGFloat
+    let cardHeight: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let columns = CGFloat((subviews.count + 1) / 2)
+        let rows = CGFloat(min(2, subviews.count))
+        return CGSize(width: columns * columnWidth + max(0, columns - 1) * HomeFeaturedLayout.sectionGap,
+                      height: rows * cardHeight + max(0, rows - 1) * HomeFeaturedLayout.albumGap)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        for (index, subview) in subviews.enumerated() {
+            subview.place(at: CGPoint(x: bounds.minX + CGFloat(index / 2) * (columnWidth + HomeFeaturedLayout.sectionGap),
+                                     y: bounds.minY + CGFloat(index % 2) * (cardHeight + HomeFeaturedLayout.albumGap)),
+                          anchor: .topLeading,
+                          proposal: ProposedViewSize(width: columnWidth, height: cardHeight))
         }
     }
 }

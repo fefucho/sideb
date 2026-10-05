@@ -21,6 +21,8 @@ enum TableRowItem: Equatable {
     case header(title: String, sectionIndex: Int)
     case track(track: SongItemRecord, overallIndex: Int, sectionIndex: Int, itemIndex: Int)
     case footer
+    case scrollingHeader
+    case columnLabels
 }
 
 /// Proyección pura de secciones a filas planas; `overallIndex` identifica la ocurrencia,
@@ -29,9 +31,12 @@ struct TrackTableRowProjection {
     let tracks: [SongItemRecord]
     let rows: [TableRowItem]
 
-    static func make(sections: [TrackTableSection], hasFooter: Bool = false) -> Self {
+    static func make(sections: [TrackTableSection], hasFooter: Bool = false,
+                     hasScrollingHeader: Bool = false, hasColumnLabels: Bool = false) -> Self {
         var tracks: [SongItemRecord] = []
         var rows: [TableRowItem] = []
+        if hasScrollingHeader { rows.append(.scrollingHeader) }
+        if hasColumnLabels { rows.append(.columnLabels) }
         for (sectionIndex, section) in sections.enumerated() {
             if let title = section.title, !title.isEmpty {
                 rows.append(.header(title: title, sectionIndex: sectionIndex))
@@ -67,6 +72,19 @@ enum TrackTableInteractionPolicy {
         }
     }
 
+    /// Translate a visual insertion row (including collection headers) into the source occurrence index.
+    static func dropDestination(proposedRow: Int, sourceIndex: Int, rows: [TableRowItem], trackCount: Int) -> Int? {
+        guard sourceIndex >= 0, sourceIndex < trackCount else { return nil }
+        let start = max(0, min(proposedRow, rows.count))
+        let insertionIndex = rows.dropFirst(start).compactMap { item -> Int? in
+            if case .track(_, let index, _, _) = item { return index }
+            return nil
+        }.first ?? trackCount
+        let destination = insertionIndex > sourceIndex ? insertionIndex - 1 : insertionIndex
+        guard destination >= 0, destination < trackCount, destination != sourceIndex else { return nil }
+        return destination
+    }
+
     @discardableResult
     static func dispatchPlayback(
         for row: TableRowItem,
@@ -90,6 +108,7 @@ enum TrackTableInteractionPolicy {
 /// - Reordenamiento de cola, enlaces y menú secundarios separados de la reproducción de fila.
 struct NativeTrackTableView: NSViewRepresentable {
     @Environment(\.sideBMenuContext) private var menuContext
+    @Environment(\.collectionBackgroundController) private var collectionBackgroundController
     let sections: [TrackTableSection]
     let tracks: [SongItemRecord]
     let rowItems: [TableRowItem]
@@ -100,6 +119,7 @@ struct NativeTrackTableView: NSViewRepresentable {
     let playerViewModel: PlayerViewModel?
     let router: NavigationRouter?
     let rustCore: SideBCore?
+    let presentation: TrackTablePresentation
     let hideAlbumColumn: Bool
     let showAlbumInSubtitle: Bool
     let isReorderable: Bool
@@ -114,6 +134,10 @@ struct NativeTrackTableView: NSViewRepresentable {
     let onMoveTrack: ((Int, Int) -> Void)?
     let onNearBottom: (() -> Void)?
     let contentInsets: NSEdgeInsets
+    let scrollingHeader: AnyView?
+    let scrollingHeaderHeight: CGFloat
+    let scrollingBackground: ((Bool) -> AnyView)?
+    let scrollingBackgroundIdentity: String?
     let footer: AnyView?
     let footerHeight: CGFloat
 
@@ -125,6 +149,7 @@ struct NativeTrackTableView: NSViewRepresentable {
         playerViewModel: PlayerViewModel? = nil,
         router: NavigationRouter? = nil,
         rustCore: SideBCore? = nil,
+        presentation: TrackTablePresentation = .standard,
         hideAlbumColumn: Bool = false,
         showAlbumInSubtitle: Bool = false,
         isReorderable: Bool = false,
@@ -139,11 +164,17 @@ struct NativeTrackTableView: NSViewRepresentable {
         onMoveTrack: ((Int, Int) -> Void)? = nil,
         onNearBottom: (() -> Void)? = nil,
         contentInsets: NSEdgeInsets = NSEdgeInsets(top: 0, left: 0, bottom: 120, right: 0),
+        scrollingHeader: AnyView? = nil,
+        scrollingHeaderHeight: CGFloat = 0,
+        scrollingBackground: ((Bool) -> AnyView)? = nil,
+        scrollingBackgroundIdentity: String? = nil,
         footer: AnyView? = nil,
         footerHeight: CGFloat = 0
     ) {
         self.sections = sections
-        let projection = TrackTableRowProjection.make(sections: sections, hasFooter: footer != nil)
+        let projection = TrackTableRowProjection.make(sections: sections, hasFooter: footer != nil,
+                                                     hasScrollingHeader: scrollingHeader != nil,
+                                                     hasColumnLabels: presentation == .collectionPlaylist)
         self.tracks = projection.tracks
         self.rowItems = projection.rows
         self.currentTrackVideoId = currentTrackVideoId
@@ -153,6 +184,7 @@ struct NativeTrackTableView: NSViewRepresentable {
         self.playerViewModel = playerViewModel
         self.router = router
         self.rustCore = rustCore
+        self.presentation = presentation
         self.hideAlbumColumn = hideAlbumColumn
         self.showAlbumInSubtitle = showAlbumInSubtitle
         self.isReorderable = isReorderable
@@ -167,6 +199,10 @@ struct NativeTrackTableView: NSViewRepresentable {
         self.onMoveTrack = onMoveTrack
         self.onNearBottom = onNearBottom
         self.contentInsets = contentInsets
+        self.scrollingHeader = scrollingHeader
+        self.scrollingHeaderHeight = scrollingHeaderHeight
+        self.scrollingBackground = scrollingBackground
+        self.scrollingBackgroundIdentity = scrollingBackgroundIdentity
         self.footer = footer
         self.footerHeight = footerHeight
     }
@@ -179,6 +215,7 @@ struct NativeTrackTableView: NSViewRepresentable {
         playerViewModel: PlayerViewModel? = nil,
         router: NavigationRouter? = nil,
         rustCore: SideBCore? = nil,
+        presentation: TrackTablePresentation = .standard,
         hideAlbumColumn: Bool = false,
         showAlbumInSubtitle: Bool = false,
         isReorderable: Bool = false,
@@ -193,6 +230,10 @@ struct NativeTrackTableView: NSViewRepresentable {
         onMoveTrack: ((Int, Int) -> Void)? = nil,
         onNearBottom: (() -> Void)? = nil,
         contentInsets: NSEdgeInsets = NSEdgeInsets(top: 0, left: 0, bottom: 120, right: 0),
+        scrollingHeader: AnyView? = nil,
+        scrollingHeaderHeight: CGFloat = 0,
+        scrollingBackground: ((Bool) -> AnyView)? = nil,
+        scrollingBackgroundIdentity: String? = nil,
         footer: AnyView? = nil,
         footerHeight: CGFloat = 0
     ) {
@@ -203,6 +244,7 @@ struct NativeTrackTableView: NSViewRepresentable {
             playerViewModel: playerViewModel,
             router: router,
             rustCore: rustCore,
+            presentation: presentation,
             hideAlbumColumn: hideAlbumColumn,
             showAlbumInSubtitle: showAlbumInSubtitle,
             isReorderable: isReorderable,
@@ -217,6 +259,10 @@ struct NativeTrackTableView: NSViewRepresentable {
             onMoveTrack: onMoveTrack,
             onNearBottom: onNearBottom,
             contentInsets: contentInsets,
+            scrollingHeader: scrollingHeader,
+            scrollingHeaderHeight: scrollingHeaderHeight,
+            scrollingBackground: scrollingBackground,
+            scrollingBackgroundIdentity: scrollingBackgroundIdentity,
             footer: footer,
             footerHeight: footerHeight
         )
@@ -286,13 +332,14 @@ struct NativeTrackTableView: NSViewRepresentable {
         )
 
         tableView.reloadData()
+        context.coordinator.updateScrollingBackground(refreshContent: true)
         return scrollView
     }
 
     public func updateNSView(_ nsView: NSScrollView, context: Context) {
         let oldParent = context.coordinator.parent
         let rowsChanged = oldParent.rowItems.count != rowItems.count ||
-                          oldParent.rowItems != rowItems
+                          oldParent.rowItems != rowItems || oldParent.presentation != presentation
         if rowsChanged,
            let selected = menuContext?.selectedSong,
            oldParent.tracks.contains(where: { $0.videoId == selected.videoId }),
@@ -304,12 +351,20 @@ struct NativeTrackTableView: NSViewRepresentable {
             oldParent.currentQueueIndex != currentQueueIndex
         let isPlayingChanged = oldParent.isPlaying != isPlaying
         let likedChanged = oldParent.likedVideoIds != likedVideoIds
+        let reorderabilityChanged = oldParent.isReorderable != isReorderable
         let rowHeightChanged = oldParent.rowHeight != rowHeight || oldParent.footerHeight != footerHeight
 
-        context.coordinator.update(parent: self)
+        let preservesHeader = scrollingHeader != nil && oldParent.scrollingHeader != nil &&
+            oldParent.presentation == presentation
+        if rowsChanged, preservesHeader, let tableView = nsView.documentView as? NativeTrackTableViewInternal {
+            context.coordinator.replaceCollectionRows(with: self, in: tableView)
+        } else {
+            context.coordinator.update(parent: self)
+        }
         nsView.contentInsets = contentInsets
 
         if let tableView = nsView.documentView as? NativeTrackTableViewInternal {
+            context.coordinator.updateScrollingBackground(refreshContent: true)
             if rowHeightChanged {
                 tableView.rowHeight = rowHeight
             }
@@ -322,16 +377,29 @@ struct NativeTrackTableView: NSViewRepresentable {
                 }
             }
 
+            if isReorderable {
+                tableView.registerForDraggedTypes([NSPasteboard.PasteboardType("com.fefucho.sideb.trackRow")])
+                tableView.setDraggingSourceOperationMask(.move, forLocal: true)
+            } else { tableView.unregisterDraggedTypes() }
+
             if rowsChanged || likedChanged || rowHeightChanged {
-                tableView.reloadData()
-            } else if activeTrackChanged || isPlayingChanged {
+                if preservesHeader {
+                    // Keep the hosting header attached while typing/filtering so the search field retains focus.
+                    let prefix = presentation == .collectionPlaylist ? 2 : 1
+                    if !rowsChanged, rowItems.count > prefix {
+                        tableView.reloadData(forRowIndexes: IndexSet(integersIn: prefix..<rowItems.count),
+                                             columnIndexes: IndexSet(integer: 0))
+                        tableView.updateHover()
+                    }
+                } else { tableView.reloadData() }
+            } else if activeTrackChanged || isPlayingChanged || reorderabilityChanged {
                 tableView.enumerateAvailableRowViews { rowView, row in
                     guard row < self.rowItems.count else { return }
                     if case .track(let track, let overallIndex, _, let itemIndex) = self.rowItems[row] {
                         if let trackRow = rowView as? NativeTrackRowView {
                             trackRow.isCurrentTrack = context.coordinator.isCurrentOccurrence(videoId: track.videoId, index: overallIndex)
                         }
-                        if rowView.numberOfColumns > 0, let cellView = rowView.view(atColumn: 0) as? NativeTrackCellView {
+                        if rowView.numberOfColumns > 0, let cellView = rowView.view(atColumn: 0) as? any NativeTrackCellPresenting {
                             let isCurrent = context.coordinator.isCurrentOccurrence(videoId: track.videoId, index: overallIndex)
                             let displayIndex = (self.sections.count > 1 && self.sections.contains(where: { $0.title != nil })) ? itemIndex : overallIndex
                             cellView.configure(
@@ -339,6 +407,7 @@ struct NativeTrackTableView: NSViewRepresentable {
                                 index: displayIndex,
                                 isCurrentTrack: isCurrent,
                                 isPlaying: isCurrent && self.isPlaying,
+                                isLiked: self.likedVideoIds.contains(track.videoId),
                                 hideAlbum: self.hideAlbumColumn,
                                 showAlbumInSubtitle: self.showAlbumInSubtitle,
                                 isReorderable: self.isReorderable,
@@ -352,6 +421,27 @@ struct NativeTrackTableView: NSViewRepresentable {
                     }
                 }
             }
+            // Height/layout can query the data source. Update it only after the
+            // row transaction is complete, especially when clearing an empty filter.
+            if let scrollingHeader {
+                if oldParent.scrollingHeader != nil, oldParent.scrollingHeaderHeight != scrollingHeaderHeight {
+                    NSAnimationContext.runAnimationGroup { context in
+                        context.duration = 0
+                        context.allowsImplicitAnimation = false
+                        tableView.noteHeightOfRows(withIndexesChanged: IndexSet(integer: 0))
+                    }
+                }
+                if let cell = tableView.view(atColumn: 0, row: 0, makeIfNecessary: false) as? NativeTrackFooterCellView {
+                    cell.configure(scrollingHeader)
+                }
+            }
+            if let footer, let row = rowItems.indices.last,
+               case .footer = rowItems[row],
+               let cell = tableView.view(atColumn: 0, row: row, makeIfNecessary: false) as? NativeTrackFooterCellView {
+                // Even when two consecutive filters both have zero matches,
+                // refresh the message's query without replacing the header.
+                cell.configure(footer)
+            }
         }
     }
 
@@ -362,12 +452,22 @@ struct NativeTrackTableView: NSViewRepresentable {
         )
     }
 
+    static func dismantleNSView(_ nsView: NSScrollView, coordinator: Coordinator) {
+        NotificationCenter.default.removeObserver(coordinator)
+        coordinator.detachScrollingBackground()
+        (nsView.documentView as? NativeTrackTableViewInternal)?.coordinator = nil
+    }
+
     // MARK: - Coordinator
 
     @MainActor
     public class Coordinator: NSObject, NSTableViewDataSource, NSTableViewDelegate {
         var parent: NativeTrackTableView
         weak var tableView: NativeTrackTableViewInternal?
+        private var scrollingBackgroundHost: CollectionBackgroundHostingView?
+        private var backgroundInViewport: Bool?
+        private let backgroundOwner = UUID()
+        private weak var windowBackground: CollectionBackgroundController?
 
         init(parent: NativeTrackTableView) {
             self.parent = parent
@@ -375,6 +475,27 @@ struct NativeTrackTableView: NSViewRepresentable {
 
         func update(parent: NativeTrackTableView) {
             self.parent = parent
+        }
+
+        func replaceCollectionRows(with next: NativeTrackTableView, in tableView: NativeTrackTableViewInternal) {
+            let prefix = next.presentation == .collectionPlaylist ? 2 : 1
+            let oldCount = tableView.numberOfRows
+            // The data source and AppKit's row cache change in one transaction.
+            // Preserve the header/editor rather than detaching them on every keystroke.
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0
+                context.allowsImplicitAnimation = false
+                tableView.beginUpdates()
+                parent = next
+                if oldCount > prefix {
+                    tableView.removeRows(at: IndexSet(integersIn: prefix..<oldCount), withAnimation: [])
+                }
+                if next.rowItems.count > prefix {
+                    tableView.insertRows(at: IndexSet(integersIn: prefix..<next.rowItems.count), withAnimation: [])
+                }
+                tableView.endUpdates()
+            }
+            tableView.updateHover()
         }
 
         func isCurrentOccurrence(videoId: String, index: Int) -> Bool {
@@ -388,6 +509,54 @@ struct NativeTrackTableView: NSViewRepresentable {
 
         @objc func onClipViewBoundsChanged(_ notification: Notification) {
             tableView?.updateHover()
+            updateScrollingBackground()
+        }
+
+        func updateScrollingBackground(refreshContent: Bool = false) {
+            guard let tableView, let content = parent.scrollingBackground else {
+                detachScrollingBackground()
+                return
+            }
+            if let controller = parent.collectionBackgroundController, let identity = parent.scrollingBackgroundIdentity {
+                if windowBackground !== controller {
+                    detachScrollingBackground()
+                    windowBackground = controller
+                    controller.register(owner: backgroundOwner, identity: identity, document: tableView,
+                                        headerHeight: parent.scrollingHeaderHeight, content: content)
+                } else if refreshContent {
+                    controller.register(owner: backgroundOwner, identity: identity, document: tableView,
+                                        headerHeight: parent.scrollingHeaderHeight, content: content)
+                } else {
+                    controller.updateGeometry()
+                }
+                return
+            }
+            if windowBackground != nil { detachScrollingBackground() }
+            // Isolated previews retain a local background when no window shell is present.
+            let frame = NSRect(x: 0, y: 0, width: tableView.bounds.width,
+                               height: max(1, parent.scrollingHeaderHeight) + 140)
+            let visible = tableView.visibleRect.intersects(frame)
+            if scrollingBackgroundHost == nil {
+                let host = CollectionBackgroundHostingView(rootView: content(visible))
+                host.setAccessibilityElement(false)
+                scrollingBackgroundHost = host
+            }
+            guard let host = scrollingBackgroundHost else { return }
+            // A document child follows native scrolling without publishing every offset to SwiftUI.
+            if host.superview !== tableView || tableView.subviews.first !== host {
+                tableView.addSubview(host, positioned: .below, relativeTo: nil)
+            }
+            if host.frame != frame { host.frame = frame }
+            if refreshContent || backgroundInViewport != visible { host.rootView = content(visible) }
+            backgroundInViewport = visible
+        }
+
+        func detachScrollingBackground() {
+            windowBackground?.unregister(owner: backgroundOwner)
+            windowBackground = nil
+            scrollingBackgroundHost?.removeFromSuperview()
+            scrollingBackgroundHost = nil
+            backgroundInViewport = nil
         }
 
         // MARK: - NSTableViewDataSource
@@ -408,6 +577,8 @@ struct NativeTrackTableView: NSViewRepresentable {
             guard row >= 0 && row < parent.rowItems.count else { return false }
             if case .header = parent.rowItems[row] { return false }
             if case .footer = parent.rowItems[row] { return false }
+            if case .scrollingHeader = parent.rowItems[row] { return false }
+            if case .columnLabels = parent.rowItems[row] { return false }
             return true
         }
 
@@ -420,6 +591,10 @@ struct NativeTrackTableView: NSViewRepresentable {
                 return parent.rowHeight
             case .footer:
                 return parent.footerHeight
+            case .scrollingHeader:
+                return max(1, parent.scrollingHeaderHeight)
+            case .columnLabels:
+                return 42
             }
         }
 
@@ -427,7 +602,7 @@ struct NativeTrackTableView: NSViewRepresentable {
             guard let tableView else { return }
             tableView.enumerateAvailableRowViews { rowView, row in
                 guard rowView.numberOfColumns > 0,
-                      let cell = rowView.view(atColumn: 0) as? NativeTrackCellView else { return }
+                      let cell = rowView.view(atColumn: 0) as? any NativeTrackCellPresenting else { return }
                 cell.updateSelection(isSelected: row == tableView.selectedRow)
                 cell.updateHover(isHovered: (tableView as? NativeTrackTableViewInternal)?.hoveredRowIndex == row)
             }
@@ -450,7 +625,7 @@ struct NativeTrackTableView: NSViewRepresentable {
                 }
                 return rowView
 
-            case .footer:
+            case .footer, .scrollingHeader, .columnLabels:
                 return NativeTrackGroupRowView()
 
             case .track(let track, let overallIndex, _, _):
@@ -483,7 +658,79 @@ struct NativeTrackTableView: NSViewRepresentable {
                 cell?.configure(title: title)
                 return cell
 
+            case .scrollingHeader:
+                guard let content = parent.scrollingHeader else { return nil }
+                let identifier = NSUserInterfaceItemIdentifier("NativeCollectionScrollingHeader")
+                let cell = (tableView.makeView(withIdentifier: identifier, owner: self) as? NativeTrackFooterCellView)
+                    ?? NativeTrackFooterCellView()
+                cell.identifier = identifier
+                cell.configure(content)
+                return cell
+            case .columnLabels:
+                let identifier = NSUserInterfaceItemIdentifier("NativeCollectionColumnLabels")
+                let cell = (tableView.makeView(withIdentifier: identifier, owner: self) as? NativeCollectionColumnsCellView)
+                    ?? NativeCollectionColumnsCellView(frame: .zero)
+                cell.identifier = identifier
+                return cell
             case .track(let track, let overallIndex, _, let itemIndex):
+                if overallIndex >= parent.tracks.count - 15 { parent.onNearBottom?() }
+                if parent.presentation == .collectionAlbum || parent.presentation == .collectionPlaylist {
+                    let showsAlbum = parent.presentation == .collectionPlaylist
+                    let identifier = NSUserInterfaceItemIdentifier(showsAlbum ? "NativeCollectionPlaylistTrack" : "NativeCollectionAlbumTrack")
+                    let cell = (tableView.makeView(withIdentifier: identifier, owner: self) as? NativeCollectionTrackCellView)
+                        ?? NativeCollectionTrackCellView(showsAlbum: showsAlbum)
+                    cell.identifier = identifier
+                    cell.onPlay = { [weak self] in
+                        self?.play(overallIndex: overallIndex, row: row)
+                    }
+                    cell.onLike = { [weak self] track in self?.parent.onLikeTrack?(track) }
+                    cell.onSelectionMouseDown = { [weak self] event in self?.tableView?.mouseDown(with: event) }
+                    cell.onMenu = { [weak self] button in
+                        guard let menu = self?.menuForRow(row) else { return }
+                        menu.popUp(positioning: nil, at: NSPoint(x: button.bounds.maxX, y: button.bounds.maxY), in: button)
+                    }
+                    cell.onCreditFocusChanged = { [weak cell] _ in
+                        Task { @MainActor [weak cell] in
+                            guard let cell else { return }
+                            cell.updateCreditFocus(cell.containsKeyboardFocus)
+                        }
+                    }
+                    cell.onArtist = { [weak self] track in
+                        guard let id = track.artistId ?? track.artistRuns.first(where: { $0.id != nil })?.id else { return }
+                        self?.parent.router?.navigate(to: .artist(browseId: id))
+                    }
+                    cell.onAlbum = { [weak self] track in
+                        guard let id = track.albumId else { return }
+                        self?.parent.router?.navigate(to: .album(browseId: id))
+                    }
+                    let isCurrent = isCurrentOccurrence(videoId: track.videoId, index: overallIndex)
+                    cell.configure(track: track, index: overallIndex, isCurrentTrack: isCurrent,
+                                   isPlaying: isCurrent && parent.isPlaying, isLiked: parent.likedVideoIds.contains(track.videoId),
+                                   hideAlbum: !showsAlbum, showAlbumInSubtitle: false,
+                                   isReorderable: parent.isReorderable, rowHeight: parent.rowHeight)
+                    cell.updateCreditFocus(cell.containsKeyboardFocus)
+                    cell.updateHover(isHovered: (tableView as? NativeTrackTableViewInternal)?.hoveredRowIndex == row)
+                    return cell
+                }
+                if parent.presentation == .queue {
+                    let identifier = NSUserInterfaceItemIdentifier("NativeQueueTrackCellView")
+                    let cell = (tableView.makeView(withIdentifier: identifier, owner: self) as? NativeQueueTrackCellView)
+                        ?? NativeQueueTrackCellView(frame: .zero)
+                    cell.identifier = identifier
+                    cell.onLike = { [weak self] track in self?.parent.onLikeTrack?(track) }
+                    cell.onDislike = { [weak self] track in self?.parent.onDislikeTrack?(track) }
+                    let isCurrent = isCurrentOccurrence(videoId: track.videoId, index: overallIndex)
+                    let displayIndex = (parent.sections.count > 1 && parent.sections.contains(where: { $0.title != nil })) ? itemIndex : overallIndex
+                    cell.configure(track: track, index: displayIndex, isCurrentTrack: isCurrent,
+                                   isPlaying: isCurrent && parent.isPlaying,
+                                   isLiked: parent.likedVideoIds.contains(track.videoId),
+                                   hideAlbum: true, showAlbumInSubtitle: true,
+                                   isReorderable: parent.isReorderable, rowHeight: parent.rowHeight)
+                    cell.updateCreditFocus(cell.containsKeyboardFocus)
+                    cell.updateHover(isHovered: (tableView as? NativeTrackTableViewInternal)?.hoveredRowIndex == row)
+                    cell.updateSelection(isSelected: tableView.selectedRow == row)
+                    return cell
+                }
                 let identifier = NSUserInterfaceItemIdentifier("NativeTrackCellView")
                 var cell = tableView.makeView(withIdentifier: identifier, owner: self) as? NativeTrackCellView
                 if cell == nil {
@@ -550,11 +797,6 @@ struct NativeTrackTableView: NSViewRepresentable {
                 cell?.updateHover(isHovered: isHovered)
                 cell?.updateSelection(isSelected: tableView.selectedRow == row)
 
-                // Centinela de paginación predictiva (15 items antes del final)
-                if overallIndex >= parent.tracks.count - 15 {
-                    parent.onNearBottom?()
-                }
-
                 return cell
 
             case .footer:
@@ -584,7 +826,8 @@ struct NativeTrackTableView: NSViewRepresentable {
             proposedRow row: Int,
             proposedDropOperation dropOperation: NSTableView.DropOperation
         ) -> NSDragOperation {
-            guard parent.isReorderable, parent.onMoveTrack != nil else { return [] }
+            guard parent.isReorderable, parent.onMoveTrack != nil,
+                  let sourceTable = info.draggingSource as? NSTableView, sourceTable === tableView else { return [] }
             tableView.setDropRow(row, dropOperation: .above)
             return .move
         }
@@ -596,20 +839,16 @@ struct NativeTrackTableView: NSViewRepresentable {
             dropOperation: NSTableView.DropOperation
         ) -> Bool {
             guard parent.isReorderable,
+                  let sourceTable = info.draggingSource as? NSTableView, sourceTable === tableView,
                   let pasteboard = info.draggingPasteboard.pasteboardItems?.first,
                   let str = pasteboard.string(forType: NSPasteboard.PasteboardType("com.fefucho.sideb.trackRow")),
                   let sourceRow = Int(str) else {
                 return false
             }
 
-            var destRow = row
-            if sourceRow < destRow {
-                destRow -= 1
-            }
-            guard sourceRow != destRow, sourceRow >= 0, sourceRow < parent.tracks.count,
-                  destRow >= 0, destRow < parent.tracks.count else {
-                return false
-            }
+            guard let destRow = TrackTableInteractionPolicy.dropDestination(
+                proposedRow: row, sourceIndex: sourceRow, rows: parent.rowItems, trackCount: parent.tracks.count
+            ) else { return false }
 
             parent.onMoveTrack?(sourceRow, destRow)
             return true
@@ -638,6 +877,8 @@ struct NativeTrackTableView: NSViewRepresentable {
             guard row >= 0 && row < parent.rowItems.count else { return false }
             if case .header = parent.rowItems[row] { return true }
             if case .footer = parent.rowItems[row] { return true }
+            if case .scrollingHeader = parent.rowItems[row] { return true }
+            if case .columnLabels = parent.rowItems[row] { return true }
             return false
         }
 
@@ -674,6 +915,18 @@ struct NativeTrackTableView: NSViewRepresentable {
 
 // MARK: - Native Track Table View Internal (Single Source of Truth for Hover)
 
+final class CollectionBackgroundHostingView: NSHostingView<AnyView> {
+    required init(rootView: AnyView) {
+        super.init(rootView: rootView)
+        // The canvas already supplies window/scroll geometry. A second hosting
+        // safe area would inset the artwork below the native titlebar again.
+        safeAreaRegions = []
+    }
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+    override var isOpaque: Bool { false }
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+}
+
 final class NativeTrackFooterCellView: NSTableCellView {
     private var hosted: NSHostingView<AnyView>?
 
@@ -697,6 +950,16 @@ final class NativeTrackFooterCellView: NSTableCellView {
 
 final class NativeTrackTableViewInternal: NSTableView {
     weak var coordinator: NativeTrackTableView.Coordinator?
+
+    override func layout() {
+        super.layout()
+        coordinator?.updateScrollingBackground()
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        coordinator?.updateScrollingBackground()
+    }
 
     override func menu(for event: NSEvent) -> NSMenu? {
         let point = convert(event.locationInWindow, from: nil)
@@ -854,7 +1117,7 @@ final class NativeTrackRowView: NSTableRowView {
         didSet {
             guard oldValue != isHovered else { return }
             needsDisplay = true
-            if numberOfColumns > 0, let cell = view(atColumn: 0) as? NativeTrackCellView {
+            if numberOfColumns > 0, let cell = view(atColumn: 0) as? any NativeTrackCellPresenting {
                 cell.updateHover(isHovered: isHovered)
             }
         }
@@ -886,7 +1149,7 @@ final class NativeTrackRowView: NSTableRowView {
 
 // MARK: - Native Track Cell View (Pure AppKit Cell Recycling)
 
-final class NativeTrackCellView: NSTableCellView {
+final class NativeTrackCellView: NSTableCellView, NativeTrackCellPresenting {
     private let indexLabel = NSTextField(labelWithString: "")
     private let playingIconView = NSImageView()
     let artworkImageView = NativeTrackActionImageView(frame: .zero)
@@ -1238,6 +1501,7 @@ final class NativeTrackCellView: NSTableCellView {
         index: Int,
         isCurrentTrack: Bool,
         isPlaying: Bool,
+        isLiked: Bool = false,
         hideAlbum: Bool = false,
         showAlbumInSubtitle: Bool = false,
         isReorderable: Bool = false,
@@ -1403,6 +1667,40 @@ final class NativeTrackCreditField: NativeTrackActionField, PlaybackSpaceControl
     private var linkAction: (() -> Void)?
     private var fallbackAction: (() -> Void)?
     var onFocusChanged: ((Bool) -> Void)?
+    var showsHoverHighlight = false {
+        didSet { updateTrackingAreas(); updateLinkAppearance() }
+    }
+    private var hoverArea: NSTrackingArea?
+    private var isCreditHovered = false
+    private var isCreditFocused = false
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let hoverArea { removeTrackingArea(hoverArea) }
+        hoverArea = nil
+        guard showsHoverHighlight else { return }
+        let area = NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self)
+        addTrackingArea(area)
+        hoverArea = area
+    }
+
+    override func resetCursorRects() {
+        super.resetCursorRects()
+        if showsHoverHighlight, linkAction != nil { addCursorRect(bounds, cursor: .pointingHand) }
+    }
+
+    override func mouseEntered(with event: NSEvent) { setCreditHovered(true) }
+    override func mouseExited(with event: NSEvent) { setCreditHovered(false) }
+
+    func setCreditHovered(_ hovered: Bool) {
+        isCreditHovered = hovered
+        updateLinkAppearance()
+    }
+
+    private func updateLinkAppearance() {
+        guard showsHoverHighlight else { return }
+        textColor = linkAction != nil && (isCreditHovered || isCreditFocused) ? .labelColor : .secondaryLabelColor
+    }
 
     func configureLink(
         label: String,
@@ -1413,6 +1711,9 @@ final class NativeTrackCreditField: NativeTrackActionField, PlaybackSpaceControl
         stringValue = label
         linkAction = destinationExists ? action : nil
         fallbackAction = fallback
+        isCreditHovered = window.map { window in
+            window.isKeyWindow && visibleRect.contains(convert(window.mouseLocationOutsideOfEventStream, from: nil))
+        } ?? false
         onActivate = { [weak self] in self?.activateCredit() }
         setAccessibilityLabel(label)
         if destinationExists {
@@ -1422,19 +1723,21 @@ final class NativeTrackCreditField: NativeTrackActionField, PlaybackSpaceControl
             setAccessibilityRole(.staticText)
             focusRingType = .none
         }
+        updateLinkAppearance()
+        window?.invalidateCursorRects(for: self)
     }
 
     override var acceptsFirstResponder: Bool { linkAction != nil }
 
     override func becomeFirstResponder() -> Bool {
         let becameFirstResponder = super.becomeFirstResponder()
-        if becameFirstResponder { onFocusChanged?(true) }
+        if becameFirstResponder { isCreditFocused = true; updateLinkAppearance(); onFocusChanged?(true) }
         return becameFirstResponder
     }
 
     override func resignFirstResponder() -> Bool {
         let resigned = super.resignFirstResponder()
-        if resigned { onFocusChanged?(false) }
+        if resigned { isCreditFocused = false; updateLinkAppearance(); onFocusChanged?(false) }
         return resigned
     }
 

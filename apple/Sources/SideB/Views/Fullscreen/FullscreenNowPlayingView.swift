@@ -541,6 +541,7 @@ struct FullscreenNowPlayingView: View, Animatable {
                     isPlaying: viewModel.isPlaying,
                     playerViewModel: viewModel,
                     router: router,
+                    presentation: .queue,
                     hideAlbumColumn: true,
                     showAlbumInSubtitle: true,
                     isReorderable: true,

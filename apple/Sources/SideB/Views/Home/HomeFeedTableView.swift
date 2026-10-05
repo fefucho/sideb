@@ -1,6 +1,21 @@
 import AppKit
 import SwiftUI
+import Observation
 import SideBCore
+
+/// Native viewport geometry has its own observation scope. A sidebar animation
+/// changes this value without replacing the hosting root or its data snapshot.
+@MainActor @Observable
+final class HomeFeaturedViewport {
+    var width: CGFloat = 260
+}
+
+private struct HomeFeaturedHostedContent: View {
+    let viewport: HomeFeaturedViewport
+    let builder: (CGFloat) -> AnyView
+
+    var body: some View { builder(viewport.width) }
+}
 
 /// Maps scrolling intro/featured content, shelves and pagination to native rows.
 struct HomeFeedRows {
@@ -192,7 +207,7 @@ struct HomeFeedTableView: NSViewRepresentable {
         let contextChanged = coordinator.lastQueueContext != queueContext
         coordinator.lastQueueContext = queueContext
         let compact = scroll.contentView.bounds.width < 760
-        if old.revision != revision || old.hasMore != hasMore || old.hasPaginationFooter != hasPaginationFooter || old.selectedChip != selectedChip ||
+        if old.hasPaginationFooter != hasPaginationFooter || old.selectedChip != selectedChip ||
             coordinator.wasCompact != compact || (old.headerContent == nil) != (headerContent == nil) || old.hasFeatured != hasFeatured {
             coordinator.wasCompact = compact
             table.reloadData()
@@ -202,13 +217,28 @@ struct HomeFeedTableView: NSViewRepresentable {
             }
             coordinator.scheduleHoverUpdate()
         } else {
+            // Featured capacity changes also advance contentRevision. Reload
+            // only changed shelves: replacing every row tears down mounted
+            // controls even when the change is confined to the featured panel.
+            if old.revision != revision, old.sections != sections {
+                if old.sections.count == sections.count {
+                    let changedRows = IndexSet(sections.indices.compactMap { index in
+                        old.sections[index] == sections[index] ? nil : index + coordinator.rows.sectionOffset
+                    })
+                    table.reloadData(forRowIndexes: changedRows, columnIndexes: IndexSet(integer: 0))
+                    table.noteHeightOfRows(withIndexesChanged: changedRows)
+                } else {
+                    table.reloadData()
+                }
+                coordinator.scheduleHoverUpdate()
+            }
             if old.currentTrackID != currentTrackID ||
                old.currentAlbumBrowseId != currentAlbumBrowseId ||
                old.currentPlaylistBrowseId != currentPlaylistBrowseId ||
                old.isPlaying != isPlaying || contextChanged {
                 coordinator.updateVisiblePlayback()
             }
-            if old.isLoadingMore != isLoadingMore || old.loadMoreMessage != loadMoreMessage {
+            if old.hasMore != hasMore || old.isLoadingMore != isLoadingMore || old.loadMoreMessage != loadMoreMessage {
                 coordinator.updateLoadMore()
             }
         }
@@ -221,7 +251,7 @@ struct HomeFeedTableView: NSViewRepresentable {
         var wasCompact = false
         private var headerHost: NSHostingView<AnyView>?
         private var featuredHost: NSHostingView<AnyView>?
-        private var featuredWidth: CGFloat = -1
+        let featuredViewport = HomeFeaturedViewport()
         private var measuredFeaturedHeight: CGFloat = -1
         var rows: HomeFeedRows {
             HomeFeedRows(sectionCount: parent.sections.count, hasHeader: parent.headerContent != nil,
@@ -244,12 +274,12 @@ struct HomeFeedTableView: NSViewRepresentable {
             guard let table, let row = rows.featuredRow, let height = parent.featuredHeight else { return }
             let width = viewportWidth
             let nextHeight = height(width)
-            if force || width != featuredWidth {
-                featuredWidth = width
-                if let builder = parent.featuredContent {
-                    var transaction = Transaction()
-                    transaction.disablesAnimations = true
-                    withTransaction(transaction) { featuredHost?.rootView = builder(width) }
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                if featuredViewport.width != width { featuredViewport.width = width }
+                if force, let host = featuredHost, let builder = parent.featuredContent {
+                    host.rootView = AnyView(HomeFeaturedHostedContent(viewport: featuredViewport, builder: builder))
                 }
             }
             let loadedRow = table.numberOfRows == rows.count && row < table.numberOfRows
@@ -307,14 +337,11 @@ struct HomeFeedTableView: NSViewRepresentable {
             }
             if row == rows.featuredRow, let builder = parent.featuredContent {
                 let width = viewportWidth
+                featuredViewport.width = width
                 if featuredHost == nil {
-                    featuredHost = NSHostingView(rootView: builder(width))
+                    featuredHost = NSHostingView(rootView: AnyView(HomeFeaturedHostedContent(viewport: featuredViewport, builder: builder)))
                     featuredHost?.sizingOptions = []
                 }
-                featuredWidth = width
-                var transaction = Transaction()
-                transaction.disablesAnimations = true
-                withTransaction(transaction) { featuredHost?.rootView = builder(width) }
                 return featuredHost
             }
             if row == rows.loadMoreRow {

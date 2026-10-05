@@ -161,3 +161,30 @@ private func tableTestTrack(_ id: String) -> SongItemRecord {
     #expect(coordinator.isCurrentOccurrence(videoId: repeated.videoId, index: 1))
     audio.stop()
 }
+
+@Test @MainActor func queuePresentationUsesSeparateCellsWhileStandardListsKeepMediaControls() {
+    let track = tableTestTrack("queue-track")
+    let table = NativeTrackTableViewInternal()
+    var played: [Int] = []
+    let queueView = NativeTrackTableView(tracks: [track, track], presentation: .queue,
+                                        isReorderable: true, rowHeight: 46,
+                                        menuOrigin: { .queue(occurrenceIndex: $0) },
+                                        onPlayTrack: { played.append($0) })
+    let queueCoordinator = queueView.makeCoordinator()
+    let first = queueCoordinator.tableView(table, viewFor: nil, row: 0)
+    let duplicate = queueCoordinator.tableView(table, viewFor: nil, row: 1)
+    #expect(first is NativeQueueTrackCellView)
+    #expect(duplicate is NativeQueueTrackCellView)
+    #expect(first?.identifier == NSUserInterfaceItemIdentifier("NativeQueueTrackCellView"))
+    #expect(played.isEmpty)
+    #expect(queueCoordinator.tableView(table, pasteboardWriterForRow: 1) != nil)
+
+    let standardView = NativeTrackTableView(tracks: [track], onPlayTrack: { played.append($0) })
+    let standardCoordinator = standardView.makeCoordinator()
+    let standard = standardCoordinator.tableView(table, viewFor: nil, row: 0)
+    #expect(standard is NativeTrackCellView)
+    #expect(standard?.identifier == NSUserInterfaceItemIdentifier("NativeTrackCellView"))
+    #expect(standardCoordinator.tableView(table, pasteboardWriterForRow: 0) == nil)
+    (standard as? NativeTrackCellView)?.performPrimaryAction()
+    #expect(played == [0])
+}
