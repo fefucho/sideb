@@ -4,7 +4,7 @@
 - Objetivo: publicar la actualización descargable autorizada por el usuario, quien delegó número y decisiones de publicación.
 - Versión elegida: patch 1.1.6, build pública 10, tag v1.1.6; estable/Latest para el actualizador.
 - Ámbito: macOS Apple Silicon/macOS mínimo 15, FIX-113–119 ya enviados a main en 62a3eb8. Conservar fuentes/core/Windows y temp local.
-- Estado: build y paquete verificados; pendiente publicación.
+- Estado: publicada estable/Latest; API, digest y descarga pública verificados.
 
 ## Pasos
 
@@ -13,9 +13,9 @@
 - [x] Preparar notas de producto sin atribuir validación visual/FPS a pruebas.
 - [x] Runner local numerado, suites y firma ad hoc.
 - [x] ZIP con ditto --keepParent, CRC, arquitectura/versión/SDK y bytes/firma tras extracción.
-- [ ] Commit release con rutas explícitas y push atómico main/tag.
-- [ ] Publicar draft con asset verificado y activar estable/Latest.
-- [ ] Comprobar API latest, tamaño/digest y descarga pública.
+- [x] Commit release con rutas explícitas y push atómico main/tag.
+- [x] Publicar draft con asset verificado y activar estable/Latest.
+- [x] Comprobar API latest, tamaño/digest y descarga pública.
 
 ## Protocolo y límites
 
@@ -32,6 +32,17 @@ La validación visual/física de FIX-118/119 quedó pendiente por Mac bloqueado.
 - SHA-256: `42c179d2d58aca9db5a567e7228088463da95bcaddfbbe3b393a6816d3a9ea18`.
 - CRC correcto, sólo bundle y metadatos macOS; bytes de todos los archivos idénticos tras extracción, firma ad hoc estricta verificada en original y extraído.
 - Fuentes de app: commit 62a3eb85cfa27d2b132ad38315553e5f531bdd02 más version.env 1.1.6/10; sólo documentos de release actualizados después del runner.
+
+## Publicación verificada
+
+- Commit de release/tag: `58c4e5ae00b1add55282b2a9daa91797de711cd5`; tag anotado `v1.1.6`, enviado con main en push atómico.
+- Release: [Side B v1.1.6](https://github.com/fefucho/SIDE-B-CLIENT-NATIVE/releases/tag/v1.1.6), ID 404006213.
+- Publicación: 2026-10-05T18:27:22Z (15:27:22 America/Montevideo).
+- Draft con asset verificado antes de activar estable/Latest; `draft: false`, `prerelease: false` y API `/releases/latest` devuelve `v1.1.6`.
+- Asset `SideB-macOS.zip`: ID 613346969, estado uploaded, 26957548 bytes; digest remoto `sha256:42c179d2d58aca9db5a567e7228088463da95bcaddfbbe3b393a6816d3a9ea18` igual al local.
+- Descarga pública sin autenticación comprobada: tamaño, SHA-256 y CRC coinciden con el paquete local.
+- `gh run list --branch v1.1.6` no mostró runs al verificar; commit `[skip ci]` conserva paquete local y workflow existente.
+- Cierre documental enviado a main en un commit posterior, sin mover el tag ni reemplazar el asset. `temp/` permanece fuera de Git.
 
 ## Notas de la release
 
