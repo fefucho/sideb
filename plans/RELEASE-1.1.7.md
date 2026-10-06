@@ -4,7 +4,7 @@
 - Objetivo: publicar la actualización autorizada por el usuario conservando la implementación actual de FIX-120–129.
 - Versión: patch 1.1.7, build pública 11, tag v1.1.7; estable/Latest para el actualizador.
 - Ámbito: macOS Apple Silicon, mínimo macOS 15. Incluye Explorar/rankings, optimizaciones de catálogos e Inicio, historial con feedback y descenso interactivo de Ahora suena. No se modifica funcionalidad en esta publicación.
-- Estado: build y paquete verificados; commit/tag y publicación pendientes.
+- Estado: publicada estable/Latest; API, digest y descarga pública verificados.
 
 ## Pasos
 
@@ -13,9 +13,9 @@
 - [x] Preparar notas de producto según comportamiento vigente, sin atribuir validación física/FPS a pruebas.
 - [x] Runner numerado, suites, fuente estable y firma ad hoc.
 - [x] ZIP con ditto --keepParent; CRC, arquitectura/versión/SDK, bytes y firma tras extracción.
-- [ ] Commit con rutas explícitas y push atómico main/tag.
-- [ ] Draft con asset verificado; publicar estable/Latest.
-- [ ] Verificar API latest, digest y descarga pública.
+- [x] Commit con rutas explícitas y push atómico main/tag.
+- [x] Draft con asset verificado; publicar estable/Latest.
+- [x] Verificar API latest, digest y descarga pública.
 
 ## Protocolo y límites
 
@@ -33,6 +33,15 @@ Las pruebas y QA de cada fix se conservan en FIXES.md y sus planes. El usuario p
 - Cinco hashes del manifest coinciden; CRC y bytes de todos los archivos coinciden tras extracción. Firma ad hoc estricta verificada en original y extraído; sin flag de diagnóstico en el Info.plist de producción.
 - Evidencia local: `builds/macos/build-0062/release-package-verification.json`. No se cambian fuentes core/bindings/Windows durante esta publicación; el checkpoint previo c59acce aporta Explorar y el contrato común de FIX-120.
 - Después del runner sólo se actualiza documentación y se retira una línea vacía final de WindowGestureRegionTests para cumplir git diff --check; casos/aserciones conservados. Fuentes de app y version.env conservan los bytes compilados.
+
+## Publicación verificada
+
+- Commit release/tag: `9070861abf0bccc8c41d229159d661f321941b26`; tag anotado `v1.1.7`, enviado con main en push atómico. Incluye FIX-120–129, paridad y planes; temp permanece fuera de Git.
+- Release: [Side B v1.1.7](https://github.com/fefucho/SIDE-B-CLIENT-NATIVE/releases/tag/v1.1.7), ID 404982549, publicada 2026-10-06T17:32:29Z (14:32:29 America/Montevideo).
+- Draft y asset verificados antes de activar estable/Latest. `draft: false`, `prerelease: false`; API pública `/releases/latest` devuelve `v1.1.7`.
+- Asset `SideB-macOS.zip`: ID 616187184, estado uploaded, 27235944 bytes. Digest remoto `sha256:b6998dbf898b6c2f157d5e7cb07a9a7da3c508d538c2b6d3649cd0d8bbf1e3b3`, igual al local.
+- Descarga pública sin autenticación: tamaño/SHA-256/CRC coinciden, notas publicadas iguales al archivo preparado. Evidencia en `builds/macos/build-0062/release-publication-verification.json` y copia descargada en `public-download-verification/`.
+- `gh run list --branch v1.1.7` no mostró runs; commit [skip ci] conserva el paquete local y workflow existente. Cierre documental en commit posterior, sin mover el tag ni reemplazar el asset.
 
 ## Notas de la release
 

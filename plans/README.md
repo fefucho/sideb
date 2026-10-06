@@ -4,7 +4,7 @@ Herramientas compartidas o fixes para ambas plataformas. [Formato](../README.md#
 
 | Plan | Estado |
 |---|---|
-| [Release 1.1.7](RELEASE-1.1.7.md) | Paquete build-0062 verificado, 532 pruebas; publicación estable pendiente |
+| [Release 1.1.7](RELEASE-1.1.7.md) | Publicada estable/Latest; build-0062, 532 pruebas y descarga/hash remoto verificados |
 | [Release 1.1.6](RELEASE-1.1.6.md) | Publicada estable/Latest; build-0040 y descarga/hash remoto verificados |
 | [Release 1.1.5](RELEASE-1.1.5.md) | Publicada estable/Latest; build-0032 y hash remoto verificados |
 

@@ -8,6 +8,8 @@ Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-130**. Se
 
 ## Cambios recientes
 
+Los FIX-120–129 se incluyen en la [release estable 1.1.7](plans/RELEASE-1.1.7.md), publicada el 2026-10-06 con build-0062 (versión pública 1.1.7/build 11), 532 pruebas aprobadas y paquete/descarga verificados. Los límites de cada comprobación física y los antecedentes se conservan en sus entradas.
+
 <a id="fix-129"></a>
 
 ### [FIX-129] [Apple] - Devolver el gesto horizontal a carruseles y páginas de Inicio
