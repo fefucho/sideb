@@ -127,6 +127,7 @@ struct AlbumDetailView: View {
                         }
                         .padding(.horizontal, 32)
                     }
+                    .windowGestureRegion(.horizontalContent, active: !playerViewModel.isFullscreenPresented)
                 }
             }
             Spacer(minLength: 0)

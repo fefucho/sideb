@@ -251,6 +251,19 @@ pub struct AccountInfoRecord {
 }
 
 #[derive(Clone, Debug, uniffi::Record)]
+pub struct ChartCountryRecord {
+    pub code: String,
+    pub title: String,
+}
+
+#[derive(Clone, Debug, uniffi::Record)]
+pub struct ChartsPageRecord {
+    pub selected_country: Option<String>,
+    pub countries: Vec<ChartCountryRecord>,
+    pub items: Vec<BrowseCardRecord>,
+}
+
+#[derive(Clone, Debug, uniffi::Record)]
 pub struct BrowseCardRecord {
     pub kind: String,
     pub id: String,
@@ -780,6 +793,24 @@ impl SideBCore {
                     id: run.id,
                 })
                 .collect(),
+        })
+    }
+
+    /// Country detected by YouTube for the current network; coarse and anonymous.
+    pub async fn detect_music_country(&self) -> Result<Option<String>, SideBError> {
+        Ok(self.it.detect_music_country().await?)
+    }
+
+    /// Regional charts and the provider's currently available countries (ZZ = global).
+    pub async fn get_charts(&self, country_code: String) -> Result<ChartsPageRecord, SideBError> {
+        let client = self.clients.get(METADATA_CLIENT).ok_or_else(|| SideBError::Other {
+            message: "Metadata client missing".into(),
+        })?;
+        let page = self.it.charts(client, &country_code).await?;
+        Ok(ChartsPageRecord {
+            selected_country: page.selected_country,
+            countries: page.countries.into_iter().map(|c| ChartCountryRecord { code: c.code, title: c.title }).collect(),
+            items: page.items.into_iter().map(BrowseCardRecord::from).collect(),
         })
     }
 

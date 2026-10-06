@@ -36,9 +36,9 @@ struct SidebarView: View {
                             navigate(to: .home)
                         }
 
-                        sidebarRow(title: "Explorar", icon: "sparkles", isSelected: false) {}
-                            .disabled(true)
-                            .help("Próximamente")
+                        sidebarRow(title: "Explorar", icon: "sparkles", isSelected: !isSearchPresented && isExploreSelected) {
+                            navigate(to: .explore(.discover))
+                        }
 
                         sidebarRow(
                             title: "Buscar",
@@ -341,6 +341,10 @@ struct SidebarView: View {
             return true
         }
         return false
+    }
+
+    private var isExploreSelected: Bool {
+        MainNavigationDestination.selected(history: router.history, currentIndex: router.currentIndex, searchPresented: false) == .explore
     }
 
     private var isSearchSelected: Bool {

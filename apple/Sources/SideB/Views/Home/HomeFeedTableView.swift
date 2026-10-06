@@ -36,6 +36,7 @@ struct HomeFeedRows {
 /// El scroll vertical recicla estantes completos; cada estante recicla sus tarjetas en horizontal.
 /// Así las categorías agregadas por paginación no mantienen scrollers ortogonales fuera de pantalla.
 struct HomeFeedTableView: NSViewRepresentable {
+    @Environment(\.sideBGesturePreviewVisible) var gesturePreviewVisible
     let headerContent: AnyView?
     let headerHeight: CGFloat
     let featuredContent: ((CGFloat) -> AnyView)?
@@ -116,12 +117,16 @@ struct HomeFeedTableView: NSViewRepresentable {
         // The viewport fills the parent's proposal. Measuring the document's
         // intrinsic size walks every mounted shelf/hosting subtree on scroll.
         // Use the same sizing contract as NativeTrackTableView.
-        CGSize(width: proposal.width ?? 800, height: proposal.height ?? 600)
+        if isObscured {
+            let retained = context.coordinator.suspendedViewportSize ?? nsView.bounds.size
+            if retained.width > 0, retained.height > 0 { return retained }
+        }
+        return CGSize(width: proposal.width ?? 800, height: proposal.height ?? 600)
     }
 
     func makeNativeScrollView(coordinator: Coordinator) -> NSScrollView {
         let scroll = HomeFeedScrollView()
-        scroll.isHidden = isObscured
+        scroll.isHidden = isObscured && !gesturePreviewVisible
         scroll.drawsBackground = false
         scroll.hasVerticalScroller = true
         scroll.hasHorizontalScroller = false
@@ -180,15 +185,33 @@ struct HomeFeedTableView: NSViewRepresentable {
     }
 
     func updateNativeScrollView(_ scroll: NSScrollView, coordinator: Coordinator) {
+        let wasObscured = coordinator.isObscured
+        coordinator.latestParent = self
+        if isObscured {
+            if !wasObscured {
+                coordinator.suspendedViewportSize = scroll.bounds.size
+                coordinator.clearHover()
+                coordinator.setFeedVisible(false)
+            }
+            coordinator.isObscured = true
+            scroll.isHidden = !gesturePreviewVisible
+            return
+        }
         let old = coordinator.parent
-        coordinator.parent = self
-        if old.isObscured != isObscured {
-            if isObscured { coordinator.clearHover() }
-            // AppKit tooltips and tracking areas outlive SwiftUI's opacity/hit-testing state.
-            scroll.isHidden = isObscured
+        // Keep AppKit's data source consistent with its mounted rows while hidden;
+        // apply only the latest snapshot before exposing the retained viewport.
+        coordinator.parent = coordinator.latestParent
+        coordinator.isObscured = false
+        coordinator.suspendedViewportSize = nil
+        defer {
+            if wasObscured {
+                scroll.layoutSubtreeIfNeeded()
+                coordinator.updateFeatured()
+            }
+            scroll.isHidden = false
+            coordinator.setFeedVisible(true)
         }
         guard let table = scroll.documentView as? NSTableView else { return }
-        coordinator.setFeedVisible(!isObscured)
         coordinator.updateHeader()
         coordinator.updateFeatured(force: true)
         let newTopInset = topContentInset + (headerContent == nil && !hasFeatured ? 10 : 0)
@@ -247,6 +270,9 @@ struct HomeFeedTableView: NSViewRepresentable {
     @MainActor
     final class Coordinator: NSObject, NSTableViewDataSource, NSTableViewDelegate {
         var parent: HomeFeedTableView
+        var latestParent: HomeFeedTableView
+        var isObscured: Bool
+        var suspendedViewportSize: CGSize?
         weak var table: NSTableView?
         var wasCompact = false
         private var headerHost: NSHostingView<AnyView>?
@@ -259,6 +285,7 @@ struct HomeFeedTableView: NSViewRepresentable {
         }
 
         func updateHeader() {
+            guard !isObscured else { return }
             if let headerContent = parent.headerContent {
                 var transaction = Transaction()
                 transaction.disablesAnimations = true
@@ -266,12 +293,13 @@ struct HomeFeedTableView: NSViewRepresentable {
             }
         }
         private var viewportWidth: CGFloat {
-            max(260, table?.enclosingScrollView?.contentView.bounds.width ?? table?.bounds.width ?? 260)
+            if isObscured, let retained = suspendedViewportSize { return max(260, retained.width) }
+            return max(260, table?.enclosingScrollView?.contentView.bounds.width ?? table?.bounds.width ?? 260)
         }
 
         /// Geometry belongs to the native viewport, including every intermediate sidebar width.
         func updateFeatured(force: Bool = false) {
-            guard let table, let row = rows.featuredRow, let height = parent.featuredHeight else { return }
+            guard !isObscured, let table, let row = rows.featuredRow, let height = parent.featuredHeight else { return }
             let width = viewportWidth
             let nextHeight = height(width)
             var transaction = Transaction()
@@ -304,6 +332,8 @@ struct HomeFeedTableView: NSViewRepresentable {
 
         init(parent: HomeFeedTableView) {
             self.parent = parent
+            self.latestParent = parent
+            self.isObscured = parent.isObscured
             self.lastQueueContext = parent.queueContext
         }
         deinit { NotificationCenter.default.removeObserver(self) }
@@ -314,7 +344,10 @@ struct HomeFeedTableView: NSViewRepresentable {
 
         func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat {
             if rows.hasHeader, row == 0 { return parent.headerHeight }
-            if row == rows.featuredRow { return parent.featuredHeight?(viewportWidth) ?? 0 }
+            if row == rows.featuredRow {
+                if isObscured, measuredFeaturedHeight >= 0 { return measuredFeaturedHeight }
+                return parent.featuredHeight?(viewportWidth) ?? 0
+            }
             guard let index = rows.sectionIndex(forRow: row) else { return 68 }
             let headerHeight: CGFloat = 38
             let bottomSpacing: CGFloat = 16
@@ -348,7 +381,7 @@ struct HomeFeedTableView: NSViewRepresentable {
                 let view = (tableView.makeView(withIdentifier: HomeLoadMoreRowView.identifier, owner: nil) as? HomeLoadMoreRowView)
                     ?? HomeLoadMoreRowView()
                 view.configure(loading: parent.isLoadingMore, hasMore: parent.hasMore,
-                               message: parent.loadMoreMessage) { [weak self] in self?.parent.onLoadMore() }
+                               message: parent.loadMoreMessage) { [weak self] in self?.requestLoadMore() }
                 return view
             }
 
@@ -368,6 +401,7 @@ struct HomeFeedTableView: NSViewRepresentable {
         }
 
         func updateVisiblePlayback() {
+            guard !isObscured else { return }
             lastQueueContext = parent.queueContext
             guard let table else { return }
             let visible = table.rows(in: table.visibleRect)
@@ -398,10 +432,16 @@ struct HomeFeedTableView: NSViewRepresentable {
             guard let table, let row = rows.loadMoreRow else { return }
             (table.view(atColumn: 0, row: row, makeIfNecessary: false) as? HomeLoadMoreRowView)?
                 .configure(loading: parent.isLoadingMore, hasMore: parent.hasMore,
-                           message: parent.loadMoreMessage) { [weak self] in self?.parent.onLoadMore() }
+                           message: parent.loadMoreMessage) { [weak self] in self?.requestLoadMore() }
+        }
+
+        private func requestLoadMore() {
+            guard !isObscured else { return }
+            parent.onLoadMore()
         }
 
         @objc func boundsChanged(_ notification: Notification) {
+            guard !isObscured else { return }
             updateFeatured()
             updateRowHeightsIfCompactModeChanged()
             scheduleHoverUpdate()
@@ -419,7 +459,7 @@ struct HomeFeedTableView: NSViewRepresentable {
         }
 
         func scheduleHoverUpdate() {
-            guard !hoverUpdateScheduled else { return }
+            guard !isObscured, !hoverUpdateScheduled else { return }
             hoverUpdateScheduled = true
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
@@ -429,8 +469,8 @@ struct HomeFeedTableView: NSViewRepresentable {
         }
 
         private func updateHoverAtPointer() {
-            setFeedVisible(!parent.isObscured)
-            guard !parent.isObscured else { clearHover(); return }
+            guard !isObscured else { clearHover(); return }
+            setFeedVisible(true)
             guard let table, let window = table.window else { return }
             let point = table.convert(window.mouseLocationOutsideOfEventStream, from: nil)
             let row = table.visibleRect.contains(point) ? table.row(at: point) : -1
@@ -475,7 +515,7 @@ struct HomeFeedTableView: NSViewRepresentable {
         }
 
         private func handleDirectPlay(itemID: String) {
-            guard let record = item(for: itemID)?.record else { return }
+            guard !isObscured, let record = item(for: itemID)?.record else { return }
             switch record.kind {
             case "song":
                 parent.player.activateMediaRadio(SongItemRecord(fromHomeItem: record))
@@ -496,7 +536,7 @@ struct HomeFeedTableView: NSViewRepresentable {
         }
 
         private func activate(itemID: String, fromCover: Bool) {
-            guard let record = item(for: itemID)?.record else { return }
+            guard !isObscured, let record = item(for: itemID)?.record else { return }
             if record.kind == "song" {
                 parent.player.activateMediaRadio(SongItemRecord(fromHomeItem: record))
                 return
@@ -509,19 +549,19 @@ struct HomeFeedTableView: NSViewRepresentable {
         }
 
         private func navigateArtist(itemID: String) {
-            guard let record = item(for: itemID)?.record,
+            guard !isObscured, let record = item(for: itemID)?.record,
                   let id = record.artistId ?? record.artistRuns.first(where: { $0.id?.isEmpty == false })?.id,
                   !id.isEmpty else { return }
             parent.onNavigate(.artist(browseId: id))
         }
 
         private func navigateAlbum(itemID: String) {
-            guard let record = item(for: itemID)?.record, let id = record.albumId, !id.isEmpty else { return }
+            guard !isObscured, let record = item(for: itemID)?.record, let id = record.albumId, !id.isEmpty else { return }
             parent.onNavigate(.album(browseId: id))
         }
 
         private func navigateMore(sectionID: String) {
-            guard let section = parent.sections.first(where: { $0.id == sectionID }),
+            guard !isObscured, let section = parent.sections.first(where: { $0.id == sectionID }),
                   let id = section.moreBrowseId else { return }
             if id.hasPrefix("MPRE") {
                 parent.onNavigate(.album(browseId: id))
@@ -533,6 +573,7 @@ struct HomeFeedTableView: NSViewRepresentable {
         }
 
         private func menu(record: HomeItemRecord) -> NSMenu? {
+            guard !isObscured else { return nil }
             let factory = AppContextMenuFactory.shared
             let core = parent.player.rustCore
             switch record.kind {
@@ -557,7 +598,11 @@ struct HomeFeedTableView: NSViewRepresentable {
 }
 
 @MainActor
-private final class HomeShelfScrollView: HomeFeedScrollView {
+private final class HomeShelfScrollView: HomeFeedScrollView, HorizontalNavigationGestureOwner {
+    // The collection viewport, including its edges, owns the whole contact.
+    // The shelf header and the outer vertical feed remain available to history.
+    var ownsHorizontalNavigationGesture: Bool { true }
+
     override func scrollWheel(with event: NSEvent) {
         if abs(event.scrollingDeltaY) > abs(event.scrollingDeltaX) {
             var ancestor = superview

@@ -424,6 +424,7 @@ struct ArtistDetailView: View {
                 }
                 .padding(.horizontal, 32)
             }
+            .windowGestureRegion(.horizontalContent, active: !playerViewModel.isFullscreenPresented)
         }
     }
 

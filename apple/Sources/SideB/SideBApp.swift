@@ -137,11 +137,13 @@ struct WindowRootView: View {
     @State private var isHomeSettingsPresented: Bool = false
     @State private var homeToolbarBottom: CGFloat = 0
     @State private var searchViewModel = SearchViewModel()
+    @State private var exploreViewModel = ExploreViewModel()
     @State private var isCreatePlaylistPresented = false
     @State private var pendingPlaylistVideoId: String?
     @State private var playlistCreationError: String?
     @State private var menuContext = AppMenuContext()
     @State private var collectionBackground = CollectionBackgroundController()
+    @State private var gesturePresentation = WindowGesturePresentation()
 
     private var collectionBackgroundIdentity: String? {
         let session = playerViewModel.mediaSessionIdentity.uuidString
@@ -196,10 +198,12 @@ struct WindowRootView: View {
                     },
                     onHomeSettings: { setHomeSettingsPresented(!isHomeSettingsPresented) },
                     onHome: { navigateMain(to: .home) },
+                    onExplore: { navigateMain(to: .explore(.discover)) },
                     onLibrary: { navigateMain(to: .library) },
                     onSearch: openSearch
                 )
                 .frame(width: navigationHeaderWidth, height: ShellLayout.toolbarHostHeight)
+                .windowGestureRegion(.excluded)
                 .animation(NavPresentation.animation(reduceMotion: reduceMotion), value: showsTopNavigation)
     }
 
@@ -258,6 +262,10 @@ struct WindowRootView: View {
                                         router.navigate(to: dest)
                                     }
                                 )
+                            case .explore(let route):
+                                ExploreView(route: route, rustCore: rustCore, model: exploreViewModel,
+                                    playerViewModel: playerViewModel, router: router, sessionRevision: homeSessionRevision,
+                                    isObscured: playerViewModel.isFullscreenPresented || isSpotlightPresented)
                             case .playlist(let id):
                                 PlaylistDetailView(
                                     playlistId: id,
@@ -338,8 +346,9 @@ struct WindowRootView: View {
 
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .opacity(playerViewModel.isFullscreenPresented ? 0 : 1)
-                    .allowsHitTesting(!playerViewModel.isFullscreenPresented)
+                    .windowGestureRegion(.content, active: !playerViewModel.isFullscreenPresented)
+                    .modifier(GesturePageVisibility(presentation: gesturePresentation,
+                        fullscreenPresented: playerViewModel.isFullscreenPresented))
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .clipped()
@@ -362,10 +371,17 @@ struct WindowRootView: View {
             FullscreenBackdrop(thumbnail: playerViewModel.currentTrack?.thumbnail,
                                trackID: playerViewModel.currentTrack?.videoId)
                 .opacity(playerViewModel.isFullscreenPresented ? 1 : 0)
+                .modifier(FullscreenGestureMotion(presentation: gesturePresentation))
                 .zIndex(1)
 
             FullscreenCanvas(viewModel: playerViewModel,
                              isSidebarExpanded: sidebarBinding, router: router)
+                .overlay(alignment: .top) {
+                    FullscreenDismissGestureIndicatorView(presentation: gesturePresentation)
+                        .padding(.top, titlebarHeight + 12)
+                }
+                .windowGestureRegion(.content, active: playerViewModel.isFullscreenPresented)
+                .modifier(FullscreenGestureMotion(presentation: gesturePresentation))
                 .zIndex(2)
 
             // Separate overlays preserve one continuous background behind both
@@ -395,6 +411,7 @@ struct WindowRootView: View {
                             router.navigate(to: .home)
                         }
                     )
+                    .windowGestureRegion(.excluded)
                     .padding(ShellLayout.sidebarInset)
                     .transition(reduceMotion ? .opacity : .move(edge: .leading).combined(with: .opacity))
                     .zIndex(50)
@@ -404,11 +421,17 @@ struct WindowRootView: View {
             .zIndex(3)
 
             PlayerBarView(viewModel: playerViewModel, router: router)
+                .windowGestureRegion(.excluded)
                 .padding(.horizontal, 24)
                 .padding(.bottom, 20)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
                 .padding(.leading, ShellLayout.sidebarReserveWidth(expanded: isSidebarExpanded))
                 .zIndex(4)
+
+            NavigationGestureIndicatorView(presentation: gesturePresentation)
+                .padding(.leading, ShellLayout.sidebarReserveWidth(expanded: isSidebarExpanded))
+                .padding(.top, titlebarHeight)
+                .zIndex(4.5)
 
             if isSpotlightPresented {
                 SpotlightSearchModal(
@@ -436,7 +459,8 @@ struct WindowRootView: View {
             ZStack {
                 if router.currentPage == .home {
                     HomeAmbientBackground(thumbnails: homeViewModel.featured.ambientThumbnails,
-                                          sessionRevision: homeSessionRevision)
+                                          sessionRevision: homeSessionRevision,
+                                          isObscured: playerViewModel.isFullscreenPresented)
                 } else {
                     Color.sidebDarkBackground
                 }
@@ -458,11 +482,16 @@ struct WindowRootView: View {
         .background(
             WindowNavigationGestureBridge(
                 router: router,
-                canNavigate: {
-                    !playerViewModel.isFullscreenPresented &&
-                    !isSpotlightPresented &&
-                    !showLoginSheet &&
-                    !isCreatePlaylistPresented
+                presentation: gesturePresentation,
+                isFullscreenPresented: playerViewModel.isFullscreenPresented,
+                canHandleGestures: !isSpotlightPresented && !showLoginSheet &&
+                    !isCreatePlaylistPresented && !isHomeSettingsPresented,
+                reduceMotion: reduceMotion,
+                sessionRevision: homeSessionRevision,
+                onDismissFullscreen: {
+                    var transaction = Transaction(animation: nil)
+                    transaction.disablesAnimations = true
+                    withTransaction(transaction) { playerViewModel.isFullscreenPresented = false }
                 }
             )
         )
@@ -494,6 +523,7 @@ struct WindowRootView: View {
             core: playerViewModel.rustCore, sessionRevision: homeSessionRevision))
         .onChange(of: homeSessionRevision) { _, _ in
             searchViewModel.clear()
+            exploreViewModel.prepareSession(homeSessionRevision)
             isSpotlightPresented = false
             setHomeSettingsPresented(false)
         }

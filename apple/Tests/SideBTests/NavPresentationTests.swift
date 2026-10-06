@@ -18,4 +18,19 @@ final class NavPresentationTests: XCTestCase {
         XCTAssertFalse(NavPresentation.showsTopNavigation(sidebarExpanded: false, fullscreenPresented: true))
         XCTAssertFalse(NavPresentation.showsTopNavigation(sidebarExpanded: true, fullscreenPresented: false))
     }
+
+    @MainActor func testExploreDetailsKeepSelectionAndBackForwardRestoreTheirCategory() {
+        let router = NavigationRouter()
+        router.navigate(to: .explore(.discover))
+        router.navigate(to: .explore(.category("rock")))
+        router.navigate(to: .playlist(browseId: "list"))
+        XCTAssertEqual(MainNavigationDestination.selected(history: router.history, currentIndex: router.currentIndex, searchPresented: false), .explore)
+        router.goBack()
+        XCTAssertEqual(router.currentPage, .explore(.category("rock")))
+        router.goBack()
+        XCTAssertEqual(router.currentPage, .explore(.discover))
+        router.goForward()
+        XCTAssertEqual(router.currentPage, .explore(.category("rock")))
+        XCTAssertEqual(MainNavigationDestination.selected(history: router.history, currentIndex: router.currentIndex, searchPresented: true), .search)
+    }
 }

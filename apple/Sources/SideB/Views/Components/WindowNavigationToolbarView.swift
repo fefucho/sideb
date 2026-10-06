@@ -16,6 +16,7 @@ struct AnimatedWindowNavigationToolbarView: View, Animatable {
     var onHistoryFrameChanged: ((CGRect) -> Void)? = nil
     var onHomeSettings: () -> Void = {}
     let onHome: () -> Void
+    var onExplore: () -> Void = {}
     let onLibrary: () -> Void
     let onSearch: () -> Void
 
@@ -26,7 +27,7 @@ struct AnimatedWindowNavigationToolbarView: View, Animatable {
     var body: some View {
         WindowNavigationToolbarView(
             navigation: TopNavigationView(selection: selection, isPresented: isPresented, reduceMotion: reduceMotion,
-                                          revealProgress: revealProgress, onHome: onHome, onLibrary: onLibrary, onSearch: onSearch),
+                                          revealProgress: revealProgress, onHome: onHome, onExplore: onExplore, onLibrary: onLibrary, onSearch: onSearch),
             history: HistoryToolbarView(router: router, isDisabled: isHistoryDisabled,
                                         isHomeSettingsPresented: isHomeSettingsPresented,
                                         onHomeSettings: onHomeSettings), showsHistory: showsHistory,

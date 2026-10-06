@@ -30,7 +30,7 @@ final class TopNavigationViewTests: XCTestCase {
         XCTAssertEqual(glass.alphaValue, 1)
         XCTAssertEqual(host.presentationOffset, 0)
         XCTAssertTrue(bar.control.isEnabled(forSegment: 0))
-        XCTAssertFalse(bar.control.isEnabled(forSegment: 1))
+        XCTAssertTrue(bar.control.isEnabled(forSegment: 1))
         coordinator.setPresentation(progress: 0.5, isPresented: false, reduceMotion: true)
         XCTAssertEqual(host.presentationOffset, 0)
         XCTAssertEqual(glass.alphaValue, 0.5)
@@ -43,7 +43,7 @@ final class TopNavigationViewTests: XCTestCase {
     func testNativeActionsDispatchAndHiddenControlCannotNavigate() throws {
         var events: [String] = []
         let view = TopNavigationView(selection: .home, isPresented: true, reduceMotion: true,
-            onHome: { events.append("home") }, onLibrary: { events.append("library") }, onSearch: { events.append("search") })
+            onHome: { events.append("home") }, onExplore: { events.append("explore") }, onLibrary: { events.append("library") }, onSearch: { events.append("search") })
         let coordinator = view.makeCoordinator()
         let host = view.makeNativeContainer(coordinator: coordinator, reduceTransparency: false)
         defer { withExtendedLifetime(host) {} }
@@ -55,11 +55,11 @@ final class TopNavigationViewTests: XCTestCase {
             control.selectedSegment = index
             XCTAssertTrue(control.sendAction(action, to: control.target))
         }
-        XCTAssertEqual(events, ["home", "library", "search"])
+        XCTAssertEqual(events, ["home", "library", "search", "explore"])
         coordinator.setPresentation(progress: 0, isPresented: false, reduceMotion: true)
         control.selectedSegment = 0
         control.sendAction(action, to: control.target)
-        XCTAssertEqual(events.count, 3)
+        XCTAssertEqual(events.count, 4)
     }
 
     func testSystemSegmentedCellKeepsIntrinsicSizeAndNativeTracking() throws {

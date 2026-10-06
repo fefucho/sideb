@@ -1,23 +1,32 @@
 import SwiftUI
 
-/// Static, soft pools of artwork light. No image-sized blur or per-frame sampling.
+/// Soft artwork light with a shared texture and motion only while Home is visible.
 struct HomeAmbientSurface: View {
     let palette: HomeAmbientPalette
+    let isObscured: Bool
     private let previewMask: CGImage?
     @State private var smokeMask: CGImage?
+    @State private var motionClock = HomeAmbientMotionClock()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
 
-    init(palette: HomeAmbientPalette, smokeMask: CGImage? = nil) {
+    init(palette: HomeAmbientPalette, smokeMask: CGImage? = nil, isObscured: Bool = false) {
         self.palette = palette
         self.previewMask = smokeMask
+        self.isObscured = isObscured
     }
 
+    private var motionPaused: Bool { isObscured || reduceMotion || scenePhase != .active }
+
     var body: some View {
-        // 30 fps is indistinguishable at this drift speed; paused when idle or Reduce Motion is on.
         TimelineView(.animation(minimumInterval: 1.0 / 30.0,
-                                paused: reduceMotion || scenePhase != .active)) { timeline in
-            surface(time: timeline.date.timeIntervalSinceReferenceDate)
+                                paused: motionPaused)) { timeline in
+            surface(time: motionClock.time(at: timeline.date))
+        }
+        .onChange(of: motionPaused, initial: true) { _, paused in
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) { motionClock.setRunning(!paused, at: Date()) }
         }
         .task {
             guard previewMask == nil else { return }
@@ -96,6 +105,29 @@ struct HomeAmbientSurface: View {
             .init(color: color.opacity(opacity * 0.23), location: 0.70),
             .init(color: color.opacity(0), location: 1)
         ], center: center, startRadius: 0, endRadius: radius)
+    }
+}
+
+/// Paused wall time never advances the drift phase when Home becomes visible again.
+struct HomeAmbientMotionClock {
+    private var frozenTime: TimeInterval
+    private var runningSince: Date?
+
+    init(time: TimeInterval = Date.timeIntervalSinceReferenceDate) {
+        frozenTime = time
+    }
+
+    func time(at date: Date) -> TimeInterval {
+        frozenTime + (runningSince.map { max(0, date.timeIntervalSince($0)) } ?? 0)
+    }
+
+    mutating func setRunning(_ running: Bool, at date: Date) {
+        if running {
+            if runningSince == nil { runningSince = date }
+        } else if runningSince != nil {
+            frozenTime = time(at: date)
+            runningSince = nil
+        }
     }
 }
 

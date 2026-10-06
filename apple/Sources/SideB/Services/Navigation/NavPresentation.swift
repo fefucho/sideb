@@ -2,7 +2,7 @@ import SwiftUI
 
 /// The selected main destination follows only the history already visited.
 enum MainNavigationDestination: Equatable {
-    case home, library, search
+    case home, explore, library, search
 
     static func selected(history: [PageDestination], currentIndex: Int, searchPresented: Bool) -> Self {
         if searchPresented { return .search }
@@ -10,6 +10,7 @@ enum MainNavigationDestination: Equatable {
         for page in history.prefix(currentIndex + 1).reversed() {
             switch page {
             case .home: return .home
+            case .explore: return .explore
             case .library, .history: return .library
             case .search: return .search
             default: continue

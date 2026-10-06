@@ -319,6 +319,11 @@ uint64_t uniffi_sideb_core_fn_method_sidebcore_create_playlist(void*_Nonnull ptr
 uint64_t uniffi_sideb_core_fn_method_sidebcore_delete_playlist(void*_Nonnull ptr, RustBuffer playlist_id
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_FN_METHOD_SIDEBCORE_DETECT_MUSIC_COUNTRY
+#define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_FN_METHOD_SIDEBCORE_DETECT_MUSIC_COUNTRY
+uint64_t uniffi_sideb_core_fn_method_sidebcore_detect_music_country(void*_Nonnull ptr
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_FN_METHOD_SIDEBCORE_EDIT_PLAYLIST_DETAILS
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_FN_METHOD_SIDEBCORE_EDIT_PLAYLIST_DETAILS
 uint64_t uniffi_sideb_core_fn_method_sidebcore_edit_playlist_details(void*_Nonnull ptr, RustBuffer playlist_id, RustBuffer name, RustBuffer description, RustBuffer privacy
@@ -352,6 +357,11 @@ uint64_t uniffi_sideb_core_fn_method_sidebcore_get_artist_json(void*_Nonnull ptr
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_FN_METHOD_SIDEBCORE_GET_BROWSE_GRID
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_FN_METHOD_SIDEBCORE_GET_BROWSE_GRID
 uint64_t uniffi_sideb_core_fn_method_sidebcore_get_browse_grid(void*_Nonnull ptr, RustBuffer browse_id, RustBuffer params
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_FN_METHOD_SIDEBCORE_GET_CHARTS
+#define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_FN_METHOD_SIDEBCORE_GET_CHARTS
+uint64_t uniffi_sideb_core_fn_method_sidebcore_get_charts(void*_Nonnull ptr, RustBuffer country_code
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_FN_METHOD_SIDEBCORE_GET_COOKIE
@@ -940,6 +950,12 @@ uint16_t uniffi_sideb_core_checksum_method_sidebcore_delete_playlist(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_DETECT_MUSIC_COUNTRY
+#define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_DETECT_MUSIC_COUNTRY
+uint16_t uniffi_sideb_core_checksum_method_sidebcore_detect_music_country(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_EDIT_PLAYLIST_DETAILS
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_EDIT_PLAYLIST_DETAILS
 uint16_t uniffi_sideb_core_checksum_method_sidebcore_edit_playlist_details(void
@@ -979,6 +995,12 @@ uint16_t uniffi_sideb_core_checksum_method_sidebcore_get_artist_json(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_GET_BROWSE_GRID
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_GET_BROWSE_GRID
 uint16_t uniffi_sideb_core_checksum_method_sidebcore_get_browse_grid(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_GET_CHARTS
+#define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_GET_CHARTS
+uint16_t uniffi_sideb_core_checksum_method_sidebcore_get_charts(void
     
 );
 #endif

@@ -1007,6 +1007,7 @@ struct SearchView: View {
                 }
                 .padding(.vertical, 4)
             }
+            .windowGestureRegion(.horizontalContent, active: !playerViewModel.isFullscreenPresented)
         }
     }
     

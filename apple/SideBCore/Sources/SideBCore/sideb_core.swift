@@ -551,6 +551,11 @@ public protocol SideBCoreProtocol : AnyObject {
     
     func deletePlaylist(playlistId: String) async throws 
     
+    /**
+     * Country detected by YouTube for the current network; coarse and anonymous.
+     */
+    func detectMusicCountry() async throws  -> String?
+    
     func editPlaylistDetails(playlistId: String, name: String?, description: String?, privacy: String?) async throws 
     
     /**
@@ -582,6 +587,11 @@ public protocol SideBCoreProtocol : AnyObject {
      * Cards behind an artist carousel's "See all" browse endpoint.
      */
     func getBrowseGrid(browseId: String, params: String?) async throws  -> [BrowseCardRecord]
+    
+    /**
+     * Regional charts and the provider's currently available countries (ZZ = global).
+     */
+    func getCharts(countryCode: String) async throws  -> ChartsPageRecord
     
     func getCookie()  -> String?
     
@@ -970,6 +980,26 @@ open func deletePlaylist(playlistId: String)async throws  {
         )
 }
     
+    /**
+     * Country detected by YouTube for the current network; coarse and anonymous.
+     */
+open func detectMusicCountry()async throws  -> String? {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_sideb_core_fn_method_sidebcore_detect_music_country(
+                    self.uniffiClonePointer()
+                    
+                )
+            },
+            pollFunc: ffi_sideb_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_sideb_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_sideb_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterOptionString.lift,
+            errorHandler: FfiConverterTypeSideBError.lift
+        )
+}
+    
 open func editPlaylistDetails(playlistId: String, name: String?, description: String?, privacy: String?)async throws  {
     return
         try  await uniffiRustCallAsync(
@@ -1103,6 +1133,26 @@ open func getBrowseGrid(browseId: String, params: String?)async throws  -> [Brow
             completeFunc: ffi_sideb_core_rust_future_complete_rust_buffer,
             freeFunc: ffi_sideb_core_rust_future_free_rust_buffer,
             liftFunc: FfiConverterSequenceTypeBrowseCardRecord.lift,
+            errorHandler: FfiConverterTypeSideBError.lift
+        )
+}
+    
+    /**
+     * Regional charts and the provider's currently available countries (ZZ = global).
+     */
+open func getCharts(countryCode: String)async throws  -> ChartsPageRecord {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_sideb_core_fn_method_sidebcore_get_charts(
+                    self.uniffiClonePointer(),
+                    FfiConverterString.lower(countryCode)
+                )
+            },
+            pollFunc: ffi_sideb_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_sideb_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_sideb_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeChartsPageRecord.lift,
             errorHandler: FfiConverterTypeSideBError.lift
         )
 }
@@ -2626,6 +2676,146 @@ public func FfiConverterTypeBrowseCardRecord_lift(_ buf: RustBuffer) throws -> B
 #endif
 public func FfiConverterTypeBrowseCardRecord_lower(_ value: BrowseCardRecord) -> RustBuffer {
     return FfiConverterTypeBrowseCardRecord.lower(value)
+}
+
+
+public struct ChartCountryRecord {
+    public var code: String
+    public var title: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(code: String, title: String) {
+        self.code = code
+        self.title = title
+    }
+}
+
+
+
+extension ChartCountryRecord: Equatable, Hashable {
+    public static func ==(lhs: ChartCountryRecord, rhs: ChartCountryRecord) -> Bool {
+        if lhs.code != rhs.code {
+            return false
+        }
+        if lhs.title != rhs.title {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(code)
+        hasher.combine(title)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeChartCountryRecord: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ChartCountryRecord {
+        return
+            try ChartCountryRecord(
+                code: FfiConverterString.read(from: &buf), 
+                title: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ChartCountryRecord, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.code, into: &buf)
+        FfiConverterString.write(value.title, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChartCountryRecord_lift(_ buf: RustBuffer) throws -> ChartCountryRecord {
+    return try FfiConverterTypeChartCountryRecord.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChartCountryRecord_lower(_ value: ChartCountryRecord) -> RustBuffer {
+    return FfiConverterTypeChartCountryRecord.lower(value)
+}
+
+
+public struct ChartsPageRecord {
+    public var selectedCountry: String?
+    public var countries: [ChartCountryRecord]
+    public var items: [BrowseCardRecord]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(selectedCountry: String?, countries: [ChartCountryRecord], items: [BrowseCardRecord]) {
+        self.selectedCountry = selectedCountry
+        self.countries = countries
+        self.items = items
+    }
+}
+
+
+
+extension ChartsPageRecord: Equatable, Hashable {
+    public static func ==(lhs: ChartsPageRecord, rhs: ChartsPageRecord) -> Bool {
+        if lhs.selectedCountry != rhs.selectedCountry {
+            return false
+        }
+        if lhs.countries != rhs.countries {
+            return false
+        }
+        if lhs.items != rhs.items {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(selectedCountry)
+        hasher.combine(countries)
+        hasher.combine(items)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeChartsPageRecord: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ChartsPageRecord {
+        return
+            try ChartsPageRecord(
+                selectedCountry: FfiConverterOptionString.read(from: &buf), 
+                countries: FfiConverterSequenceTypeChartCountryRecord.read(from: &buf), 
+                items: FfiConverterSequenceTypeBrowseCardRecord.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ChartsPageRecord, into buf: inout [UInt8]) {
+        FfiConverterOptionString.write(value.selectedCountry, into: &buf)
+        FfiConverterSequenceTypeChartCountryRecord.write(value.countries, into: &buf)
+        FfiConverterSequenceTypeBrowseCardRecord.write(value.items, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChartsPageRecord_lift(_ buf: RustBuffer) throws -> ChartsPageRecord {
+    return try FfiConverterTypeChartsPageRecord.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChartsPageRecord_lower(_ value: ChartsPageRecord) -> RustBuffer {
+    return FfiConverterTypeChartsPageRecord.lower(value)
 }
 
 
@@ -5871,6 +6061,31 @@ fileprivate struct FfiConverterSequenceTypeBrowseCardRecord: FfiConverterRustBuf
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeChartCountryRecord: FfiConverterRustBuffer {
+    typealias SwiftType = [ChartCountryRecord]
+
+    public static func write(_ value: [ChartCountryRecord], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeChartCountryRecord.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [ChartCountryRecord] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [ChartCountryRecord]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeChartCountryRecord.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeGeniusAnnotationRecord: FfiConverterRustBuffer {
     typealias SwiftType = [GeniusAnnotationRecord]
 
@@ -6298,6 +6513,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_sideb_core_checksum_method_sidebcore_delete_playlist() != 22705) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_sideb_core_checksum_method_sidebcore_detect_music_country() != 8300) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_sideb_core_checksum_method_sidebcore_edit_playlist_details() != 34189) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -6317,6 +6535,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_sideb_core_checksum_method_sidebcore_get_browse_grid() != 45993) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_sideb_core_checksum_method_sidebcore_get_charts() != 46965) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_sideb_core_checksum_method_sidebcore_get_cookie() != 6201) {

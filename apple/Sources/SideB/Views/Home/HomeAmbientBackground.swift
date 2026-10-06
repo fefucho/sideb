@@ -7,6 +7,7 @@ import SwiftUI
 struct HomeAmbientBackground: View {
     let thumbnails: [String]
     let sessionRevision: Int
+    var isObscured = false
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var palette = HomeAmbientPalette.neutral
@@ -17,7 +18,8 @@ struct HomeAmbientBackground: View {
     }
 
     var body: some View {
-        HomeAmbientSurface(palette: paletteRevision == sessionRevision ? palette : .neutral)
+        HomeAmbientSurface(palette: paletteRevision == sessionRevision ? palette : .neutral,
+                           isObscured: isObscured)
         .ignoresSafeArea(.container, edges: .top)
         .allowsHitTesting(false)
         .accessibilityHidden(true)

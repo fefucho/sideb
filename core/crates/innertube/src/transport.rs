@@ -434,6 +434,15 @@ impl InnerTube {
         parse_visitor_data(&text)
     }
 
+    /// Coarse country supplied by YouTube's anonymous bootstrap for this network.
+    /// Do not persist the bootstrap, IP address, visitor token or change the session locale.
+    pub async fn detect_music_country(&self) -> Result<Option<String>, Error> {
+        let text = self.http.get(SW_JS_DATA_URL)
+            .timeout(Duration::from_secs(10))
+            .send().await?.error_for_status()?.text().await?;
+        parse_music_country(&text)
+    }
+
     /// Register a play in watch history: GET the response's
     /// `playbackTracking.videostatsPlaybackUrl.baseUrl` with `c`/`cpn`/`ver` (+ `list`/`referrer`
     /// in a playlist) and the authed client headers. context/01 §registerPlayback. Best-effort —
@@ -540,9 +549,27 @@ fn parse_visitor_data(body: &str) -> Result<String, Error> {
         .ok_or(Error::VisitorDataNotFound)
 }
 
+fn parse_music_country(body: &str) -> Result<Option<String>, Error> {
+    let start = body.find('[').ok_or_else(|| Error::Other("YouTube country unavailable".into()))?;
+    let value: serde_json::Value = serde_json::from_str(&body[start..])?;
+    if value.pointer("/0/0").and_then(|v| v.as_str()) != Some("yt.sw.adr") { return Ok(None); }
+    // The bootstrap client tuple starts with language, country; absent/changed shapes
+    // are unavailable, never a guessed US country from the application's default locale.
+    Ok(value.pointer("/0/2/0/0/1").and_then(|v| v.as_str())
+        .filter(|code| code.len() == 2 && code.bytes().all(|b| b.is_ascii_uppercase()))
+        .map(str::to_owned))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn music_country_is_only_the_bootstrap_country_not_other_country_like_strings() {
+        assert_eq!(parse_music_country("])}'\n[[\"yt.sw.adr\",null,[[[\"es-419\",\"UY\"]]]]]").unwrap().as_deref(), Some("UY"));
+        assert_eq!(parse_music_country("[[\"changed\",null,[\"US\"]]]").unwrap(), None);
+        assert_eq!(parse_music_country("[[null,null,[[[\"es\",\"unexpected\"]]]]]").unwrap(), None);
+    }
 
     #[test]
     fn sha1_known_vector() {

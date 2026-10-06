@@ -4,6 +4,7 @@ import SwiftUI
 
 enum PageDestination: Equatable, Hashable {
     case home
+    case explore(ExploreRoute)
     case search(query: String?)
     case album(browseId: String)
     case artist(browseId: String)
@@ -15,6 +16,7 @@ enum PageDestination: Equatable, Hashable {
     var asMenuOrigin: MenuOrigin {
         switch self {
         case .home: return .home
+        case .explore: return .recommendations
         case .search: return .search
         case .album(let browseId): return .album(browseId: browseId)
         case .artist(let browseId): return .artist(channelId: browseId)

@@ -2,7 +2,6 @@ import AppKit
 import SwiftUI
 
 /// Paged content owns a whole gesture, including its start/end and momentum.
-/// Window history must not steal it before the content responder receives the event.
 @MainActor
 protocol HorizontalNavigationGestureOwner: AnyObject {
     var ownsHorizontalNavigationGesture: Bool { get }
@@ -11,64 +10,66 @@ protocol HorizontalNavigationGestureOwner: AnyObject {
 @MainActor
 enum HorizontalNavigationGestureRouting {
     static func contentOwnsGesture(at point: NSPoint, in view: NSView) -> Bool {
-        guard !view.isHidden, view.alphaValue > 0.01, view.bounds.contains(point) else { return false }
-        if let owner = view as? HorizontalNavigationGestureOwner, owner.ownsHorizontalNavigationGesture { return true }
-        return view.subviews.reversed().contains { child in
-            contentOwnsGesture(at: child.convert(point, from: view), in: child)
-        }
+        WindowGestureRegions.horizontalContentOwnsHistoryGesture(at: point, in: view)
     }
 }
 
-/// Tracks one physical two-finger gesture. Vertical scrolling keeps its events; horizontal
-/// scrolling becomes navigation only after the content under the pointer reaches its edge.
-@MainActor
-struct NavigationSwipeTracker {
-    enum Axis { case undecided, horizontal, vertical }
-
-    static let axisThreshold: CGFloat = 8
-    static let navigationThreshold: CGFloat = 55
-
-    private(set) var axis: Axis = .undecided
-    private(set) var pull: CGFloat = 0
-    private var totalX: CGFloat = 0
-    private var totalY: CGFloat = 0
-
-    mutating func reset() {
-        axis = .undecided
-        pull = 0
-        totalX = 0
-        totalY = 0
-    }
-
-    mutating func observeAxis(deltaX: CGFloat, deltaY: CGFloat) {
-        guard axis == .undecided else { return }
-        totalX += abs(deltaX)
-        totalY += abs(deltaY)
-        guard max(totalX, totalY) >= Self.axisThreshold else { return }
-        axis = totalX > totalY * 1.25 ? .horizontal : .vertical
-    }
-
-    mutating func contentCanScroll() { pull = 0 }
-
-    mutating func addEdgeDelta(_ physicalDeltaX: CGFloat) {
-        pull += physicalDeltaX
-    }
-}
-
+/// One adapter per window. Input decisions are pure; presentation observes only its own state.
 @MainActor
 final class WindowNavigationCoordinator: NSObject {
     private(set) weak var window: NSWindow?
     private var router: NavigationRouter?
-    private var canNavigate: (() -> Bool)?
+    private var presentation: WindowGesturePresentation?
+    private var isFullscreenPresented = false
+    private var canHandleGestures = false
+    private var reduceMotion = false
+    private var onDismissFullscreen: (() -> Void)?
     private nonisolated(unsafe) var eventMonitor: Any?
-    private var swipe = NavigationSwipeTracker()
-    private weak var horizontalScrollView: NSScrollView?
-    private var trackingGesture = false
-    private var contentOwnsGesture = false
+    private nonisolated(unsafe) var observers: [NSObjectProtocol] = []
+    private var machine = WindowGestureStateMachine()
+    private var sequenceContext = WindowGestureStateMachine.Context(mode: .history)
+    private var candidateHistory: [PageDestination] = []
+    private var candidateIndex = 0
+    private var menuIsTracking = false
+    private var sessionRevision = 0
+    private var diagnosticTask: Task<Void, Never>?
+    private let performHaptic: () -> Void
+    private let interactionIsAllowed: (() -> Bool)?
 
-    func setup(router: NavigationRouter, canNavigate: @escaping () -> Bool) {
+    init(performHaptic: @escaping () -> Void = {
+        NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
+    }, interactionIsAllowed: (() -> Bool)? = nil) {
+        self.performHaptic = performHaptic
+        self.interactionIsAllowed = interactionIsAllowed
+        super.init()
+    }
+
+    func setup(router: NavigationRouter, presentation: WindowGesturePresentation,
+               isFullscreenPresented: Bool, canHandleGestures: Bool,
+               reduceMotion: Bool, sessionRevision: Int = 0,
+               onDismissFullscreen: @escaping () -> Void) {
+        // NSViewRepresentable must observe navigation even while idle. Route
+        // content can update in a child without rebuilding this background host.
+        let history = router.history
+        let index = router.currentIndex
+        let candidateIsCurrent = candidateIndex == index && candidateHistory == history
+        let changed = self.router !== router || self.presentation !== presentation ||
+            self.isFullscreenPresented != isFullscreenPresented ||
+            self.canHandleGestures != canHandleGestures || self.sessionRevision != sessionRevision
+        if changed || ((machine.isTracking || presentation.fullscreenIsBusy) && !candidateIsCurrent) {
+            invalidate()
+        }
         self.router = router
-        self.canNavigate = canNavigate
+        self.presentation = presentation
+        self.isFullscreenPresented = isFullscreenPresented
+        self.canHandleGestures = canHandleGestures
+        self.reduceMotion = reduceMotion
+        self.sessionRevision = sessionRevision
+        self.onDismissFullscreen = onDismissFullscreen
+        if !isFullscreenPresented, presentation.fullscreenStage != .idle {
+            presentation.resetFullscreen()
+        }
+        scheduleDiagnosticSnapshot()
     }
 
     func attach(to window: NSWindow) {
@@ -79,189 +80,243 @@ final class WindowNavigationCoordinator: NSObject {
             guard let self else { return event }
             return self.handleEvent(event)
         }
+        let center = NotificationCenter.default
+        for name in [NSWindow.didResignKeyNotification, NSWindow.didResizeNotification, NSWindow.willCloseNotification] {
+            observers.append(center.addObserver(forName: name, object: window, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.invalidate() }
+            })
+        }
+        observers.append(center.addObserver(forName: NSApplication.didResignActiveNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.invalidate() }
+        })
+        observers.append(center.addObserver(forName: NSMenu.didBeginTrackingNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.menuIsTracking = true; self?.invalidate() }
+        })
+        observers.append(center.addObserver(forName: NSMenu.didEndTrackingNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.menuIsTracking = false }
+        })
+        scheduleDiagnosticSnapshot()
+    }
+
+    private func scheduleDiagnosticSnapshot() {
+        guard WindowGestureDiagnostics.enabled else { return }
+        diagnosticTask?.cancel()
+        diagnosticTask = Task { [weak self] in
+            do { try await Task.sleep(for: .milliseconds(300)) } catch { return }
+            guard let self, let window = self.window else { return }
+            WindowGestureDiagnostics.record(window: window, fullscreen: self.isFullscreenPresented,
+                                            isHome: self.router?.currentPage == .home)
+        }
     }
 
     func detach() {
+        diagnosticTask?.cancel()
+        diagnosticTask = nil
         if let eventMonitor { NSEvent.removeMonitor(eventMonitor) }
         eventMonitor = nil
+        observers.forEach(NotificationCenter.default.removeObserver)
+        observers.removeAll()
+        invalidate()
+        machine.reset()
         window = nil
-        resetGesture()
+        menuIsTracking = false
     }
 
     deinit {
         if let eventMonitor { NSEvent.removeMonitor(eventMonitor) }
+        observers.forEach(NotificationCenter.default.removeObserver)
     }
 
-    private func resetGesture() {
-        swipe.reset()
-        horizontalScrollView = nil
-        trackingGesture = false
-        contentOwnsGesture = false
+    func invalidate() {
+        _ = machine.invalidate()
+        presentation?.resetHorizontal()
+        presentation?.resetFullscreen()
+    }
+
+    private func historyCandidateIsCurrent(_ router: NavigationRouter) -> Bool {
+        candidateIndex == router.currentIndex && candidateHistory == router.history
+    }
+
+    private var windowAllowsInteraction: Bool {
+        guard let window else { return false }
+        return window.isKeyWindow && window.attachedSheet == nil && NSApp.modalWindow == nil &&
+            !menuIsTracking && canHandleGestures
     }
 
     @discardableResult
     func handleEvent(_ event: NSEvent) -> NSEvent? {
-        guard let window, event.window === window else { return event }
-        guard window.isKeyWindow, window.attachedSheet == nil,
-              NSApp.modalWindow == nil, canNavigate?() == true else {
-            resetGesture()
-            return event
-        }
-
-        switch event.type {
-        case .otherMouseUp:
-            guard let router else { return event }
+        guard let window, event.window === window, let router, let presentation else { return event }
+        let enabled = windowAllowsInteraction
+        if event.type == .otherMouseUp {
+            guard enabled, !isFullscreenPresented, !presentation.fullscreenIsBusy else { return event }
             switch event.buttonNumber {
-            case 3:
-                guard router.canGoBack else { return event }
-                router.goBack()
-                return nil
-            case 4:
-                guard router.canGoForward else { return event }
-                router.goForward()
-                return nil
-            default:
-                return event
+            case 3 where router.canGoBack: invalidate(); router.goBack(); return nil
+            case 4 where router.canGoForward: invalidate(); router.goForward(); return nil
+            default: return event
             }
-        case .scrollWheel:
-            return handleScroll(event, in: window)
-        default:
-            return event
         }
+        guard event.type == .scrollWheel else { return event }
+        let sign: CGFloat = event.isDirectionInvertedFromDevice ? 1 : -1
+        let input = WindowGestureStateMachine.Event(deltaX: event.scrollingDeltaX * sign,
+            deltaY: event.scrollingDeltaY * sign, phase: Self.phase(event.phase),
+            momentumPhase: Self.phase(event.momentumPhase),
+            hasPreciseScrollingDeltas: event.hasPreciseScrollingDeltas)
+        let output = handleScrollInput(input, enabled: enabled) {
+            guard let root = window.contentView else {
+                return .init(mode: isFullscreenPresented ? .fullscreen : .history,
+                             allowsHorizontalNavigation: false, allowsFullscreenDismissal: false)
+            }
+            return scrollContext(at: root.convert(event.locationInWindow, from: nil), in: root, enabled: enabled)
+        }
+        return output.disposition == .consume ? nil : event
     }
 
-    private func handleScroll(_ event: NSEvent, in window: NSWindow) -> NSEvent? {
-        guard event.hasPreciseScrollingDeltas, NSEvent.isSwipeTrackingFromScrollEventsEnabled else {
-            resetGesture()
-            return event
-        }
-        // Inertial scrolling must never start another navigation.
-        if !event.momentumPhase.isEmpty { return event }
-
-        if event.phase == .began || event.phase == .mayBegin {
-            resetGesture()
-            trackingGesture = true
-            horizontalScrollView = findHorizontalScrollView(at: event.locationInWindow, in: window)
-            if let root = window.contentView {
-                contentOwnsGesture = HorizontalNavigationGestureRouting.contentOwnsGesture(
-                    at: root.convert(event.locationInWindow, from: nil), in: root)
-            }
-        }
-
-        if event.phase == .cancelled {
-            resetGesture()
-            return event
-        }
-        if event.phase == .ended {
-            defer { resetGesture() }
-            guard !contentOwnsGesture, trackingGesture, swipe.axis == .horizontal,
-                  abs(swipe.pull) >= NavigationSwipeTracker.navigationThreshold,
-                  let router else { return event }
-            if swipe.pull > 0, router.canGoBack {
-                router.goBack()
-                return nil
-            }
-            if swipe.pull < 0, router.canGoForward {
-                router.goForward()
-                return nil
-            }
-            return event
-        }
-
-        // Some scroll views receive the first changed event without a separate began.
-        // Start there as well, but never treat phase-less mouse wheel events as gestures.
-        if !trackingGesture, event.phase == .changed {
-            trackingGesture = true
-            horizontalScrollView = findHorizontalScrollView(at: event.locationInWindow, in: window)
-            if let root = window.contentView {
-                contentOwnsGesture = HorizontalNavigationGestureRouting.contentOwnsGesture(
-                    at: root.convert(event.locationInWindow, from: nil), in: root)
-            }
-        }
-        guard trackingGesture, !contentOwnsGesture else { return event }
-        let dx = event.scrollingDeltaX
-        let dy = event.scrollingDeltaY
-        swipe.observeAxis(deltaX: dx, deltaY: dy)
-        guard swipe.axis == .horizontal else { return event }
-
-        let physicalDX = event.isDirectionInvertedFromDevice ? dx : -dx
-        guard abs(physicalDX) > 0.1, let router else { return event }
-        let canNavigateDirection = physicalDX > 0 ? router.canGoBack : router.canGoForward
-        guard canNavigateDirection else { return event }
-
-        if let scrollView = horizontalScrollView,
-           canScroll(scrollView, towardBack: physicalDX > 0) {
-            swipe.contentCanScroll()
-            return event
-        }
-
-        swipe.addEdgeDelta(physicalDX)
-        // Consume only the overscroll. Vertical scroll events and useful horizontal
-        // movement have already passed through to their native NSScrollView.
-        return nil
+    /// Home explicitly reserves its horizontal viewports. Everywhere else keeps
+    /// window-wide history; fullscreen dismissal uses separate panel routing.
+    func scrollContext(at point: NSPoint, in root: NSView, enabled: Bool) -> WindowGestureStateMachine.Context {
+        let available = enabled && canHandleGestures && presentation?.fullscreenIsBusy == false
+        let homeContentOwnsGesture = !isFullscreenPresented && router?.currentPage == .home &&
+            HorizontalNavigationGestureRouting.contentOwnsGesture(at: point, in: root)
+        let routing = isFullscreenPresented
+            ? WindowGestureRegions.routing(at: point, in: root, includeNativeFallback: false) : nil
+        return .init(
+            mode: isFullscreenPresented ? .fullscreen : .history,
+            allowsHorizontalNavigation: available && !isFullscreenPresented && !homeContentOwnsGesture &&
+                WindowGestureRegions.allowsHistory(at: point, in: root),
+            allowsFullscreenDismissal: available && isFullscreenPresented && routing?.allowsFullscreenDismissal == true,
+            verticalContentOwnsGesture: routing?.ownsVertical ?? false,
+            canGoBack: router?.canGoBack == true, canGoForward: router?.canGoForward == true,
+            fullscreenHeight: root.bounds.height
+        )
     }
 
-    private func findHorizontalScrollView(at point: NSPoint, in window: NSWindow) -> NSScrollView? {
-        guard let contentView = window.contentView else { return nil }
-        let pointInSuperview = contentView.superview?.convert(point, from: nil) ?? point
-        var view = contentView.hitTest(pointInSuperview)
-        while let current = view {
-            if let scroll = current as? NSScrollView,
-               scroll.horizontalScrollElasticity != .none,
-               scroll.documentView != nil {
-                return scroll
-            }
-            view = current.superview
+    /// Test the real adapter flow without manufacturing NSWindow/NSEvent input.
+    /// Region hit testing is performed only when the engine starts a new contact.
+    @discardableResult
+    func handleScrollInput(_ input: WindowGestureStateMachine.Event, enabled: Bool,
+                           startContext: () -> WindowGestureStateMachine.Context) -> WindowGestureStateMachine.Output {
+        guard let router, let presentation else {
+            return .init(snapshot: machine.snapshot, disposition: .passThrough, commit: nil, didArm: false)
         }
-        return nil
+        if !enabled || ((machine.isTracking || presentation.fullscreenIsBusy) && !historyCandidateIsCurrent(router)) {
+            invalidate()
+        }
+        if machine.requiresStartContext(for: input) {
+            candidateHistory = router.history
+            candidateIndex = router.currentIndex
+            sequenceContext = startContext()
+            sequenceContext.allowsHorizontalNavigation = sequenceContext.allowsHorizontalNavigation && enabled
+            sequenceContext.allowsFullscreenDismissal = sequenceContext.allowsFullscreenDismissal && enabled
+        }
+        let wasTracking = machine.isTracking
+        let output = machine.handle(input, context: sequenceContext)
+        let didFinishContact = wasTracking && !machine.isTracking
+        if output.didArm { performHaptic() }
+        let snapshot = output.snapshot
+        switch snapshot.action {
+        case .back, .forward:
+            if snapshot.phase == .pulling || snapshot.phase == .armed {
+                let back = snapshot.action == .back
+                let index = candidateIndex + (back ? -1 : 1)
+                let title = candidateHistory.indices.contains(index) ? candidateHistory[index].gestureTitle : ""
+                presentation.updateHorizontal(.init(direction: back ? .back : .forward,
+                    title: title, progress: snapshot.progress, offset: snapshot.offset,
+                    available: snapshot.isAvailable, armed: snapshot.isArmed))
+            } else if didFinishContact && (snapshot.phase == .cancelled || snapshot.phase == .committed) {
+                presentation.finishHorizontal(reduceMotion: reduceMotion)
+            }
+        case .dismissFullscreen:
+            if snapshot.phase == .pulling || snapshot.phase == .armed {
+                presentation.beginFullscreenPull()
+                presentation.updateFullscreenPull(offset: snapshot.offset,
+                    progress: snapshot.progress, armed: snapshot.isArmed)
+            } else if didFinishContact && snapshot.phase == .cancelled {
+                presentation.settleFullscreen(shouldClose: false, travel: sequenceContext.fullscreenHeight,
+                    reduceMotion: reduceMotion, onClosed: {})
+            }
+        case nil: break
+        }
+        if let action = output.commit, enabled, historyCandidateIsCurrent(router) {
+            switch action {
+            case .back: router.goBack()
+            case .forward: router.goForward()
+            case .dismissFullscreen:
+                if isFullscreenPresented {
+                    presentation.settleFullscreen(shouldClose: true,
+                        travel: sequenceContext.fullscreenHeight + 24, reduceMotion: reduceMotion,
+                        onClosed: { [weak self] in
+                            guard let self, self.isFullscreenPresented, self.canHandleGestures,
+                                  !self.menuIsTracking, let router = self.router,
+                                  self.interactionIsAllowed?() ?? self.windowAllowsInteraction,
+                                  self.historyCandidateIsCurrent(router) else { return }
+                            self.onDismissFullscreen?()
+                        })
+                }
+            }
+        }
+        return output
     }
 
-    private func canScroll(_ scroll: NSScrollView, towardBack: Bool) -> Bool {
-        guard let document = scroll.documentView else { return false }
-        let clip = scroll.contentView.bounds
-        let documentWidth: CGFloat
-        if let collection = document as? NSCollectionView,
-           let layout = collection.collectionViewLayout {
-            documentWidth = max(document.bounds.width, layout.collectionViewContentSize.width)
-        } else {
-            documentWidth = document.bounds.width
-        }
-        let maxX = max(0, documentWidth - clip.width)
-        let tolerance: CGFloat = 2
-        return towardBack ? clip.minX > tolerance : clip.minX < maxX - tolerance
+    private static func phase(_ phase: NSEvent.Phase) -> WindowGestureStateMachine.EventPhase {
+        if phase.contains(.cancelled) { return .cancelled }
+        if phase.contains(.ended) { return .ended }
+        if phase.contains(.began) { return .began }
+        if phase.contains(.mayBegin) { return .mayBegin }
+        if phase.contains(.changed) { return .changed }
+        if phase.contains(.stationary) { return .stationary }
+        return .none
     }
 }
 
 final class WindowNavigationHostingView: NSView {
     weak var coordinator: WindowNavigationCoordinator?
-
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
-        if let window { coordinator?.attach(to: window) }
-        else { coordinator?.detach() }
+        if let window { coordinator?.attach(to: window) } else { coordinator?.detach() }
     }
-
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }
 
 struct WindowNavigationGestureBridge: NSViewRepresentable {
     let router: NavigationRouter
-    let canNavigate: () -> Bool
-
+    let presentation: WindowGesturePresentation
+    let isFullscreenPresented: Bool
+    let canHandleGestures: Bool
+    let reduceMotion: Bool
+    let sessionRevision: Int
+    let onDismissFullscreen: () -> Void
     func makeCoordinator() -> WindowNavigationCoordinator { WindowNavigationCoordinator() }
-
     func makeNSView(context: Context) -> WindowNavigationHostingView {
         let view = WindowNavigationHostingView()
         view.coordinator = context.coordinator
-        context.coordinator.setup(router: router, canNavigate: canNavigate)
+        updateNSView(view, context: context)
         return view
     }
-
     func updateNSView(_ view: WindowNavigationHostingView, context: Context) {
-        context.coordinator.setup(router: router, canNavigate: canNavigate)
+        if let window = view.window, context.coordinator.window !== window {
+            context.coordinator.attach(to: window)
+        }
+        context.coordinator.setup(router: router, presentation: presentation,
+            isFullscreenPresented: isFullscreenPresented, canHandleGestures: canHandleGestures,
+            reduceMotion: reduceMotion, sessionRevision: sessionRevision, onDismissFullscreen: onDismissFullscreen)
     }
-
     static func dismantleNSView(_ view: WindowNavigationHostingView, coordinator: WindowNavigationCoordinator) {
         coordinator.detach()
+    }
+}
+
+extension PageDestination {
+    @MainActor var gestureTitle: String {
+        switch self {
+        case .home: return "Inicio"
+        case .explore(let route): return route == .discover ? "Explorar" : route.title
+        case .search(let query): return query.flatMap { $0.isEmpty ? nil : "Buscar: \($0)" } ?? "Buscar"
+        case .album: return "Álbum"
+        case .artist: return "Artista"
+        case .catalog(_, _, let title): return title
+        case .playlist(let id): return PlaylistCatalog.shared.cached(id: id)?.title ?? "Playlist"
+        case .library: return "Biblioteca"
+        case .history: return "Historial"
+        }
     }
 }

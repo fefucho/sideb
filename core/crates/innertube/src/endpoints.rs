@@ -561,6 +561,30 @@ impl InnerTube {
         Ok(items)
     }
 
+    /// Charts use formData, rather than browse params. Keep their region metadata
+    /// for both shells; the generic grid loses it and always uses the default locale.
+    pub async fn charts(&self, client: &YouTubeClient, country: &str) -> Result<browse::ChartsPage, Error> {
+        if country.len() != 2 || !country.bytes().all(|b| b.is_ascii_uppercase()) {
+            return Err(Error::Other("Invalid charts country code".into()));
+        }
+        let body = serde_json::json!({
+            "context": self.context_for(client),
+            "browseId": "FEmusic_charts",
+            "formData": { "selectedValues": [country] }
+        });
+        let value = self.post("browse", client, &body, true).await?;
+        if self.is_logged_in() && browse::is_signed_out(&value) {
+            return Err(self.reject_session());
+        }
+        let mut page = browse::parse_charts(&value);
+        if page.selected_country.as_deref() != Some(country) {
+            return Err(Error::Other("YouTube did not confirm the requested charts country".into()));
+        }
+        self.drop_video_cards(&mut page.items);
+        self.drop_blocked_cards(&mut page.items);
+        Ok(page)
+    }
+
     /// Next page of playlist tracks via a continuation token. context/08.
     pub async fn playlist_continuation(
         &self,

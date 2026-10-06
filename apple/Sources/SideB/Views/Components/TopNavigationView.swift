@@ -7,6 +7,7 @@ struct TopNavigationView: NSViewRepresentable {
     let reduceMotion: Bool
     var revealProgress: Double? = nil
     let onHome: () -> Void
+    var onExplore: () -> Void = {}
     let onLibrary: () -> Void
     let onSearch: () -> Void
 
@@ -76,6 +77,7 @@ struct TopNavigationView: NSViewRepresentable {
                   sender.isEnabled(forSegment: index) else { return }
             switch index {
             case 0: parent.onHome()
+            case 1: parent.onExplore()
             case 2: parent.onLibrary()
             case 3: parent.onSearch()
             default: break
@@ -88,6 +90,7 @@ private extension MainNavigationDestination {
     var index: Int {
         switch self {
         case .home: return 0
+        case .explore: return 1
         case .library: return 2
         case .search: return 3
         }
@@ -121,10 +124,9 @@ final class NativeNavigationBar: NSView {
         for index in 0..<4 {
             control.setWidth(64, forSegment: index)
             control.setImageScaling(.scaleProportionallyDown, forSegment: index)
-            control.setToolTip(index == 1 ? "Explorar — Próximamente" : titles[index], forSegment: index)
+            control.setToolTip(titles[index], forSegment: index)
             control.setTag(index, forSegment: index)
         }
-        control.setEnabled(false, forSegment: 1)
         control.setAccessibilityLabel("Navegación principal")
         control.sizeToFit()
         // Account for AppKit's own horizontal padding instead of scaling the control.
@@ -160,7 +162,7 @@ final class NativeNavigationBar: NSView {
     }
 
     func select(_ index: Int) {
-        guard [0, 2, 3].contains(index), index != control.selectedSegment else { return }
+        guard (0..<4).contains(index), index != control.selectedSegment else { return }
         // Do not overlay or animate a separate lens: that belongs to the system control.
         control.selectedSegment = index
     }

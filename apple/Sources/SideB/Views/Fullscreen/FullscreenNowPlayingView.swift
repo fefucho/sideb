@@ -66,6 +66,7 @@ struct FullscreenNowPlayingView: View, Animatable {
                         .frame(width: layout.rightWidth, height: layout.contentPanelHeight)
                 }
                 .frame(width: layout.rightWidth, height: layout.availableContentHeight, alignment: .top)
+                .windowGestureRegion(.verticalContent)
             }
             .frame(height: layout.availableContentHeight)
             .padding(.horizontal, layout.horizontalPadding)
@@ -127,6 +128,7 @@ struct FullscreenNowPlayingView: View, Animatable {
                 .opacity(isArtworkFlipped ? 1 : 0)
                 .rotation3DEffect(.degrees(isArtworkFlipped ? 0 : -180), axis: (x: 0, y: 1, z: 0))
                 .allowsHitTesting(isArtworkFlipped)
+                .windowGestureRegion(.verticalContent, active: isArtworkFlipped)
         }
         .frame(width: size, height: size)
         .shadow(color: .black.opacity(0.42), radius: 22, x: 0, y: 10)

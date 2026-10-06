@@ -164,13 +164,13 @@ struct HomeFeaturedView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .frame(height: layout.songGridHeight, alignment: .topLeading)
                 .clipped()
+                .overlay { HomeFeaturedPageWheel(enabled: songPages.count > 1) { delta in move($songPage, by: delta, count: songPages.count) } }
                 .padding(.top, HomeFeaturedLayout.contentGap)
                 pageControls(page: $songPage, count: songPages.count, label: "Canciones")
                     .padding(.top, 8)
             }
             .padding(.bottom, 16)
             .frame(height: layout.songPanelHeight, alignment: .top)
-            .overlay { HomeFeaturedPageWheel(enabled: songPages.count > 1) { delta in move($songPage, by: delta, count: songPages.count) } }
         }
     }
 
@@ -190,13 +190,13 @@ struct HomeFeaturedView: View {
                 }
                 .frame(width: albumWidth, height: layout.albumContentHeight, alignment: .topLeading)
                 .clipped()
+                .overlay { HomeFeaturedPageWheel(enabled: collectionPages.count > 1) { delta in move(collectionPageBinding, by: delta, count: collectionPages.count) } }
                 .padding(.top, HomeFeaturedLayout.contentGap)
                 pageControls(page: collectionPageBinding, count: collectionPages.count, label: collectionKind.title)
                     .padding(.top, 8)
             }
             .padding(.bottom, 16)
             .frame(height: layout.albumPanelHeight, alignment: .top)
-            .overlay { HomeFeaturedPageWheel(enabled: collectionPages.count > 1) { delta in move(collectionPageBinding, by: delta, count: collectionPages.count) } }
         }
     }
 

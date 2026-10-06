@@ -158,7 +158,9 @@ export async function buildVersion(root, options, dependencies = {}) {
       metadata.tools.xcode = commandVersion('xcodebuild', ['-version'], root);
       await step('cargo', ['test', '--locked', '--manifest-path', 'core/Cargo.toml', '-p', 'innertube', '-p', 'sideb-core']);
       await step('bash', ['build_xcframework.sh'], join(root, 'apple'));
-      await step('swift', ['test', '--package-path', 'apple', '-c', options.configuration]);
+      // Explicitly serialize Swift Testing's AppKit/AVPlayer integration suite.
+      // XCTest's default policy alone does not serialize Swift Testing tests.
+      await step('swift', ['test', '--package-path', 'apple', '-c', options.configuration, '--no-parallel']);
       artifact = join(build.directory, 'Side B.app');
       await step('bash', [join(root, 'Scripts', 'build-macos.sh'), options.configuration, artifact]);
       if (!existsSync(join(artifact, 'Contents', 'MacOS', 'Side B'))) throw new Error('Falta el ejecutable del bundle Mac.');

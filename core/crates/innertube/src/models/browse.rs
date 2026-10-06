@@ -402,6 +402,41 @@ pub fn parse_library(root: &Value) -> Vec<BrowseItem> {
         .collect()
 }
 
+#[derive(Debug, Clone)]
+pub struct ChartCountry {
+    pub code: String,
+    pub title: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct ChartsPage {
+    pub selected_country: Option<String>,
+    pub countries: Vec<ChartCountry>,
+    pub items: Vec<BrowseItem>,
+}
+
+pub fn parse_charts(root: &Value) -> ChartsPage {
+    let choices = find_all(root, "musicFormBooleanChoice");
+    let labels: std::collections::HashMap<&str, String> = find_all(root, "musicMultiSelectMenuItemRenderer")
+        .into_iter().filter_map(|item| {
+            Some((item.get("formItemEntityKey")?.as_str()?, runs_text(item.get("title"))?))
+        }).collect();
+    let mut selected_country = None;
+    let mut seen = std::collections::HashSet::new();
+    let countries = choices.into_iter().filter_map(|choice| {
+        let code = choice.get("opaqueToken")?.as_str()?;
+        if code.len() != 2 || !code.bytes().all(|b| b.is_ascii_uppercase()) { return None; }
+        if choice.get("selected").and_then(Value::as_bool) == Some(true) {
+            selected_country = Some(code.to_owned());
+        }
+        if !seen.insert(code.to_owned()) { return None; }
+        let title = choice.get("id").and_then(Value::as_str).and_then(|id| labels.get(id))
+            .cloned().unwrap_or_else(|| code.to_owned());
+        Some(ChartCountry { code: code.to_owned(), title })
+    }).collect();
+    ChartsPage { selected_country, countries, items: parse_library(root) }
+}
+
 /// Parse a playlist/album (`VL…` / `MPRE…`) browse response. context/08.
 pub fn parse_playlist(root: &Value) -> PlaylistPage {
     let header = playlist_header(root);
@@ -1157,6 +1192,29 @@ pub(crate) fn continuation_token(root: &Value) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn chart_regions_keep_selected_country_and_labels_without_duplicate_entries() {
+        let response = serde_json::json!({
+            "frameworkUpdates": { "mutations": [
+                {"payload":{"musicFormBooleanChoice":{"id":"global","opaqueToken":"ZZ","selected":false}}},
+                {"payload":{"musicFormBooleanChoice":{"id":"uy","opaqueToken":"UY","selected":true}}},
+                {"payload":{"musicFormBooleanChoice":{"id":"uy","opaqueToken":"UY","selected":true}}},
+                {"payload":{"musicFormBooleanChoice":{"opaqueToken":"not-a-country"}}}
+            ]},
+            "menu": [
+                {"musicMultiSelectMenuItemRenderer":{"formItemEntityKey":"global","title":{"runs":[{"text":"Todo el mundo"}]}}},
+                {"musicMultiSelectMenuItemRenderer":{"formItemEntityKey":"uy","title":{"runs":[{"text":"Uruguay"}]}}}
+            ]
+        });
+        let page = super::parse_charts(&response);
+        assert_eq!(page.selected_country.as_deref(), Some("UY"));
+        assert_eq!(page.countries.len(), 2);
+        assert_eq!(page.countries[0].code, "ZZ");
+        assert_eq!(page.countries[1].title, "Uruguay");
+        let empty = super::parse_charts(&serde_json::json!({}));
+        assert!(empty.selected_country.is_none());
+        assert!(empty.countries.is_empty());
+    }
     use super::*;
     use serde_json::json;
 

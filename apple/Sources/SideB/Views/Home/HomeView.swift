@@ -12,10 +12,17 @@ struct HomeView: View {
     var topContentInset: CGFloat = 0
     var router: NavigationRouter?
     var onNavigate: ((PageDestination) -> Void)?
+    @State private var observedFeaturedCapacity = 2
+
+    private var isObscured: Bool { playerViewModel.isFullscreenPresented }
 
     var body: some View {
         let songCount = homeViewModel.featured.songs.count
-        return feed
+        // The hidden native feed retains its old size. Keep that size inside
+        // the page's proposed viewport so it cannot enlarge the window shell.
+        return GeometryReader { viewport in
+            feed.frame(width: viewport.size.width, height: viewport.size.height)
+        }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .task(id: sessionRevision) {
             guard sessionRevision > 0, homeViewModel.sections.isEmpty,
@@ -25,7 +32,13 @@ struct HomeView: View {
         .onGeometryChange(for: Int.self) { geometry in
             HomeFeaturedLayout(width: geometry.size.width, hasSongs: songCount > 0,
                 hasAlbums: true, songCount: songCount, albumCount: 36).albumsPerPage
-        } action: { homeViewModel.setFeaturedCapacity($0) }
+        } action: { capacity in
+            observedFeaturedCapacity = capacity
+            if !isObscured { homeViewModel.setFeaturedCapacity(capacity) }
+        }
+        .onChange(of: isObscured) { _, obscured in
+            if !obscured { homeViewModel.setFeaturedCapacity(observedFeaturedCapacity) }
+        }
         .onChange(of: router?.refreshTrigger) { _, _ in refresh() }
     }
 
@@ -75,6 +88,8 @@ struct HomeView: View {
                     onNavigate: navigate,
                     onLoadMore: loadMore
                 )
+                // Apply the resumed viewport before the enclosing page fades back in.
+                .animation(nil, value: isObscured)
                 .overlay(alignment: .top) { statusBanner }
             }
         }
@@ -195,6 +210,7 @@ struct HomeView: View {
             .padding(.horizontal, 28)
         }
         .frame(height: 42)
+        .windowGestureRegion(.horizontalContent, active: !playerViewModel.isFullscreenPresented)
         .padding(.bottom, 4)
     }
 

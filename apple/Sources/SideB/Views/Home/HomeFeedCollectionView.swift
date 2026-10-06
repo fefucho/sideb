@@ -773,6 +773,7 @@ final class HomeItemView: NSView {
         let feedVisible: Bool
         let reduceMotion: Bool
         let focusWithinCard: Bool
+        let loading: Bool
     }
 
     let cardButton = HomeFocusTrackingButton()
@@ -805,6 +806,8 @@ final class HomeItemView: NSView {
     private var isCurrent = false
     private var playing = false
     private var feedVisible = true
+    private var loading = false
+    private var loadingIndicator: NSProgressIndicator?
     private var renderedAppearance: Appearance?
     var hovered = false { didSet { if hovered != oldValue { refreshAppearance() } } }
     var isSelectedInFeed = false { didSet { if isSelectedInFeed != oldValue { refreshAppearance() } } }
@@ -1046,6 +1049,7 @@ final class HomeItemView: NSView {
         cover.layer?.cornerRadius = style == .compactSong
             ? AppTheme.artworkThumbnailRadius
             : (representedKind == "artist" ? bounds.width / 2 : AppTheme.artworkCardRadius)
+        loadingIndicator?.frame = playSymbol.frame.insetBy(dx: -1, dy: -1)
         CATransaction.commit()
     }
 
@@ -1317,6 +1321,7 @@ final class HomeItemView: NSView {
 
     override func prepareForReuse() {
         super.prepareForReuse()
+        setLoading(false)
         imageTask?.cancel()
         imageTask = nil
         generation &+= 1
@@ -1376,6 +1381,33 @@ final class HomeItemView: NSView {
     func setFeedVisible(_ visible: Bool) {
         feedVisible = visible
         equalizerOverlay.setFeedVisible(visible)
+        if loading {
+            if visible { loadingIndicator?.startAnimation(nil) }
+            else { loadingIndicator?.stopAnimation(nil) }
+        }
+    }
+
+    /// Optional collection loading state. Mount a spinner only while it is used,
+    /// preserving the small Home control hierarchy for every other card.
+    func setLoading(_ value: Bool) {
+        guard loading != value else { return }
+        loading = value
+        if value {
+            let indicator = loadingIndicator ?? NSProgressIndicator()
+            loadingIndicator = indicator
+            indicator.style = .spinning
+            indicator.controlSize = .small
+            indicator.isDisplayedWhenStopped = false
+            indicator.appearance = NSAppearance(named: .darkAqua)
+            indicator.setAccessibilityLabel("Cargando \(title.stringValue)")
+            indicator.frame = playSymbol.frame.insetBy(dx: -1, dy: -1)
+            addSubview(indicator)
+            if feedVisible { indicator.startAnimation(nil) }
+        } else {
+            loadingIndicator?.stopAnimation(nil)
+            loadingIndicator?.removeFromSuperview()
+        }
+        refreshAppearance()
     }
 
     func updateHoverLocation(_ point: NSPoint) {
@@ -1462,10 +1494,10 @@ final class HomeItemView: NSView {
                               playing: playing, isCurrent: isCurrent, compactSong: style == .compactSong,
                               playButtonHovered: isPlayButtonHovered, feedVisible: feedVisible,
                               reduceMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion,
-                              focusWithinCard: focusWithinCard)
+                              focusWithinCard: focusWithinCard, loading: loading)
         guard renderedAppearance != next else { return }
         renderedAppearance = next
-        let isHighlighted = hovered || isSelectedInFeed || focusWithinCard
+        let isHighlighted = hovered || isSelectedInFeed || focusWithinCard || loading
         equalizerOverlay.setIndicatorSuppressed(isCurrent && isHighlighted)
         if style == .compactSong {
             playButton.layer?.backgroundColor = NSColor.clear.cgColor
@@ -1505,6 +1537,8 @@ final class HomeItemView: NSView {
             playSymbol.image = playImage
         }
         playButton.isHidden = !isHighlighted
+        playButton.isEnabled = !loading
+        if loading { playSymbol.isHidden = true }
         playSymbol.contentTintColor = .white
         equalizerOverlay.setMotionEnabled(!NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
         equalizerOverlay.setFeedVisible(feedVisible)

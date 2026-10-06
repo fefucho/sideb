@@ -76,6 +76,7 @@ struct CatalogCardView: View {
     @Bindable var playerViewModel: PlayerViewModel
     var router: NavigationRouter?
     var artistBrowseId: String? = nil
+    var origin: MenuOrigin? = nil
 
     var body: some View {
         let isArtist = card.kind.lowercased() == "artist"
@@ -154,7 +155,7 @@ struct CatalogCardView: View {
             player: playerViewModel,
             router: router,
             core: rustCore,
-            origin: artistBrowseId.map { .artist(channelId: $0) } ?? .album(browseId: card.id),
+            origin: origin ?? (artistBrowseId.map { .artist(channelId: $0) } ?? .album(browseId: card.id)),
             knownArtistId: artistBrowseId
         )
     }
@@ -180,6 +181,7 @@ struct CatalogCardView: View {
     }
 
     private var cardMenuOrigin: MenuOrigin {
+        if let origin { return origin }
         if let artistBrowseId { return .artist(channelId: artistBrowseId) }
         if card.kind.lowercased() == "album" { return .album(browseId: card.id) }
         return .playlist(id: card.id)

@@ -73,6 +73,7 @@ test('Mac runs checks, regenerates core artifacts, and writes a verified deliver
   const result = await buildVersion(root, parseArguments(['macos']), { host: 'darwin', architecture: 'arm64', snapshot, execute });
   assert.deepEqual(calls.map(([command]) => command), ['cargo', 'bash', 'swift', 'bash']);
   assert.deepEqual(calls[1][1], ['build_xcframework.sh']);
+  assert.deepEqual(calls[2][1], ['test', '--package-path', 'apple', '-c', 'release', '--no-parallel']);
   assert.equal(result.metadata.status, 'compiled');
   assert.equal(result.metadata.publicBuild, '8');
   assert.equal(result.metadata.sourceBefore.workingTree, ' M source');

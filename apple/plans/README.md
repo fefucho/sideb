@@ -4,6 +4,9 @@
 
 | Plan | Estado | Referencia |
 |---|---|---|
+| [PLAN-013: fullscreen con Inicio de fondo](PLAN-013-fullscreen-home-performance.md) | FIX-123/124/build-0052: 485 pruebas + 10 del runner aprobadas; caso sidebar cerrado→fullscreen→abrir y cuatro alternancias comprobados visualmente | FIX-095/109/119/122/123; viewport externo ajustado al shell, tamaño nativo interno retenido, pausa y snapshots diferidos; FPS reales sin certificar |
+| [PLAN-012: navegación con gestos](PLAN-012-navigation-gestures.md) | FIX-129/build-0061: Inicio conserva scroll/páginas locales, 49 pruebas focales y 532 release aprobadas; geometría y botones comprobados, ensayo físico pendiente | FIX-125/126/127/128/129; propietarios limitados al viewport, headers/huecos con historial, secuencia fija hasta terminar |
+| [PLAN-011: Explorar](PLAN-011-explore.md) | Implementado y optimizado en build-0048; suite release completa aprobada, UI en sesión aislada y trazas comprobadas; FPS/audio/trackpad físico no certificados | FIX-120/121/PAR-012; Global + región y selector, lanzamientos/categorías con tarjetas nativas recicladas y viewport acotado |
 | [PLAN-010: detalle compartido de álbum/playlist](PLAN-010-collection-detail-ui.md) | Implementado; validación manual pendiente | FIX-114/build-0034 y FIX-115/build-0035; FIX-116/build-0036 ambiente continuo; FIX-117/build-0038 scroll/buscador; FIX-118/build-0039 editor desde foco y altura estable, visual pendiente |
 | [PLAN-009: cartas comunes y reproducción contextual](PLAN-009-common-media-cards.md) | Implementado Apple en build-0033 (cola propia FIX-113); 52 XCTest/198 Swift Testing aprobados, validación visual/manual pendiente | FIX-111/112/113 (cola propia) · PAR-009/010; FIX-097–100/103/105–106 como antecedentes |
 | [PLAN-008: limpieza y eficiencia de Inicio](PLAN-008-home-cleanup-efficiency.md) | Propuesto, sin implementar; cinco etapas independientes para ejecutar con poca cuota | [FIX-109](../../FIXES.md#fix-109), PAR-003 |
