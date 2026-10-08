@@ -48,3 +48,6 @@ Updates/
 
 # Builds locales numeradas: conservar en disco, no subir binarios ni logs
 /builds/
+
+# Material histórico/local de importación: conservar en disco, nunca publicar
+/temp/

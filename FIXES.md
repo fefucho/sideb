@@ -4,11 +4,28 @@ Memoria de cambios de Side B para investigar problemas y regresiones. Buscar aqu
 
 Tags de ámbito: `[Apple]`, `[Windows]`, `[Compartido]`. Core y herramientas comunes usan Compartido, detallando el componente. El tag indica dónde se hizo el cambio; no demuestra que ambas plataformas hayan sido verificadas. Estados, fechas, componentes y relaciones se conservan dentro de cada entrada.
 
-Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-130**. Se conservaron los FIX/FEAT históricos. Dos números antiguos repetidos se distinguen como `FIX-027-2` y `FIX-028-2`, anotando el ID original; al citar FIX-027/028 comprobar título y entrada exacta.
+Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-131**. Se conservaron los FIX/FEAT históricos. Dos números antiguos repetidos se distinguen como `FIX-027-2` y `FIX-028-2`, anotando el ID original; al citar FIX-027/028 comprobar título y entrada exacta.
 
 ## Cambios recientes
 
 Los FIX-120–129 se incluyen en la [release estable 1.1.7](plans/RELEASE-1.1.7.md), publicada el 2026-10-06 con build-0062 (versión pública 1.1.7/build 11), 532 pruebas aprobadas y paquete/descarga verificados. Los límites de cada comprobación física y los antecedentes se conservan en sus entradas.
+
+<a id="fix-130"></a>
+
+### [FIX-130] [Compartido] - Separar los checkpoints locales del historial publicado y excluir temp
+
+- Fecha: 2026-10-08 (America/Montevideo).
+- Componente: Git, higiene del repositorio y flujo de publicación.
+- Tipo / estado: fix de herramientas; implementado, publicado y verificado en GitHub.
+- Problema y causa: cuatro commits `checkpoint:` se publicaron como antecesores de `main` y de los tags 1.1.5/1.1.6/1.1.7. «Estado local» en el título no impide que un push incluya el commit; revisar sólo el último cambio permite publicar guardados anteriores. `temp/` no estaba versionada, pero faltaba su exclusión explícita.
+- Cambio y motivo: conservar un bundle local fuera del repositorio y consolidar los cambios de los checkpoints en los commits descriptivos de sus releases, manteniendo el código actual y los árboles publicados de los tags. Excluir `/temp/` y exigir revisión de mensajes/archivos de todo el tramo saliente en la skill Git.
+- Archivos: `.gitignore`, `.agents/skills/sideb-git/SKILL.md`, `README.md`, `FIXES.md`, `plans/README.md`, `plans/PLAN-001-git-publication.md`; referencias Git de `main` y los tres tags posteriores al primer checkpoint.
+- Auditoría: rutas de todas las ramas/tags públicos sin `temp/`, builds/dependencias compiladas ni archivos de credenciales, bases de datos o logs. Gitleaks 8.30.1: 65 commits, cero hallazgos; revisión adicional de 1044 blobs de texto, con coincidencias limitadas a identificadores generados y credenciales sintéticas de pruebas. Informes redactados conservados fuera del repositorio.
+- Verificación: árboles idénticos de los tres tags y del tip consolidado respecto de las versiones anteriores; fuentes de la app conservadas por identidad de blobs. `git diff --check` aprobado y `git check-ignore` confirma exclusión de `temp/`. Push atómico verificado: sólo cambian `main` y los tres tags previstos, cero checkpoints en todas las referencias públicas, ocho releases/assets conservados y 118 archivos de `temp/` intactos. Segundo escaneo del historial limpio con Gitleaks aprobado. Sin nuevas pruebas de runtime ni build: no se modifican fuentes de la app.
+- Límites: no se afirma ausencia absoluta de información sensible ni borrado de objetos cacheados por GitHub/clones. `temp/`, builds y datos locales se conservan. Los SHA históricos de registros anteriores describen la evidencia original y permanecen recuperables localmente.
+- Fixes relacionados: conserva FIX-088–129 y sus registros; el commit de checkpoint que reunía sus cambios no constituía validación funcional adicional.
+- Paridad: no requiere port de runtime; `.gitignore` y la skill Git se comparten en el mismo `main` para Apple/Windows. Comprobaciones Git realizadas en macOS, sin ejecución de la app Windows.
+- Plan: [Historial público y material local](plans/PLAN-001-git-publication.md).
 
 <a id="fix-129"></a>
 

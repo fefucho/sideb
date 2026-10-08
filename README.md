@@ -87,3 +87,5 @@ Cada plan indica objetivo, estado, alcance/exclusiones, referencias, pasos con c
 Al incorporar una referencia a una tarea nueva, comprobar su estado y registrar el resultado en los archivos activos. Código y pruebas actuales prevalecen sobre decisiones antiguas.
 
 El resto de lo reunido permanece intacto en `temp/` como material local de importación. Al retomar una tarea, trasladar sólo la referencia necesaria a un plan/documento versionable, revisar sus enlaces y agregarla al índice; no convertir toda la carpeta en instrucciones activas.
+
+`temp/` está excluida por `.gitignore`. Los checkpoints de recuperación se guardan fuera del repositorio publicable; el push incluye todos los commits antecesores pendientes, por lo que también deben revisarse. Publicar sólo código, pruebas y documentación autorizados con mensajes descriptivos, siguiendo la skill Git. La [limpieza del historial público](plans/PLAN-001-git-publication.md) conserva los árboles de las releases; los SHA anteriores que figuran en registros históricos identifican la evidencia original y se mantienen en un respaldo local fuera del repositorio.
