@@ -14,13 +14,13 @@ public enum DetailTrackOrder: String, CaseIterable, Identifiable {
 
     public var title: String {
         switch self {
-        case .custom: "Orden personalizado"
-        case .title: "Título"
-        case .artist: "Artista"
-        case .album: "Álbum"
-        case .recentlyAdded: "Agregado recientemente"
-        case .oldestAdded: "Agregado hace más tiempo"
-        case .duration: "Duración"
+        case .custom: L10n.text("detail.sort.custom")
+        case .title: L10n.text("detail.sort.title")
+        case .artist: L10n.text("detail.sort.artist")
+        case .album: L10n.text("detail.sort.album")
+        case .recentlyAdded: L10n.text("detail.sort.recentlyAdded")
+        case .oldestAdded: L10n.text("detail.sort.oldestAdded")
+        case .duration: L10n.text("detail.sort.duration")
         }
     }
 }

@@ -27,7 +27,7 @@ struct FloatingNavigationCapsule: View {
                         .contentShape(Circle())
                 }
                 .buttonStyle(.plain)
-                .help("Actualizar recomendaciones (⌘R)")
+                .help(L10n.text("navigation.refresh_help"))
                 .keyboardShortcut("r", modifiers: .command)
                 .transition(.asymmetric(
                     insertion: .opacity.combined(with: .scale(scale: 0.7)),
@@ -54,7 +54,7 @@ struct FloatingNavigationCapsule: View {
             .buttonStyle(.plain)
             .disabled(!router.canGoBack)
             .opacity(router.canGoBack ? 1.0 : 0.32)
-            .help("Atrás (⌘[)")
+            .help(L10n.text("navigation.back_help"))
             .keyboardShortcut("[", modifiers: .command)
             
             // Botón Adelante (▶)
@@ -70,7 +70,7 @@ struct FloatingNavigationCapsule: View {
             .buttonStyle(.plain)
             .disabled(!router.canGoForward)
             .opacity(router.canGoForward ? 1.0 : 0.32)
-            .help("Adelante (⌘])")
+            .help(L10n.text("navigation.forward_help"))
             .keyboardShortcut("]", modifiers: .command)
         }
         .padding(.horizontal, 3)

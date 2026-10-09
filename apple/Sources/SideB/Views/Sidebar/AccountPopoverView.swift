@@ -37,7 +37,7 @@ struct AccountPopoverView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(account?.name ?? "Usuario")
+                    Text(account?.name ?? L10n.text("account.user"))
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(.primary)
                         .lineLimit(1)
@@ -67,7 +67,7 @@ struct AccountPopoverView: View {
                 Image(systemName: "checkmark.shield.fill")
                     .font(.system(size: 13))
                     .foregroundStyle(.green)
-                Text("Sesión activa de YouTube Music")
+                Text(L10n.text("account.active_session"))
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
             }
@@ -84,7 +84,7 @@ struct AccountPopoverView: View {
                 HStack(spacing: 10) {
                     Image(systemName: "rectangle.portrait.and.arrow.right")
                         .font(.system(size: 13, weight: .medium))
-                    Text("Cerrar sesión")
+                    Text(L10n.text("account.sign_out"))
                         .font(.system(size: 13, weight: .medium))
                     Spacer()
                 }

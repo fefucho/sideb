@@ -56,7 +56,11 @@ public final class PlayerViewModel {
     public var currentPlaylistBrowseId: String?
     public var streamInfo: StreamPlaybackInfo?
     public var isLoadingStream: Bool = false
-    public var errorMessage: String?
+    private var errorDescriptor: AppMessage?
+    public var errorMessage: String? {
+        get { errorDescriptor?.text }
+        set { errorDescriptor = newValue.map { AppMessage(verbatim: $0) } }
+    }
     private var hasRecordedHistoryForCurrentTrack: Bool = false
 
     // MARK: - Modo Fullscreen y Cola
@@ -181,7 +185,8 @@ public final class PlayerViewModel {
             tracks: queueManager.queue.map(SavedPlaybackState.Track.init),
             currentIndex: queueManager.currentIndex,
             currentTrack: currentTrack.map(SavedPlaybackState.Track.init),
-            context: SavedPlaybackState.Context(queueManager.context),
+            context: SavedPlaybackState.Context(queueManager.context, localizationKey: queueManager.contextLocalizationKey,
+                localizationArguments: queueManager.contextLocalizationArguments),
             contextTitle: queueManager.contextTitle,
             radioSeed: queueManager.radioSeed,
             isShuffle: queueManager.isShuffle,
@@ -249,6 +254,7 @@ public final class PlayerViewModel {
                                   context: saved.context?.queueContext,
                                   contextTitle: saved.contextTitle,
                                   radioSeed: saved.radioSeed)
+        queueManager.setContextLocalizationKey(saved.context?.localizationKey, args: saved.context?.localizationArguments ?? [])
         guard queueManager.restoreOrder(saved.order, isShuffle: saved.isShuffle) else {
             queueManager.clearQueue()
             isSwitchingPlaybackSession = false
@@ -392,7 +398,7 @@ public final class PlayerViewModel {
     public func playWithRadio(_ song: SongItemRecord, albumBrowseId: String? = nil, artistBrowseId: String? = nil) {
         cancelInFlightRadioTasks()
         self.currentPlaylistBrowseId = nil
-        let radioTitle = "Radio de \(song.title)"
+        let radioTitle = L10n.text("player.radioFor", args: [song.title])
         queueManager.replaceQueue(
             with: [song],
             startingAt: 0,
@@ -485,7 +491,7 @@ public final class PlayerViewModel {
                       self.accountGeneration == generation, self.queueManager.queueToken == queueToken,
                       self.currentPlaybackToken == playbackToken else { return }
                 guard !collection.tracks.isEmpty else {
-                    self.errorMessage = kind == .albums ? "No se encontraron canciones para este álbum." : "No se encontraron canciones para esta playlist."
+                    self.errorDescriptor = AppMessage(key: kind == .albums ? "player.error.noAlbumTracks" : "player.error.noPlaylistTracks")
                     return
                 }
                 if kind == .albums {
@@ -498,8 +504,9 @@ public final class PlayerViewModel {
                 guard !Task.isCancelled, self.recommendedCollectionRequest == request,
                       self.accountGeneration == generation, self.queueManager.queueToken == queueToken,
                       self.currentPlaybackToken == playbackToken else { return }
-                let name = kind == .albums ? "el álbum" : "la playlist"
-                self.errorMessage = "No se pudo cargar \(name): \(error.localizedDescription)"
+                let key = kind == .albums ? "player.error.loadAlbum" : "player.error.loadPlaylist"
+                self.errorDescriptor = (error as? PlaylistCatalogError)?.appMessage
+                    ?? AppMessage(key: key, args: [error.localizedDescription])
             }
         }
     }
@@ -526,7 +533,7 @@ public final class PlayerViewModel {
             with: tracks,
             startingAt: startingAt,
             context: .album(browseId: browseId, title: title),
-            contextTitle: "Álbum: \(title)",
+            contextTitle: L10n.text("queue.albumContext", args: [title]),
             shuffle: shuffle
         )
         
@@ -550,7 +557,7 @@ public final class PlayerViewModel {
             return
         }
         guard let core = rustCore else {
-            errorMessage = "No se pudo completar la playlist: núcleo de Rust no inicializado"
+            errorDescriptor = AppMessage(key: "player.error.completePlaylistCoreUnavailable")
             return
         }
         let initial = PlaylistDetailRecord(id: browseId, title: title, subtitle: nil, thumbnail: nil,
@@ -595,7 +602,8 @@ public final class PlayerViewModel {
             } catch {
                 guard !Task.isCancelled, self.playlistRequest == request,
                       self.accountGeneration == generation, self.queueManager.queueToken == queueToken else { return }
-                self.errorMessage = "No se pudo completar la playlist: \(error.localizedDescription)"
+                self.errorDescriptor = (error as? PlaylistCatalogError)?.appMessage
+                    ?? AppMessage(key: "player.error.completePlaylist", args: [error.localizedDescription])
             }
         }
     }
@@ -606,7 +614,7 @@ public final class PlayerViewModel {
         currentArtistBrowseId = nil
         currentPlaylistBrowseId = browseId
         queueManager.replaceQueue(with: tracks, startingAt: startingAt,
-            context: .playlist(browseId: browseId, title: title), contextTitle: "Lista: \(title)",
+            context: .playlist(browseId: browseId, title: title), contextTitle: L10n.text("queue.playlistContext", args: [title]),
             continuation: continuation, shuffle: shuffle)
         if let selected = queueManager.currentTrack { playSongNow(selected) }
     }
@@ -640,7 +648,7 @@ public final class PlayerViewModel {
         } else {
             radioPid = "\(prefix)\(id)"
         }
-        let radioTitle = "Radio de \(title)"
+        let radioTitle = L10n.text("player.radioFor", args: [title])
 
         cancelInFlightRadioTasks()
 
@@ -776,7 +784,7 @@ public final class PlayerViewModel {
         self.isLoadingLyrics = false
 
         guard let core = rustCore else {
-            self.errorMessage = "Núcleo de Rust no inicializado"
+            self.errorDescriptor = AppMessage(key: "player.error.coreUnavailable")
             self.isLoadingStream = false
             return
         }
@@ -830,7 +838,7 @@ public final class PlayerViewModel {
             } catch {
                 guard !Task.isCancelled, self.currentPlaybackToken == token else { return }
                 self.isLoadingStream = false
-                self.errorMessage = "Error al resolver stream: \(error.localizedDescription)"
+                self.errorDescriptor = AppMessage(key: "player.error.resolveStream", args: [error.localizedDescription])
                 print("[PlayerViewModel] ❌ Error: \(error)")
             }
         }
@@ -950,7 +958,7 @@ public final class PlayerViewModel {
                     object: nil,
                     userInfo: ["track": track, "isLiked": wasLiked]
                 )
-                self.errorMessage = "No se pudo actualizar valoración: \(error.localizedDescription)"
+                self.errorDescriptor = AppMessage(key: "player.error.updateRating", args: [error.localizedDescription])
                 print("[PlayerViewModel] Error al calificar \(track.videoId): \(error)")
             }
         }
@@ -994,7 +1002,7 @@ public final class PlayerViewModel {
                         object: nil,
                         userInfo: ["track": track, "isLiked": wasLiked]
                     )
-                    self.errorMessage = "No se pudo registrar calificación negativa: \(error.localizedDescription)"
+                    self.errorDescriptor = AppMessage(key: "player.error.dislike", args: [error.localizedDescription])
                     print("[PlayerViewModel] Error al calificar DISLIKE \(track.videoId): \(error)")
                 }
             }
@@ -1055,7 +1063,7 @@ public final class PlayerViewModel {
             } catch {
                 guard self.accountGeneration == generation else { return }
                 playlistCatalog.invalidate("LM")
-                self.errorMessage = "Error al calificar canción: \(error.localizedDescription)"
+                self.errorDescriptor = AppMessage(key: "player.error.rateSong", args: [error.localizedDescription])
                 print("[PlayerViewModel] Error al calificar \(videoId): \(error)")
             }
         }
@@ -1361,7 +1369,7 @@ public final class PlayerViewModel {
                     return
                 }
                 guard res.continuation != continuation else {
-                    self.errorMessage = "La playlist devolvió una continuación repetida"
+                    self.errorDescriptor = AppMessage(key: "queue.error.repeatedContinuation")
                     return
                 }
                 if !res.items.isEmpty {
@@ -1376,7 +1384,7 @@ public final class PlayerViewModel {
             } catch {
                 guard !Task.isCancelled else { return }
                 guard self.queueManager.queueToken == targetQueueToken else { return }
-                self.errorMessage = "No se pudo completar la playlist: \(error.localizedDescription)"
+                self.errorDescriptor = AppMessage(key: "player.error.completePlaylist", args: [error.localizedDescription])
             }
         }
     }
@@ -1599,6 +1607,9 @@ extension SongItemRecord {
 
     /// Devuelve el nombre limpio del artista desprendiendo el álbum si venía compuesto en la cadena ("Artista • Álbum")
     public var displayArtist: String {
+        if artists.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return L10n.text("detail.track.variousArtists")
+        }
         if let alb = album, !alb.isEmpty, artists.contains(" • ") {
             return artists.components(separatedBy: " • ").first?.trimmingCharacters(in: .whitespaces) ?? artists
         }
@@ -1626,7 +1637,7 @@ extension SongItemRecord {
 
     /// Construye un SongItemRecord a partir de un HomeItemRecord desglosando artista y álbum si vienen concatenados
     public init(fromHomeItem item: HomeItemRecord) {
-        var artistName = item.artists ?? item.subtitle ?? "Varios Artistas"
+        var artistName = item.artists ?? item.subtitle ?? ""
         var albumName: String? = item.album
         if albumName == nil, let sub = item.subtitle, sub.contains(" • ") {
             let parts = sub.components(separatedBy: " • ")
@@ -1653,7 +1664,7 @@ extension SongItemRecord {
 
     /// Construye un SongItemRecord a partir de un BrowseCardRecord desglosando artista y álbum si vienen concatenados
     public init(fromCard card: BrowseCardRecord, fallbackArtist: String? = nil, knownArtistId: String? = nil) {
-        var artistName = card.subtitle ?? (fallbackArtist ?? "Varios Artistas")
+        var artistName = card.subtitle ?? fallbackArtist ?? ""
         var albumName: String? = nil
         if let sub = card.subtitle, sub.contains(" • ") {
             let parts = sub.components(separatedBy: " • ")

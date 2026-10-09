@@ -17,6 +17,7 @@ struct HomeView: View {
     private var isObscured: Bool { playerViewModel.isFullscreenPresented }
 
     var body: some View {
+        let _ = L10n.revision
         let songCount = homeViewModel.featured.songs.count
         // The hidden native feed retains its old size. Keep that size inside
         // the page's proposed viewport so it cannot enlarge the window shell.
@@ -53,9 +54,9 @@ struct HomeView: View {
                             errorView(error)
                                 .frame(minHeight: 240)
                         } else {
-                            ProgressView("Cargando recomendaciones…")
+                            ProgressView(L10n.text("home.loading_recommendations"))
                                 .frame(maxWidth: .infinity, minHeight: 240)
-                                .accessibilityLabel("Cargando Inicio")
+                                .accessibilityLabel(L10n.text("home.loading"))
                         }
                     }
                 }
@@ -165,7 +166,7 @@ struct HomeView: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.75)
                     .accessibilityAddTraits(.isHeader)
-                Text(homeViewModel.allFeaturedSourcesDisabled ? "Activá fuentes desde Configuración de Inicio." : "Tu próximo lado B empieza acá")
+                Text(homeViewModel.allFeaturedSourcesDisabled ? L10n.text("app.home.sourcesDisabled") : L10n.text("app.home.emptySubtitle"))
                     .font(.system(size: 13))
                     .foregroundStyle(.secondary)
             }
@@ -178,9 +179,9 @@ struct HomeView: View {
 
     private var greeting: String {
         let hour = Calendar.current.component(.hour, from: Date())
-        let salutation = hour < 12 ? "Buen día" : hour < 20 ? "Buenas tardes" : "Buenas noches"
+        let salutation = hour < 12 ? L10n.text("app.home.morning") : hour < 20 ? L10n.text("app.home.afternoon") : L10n.text("app.home.evening")
         let name = accountName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        return name.isEmpty ? salutation : "\(salutation), \(name)"
+        return name.isEmpty ? salutation : L10n.text("app.home.greetingName", args: [salutation, name])
     }
 
     private func featuredMenu(_ item: HomeItemRecord) -> NSMenu? {
@@ -202,9 +203,9 @@ struct HomeView: View {
     private var chips: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                chip(title: "Todos", params: nil)
+                chip(title: L10n.text("app.home.allChip"), params: nil)
                 ForEach(homeViewModel.chips, id: \.params) { value in
-                    chip(title: value.title, params: value.params)
+                    chip(title: Self.localizedChipTitle(value.title), params: value.params)
                 }
             }
             .padding(.horizontal, 28)
@@ -229,6 +230,36 @@ struct HomeView: View {
         .accessibilityAddTraits(selected ? [.isSelected] : [])
     }
 
+    private static let knownProviderChipTitles: Set<String> = [
+        "quick picks", "Quick picks", "Quick Picks", "selecciones rapidas", "selecciones rápidas", "Selecciones rápidas",
+        "speed dial", "Speed Dial", "marcacion rapida", "marcación rápida", "Marcación rápida",
+        "albums for you", "Albums for you", "Álbumes para ti", "albumes para ti", "recommended albums", "Recommended albums", "albumes recomendados", "álbumes recomendados",
+        "mixed for you", "Mixed for you", "mixes for you", "Mixes for you", "your mixes", "Your mixes", "personalized mixes", "Personalized mixes", "mixes para ti", "tus mixes", "mixes personalizados", "hecho para ti",
+        "listen again", "Listen again", "vuelve a escucharlo", "volver a escuchar", "escuchar de nuevo",
+        "new releases", "New releases", "nuevos lanzamientos", "lanzamientos nuevos",
+        "forgotten favorites", "Forgotten favorites", "forgotten favourites", "favoritos olvidados",
+        "from your library", "From your library", "de tu biblioteca", "de la biblioteca",
+        "from the community", "From the community", "de la comunidad", "de la comunidad de youtube music"
+    ]
+
+    private static let providerChipKeys: [String: String] = [
+        "Relax": "provider.chip.relax", "Relajación": "provider.chip.relax",
+        "Workout": "provider.chip.workout", "Entrenar": "provider.chip.workout", "Entrenamiento": "provider.chip.workout",
+        "Focus": "provider.chip.focus", "Concentración": "provider.chip.focus",
+        "Podcasts": "provider.chip.podcasts",
+        "Energize": "provider.chip.energize", "Activar": "provider.chip.energize", "Activá": "provider.chip.energize", "Energía": "provider.chip.energize",
+        "Commute": "provider.chip.commute", "Traslados": "provider.chip.commute", "En camino": "provider.chip.commute",
+        "Sleep": "provider.chip.sleep", "Dormir": "provider.chip.sleep",
+        "Party": "provider.chip.party", "Fiesta": "provider.chip.party",
+        "Romance": "provider.chip.romance"
+    ]
+
+    static func localizedChipTitle(_ rawTitle: String) -> String {
+        if let key = providerChipKeys[rawTitle] { return L10n.text(key) }
+        guard knownProviderChipTitles.contains(rawTitle) else { return rawTitle }
+        return L10n.providerHeading(rawTitle)
+    }
+
     @ViewBuilder private var statusBanner: some View {
         if homeViewModel.isLoadingChip || homeViewModel.isRefreshing || homeViewModel.isShowingSavedFeed ||
             homeViewModel.errorMessage != nil || playerViewModel.errorMessage != nil {
@@ -237,30 +268,30 @@ struct HomeView: View {
                     ProgressView().controlSize(.small)
                 }
                 if homeViewModel.isLoadingChip {
-                    Text("Cambiando recomendaciones…")
+                    Text(L10n.text("home.refresh.changing"))
                 } else if let error = homeViewModel.errorMessage {
-                    Text(homeViewModel.isShowingSavedFeed ? "No se pudo actualizar · Contenido guardado" : "Sin conexión · se muestran las últimas recomendaciones")
+                    Text(homeViewModel.isShowingSavedFeed ? L10n.text("app.home.savedFeed") : L10n.text("app.home.offlineFeed"))
                         .help(error)
                     Button {
                         refresh()
                     } label: {
-                        Text("Reintentar")
+                        Text(L10n.text("home.retry"))
                             .fontWeight(.semibold)
                             .foregroundStyle(.primary)
                     }
                     .buttonStyle(.plain)
                 } else if let playbackError = playerViewModel.errorMessage {
                     Text(playbackError).lineLimit(2)
-                    Button("Cerrar") { playerViewModel.errorMessage = nil }
+                    Button(L10n.text("home.close")) { playerViewModel.errorMessage = nil }
                         .buttonStyle(.plain)
                 } else if homeViewModel.isShowingSavedFeed {
                     if homeViewModel.isRefreshing {
-                        Text("Recomendaciones guardadas · actualizando")
+                        Text(L10n.text("home.refresh.saved_updating"))
                     } else {
-                        Text("Recomendaciones guardadas")
+                        Text(L10n.text("home.refresh.saved"))
                     }
                 } else {
-                    Text("Actualizando recomendaciones…")
+                    Text(L10n.text("home.refresh.updating"))
                 }
             }
             .font(.system(size: 12, weight: .medium))
@@ -274,11 +305,11 @@ struct HomeView: View {
 
     private func errorView(_ error: String) -> some View {
         ContentUnavailableView {
-            Label("No se pudo cargar Inicio", systemImage: "wifi.exclamationmark")
+            Label(L10n.text("home.error.load"), systemImage: "wifi.exclamationmark")
         } description: {
             Text(error)
         } actions: {
-            Button("Reintentar") { refresh() }
+            Button(L10n.text("home.retry")) { refresh() }
                 .buttonStyle(.borderedProminent)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

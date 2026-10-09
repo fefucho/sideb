@@ -25,12 +25,12 @@ private func playlistMetadataDetail(_ id: String, title: String = "Detail title"
 }
 
 @Test func homePlaylistMetadataNeverPresentsPartialPageAsCatalogTotal() {
-    let item = playlistMetadataItem("partial", subtitle: "Playlist • 2026 • Creator")
+    let item = playlistMetadataItem("partial", subtitle: "Lista de reproducción • 2026 • Creator")
     let detail = playlistMetadataDetail("partial", durations: ["3:00", "4:00"], continuation: "next")
     let value = HomePlaylistMetadata.make(item: item, playlist: detail)
     #expect(value.title == "Detail title")
     #expect(value.creator == "Creator")
-    #expect(value.summary == "Playlist")
+    #expect(value.summary == "Lista de reproducción")
 }
 
 @Test func homePlaylistMetadataUsesExplicitProviderTotalAndDurationFromPartialPage() {
@@ -40,34 +40,34 @@ private func playlistMetadataDetail(_ id: String, title: String = "Detail title"
     let value = HomePlaylistMetadata.make(item: item, playlist: detail)
     #expect(value.creator == "Home creator")
     #expect(value.creatorID == "UCowner")
-    #expect(value.summary == "Playlist • 2000 canciones • 4 h")
+    #expect(value.summary == "Lista de reproducción • 2000 canciones • 4 h")
 }
 
 @Test func homePlaylistMetadataDerivesOnlyCompleteValidCatalogSummary() {
     let item = playlistMetadataItem("complete")
     let complete = playlistMetadataDetail("complete", durations: ["1:30", "2:30"])
-    #expect(HomePlaylistMetadata.make(item: item, playlist: complete).summary == "Playlist • 2 canciones • 4 min")
+    #expect(HomePlaylistMetadata.make(item: item, playlist: complete).summary == "Lista de reproducción • 2 canciones • 4 min")
     let incompleteDuration = playlistMetadataDetail("complete", durations: ["1:30", nil])
-    #expect(HomePlaylistMetadata.make(item: item, playlist: incompleteDuration).summary == "Playlist • 2 canciones")
+    #expect(HomePlaylistMetadata.make(item: item, playlist: incompleteDuration).summary == "Lista de reproducción • 2 canciones")
     let malformedDuration = playlistMetadataDetail("complete", durations: ["1:60"])
-    #expect(HomePlaylistMetadata.make(item: item, playlist: malformedDuration).summary == "Playlist • 1 canción")
+    #expect(HomePlaylistMetadata.make(item: item, playlist: malformedDuration).summary == "Lista de reproducción • 1 canción")
 }
 
 @Test func homePlaylistMetadataUsesHomeFallbackAndRealCreatorLinks() {
-    var item = playlistMetadataItem("fallback", subtitle: "Playlist • DJ 42 • 2026 • 1.2M views • 30 canciones • 2 h",
+    var item = playlistMetadataItem("fallback", subtitle: "Lista de reproducción • DJ 42 • 2026 • 1.2M views • 30 canciones • 2 h",
                                     creatorID: "VLnot-a-channel")
     let value = HomePlaylistMetadata.make(item: item, playlist: nil)
     #expect(value.title == "Home title")
     #expect(value.creator == "DJ 42")
     #expect(value.creatorID == nil)
-    #expect(value.summary == "Playlist • 30 canciones • 2 h")
+    #expect(value.summary == "Lista de reproducción • 30 canciones • 2 h")
     item.artistRuns = [HomeArtistRunRecord(text: "DJ 42", id: "UCdj")]
     #expect(HomePlaylistMetadata.make(item: item, playlist: nil).creatorID == "UCdj")
     let noMetadata = HomePlaylistMetadata.make(item: playlistMetadataItem("empty"), playlist: nil)
-    #expect(noMetadata.summary == "Playlist")
+    #expect(noMetadata.summary == "Lista de reproducción")
     #expect(noMetadata.creator == nil)
     let singular = HomePlaylistMetadata.make(item: playlistMetadataItem("one", subtitle: "1 canción"), playlist: nil)
-    #expect(singular.summary == "Playlist • 1 canción")
+    #expect(singular.summary == "Lista de reproducción • 1 canción")
     #expect(singular.creator == nil)
 }
 
@@ -83,7 +83,7 @@ private func playlistMetadataDetail(_ id: String, title: String = "Detail title"
     }
     #expect(await recorder.ids.sorted() == firstSix.map(\.id).sorted())
     #expect(model.details.count == 6)
-    #expect(model.display(for: firstSix[0]).summary == "Playlist")
+    #expect(model.display(for: firstSix[0]).summary == "Lista de reproducción")
     await model.load(items: firstSix, sessionKey: "a") { id in
         await recorder.record(id)
         return playlistMetadataDetail(id)

@@ -25,7 +25,7 @@ struct MediaArtworkControls<Artwork: View>: View {
 
     private var revealsControls: Bool { hovered || cardHovered || cardFocused || focused != nil || isLoading }
     private var playbackLabel: String {
-        "\(isActive && isPlaying ? "Pausar" : "Reproducir") \(accessibilityTitle)"
+        L10n.text(isActive && isPlaying ? "player.pauseNamedTrack" : "player.playNamedTrack", args: [accessibilityTitle])
     }
 
     var body: some View {
@@ -37,7 +37,7 @@ struct MediaArtworkControls<Artwork: View>: View {
                 Button(action: onOpen) { artwork().frame(maxWidth: .infinity, maxHeight: .infinity) }
                     .buttonStyle(.plain)
                     .focused($focused, equals: .cover)
-                    .accessibilityLabel(isCollection ? "Abrir \(accessibilityTitle)" : playbackLabel)
+                    .accessibilityLabel(isCollection ? L10n.text("detail.openNamed", args: [accessibilityTitle]) : playbackLabel)
 
                 if isActive && showsIndicator && !revealsControls {
                     SharedMediaPlayingIndicator(isPlaying: isPlaying, compact: compact, reduceMotion: reduceMotion)
@@ -81,7 +81,7 @@ struct MediaArtworkControls<Artwork: View>: View {
                     }
                     .buttonStyle(.plain)
                     .focused($focused, equals: .menu)
-                    .accessibilityLabel("Más opciones de \(accessibilityTitle)")
+                    .accessibilityLabel(L10n.text("common.moreOptionsFor", args: [accessibilityTitle]))
                     .background(MediaMenuAnchor(location: menuLocation))
                     .opacity(revealsControls ? 1 : 0)
                     .allowsHitTesting(revealsControls)
@@ -136,7 +136,7 @@ private struct MediaCardSurface: ViewModifier {
 extension View {
     func mediaCardSurface() -> some View { modifier(MediaCardSurface()) }
     func mediaCardFocusControl() -> some View { modifier(MediaCardFocusControl()) }
-    func mediaCardActivation(label: String = "Reproducir", action: @escaping () -> Void) -> some View {
+    func mediaCardActivation(label: String = L10n.text("player.play"), action: @escaping () -> Void) -> some View {
         modifier(MediaCardActivation(label: label, action: action))
     }
 }

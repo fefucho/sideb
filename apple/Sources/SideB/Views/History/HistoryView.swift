@@ -25,50 +25,58 @@ struct HistoryView: View {
         let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
         let lower = trimmed.lowercased()
         if lower == "today" || lower == "hoy" {
-            return "Hoy"
+            return L10n.text("history.today")
         }
         if lower == "yesterday" || lower == "ayer" {
-            return "Ayer"
+            return L10n.text("history.yesterday")
         }
 
         var result = trimmed
-        let dayReplacements: [String: String] = [
-            "Monday": "Lunes", "Tuesday": "Martes", "Wednesday": "Miércoles",
-            "Thursday": "Jueves", "Friday": "Viernes", "Saturday": "Sábado", "Sunday": "Domingo"
+        let dayReplacements: [(String, String, String)] = [
+            ("Monday", "Lunes", "history.day.monday"), ("Tuesday", "Martes", "history.day.tuesday"),
+            ("Wednesday", "Miércoles", "history.day.wednesday"), ("Thursday", "Jueves", "history.day.thursday"),
+            ("Friday", "Viernes", "history.day.friday"), ("Saturday", "Sábado", "history.day.saturday"),
+            ("Sunday", "Domingo", "history.day.sunday")
         ]
-        for (en, es) in dayReplacements {
-            if result.contains(en) {
-                result = result.replacingOccurrences(of: en, with: es)
+        for (en, es, key) in dayReplacements {
+            if result.contains(en) || result.contains(es) {
+                result = result.replacingOccurrences(of: en, with: L10n.text(key))
+                result = result.replacingOccurrences(of: es, with: L10n.text(key))
             }
         }
 
-        let monthReplacements: [String: String] = [
-            "January": "enero", "February": "febrero", "March": "marzo", "April": "abril",
-            "May": "mayo", "June": "junio", "July": "julio", "August": "agosto",
-            "September": "septiembre", "October": "octubre", "November": "noviembre", "December": "diciembre"
+        let monthReplacements: [(String, String, String)] = [
+            ("January", "enero", "history.month.january"), ("February", "febrero", "history.month.february"),
+            ("March", "marzo", "history.month.march"), ("April", "abril", "history.month.april"),
+            ("May", "mayo", "history.month.may"), ("June", "junio", "history.month.june"),
+            ("July", "julio", "history.month.july"), ("August", "agosto", "history.month.august"),
+            ("September", "septiembre", "history.month.september"), ("October", "octubre", "history.month.october"),
+            ("November", "noviembre", "history.month.november"), ("December", "diciembre", "history.month.december")
         ]
-        for (en, es) in monthReplacements {
-            if result.contains(en) {
-                result = result.replacingOccurrences(of: en, with: es)
+        for (en, es, key) in monthReplacements {
+            if result.contains(en) || result.contains(es) {
+                result = result.replacingOccurrences(of: en, with: L10n.text(key))
+                result = result.replacingOccurrences(of: es, with: L10n.text(key))
             }
         }
         return result
     }
 
     var body: some View {
+        let _ = L10n.revision
         VStack(alignment: .leading, spacing: 0) {
             // Header
             VStack(alignment: .leading, spacing: 4) {
-                Text("COLECCIÓN")
+                Text(L10n.text("library.eyebrow").uppercased())
                     .font(.system(size: 11, weight: .bold))
                     .foregroundStyle(.secondary)
                     .tracking(1.2)
 
-                Text("Historial")
+                Text(L10n.text("history.title"))
                     .font(.system(size: 32, weight: .bold))
                     .foregroundStyle(.primary)
 
-                Text("Tus reproducciones recientes ordenadas por día")
+                Text(L10n.text("history.subtitle"))
                     .font(.system(size: 13))
                     .foregroundStyle(.secondary)
             }
@@ -86,7 +94,7 @@ struct HistoryView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
             } else if let error = libraryViewModel.historyErrorMessage, allHistoryTracks.isEmpty {
                 DetailErrorStateView(
-                    title: "No se pudo cargar el historial",
+                    title: L10n.text("history.error.load"),
                     message: error,
                     onRetry: {
                         Task {
@@ -99,7 +107,7 @@ struct HistoryView: View {
                     Image(systemName: "clock")
                         .font(.system(size: 40))
                         .foregroundStyle(.tertiary)
-                    Text("No hay reproducciones recientes")
+                    Text(L10n.text("history.empty"))
                         .font(.headline)
                         .foregroundStyle(.secondary)
                 }
@@ -125,6 +133,7 @@ struct HistoryView: View {
                             title: "Historial",
                             startingAt: index
                         )
+                        playerViewModel.queueManager.setContextLocalizationKey("history.title")
                     },
                     onLikeTrack: { track in
                         playerViewModel.toggleTrackLike(track)

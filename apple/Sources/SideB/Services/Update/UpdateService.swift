@@ -8,6 +8,9 @@ public struct ReleaseInfo: Equatable, Sendable {
     public let releaseNotes: String
     public let downloadURL: URL
     public let publishedAt: String?
+    var displayReleaseNotes: String {
+        releaseNotes.isEmpty ? L10n.text("update.no_release_notes") : releaseNotes
+    }
 
     public init(tagName: String, version: String, releaseNotes: String, downloadURL: URL, publishedAt: String?) {
         self.tagName = tagName
@@ -40,6 +43,7 @@ public final class UpdateService: NSObject, @unchecked Sendable {
 
     public var state: UpdateState = .idle
     public var isSheetPresented: Bool = false
+    private(set) var failureMessage: AppMessage?
 
     public var currentVersion: String {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0"
@@ -83,6 +87,7 @@ public final class UpdateService: NSObject, @unchecked Sendable {
         skippedVersion = version
         isSheetPresented = false
         state = .idle
+        failureMessage = nil
     }
 
     /// Reinicia la versión omitida para permitir futuras alertas.
@@ -103,13 +108,14 @@ public final class UpdateService: NSObject, @unchecked Sendable {
 
     /// Comprueba si existe una versión más reciente en GitHub Releases.
     public func checkForUpdates(manual: Bool = false) async {
+        failureMessage = nil
         state = .checking
         if manual {
             isSheetPresented = true
         }
 
         guard let url = URL(string: "https://api.github.com/repos/\(repoOwner)/\(repoName)/releases/latest") else {
-            state = .failed("URL de GitHub no válida.")
+            setFailure(AppMessage(key: "update.error_invalid_github_url"))
             return
         }
 
@@ -121,28 +127,32 @@ public final class UpdateService: NSObject, @unchecked Sendable {
         do {
             let (data, response) = try await URLSession.shared.data(for: request)
             guard let httpResponse = response as? HTTPURLResponse else {
-                state = manual ? .failed("No se recibió respuesta válida del servidor.") : .idle
+                if manual { setFailure(AppMessage(key: "update.error_invalid_server_response")) }
+                else { state = .idle }
                 return
             }
 
             if httpResponse.statusCode == 404 {
-                state = manual ? .failed("Aún no hay ningún release publicado en el repositorio \(repoOwner)/\(repoName).") : .idle
+                if manual { setFailure(AppMessage(key: "update.error_no_release", args: ["\(repoOwner)/\(repoName)"])) }
+                else { state = .idle }
                 return
             }
 
             guard httpResponse.statusCode == 200 else {
-                state = manual ? .failed("Error al consultar GitHub (código \(httpResponse.statusCode)).") : .idle
+                if manual { setFailure(AppMessage(key: "update.error_github_status", args: [String(httpResponse.statusCode)])) }
+                else { state = .idle }
                 return
             }
 
             guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let tagName = json["tag_name"] as? String else {
-                state = manual ? .failed("Formato de respuesta de release no reconocido.") : .idle
+                if manual { setFailure(AppMessage(key: "update.error_release_format")) }
+                else { state = .idle }
                 return
             }
 
             let remoteVersion = Self.cleanVersion(tagName)
-            let body = json["body"] as? String ?? "No se incluyeron notas para este release."
+            let body = json["body"] as? String ?? ""
             let publishedAt = json["published_at"] as? String
 
             // Buscar el asset .zip
@@ -159,7 +169,8 @@ public final class UpdateService: NSObject, @unchecked Sendable {
             }
 
             guard let finalDownloadURL = downloadURL else {
-                state = manual ? .failed("El release \(tagName) no contiene un archivo .zip para macOS.") : .idle
+                if manual { setFailure(AppMessage(key: "update.error_release_missing_zip", args: [tagName])) }
+                else { state = .idle }
                 return
             }
 
@@ -184,12 +195,14 @@ public final class UpdateService: NSObject, @unchecked Sendable {
                 state = manual ? .upToDate : .idle
             }
         } catch {
-            state = manual ? .failed("Error de conexión: \(error.localizedDescription)") : .idle
+            if manual { setFailure(AppMessage(key: "update.error_connection", args: [error.localizedDescription])) }
+            else { state = .idle }
         }
     }
 
     /// Descarga la actualización e inicia el reemplazo en caliente.
     public func downloadAndInstall(release: ReleaseInfo) async {
+        failureMessage = nil
         state = .downloading(progress: 0.0)
 
         do {
@@ -213,8 +226,13 @@ public final class UpdateService: NSObject, @unchecked Sendable {
 
             try executeTrampolineUpdate(zipURL: zipFile)
         } catch {
-            state = .failed("No se pudo completar la actualización: \(error.localizedDescription)")
+            setFailure(AppMessage(key: "update.error_install", args: [error.localizedDescription]))
         }
+    }
+
+    private func setFailure(_ message: AppMessage) {
+        failureMessage = message
+        state = .failed(message.text)
     }
 
     /// Lanza un proceso desacoplado que espera a que la app actual cierre,

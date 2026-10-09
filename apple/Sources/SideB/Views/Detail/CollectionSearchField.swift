@@ -4,11 +4,13 @@ import SwiftUI
 /// Borderless native input inside the shared glass capsule, with window-scoped dismissal.
 struct CollectionSearchField: NSViewRepresentable {
     @Binding var query: String
+    private var localizationRevision = L10n.revision
 
     func makeCoordinator() -> Coordinator { Coordinator(query: $query) }
 
     func makeNSView(context: Context) -> CollectionSearchControl {
         let control = CollectionSearchControl()
+        control.updateLocalization()
         control.field.delegate = context.coordinator
         context.coordinator.field = control.field
         control.clearButton.target = context.coordinator
@@ -21,6 +23,10 @@ struct CollectionSearchField: NSViewRepresentable {
     func updateNSView(_ control: CollectionSearchControl, context: Context) {
         context.coordinator.query = $query
         context.coordinator.synchronize(field: control.field, query: query)
+        if context.coordinator.localizationRevision != localizationRevision {
+            context.coordinator.localizationRevision = localizationRevision
+            control.updateLocalization()
+        }
         control.updateClearVisibility(query: query)
     }
 
@@ -39,6 +45,7 @@ struct CollectionSearchField: NSViewRepresentable {
     final class Coordinator: NSObject, NSTextFieldDelegate {
         var query: Binding<String>
         weak var field: CollectionSearchTextField?
+        var localizationRevision = L10n.revision
 
         init(query: Binding<String>) { self.query = query }
 
@@ -81,13 +88,21 @@ final class CollectionSearchControl: NSView {
         clearButton.isBordered = false
         clearButton.setButtonType(.momentaryChange)
         clearButton.focusRingType = .none
-        clearButton.image = NSImage(systemSymbolName: "xmark.circle.fill", accessibilityDescription: "Borrar búsqueda")
+        clearButton.image = NSImage(systemSymbolName: "xmark.circle.fill", accessibilityDescription: L10n.text("detail.search.clear"))
         clearButton.contentTintColor = .secondaryLabelColor
         clearButton.imageScaling = .scaleProportionallyDown
-        clearButton.setAccessibilityLabel("Borrar búsqueda")
-        clearButton.toolTip = "Borrar búsqueda"
+        clearButton.setAccessibilityLabel(L10n.text("detail.search.clear"))
+        clearButton.toolTip = L10n.text("detail.search.clear")
         addSubview(field)
         addSubview(clearButton)
+    }
+
+    func updateLocalization() {
+        let label = L10n.text("detail.search.clear")
+        clearButton.image = NSImage(systemSymbolName: "xmark.circle.fill", accessibilityDescription: label)
+        clearButton.setAccessibilityLabel(label)
+        clearButton.toolTip = label
+        field.updateLocalization()
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
@@ -115,12 +130,17 @@ final class CollectionSearchTextField: NSTextField {
         isEditable = true; isSelectable = true
         isBezeled = false; drawsBackground = false; focusRingType = .none
         font = .systemFont(ofSize: 14.4); textColor = .labelColor
-        placeholderString = "Buscar canciones"
+        updateLocalization()
         usesSingleLineMode = true
-        setAccessibilityLabel("Buscar canciones en esta colección")
+        setAccessibilityLabel(L10n.text("detail.search.songsInCollection"))
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    func updateLocalization() {
+        placeholderString = L10n.text("detail.search.songs")
+        setAccessibilityLabel(L10n.text("detail.search.songsInCollection"))
+    }
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()

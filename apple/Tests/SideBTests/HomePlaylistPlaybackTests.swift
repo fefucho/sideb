@@ -110,7 +110,7 @@ private func recommendedAlbum(_ id: String) -> AlbumDetailRecord {
     await awaitRecommendedCollection(player)
     #expect(player.queueManager.queueToken == token)
     #expect(player.audioService.avPlayer.currentItem === item)
-    #expect(player.errorMessage?.contains("No se pudo cargar la playlist") == true)
+    #expect(player.errorMessage == PlaylistCatalogError.fetchFailed(HomePlaylistPlaybackError.failed.localizedDescription).appMessage.text)
     player.audioService.stop()
 }
 

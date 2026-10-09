@@ -22,7 +22,7 @@ struct QuickResultCardRow: View {
     
     var body: some View {
         let isCollection = ["album", "playlist"].contains(card.kind.lowercased())
-        let activationLabel = isArtist || isCollection ? "Abrir \(card.title)" : "Reproducir \(card.title)"
+        let activationLabel = L10n.text(isArtist || isCollection ? "search.open_card" : "search.play_card", args: [card.title])
         let artwork = Group {
             if let thumb = card.thumbnail,
                let url = ImageURLHelper.optimizedThumbnailURL(from: thumb, targetPixelSize: isHero ? 120 : 96) {
@@ -104,7 +104,7 @@ struct QuickResultCardRow: View {
             Spacer()
                 
                 if isHero {
-                    Text("Mejor resultado")
+                    Text(L10n.text("search.category.top_result"))
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(Color.primary.opacity(0.9))
                         .padding(.horizontal, 8)
@@ -133,10 +133,10 @@ struct QuickResultCardRow: View {
     
     private var kindDisplayName: String {
         switch card.kind.lowercased() {
-        case "artist": return "Artista"
-        case "album": return "Álbum"
-        case "playlist": return "Playlist"
-        case "song": return "Canción"
+        case "artist": return L10n.text("search.filter.artists")
+        case "album": return L10n.text("metadata.album")
+        case "playlist": return L10n.text("metadata.playlist")
+        case "song": return L10n.text("metadata.song")
         default: return card.kind.capitalized
         }
     }
@@ -202,7 +202,7 @@ struct QuickResultSongRow: View {
                     .allowsHitTesting(false)
 
                 HStack(spacing: 4) {
-                    Text("Canción").font(.system(size: 11, weight: .medium)).foregroundStyle(.secondary.opacity(0.8))
+                    Text(L10n.text("metadata.song")).font(.system(size: 11, weight: .medium)).foregroundStyle(.secondary.opacity(0.8))
                         .allowsHitTesting(false)
                     Text("•").font(.system(size: 10)).foregroundStyle(.tertiary).allowsHitTesting(false)
                     if let onArtist {

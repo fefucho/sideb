@@ -13,6 +13,7 @@ struct ExploreCatalogHeaderIdentity: Equatable {
 /// One native viewport, with flat item identities and the same recycled controls
 /// and image lifecycle as Home. SwiftUI hosts only the page header, never albums.
 struct ExploreCatalogGridView: NSViewRepresentable {
+    let localizationRevision = L10n.revision
     @Environment(\.sideBGesturePreviewVisible) var gesturePreviewVisible
     enum Axis { case vertical, horizontal }
     let cards: [BrowseCardRecord]
@@ -66,7 +67,7 @@ struct ExploreCatalogGridView: NSViewRepresentable {
                             withIdentifier: ExploreCatalogHeaderView.identifier)
         collection.dataSource = coordinator
         collection.delegate = coordinator
-        collection.setAccessibilityLabel(axis == .vertical ? "Catálogo de Explorar" : "Lanzamientos destacados")
+        collection.setAccessibilityLabel(axis == .vertical ? L10n.text("explore.catalog.accessibility") : L10n.text("explore.releases.accessibility"))
         collection.onActivateSelection = { [weak coordinator] in coordinator?.open(at: $0) }
         collection.onHoverPosition = { [weak coordinator] in coordinator?.updateHover(at: $0) }
         collection.onViewportMoved = { [weak coordinator] in coordinator?.scheduleHoverUpdate() }
@@ -85,7 +86,14 @@ struct ExploreCatalogGridView: NSViewRepresentable {
         return scroll
     }
 
-    func updateNSView(_ scroll: NSScrollView, context: Context) { updateScrollView(scroll, coordinator: context.coordinator) }
+    func updateNSView(_ scroll: NSScrollView, context: Context) {
+        if context.coordinator.localizationRevision != localizationRevision, !isObscured {
+            context.coordinator.localizationRevision = localizationRevision
+            (scroll.documentView as? NSCollectionView)?.setAccessibilityLabel(axis == .vertical ? L10n.text("explore.catalog.accessibility") : L10n.text("explore.releases.accessibility"))
+            context.coordinator.refreshVisibleLocalization()
+        }
+        updateScrollView(scroll, coordinator: context.coordinator)
+    }
 
     func updateScrollView(_ scroll: NSScrollView, coordinator: Coordinator) {
         let old = coordinator.parent
@@ -137,6 +145,7 @@ struct ExploreCatalogGridView: NSViewRepresentable {
 
     @MainActor final class Coordinator: NSObject, NSCollectionViewDataSource, NSCollectionViewDelegate {
         var parent: ExploreCatalogGridView
+        var localizationRevision = -1
         weak var collection: HomeNativeCollectionView?
         weak var scroll: NSScrollView?
         weak var layout: NSCollectionViewFlowLayout?
@@ -219,6 +228,19 @@ struct ExploreCatalogGridView: NSViewRepresentable {
             guard let collection else { return }
             for index in collection.indexPathsForVisibleItems() {
                 if let item = collection.item(at: index) as? HomeCollectionItem { configure(item, at: index) }
+            }
+        }
+
+        func refreshVisibleLocalization() {
+            guard let collection else { return }
+            for case let item as HomeCollectionItem in collection.visibleItems() {
+                item.content.refreshLocalization(
+                    currentTrackID: nil,
+                    currentAlbumBrowseId: nil,
+                    currentPlaylistBrowseId: nil,
+                    isPlaying: parent.isPlaying,
+                    queueContext: parent.queueContext
+                )
             }
         }
 

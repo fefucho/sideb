@@ -28,6 +28,7 @@ struct SearchView: View {
     }
     
     var body: some View {
+        let _ = L10n.revision
         ZStack(alignment: .top) {
             // Fondo oscuro uniforme de Side B
             Color.sidebDarkBackground
@@ -118,7 +119,7 @@ struct SearchView: View {
                 .font(.system(size: 14, weight: .medium))
                 .foregroundStyle(.primary)
             
-            TextField("Buscar en YouTube Music...", text: $searchViewModel.query)
+            TextField(L10n.text("search.placeholder"), text: $searchViewModel.query)
                 .font(.system(size: 14))
                 .textFieldStyle(.plain)
                 .focused($isSearchBarFocused)
@@ -194,7 +195,7 @@ struct SearchView: View {
         HStack(spacing: 10) {
             ProgressView()
                 .controlSize(.small)
-            Text("Buscando respuestas rápidas...")
+            Text(L10n.text("search.loading.quick"))
                 .font(.system(size: 12))
                 .foregroundStyle(.secondary)
             Spacer()
@@ -229,7 +230,7 @@ struct SearchView: View {
                     Image(systemName: "magnifyingglass")
                         .font(.system(size: 13))
                         .foregroundStyle(.secondary)
-                    Text("No se encontraron respuestas rápidas")
+                    Text(L10n.text("search.empty.quick"))
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
                     Spacer()
@@ -246,7 +247,7 @@ struct SearchView: View {
                                         .font(.system(size: 10, weight: .bold))
                                         .foregroundStyle(category == .topResult ? .primary : .secondary)
                                     
-                                    Text(category.rawValue.uppercased())
+                                    Text(category.displayTitle.uppercased())
                                         .font(.system(size: 10, weight: .bold))
                                         .foregroundStyle(category == .topResult ? .primary : .secondary)
                                         .tracking(0.5)
@@ -375,7 +376,7 @@ struct SearchView: View {
                         .font(.system(size: 10, weight: .bold))
                         .foregroundStyle(.primary)
                     
-                    Text("Presiona Enter para ver todos los resultados")
+                    Text(L10n.text("search.submit.full_results"))
                         .font(.system(size: 11.5, weight: .medium))
                         .foregroundStyle(.secondary)
                     
@@ -424,7 +425,7 @@ struct SearchView: View {
                         Image(systemName: filter.icon)
                             .font(.system(size: 11, weight: .semibold))
                         
-                        Text(filter.rawValue)
+                        Text(filter.displayTitle)
                             .font(.system(size: 11.5, weight: searchViewModel.selectedFilter == filter ? .semibold : .medium))
                     }
                     .padding(.horizontal, 12)
@@ -460,13 +461,13 @@ struct SearchView: View {
                     if !todoSongs.isEmpty {
                         VStack(alignment: .leading, spacing: 10) {
                             HStack {
-                                Text("Canciones")
+                                Text(L10n.text("search.filter.songs"))
                                     .font(.system(size: 16, weight: .bold))
                                     .foregroundStyle(.primary)
                                 
                                 Spacer()
                                 
-                                Button("Ver todas") {
+                                Button(L10n.text("search.see_all.feminine")) {
                                     searchViewModel.selectFilter(.songs, core: rustCore)
                                 }
                                 .font(.system(size: 12, weight: .medium))
@@ -486,11 +487,11 @@ struct SearchView: View {
                     if !searchViewModel.committedVideos.isEmpty {
                         VStack(alignment: .leading, spacing: 10) {
                             HStack {
-                                Text("Videos")
+                                Text(L10n.text("search.filter.videos"))
                                     .font(.system(size: 16, weight: .bold))
                                     .foregroundStyle(.primary)
                                 Spacer()
-                                Button("Ver todos") {
+                                Button(L10n.text("search.see_all.masculine")) {
                                     searchViewModel.selectFilter(.videos, core: rustCore)
                                 }
                                 .font(.system(size: 12, weight: .medium))
@@ -507,13 +508,13 @@ struct SearchView: View {
                     
                     if let results {
                         if !results.albums.isEmpty {
-                            cardsSection(title: "Álbumes", cards: results.albums, kind: "album")
+                            cardsSection(title: L10n.text("search.filter.albums"), cards: results.albums, kind: "album")
                         }
                         if !results.artists.isEmpty {
-                            cardsSection(title: "Artistas", cards: results.artists, kind: "artist")
+                            cardsSection(title: L10n.text("search.filter.artists"), cards: results.artists, kind: "artist")
                         }
                         if !results.playlists.isEmpty {
-                            cardsSection(title: "Playlists", cards: results.playlists, kind: "playlist")
+                            cardsSection(title: L10n.text("search.filter.playlists"), cards: results.playlists, kind: "playlist")
                         }
                     }
                     ForEach(Array(searchViewModel.partialErrors.keys), id: \.self) { error in
@@ -557,7 +558,7 @@ struct SearchView: View {
         let isArtist = card.kind.lowercased() == "artist"
         let subtitle = card.subtitle.flatMap { value in
             value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : value
-        } ?? (isArtist ? "Artista" : card.kind.capitalized)
+        } ?? (isArtist ? L10n.text("search.filter.artists") : displayKind(card.kind))
         
         let actionButton = Button {
             handleCardClick(card, results: results)
@@ -583,7 +584,7 @@ struct SearchView: View {
                         .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(.primary)
                         .lineLimit(1)
-                    Text(isArtist ? "Ver discografía completa" : "Reproducir ahora")
+                    Text(isArtist ? L10n.text("search.full_discography") : L10n.text("search.play_now"))
                         .font(.system(size: 11.5))
                         .foregroundStyle(.secondary)
                         .padding(.top, 2)
@@ -600,7 +601,7 @@ struct SearchView: View {
         .buttonStyle(.plain)
 
         return VStack(alignment: .leading, spacing: 8) {
-            Text("Mejor resultado")
+            Text(L10n.text("search.category.top_result"))
                 .font(.system(size: 16, weight: .bold))
                 .foregroundStyle(.primary)
             
@@ -658,7 +659,7 @@ struct SearchView: View {
                     .foregroundStyle(.primary)
                     .lineLimit(1)
                     .allowsHitTesting(false)
-                Text("Abrir detalle")
+                Text(L10n.text("search.open_detail"))
                     .font(.system(size: 11.5))
                     .foregroundStyle(.secondary)
                     .padding(.top, 2)
@@ -668,11 +669,11 @@ struct SearchView: View {
         }
         .padding(16)
         .compatGlass(interactive: true, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .mediaCardActivation(label: "Abrir \(card.title)") { handleCardClick(card, results: results) }
+        .mediaCardActivation(label: L10n.text("search.open_card", args: [card.title])) { handleCardClick(card, results: results) }
         .mediaCardSurface()
 
         return VStack(alignment: .leading, spacing: 8) {
-            Text("Mejor resultado")
+            Text(L10n.text("search.category.top_result"))
                 .font(.system(size: 16, weight: .bold))
                 .foregroundStyle(.primary)
             hero.browseCardContextMenu(card: card, player: playerViewModel, router: router, core: rustCore, origin: .search)
@@ -716,7 +717,7 @@ struct SearchView: View {
                     .lineLimit(1)
                     .allowsHitTesting(false)
                 HStack(spacing: 4) {
-                    Text(card.kind.capitalized)
+                    Text(displayKind(card.kind))
                         .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(.primary)
                         .allowsHitTesting(false)
@@ -744,11 +745,11 @@ struct SearchView: View {
         }
         .padding(16)
         .compatGlass(interactive: true, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .mediaCardActivation(label: "Reproducir \(song.title)") { playerViewModel.activateMediaRadio(song) }
+        .mediaCardActivation(label: L10n.text("app.playNamed", args: [song.title])) { playerViewModel.activateMediaRadio(song) }
         .mediaCardSurface()
 
         return VStack(alignment: .leading, spacing: 8) {
-            Text("Mejor resultado")
+            Text(L10n.text("search.category.top_result"))
                 .font(.system(size: 16, weight: .bold))
                 .foregroundStyle(.primary)
             hero.songContextMenu(song: song, player: playerViewModel, router: router, core: rustCore, origin: .search)
@@ -760,7 +761,7 @@ struct SearchView: View {
         let relatedSongs = searchViewModel.relatedSongs(for: results)
         if card.kind.lowercased() == "artist", !relatedSongs.isEmpty {
             VStack(alignment: .leading, spacing: 8) {
-                Text("Mejor resultado")
+                Text(L10n.text("search.category.top_result"))
                     .font(.system(size: 16, weight: .bold))
                     .foregroundStyle(.primary)
 
@@ -835,7 +836,7 @@ struct SearchView: View {
                             .lineLimit(2)
                             .multilineTextAlignment(.leading)
                     }
-                    Text("Ver discografía completa")
+                    Text(L10n.text("search.full_discography"))
                         .font(.system(size: 11.5))
                         .foregroundStyle(.tertiary)
                 }
@@ -866,7 +867,7 @@ struct SearchView: View {
 
     private func relatedSongRow(_ song: SongItemRecord) -> some View {
         let artistText = song.artists.trimmingCharacters(in: .whitespacesAndNewlines)
-        let typeText = song.isVideo ? "Video" : "Canción"
+        let typeText = song.isVideo ? L10n.text("search.filter.videos") : L10n.text("metadata.song")
         let row = HStack(spacing: 10) {
             MediaArtworkControls(
                 isCollection: false,
@@ -940,7 +941,7 @@ struct SearchView: View {
         .background(hoveredRelatedSongID == song.videoId ? Color.white.opacity(0.075) : Color.clear,
                     in: RoundedRectangle(cornerRadius: 9, style: .continuous))
         .contentShape(Rectangle())
-        .mediaCardActivation(label: "Reproducir \(song.title)") { playerViewModel.activateMediaRadio(song) }
+        .mediaCardActivation(label: L10n.text("app.playNamed", args: [song.title])) { playerViewModel.activateMediaRadio(song) }
         .mediaCardSurface()
         .onHover { hovering in hoveredRelatedSongID = hovering ? song.videoId : nil }
 
@@ -993,6 +994,17 @@ struct SearchView: View {
     
     // MARK: - Secciones Horizontales de Tarjetas
     
+    private func displayKind(_ raw: String) -> String {
+        switch raw.lowercased() {
+        case "song": return L10n.text("metadata.song")
+        case "video": return L10n.text("search.filter.videos")
+        case "album": return L10n.text("metadata.album")
+        case "playlist", "mix": return L10n.text("metadata.playlist")
+        case "artist": return L10n.text("search.filter.artists")
+        default: return raw.capitalized
+        }
+    }
+
     private func cardsSection(title: String, cards: [BrowseCardRecord], kind: String) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(title)
@@ -1120,7 +1132,7 @@ struct SearchView: View {
             .mediaCardFocusControl()
         }
         .frame(width: cardSize, alignment: .leading)
-        .mediaCardActivation(label: "Abrir \(card.title)") { handleCardClick(card) }
+        .mediaCardActivation(label: L10n.text("search.open_card", args: [card.title])) { handleCardClick(card) }
         .mediaCardSurface()
 
         cardView.browseCardContextMenu(card: card, player: playerViewModel, router: router, core: rustCore, origin: .search)
@@ -1209,7 +1221,7 @@ struct SearchView: View {
         .padding(.vertical, 6)
         .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color.white.opacity(0.04)))
         .contentShape(Rectangle())
-        .mediaCardActivation(label: "Reproducir \(song.title)") { playerViewModel.activateMediaRadio(song) }
+        .mediaCardActivation(label: L10n.text("app.playNamed", args: [song.title])) { playerViewModel.activateMediaRadio(song) }
         .mediaCardSurface()
         .songContextMenu(song: song, player: playerViewModel, router: router, core: rustCore, origin: .search)
     }
@@ -1325,7 +1337,7 @@ struct SearchView: View {
         VStack(spacing: 12) {
             ProgressView()
                 .controlSize(.regular)
-            Text("Buscando en el catálogo...")
+            Text(L10n.text("search.loading.catalog"))
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(.secondary)
         }
@@ -1339,11 +1351,11 @@ struct SearchView: View {
                 .foregroundStyle(.secondary.opacity(0.5))
                 .padding(.top, 40)
             
-            Text("No se encontraron resultados para \"\(searchViewModel.committedQuery)\"")
+            Text(L10n.text("search.empty.query", args: [searchViewModel.committedQuery]))
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(.secondary)
             
-            Text("Verifica la ortografía o intenta buscar por otro artista o título.")
+            Text(L10n.text("search.empty.try_another"))
                 .font(.system(size: 12))
                 .foregroundStyle(.tertiary)
         }
@@ -1358,11 +1370,11 @@ struct SearchView: View {
                 .foregroundStyle(.secondary.opacity(0.4))
                 .padding(.top, 60)
             
-            Text("Explora el catálogo de música")
+            Text(L10n.text("search.empty.prompt_title"))
                 .font(.system(size: 16, weight: .semibold))
                 .foregroundStyle(.secondary)
             
-            Text("Escribe en la barra superior para buscar canciones, artistas o álbumes.")
+            Text(L10n.text("search.empty.prompt_description"))
                 .font(.system(size: 12.5))
                 .foregroundStyle(.tertiary)
         }

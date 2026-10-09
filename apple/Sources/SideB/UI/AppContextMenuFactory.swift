@@ -20,7 +20,7 @@ final class AppContextMenuFactory {
                 try await core.addToPlaylist(playlistId: playlistId, videoId: song.videoId)
                 NotificationCenter.default.post(name: .sideBPlaylistsChanged, object: nil)
             } catch {
-                showError("No se pudo añadir la canción", detail: error.localizedDescription)
+                showError(L10n.text("menu.error_add_song"), detail: error.localizedDescription)
             }
         }
     }
@@ -31,7 +31,7 @@ final class AppContextMenuFactory {
                 try await core.applySongLibraryAction(token: token)
                 NotificationCenter.default.post(name: .sideBSongLibraryChanged, object: nil)
             } catch {
-                showError("No se pudo actualizar la biblioteca", detail: error.localizedDescription)
+                showError(L10n.text("menu.error_update_library"), detail: error.localizedDescription)
             }
         }
     }

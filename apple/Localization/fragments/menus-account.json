@@ -1,0 +1,658 @@
+{
+  "menu.check_updates": {
+    "es": "Buscar actualizaciones…",
+    "en": "Check for Updates…"
+  },
+  "menu.file": {
+    "es": "Archivo",
+    "en": "File"
+  },
+  "menu.edit": {
+    "es": "Edición",
+    "en": "Edit"
+  },
+  "menu.window": {
+    "es": "Ventana",
+    "en": "Window"
+  },
+  "menu.help": {
+    "es": "Ayuda",
+    "en": "Help"
+  },
+  "menu.new_playlist_ellipsis": {
+    "es": "Nueva lista…",
+    "en": "New Playlist…"
+  },
+  "menu.close": {
+    "es": "Cerrar",
+    "en": "Close"
+  },
+  "menu.song": {
+    "es": "Canción",
+    "en": "Song"
+  },
+  "menu.view": {
+    "es": "Visualización",
+    "en": "View"
+  },
+  "menu.sidebar": {
+    "es": "Barra lateral",
+    "en": "Sidebar"
+  },
+  "menu.search": {
+    "es": "Buscar",
+    "en": "Search"
+  },
+  "menu.queue": {
+    "es": "Cola",
+    "en": "Queue"
+  },
+  "menu.lyrics": {
+    "es": "Letras",
+    "en": "Lyrics"
+  },
+  "menu.related": {
+    "es": "Relacionados",
+    "en": "Related"
+  },
+  "menu.exit_fullscreen": {
+    "es": "Salir de pantalla completa",
+    "en": "Exit Full Screen"
+  },
+  "menu.enter_fullscreen": {
+    "es": "Usar pantalla completa",
+    "en": "Enter Full Screen"
+  },
+  "menu.controls": {
+    "es": "Controles",
+    "en": "Controls"
+  },
+  "menu.pause": {
+    "es": "Pausar",
+    "en": "Pause"
+  },
+  "menu.play": {
+    "es": "Reproducir",
+    "en": "Play"
+  },
+  "menu.next_track": {
+    "es": "Siguiente pista",
+    "en": "Next Track"
+  },
+  "menu.previous_track": {
+    "es": "Pista anterior",
+    "en": "Previous Track"
+  },
+  "menu.volume_up": {
+    "es": "Subir volumen",
+    "en": "Volume Up"
+  },
+  "menu.volume_down": {
+    "es": "Bajar volumen",
+    "en": "Volume Down"
+  },
+  "menu.unmute": {
+    "es": "Activar sonido",
+    "en": "Unmute"
+  },
+  "menu.mute": {
+    "es": "Silenciar",
+    "en": "Mute"
+  },
+  "menu.shuffle": {
+    "es": "Aleatorio",
+    "en": "Shuffle"
+  },
+  "menu.repeat": {
+    "es": "Repetición",
+    "en": "Repeat"
+  },
+  "menu.account": {
+    "es": "Cuenta",
+    "en": "Account"
+  },
+  "menu.no_song_selected": {
+    "es": "No hay ninguna canción seleccionada",
+    "en": "No Song Selected"
+  },
+  "menu.no_options": {
+    "es": "No hay opciones disponibles",
+    "en": "No Options Available"
+  },
+  "menu.more_options": {
+    "es": "Más opciones",
+    "en": "More Options"
+  },
+  "menu.play_now": {
+    "es": "Reproducir ahora",
+    "en": "Play Now"
+  },
+  "menu.start_mix": {
+    "es": "Iniciar mix",
+    "en": "Start Radio"
+  },
+  "menu.play_next": {
+    "es": "Reproducir a continuación",
+    "en": "Play Next"
+  },
+  "menu.add_to_queue": {
+    "es": "Añadir a la cola",
+    "en": "Add to Queue"
+  },
+  "menu.add_liked": {
+    "es": "Añadir a Tus Me Gusta",
+    "en": "Add to Liked Songs"
+  },
+  "menu.remove_liked": {
+    "es": "Quitar de Tus Me Gusta",
+    "en": "Remove from Liked Songs"
+  },
+  "menu.remove_library": {
+    "es": "Quitar de Biblioteca",
+    "en": "Remove from Library"
+  },
+  "menu.save_library": {
+    "es": "Guardar en Biblioteca",
+    "en": "Save to Library"
+  },
+  "menu.add_to_playlist": {
+    "es": "Añadir a lista de reproducción",
+    "en": "Add to Playlist"
+  },
+  "menu.go_to_album": {
+    "es": "Ir al álbum",
+    "en": "Go to Album"
+  },
+  "menu.go_to_artist": {
+    "es": "Ir a artista",
+    "en": "Go to Artist"
+  },
+  "menu.share": {
+    "es": "Compartir",
+    "en": "Share"
+  },
+  "menu.remove_from_playlist": {
+    "es": "Eliminar de esta lista",
+    "en": "Remove from This Playlist"
+  },
+  "menu.remove_from_queue": {
+    "es": "Quitar de la cola",
+    "en": "Remove from Queue"
+  },
+  "menu.sort_manual": {
+    "es": "Orden manual",
+    "en": "Manual Order"
+  },
+  "menu.sort_newest": {
+    "es": "Más recientes",
+    "en": "Newest First"
+  },
+  "menu.sort_oldest": {
+    "es": "Más antiguas",
+    "en": "Oldest First"
+  },
+  "menu.sort_title": {
+    "es": "Título",
+    "en": "Title"
+  },
+  "menu.sort_artist": {
+    "es": "Artista",
+    "en": "Artist"
+  },
+  "menu.sort_album": {
+    "es": "Álbum",
+    "en": "Album"
+  },
+  "menu.remove_album_library": {
+    "es": "Quitar álbum de la biblioteca",
+    "en": "Remove Album from Library"
+  },
+  "menu.save_album_library": {
+    "es": "Guardar álbum en la biblioteca",
+    "en": "Save Album to Library"
+  },
+  "menu.view_album": {
+    "es": "Ver álbum",
+    "en": "View Album"
+  },
+  "menu.remove_playlist_library": {
+    "es": "Quitar lista de reproducción de la biblioteca",
+    "en": "Remove Playlist from Library"
+  },
+  "menu.save_playlist_library": {
+    "es": "Guardar lista de reproducción en la biblioteca",
+    "en": "Save Playlist to Library"
+  },
+  "menu.view_playlist": {
+    "es": "Ver lista",
+    "en": "View Playlist"
+  },
+  "menu.edit_details": {
+    "es": "Editar detalles",
+    "en": "Edit Details"
+  },
+  "menu.sort": {
+    "es": "Ordenar",
+    "en": "Sort By"
+  },
+  "menu.delete_playlist": {
+    "es": "Eliminar lista",
+    "en": "Delete Playlist"
+  },
+  "menu.play_mix": {
+    "es": "Reproducir mix",
+    "en": "Play Radio Mix"
+  },
+  "menu.remove_mix_library": {
+    "es": "Quitar mix de la biblioteca",
+    "en": "Remove Mix from Library"
+  },
+  "menu.save_mix_library": {
+    "es": "Guardar mix en la biblioteca",
+    "en": "Save Mix to Library"
+  },
+  "menu.view_mix": {
+    "es": "Ver mix",
+    "en": "View Mix"
+  },
+  "menu.subscribe": {
+    "es": "Suscribirse",
+    "en": "Subscribe"
+  },
+  "menu.unsubscribe": {
+    "es": "Cancelar suscripción",
+    "en": "Unsubscribe"
+  },
+  "menu.view_artist": {
+    "es": "Ver artista",
+    "en": "View Artist"
+  },
+  "menu.delete_playlist_question": {
+    "es": "¿Eliminar lista?",
+    "en": "Delete Playlist?"
+  },
+  "menu.confirm_delete_playlist": {
+    "es": "¿Seguro que querés eliminar «%@» de YouTube Music? Esta acción no se puede deshacer.",
+    "en": "Are you sure you want to delete “%@” from YouTube Music? This action cannot be undone."
+  },
+  "menu.delete": {
+    "es": "Eliminar",
+    "en": "Delete"
+  },
+  "menu.cancel": {
+    "es": "Cancelar",
+    "en": "Cancel"
+  },
+  "menu.accept": {
+    "es": "Aceptar",
+    "en": "OK"
+  },
+  "menu.error_shuffle_playlist": {
+    "es": "No se pudo reproducir la lista en modo aleatorio",
+    "en": "Couldn’t shuffle the playlist"
+  },
+  "menu.error_play_next_playlist": {
+    "es": "No se pudo añadir la lista a continuación",
+    "en": "Couldn’t add the playlist to play next"
+  },
+  "menu.error_queue_playlist": {
+    "es": "No se pudo añadir la lista a la cola",
+    "en": "Couldn’t add the playlist to the queue"
+  },
+  "menu.error_update_library": {
+    "es": "No se pudo actualizar la biblioteca",
+    "en": "Couldn’t update the library"
+  },
+  "menu.error_update_album_library": {
+    "es": "No se pudo actualizar el álbum en la biblioteca",
+    "en": "Couldn’t update the album in the library"
+  },
+  "menu.error_update_playlist_library": {
+    "es": "No se pudo actualizar la lista en la biblioteca",
+    "en": "Couldn’t update the playlist in the library"
+  },
+  "menu.error_add_song": {
+    "es": "No se pudo añadir la canción",
+    "en": "Couldn’t add the song"
+  },
+  "menu.error_update_subscription": {
+    "es": "No se pudo actualizar la suscripción",
+    "en": "Couldn’t update the subscription"
+  },
+  "menu.error_delete_playlist": {
+    "es": "No se pudo eliminar la lista",
+    "en": "Couldn’t delete the playlist"
+  },
+  "account.user": {
+    "es": "Usuario",
+    "en": "User"
+  },
+  "account.active_session": {
+    "es": "Sesión activa de YouTube Music",
+    "en": "YouTube Music session active"
+  },
+  "account.sign_out": {
+    "es": "Cerrar sesión",
+    "en": "Sign Out"
+  },
+  "account.guest_mode": {
+    "es": "Modo Invitado",
+    "en": "Guest Mode"
+  },
+  "account.sign_in": {
+    "es": "Iniciar sesión",
+    "en": "Sign In"
+  },
+  "account.profile_error": {
+    "es": "Error de perfil",
+    "en": "Profile Error"
+  },
+  "account.click_for_options": {
+    "es": "Hacé clic para ver opciones",
+    "en": "Click for Options"
+  },
+  "account.profile_failed": {
+    "es": "No se pudo cargar el perfil",
+    "en": "Couldn’t load profile"
+  },
+  "account.retry_connection": {
+    "es": "Reintentar conexión",
+    "en": "Retry Connection"
+  },
+  "account.sign_in_ellipsis": {
+    "es": "Iniciar sesión…",
+    "en": "Sign In…"
+  },
+  "sidebar.home": {
+    "es": "Inicio",
+    "en": "Home"
+  },
+  "sidebar.explore": {
+    "es": "Explorar",
+    "en": "Explore"
+  },
+  "sidebar.search": {
+    "es": "Buscar",
+    "en": "Search"
+  },
+  "sidebar.collection": {
+    "es": "Colección",
+    "en": "Collection"
+  },
+  "sidebar.liked": {
+    "es": "Tus Me Gusta",
+    "en": "Liked Songs"
+  },
+  "sidebar.library": {
+    "es": "Biblioteca",
+    "en": "Library"
+  },
+  "sidebar.history": {
+    "es": "Historial",
+    "en": "History"
+  },
+  "sidebar.playlists": {
+    "es": "Listas",
+    "en": "Playlists"
+  },
+  "sidebar.albums": {
+    "es": "Álbumes",
+    "en": "Albums"
+  },
+  "sidebar.new_playlist": {
+    "es": "Nueva lista",
+    "en": "New Playlist"
+  },
+  "sidebar.sign_in_to_view": {
+    "es": "Iniciá sesión para ver tu música guardada",
+    "en": "Sign in to see your saved music"
+  },
+  "sidebar.load_failed": {
+    "es": "No se pudo cargar",
+    "en": "Couldn’t Load"
+  },
+  "sidebar.retry": {
+    "es": "Reintentar",
+    "en": "Retry"
+  },
+  "sidebar.no_playlists": {
+    "es": "No tenés listas",
+    "en": "You have no playlists"
+  },
+  "sidebar.no_saved_albums": {
+    "es": "No tenés álbumes guardados",
+    "en": "You have no saved albums"
+  },
+  "sidebar.hide": {
+    "es": "Ocultar barra lateral",
+    "en": "Hide Sidebar"
+  },
+  "sidebar.show": {
+    "es": "Mostrar barra lateral",
+    "en": "Show Sidebar"
+  },
+  "navigation.home": {
+    "es": "Inicio",
+    "en": "Home"
+  },
+  "navigation.explore": {
+    "es": "Explorar",
+    "en": "Explore"
+  },
+  "navigation.library": {
+    "es": "Biblioteca",
+    "en": "Library"
+  },
+  "navigation.search": {
+    "es": "Buscar",
+    "en": "Search"
+  },
+  "navigation.main": {
+    "es": "Navegación principal",
+    "en": "Main Navigation"
+  },
+  "navigation.refresh": {
+    "es": "Actualizar recomendaciones",
+    "en": "Refresh Recommendations"
+  },
+  "navigation.back": {
+    "es": "Atrás",
+    "en": "Back"
+  },
+  "navigation.forward": {
+    "es": "Adelante",
+    "en": "Forward"
+  },
+  "navigation.home_settings": {
+    "es": "Configuración",
+    "en": "Settings"
+  },
+  "navigation.open": {
+    "es": "Abierta",
+    "en": "Open"
+  },
+  "navigation.closed": {
+    "es": "Cerrada",
+    "en": "Closed"
+  },
+  "navigation.refresh_help": {
+    "es": "Actualizar recomendaciones (⌘R)",
+    "en": "Refresh Recommendations (⌘R)"
+  },
+  "navigation.back_help": {
+    "es": "Atrás (⌘[)",
+    "en": "Back (⌘[)"
+  },
+  "navigation.forward_help": {
+    "es": "Adelante (⌘])",
+    "en": "Forward (⌘])"
+  },
+  "update.installed": {
+    "es": "Instalada",
+    "en": "Installed"
+  },
+  "update.new": {
+    "es": "Nueva",
+    "en": "New"
+  },
+  "update.checking": {
+    "es": "Comprobando nuevas versiones en GitHub…",
+    "en": "Checking GitHub for updates…"
+  },
+  "update.latest_installed": {
+    "es": "Tenés instalada la versión más reciente (%@).",
+    "en": "You have the latest version installed (%@)."
+  },
+  "update.latest_detail": {
+    "es": "Side B está al día con las últimas mejoras.",
+    "en": "Side B is up to date with the latest improvements."
+  },
+  "update.release_notes_heading": {
+    "es": "Novedades y correcciones (Fix Report):",
+    "en": "What’s New and Fixed (Fix Report):"
+  },
+  "update.downloading": {
+    "es": "Descargando actualización…",
+    "en": "Downloading update…"
+  },
+  "update.downloading_detail": {
+    "es": "Descargando el paquete optimizado para Apple Silicon desde GitHub Releases.",
+    "en": "Downloading the Apple Silicon package from GitHub Releases."
+  },
+  "update.installing": {
+    "es": "Instalando actualización…",
+    "en": "Installing update…"
+  },
+  "update.restart_detail": {
+    "es": "Side B se reiniciará automáticamente en unos segundos.",
+    "en": "Side B will restart automatically in a few seconds."
+  },
+  "update.failure_heading": {
+    "es": "No se pudo completar la comprobación o actualización:",
+    "en": "The update check or installation failed:"
+  },
+  "update.cancel": {
+    "es": "Cancelar",
+    "en": "Cancel"
+  },
+  "update.understood": {
+    "es": "Entendido",
+    "en": "Done"
+  },
+  "update.close": {
+    "es": "Cerrar",
+    "en": "Close"
+  },
+  "update.skip_version": {
+    "es": "Omitir esta versión",
+    "en": "Skip This Version"
+  },
+  "update.skip_version_help": {
+    "es": "No volver a avisar automáticamente sobre la versión %@",
+    "en": "Don’t notify me automatically about version %@"
+  },
+  "update.remind_later": {
+    "es": "Recordar más tarde",
+    "en": "Remind Me Later"
+  },
+  "update.update_now": {
+    "es": "Actualizar ahora",
+    "en": "Update Now"
+  },
+  "update.cancel_download": {
+    "es": "Cancelar descarga",
+    "en": "Cancel Download"
+  },
+  "update.searching": {
+    "es": "Buscando actualizaciones",
+    "en": "Checking for Updates"
+  },
+  "update.up_to_date_title": {
+    "es": "Side B está al día",
+    "en": "Side B Is Up to Date"
+  },
+  "update.available_title": {
+    "es": "Nueva versión disponible: Side B %@",
+    "en": "New Version Available: Side B %@"
+  },
+  "update.downloading_title": {
+    "es": "Descargando actualización",
+    "en": "Downloading Update"
+  },
+  "update.installing_title": {
+    "es": "Instalando versión",
+    "en": "Installing Update"
+  },
+  "update.notice_title": {
+    "es": "Aviso de actualización",
+    "en": "Update Notice"
+  },
+  "update.available_subtitle": {
+    "es": "Hay una versión más reciente de Side B lista para descargar e instalar.",
+    "en": "A newer version of Side B is ready to download and install."
+  },
+  "update.up_to_date_subtitle": {
+    "es": "No hay nuevas actualizaciones en este momento.",
+    "en": "There are no new updates right now."
+  },
+  "update.downloading_subtitle": {
+    "es": "El paquete se está descargando de forma segura.",
+    "en": "The package is downloading securely."
+  },
+  "update.installing_subtitle": {
+    "es": "Reemplazando archivos y preparando el reinicio.",
+    "en": "Replacing files and preparing to restart."
+  },
+  "update.failed_subtitle": {
+    "es": "Hubo un problema al comprobar las actualizaciones.",
+    "en": "There was a problem checking for updates."
+  },
+  "update.current_version_subtitle": {
+    "es": "Versión actual instalada: %@",
+    "en": "Currently installed version: %@"
+  },
+  "update.no_release_notes": {
+    "es": "Este release no incluye notas.",
+    "en": "This release has no release notes."
+  },
+  "update.error_invalid_github_url": {
+    "es": "La URL de GitHub no es válida.",
+    "en": "The GitHub URL is invalid."
+  },
+  "update.error_invalid_server_response": {
+    "es": "El servidor no devolvió una respuesta válida.",
+    "en": "The server returned an invalid response."
+  },
+  "update.error_no_release": {
+    "es": "Todavía no hay releases publicados en el repositorio %@.",
+    "en": "There are no releases published in repository %@ yet."
+  },
+  "update.error_github_status": {
+    "es": "Error al consultar GitHub (código %@).",
+    "en": "Error checking GitHub (status code %@)."
+  },
+  "update.error_release_format": {
+    "es": "El formato de la respuesta del release no es válido.",
+    "en": "The release response has an invalid format."
+  },
+  "update.error_release_missing_zip": {
+    "es": "El release %@ no incluye un archivo .zip para macOS.",
+    "en": "Release %@ does not include a .zip file for macOS."
+  },
+  "update.error_connection": {
+    "es": "Error de conexión: %@",
+    "en": "Connection error: %@"
+  },
+  "update.error_install": {
+    "es": "No se pudo completar la actualización: %@",
+    "en": "Couldn’t complete the update: %@"
+  },
+  "login.heading": {
+    "es": "Iniciar sesión en YouTube Music",
+    "en": "Sign in to YouTube Music"
+  },
+  "login.passkey_unavailable": {
+    "es": "La opción de iniciar sesión con llave de acceso no está disponible en esta ventana. Google te pedirá la contraseña u otro método de inicio de sesión.",
+    "en": "Passkey sign-in is unavailable in this window. Google will ask for your password or another sign-in method."
+  }
+}

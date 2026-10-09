@@ -3,10 +3,21 @@ import Observation
 import SideBCore
 
 struct HomeAlbumMetadata: Equatable {
-    let title: String
+    private let originalTitle: String
+    var title: String { originalTitle.isEmpty ? L10n.text("metadata.album") : originalTitle }
     let artist: String?
     let artistID: String?
-    let summary: String
+    private let year: String?
+    private let trackCount: Int?
+    private let duration: String?
+
+    var summary: String {
+        var parts = [L10n.text("metadata.album")]
+        if let year { parts.append(year) }
+        if let trackCount { parts.append(L10n.songCount(trackCount)) }
+        if let duration { parts.append(duration) }
+        return parts.joined(separator: " • ")
+    }
 
     static func make(item: HomeItemRecord, album: AlbumDetailRecord?) -> Self {
         let title = clean(album?.title) ?? clean(item.title) ?? ""
@@ -18,14 +29,15 @@ struct HomeAlbumMetadata: Equatable {
             ?? clean(item.artistId)
             ?? item.artistRuns.first(where: { $0.id?.isEmpty == false })?.id
 
-        var parts = ["Álbum"]
-        if let year = year(in: album?.subtitle) ?? year(in: item.subtitle) { parts.append(year) }
+        let year = year(in: album?.subtitle) ?? year(in: item.subtitle)
+        var trackCount: Int?
+        var duration: String?
         if let album {
             let count = album.items.isEmpty ? providerTrackCount(album.secondSubtitle) : album.items.count
-            if let count { parts.append(count == 1 ? "1 canción" : "\(count) canciones") }
-            if let duration = albumDuration(album) { parts.append(duration) }
+            trackCount = count
+            duration = albumDuration(album)
         }
-        return Self(title: title, artist: artist, artistID: artistID, summary: parts.joined(separator: " • "))
+        return Self(originalTitle: title, artist: artist, artistID: artistID, year: year, trackCount: trackCount, duration: duration)
     }
 
     private static func providerTrackCount(_ value: String?) -> Int? {

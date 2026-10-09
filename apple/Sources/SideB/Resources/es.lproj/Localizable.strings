@@ -1,0 +1,1383 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>account.active_session</key>
+	<string>Sesión activa de YouTube Music</string>
+	<key>account.click_for_options</key>
+	<string>Hacé clic para ver opciones</string>
+	<key>account.guest_mode</key>
+	<string>Modo Invitado</string>
+	<key>account.profile_error</key>
+	<string>Error de perfil</string>
+	<key>account.profile_failed</key>
+	<string>No se pudo cargar el perfil</string>
+	<key>account.retry_connection</key>
+	<string>Reintentar conexión</string>
+	<key>account.sign_in</key>
+	<string>Iniciar sesión</string>
+	<key>account.sign_in_ellipsis</key>
+	<string>Iniciar sesión…</string>
+	<key>account.sign_out</key>
+	<string>Cerrar sesión</string>
+	<key>account.user</key>
+	<string>Usuario</string>
+	<key>app.accept</key>
+	<string>Aceptar</string>
+	<key>app.addSongError</key>
+	<string>No se pudo añadir la canción</string>
+	<key>app.audioOutput</key>
+	<string>Salida de audio / AirPlay</string>
+	<key>app.close</key>
+	<string>Cerrar aplicación</string>
+	<key>app.explore.chartRegion</key>
+	<string>Rankings · %@</string>
+	<key>app.home.afternoon</key>
+	<string>Buenas tardes</string>
+	<key>app.home.allChip</key>
+	<string>Todos</string>
+	<key>app.home.emptySubtitle</key>
+	<string>Tu próximo lado B empieza acá</string>
+	<key>app.home.evening</key>
+	<string>Buenas noches</string>
+	<key>app.home.greetingName</key>
+	<string>%@, %@</string>
+	<key>app.home.loadError</key>
+	<string>No se pudo cargar Inicio: %@</string>
+	<key>app.home.moreError</key>
+	<string>No se pudieron cargar más recomendaciones. Volvé a intentarlo.</string>
+	<key>app.home.morning</key>
+	<string>Buen día</string>
+	<key>app.home.noMore</key>
+	<string>No hay más recomendaciones por ahora.</string>
+	<key>app.home.noVisible</key>
+	<string>Esta tanda no trajo recomendaciones visibles nuevas. Podés cargar la siguiente.</string>
+	<key>app.home.offlineFeed</key>
+	<string>Sin conexión · se muestran las últimas recomendaciones</string>
+	<key>app.home.savedFeed</key>
+	<string>No se pudo actualizar · Contenido guardado</string>
+	<key>app.home.sourcesDisabled</key>
+	<string>Activá fuentes desde Configuración.</string>
+	<key>app.home.speedDial</key>
+	<string>Acceso rápido</string>
+	<key>app.playNamed</key>
+	<string>Reproducir %@</string>
+	<key>app.startDetails</key>
+	<string>No se pudo iniciar Side B: %@</string>
+	<key>app.startError</key>
+	<string>Error al iniciar Side B</string>
+	<key>common.cancel</key>
+	<string>Cancelar</string>
+	<key>common.closeEscape</key>
+	<string>Cerrar (Esc)</string>
+	<key>common.create</key>
+	<string>Crear</string>
+	<key>common.loading</key>
+	<string>Cargando…</string>
+	<key>common.moreOptions</key>
+	<string>Más opciones</string>
+	<key>common.moreOptionsFor</key>
+	<string>Más opciones de %@</string>
+	<key>common.ok</key>
+	<string>Aceptar</string>
+	<key>common.refresh</key>
+	<string>Actualizar</string>
+	<key>common.retry</key>
+	<string>Reintentar</string>
+	<key>common.save</key>
+	<string>Guardar</string>
+	<key>common.search</key>
+	<string>Buscar</string>
+	<key>common.untitled</key>
+	<string>Sin título</string>
+	<key>destination.album</key>
+	<string>Álbum</string>
+	<key>destination.artist</key>
+	<string>Artista</string>
+	<key>destination.explore</key>
+	<string>Explorar</string>
+	<key>destination.history</key>
+	<string>Historial</string>
+	<key>destination.home</key>
+	<string>Inicio</string>
+	<key>destination.library</key>
+	<string>Biblioteca</string>
+	<key>destination.playlist</key>
+	<string>Lista de reproducción</string>
+	<key>destination.search</key>
+	<string>Buscar</string>
+	<key>destination.searchQuery</key>
+	<string>Buscar: %@</string>
+	<key>detail.album.description</key>
+	<string>Descripción del álbum</string>
+	<key>detail.album.loadFailed</key>
+	<string>No se pudo cargar el álbum</string>
+	<key>detail.artist.biography</key>
+	<string>Biografía del artista</string>
+	<key>detail.artist.loadFailed</key>
+	<string>No se pudo cargar el artista</string>
+	<key>detail.artist.readBiographyHint</key>
+	<string>Hacé clic para leer la biografía completa</string>
+	<key>detail.artist.startMix</key>
+	<string>Iniciar mix</string>
+	<key>detail.artist.subscribe</key>
+	<string>Suscribirse</string>
+	<key>detail.artist.subscribed</key>
+	<string>Suscrito</string>
+	<key>detail.artist.topSongs</key>
+	<string>Canciones principales</string>
+	<key>detail.artist.viewAllTopSongs</key>
+	<string>Ver todas las canciones principales</string>
+	<key>detail.artist.viewNamed</key>
+	<string>Ver artista: %@</string>
+	<key>detail.artistCatalog.empty</key>
+	<string>No hay publicaciones</string>
+	<key>detail.artistCatalog.loadFailed</key>
+	<string>No se pudo cargar el catálogo</string>
+	<key>detail.collection.empty</key>
+	<string>Esta colección todavía no tiene canciones.</string>
+	<key>detail.collection.inLibrary</key>
+	<string>En biblioteca</string>
+	<key>detail.collection.noResults</key>
+	<string>No se encontraron canciones para «%@».</string>
+	<key>detail.collection.preparingSongs</key>
+	<string>Preparando todas las canciones…</string>
+	<key>detail.collection.save</key>
+	<string>Guardar</string>
+	<key>detail.description.readFullHint</key>
+	<string>Hacé clic para leer la descripción completa</string>
+	<key>detail.kind.album</key>
+	<string>ÁLBUM</string>
+	<key>detail.kind.artist</key>
+	<string>ARTISTA</string>
+	<key>detail.kind.collection</key>
+	<string>COLECCIÓN</string>
+	<key>detail.kind.playlist</key>
+	<string>LISTA DE REPRODUCCIÓN</string>
+	<key>detail.more</key>
+	<string>más</string>
+	<key>detail.openCard</key>
+	<string>Abrir %@</string>
+	<key>detail.openNamed</key>
+	<string>Abrir %@</string>
+	<key>detail.playCard</key>
+	<string>Reproducir %@</string>
+	<key>detail.playlist.actionFailed</key>
+	<string>No se pudo completar la acción</string>
+	<key>detail.playlist.completeError</key>
+	<string>No se pudo completar la lista: %@</string>
+	<key>detail.playlist.completingForOrder</key>
+	<string>Completando la lista para reproducir el orden elegido…</string>
+	<key>detail.playlist.delete</key>
+	<string>Eliminar lista</string>
+	<key>detail.playlist.deleteConfirmation</key>
+	<string>¿Eliminar esta lista de reproducción?</string>
+	<key>detail.playlist.deleteWarning</key>
+	<string>También se eliminará de YouTube Music.</string>
+	<key>detail.playlist.description</key>
+	<string>Descripción de la lista de reproducción</string>
+	<key>detail.playlist.loadFailed</key>
+	<string>No se pudo cargar la lista de reproducción</string>
+	<key>detail.playlist.loadMoreError</key>
+	<string>No se pudieron cargar más canciones: %@</string>
+	<key>detail.playlist.loadingMoreSongs</key>
+	<string>Cargando más canciones…</string>
+	<key>detail.playlistEditor.createTitle</key>
+	<string>Nueva lista de reproducción</string>
+	<key>detail.playlistEditor.description</key>
+	<string>Descripción</string>
+	<key>detail.playlistEditor.editTitle</key>
+	<string>Editar lista de reproducción</string>
+	<key>detail.playlistEditor.name</key>
+	<string>Nombre de la lista</string>
+	<key>detail.playlistEditor.private</key>
+	<string>Privada</string>
+	<key>detail.playlistEditor.public</key>
+	<string>Pública</string>
+	<key>detail.playlistEditor.unlisted</key>
+	<string>No listada</string>
+	<key>detail.playlistEditor.visibility</key>
+	<string>Visibilidad</string>
+	<key>detail.search.clear</key>
+	<string>Borrar búsqueda</string>
+	<key>detail.search.songs</key>
+	<string>Buscar canciones</string>
+	<key>detail.search.songsInCollection</key>
+	<string>Buscar canciones en esta colección</string>
+	<key>detail.sort.accessibility</key>
+	<string>Ordenar canciones: %@</string>
+	<key>detail.sort.album</key>
+	<string>Álbum</string>
+	<key>detail.sort.artist</key>
+	<string>Artista</string>
+	<key>detail.sort.custom</key>
+	<string>Orden personalizado</string>
+	<key>detail.sort.duration</key>
+	<string>Duración</string>
+	<key>detail.sort.oldestAdded</key>
+	<string>Agregado hace más tiempo</string>
+	<key>detail.sort.recentlyAdded</key>
+	<string>Agregado recientemente</string>
+	<key>detail.sort.title</key>
+	<string>Título</string>
+	<key>detail.track.album</key>
+	<string>Álbum</string>
+	<key>detail.track.artist</key>
+	<string>Artista</string>
+	<key>detail.track.artwork</key>
+	<string>Carátula de canción</string>
+	<key>detail.track.columnsAX</key>
+	<string>Canción, artista, álbum y duración</string>
+	<key>detail.track.duration</key>
+	<string>Duración</string>
+	<key>detail.track.like</key>
+	<string>Me gusta</string>
+	<key>detail.track.moreOptions</key>
+	<string>Más opciones</string>
+	<key>detail.track.moreOptionsForSong</key>
+	<string>Más opciones de la canción</string>
+	<key>detail.track.play</key>
+	<string>Reproducir canción</string>
+	<key>detail.track.reorder</key>
+	<string>Arrastrar para reordenar</string>
+	<key>detail.track.song</key>
+	<string>Canción</string>
+	<key>detail.track.unlike</key>
+	<string>Quitar de Me gusta</string>
+	<key>detail.track.variousArtists</key>
+	<string>Varios artistas</string>
+	<key>detail.viewAlbum</key>
+	<string>Ver álbum</string>
+	<key>detail.viewAll</key>
+	<string>Ver todo</string>
+	<key>detail.viewAllSection</key>
+	<string>Ver todo: %@</string>
+	<key>detail.viewArtist</key>
+	<string>Ver artista</string>
+	<key>explore.catalog.accessibility</key>
+	<string>Catálogo de Explorar</string>
+	<key>explore.category.accessibility</key>
+	<string>%@, %@</string>
+	<key>explore.category.acoustic.subtitle</key>
+	<string>Más cerca</string>
+	<key>explore.category.acoustic.title</key>
+	<string>Folk y acústica</string>
+	<key>explore.category.classical.subtitle</key>
+	<string>Sin apuro</string>
+	<key>explore.category.classical.title</key>
+	<string>Clásica</string>
+	<key>explore.category.cumbia.subtitle</key>
+	<string>Siempre hay una más</string>
+	<key>explore.category.cumbia.title</key>
+	<string>Cumbia</string>
+	<key>explore.category.electronic.subtitle</key>
+	<string>Seguí el pulso</string>
+	<key>explore.category.electronic.title</key>
+	<string>Electrónica</string>
+	<key>explore.category.focus.subtitle</key>
+	<string>Menos ruido, más foco</string>
+	<key>explore.category.focus.title</key>
+	<string>Concentración</string>
+	<key>explore.category.good-mood.subtitle</key>
+	<string>Para sentirse bien</string>
+	<key>explore.category.good-mood.title</key>
+	<string>Buen día</string>
+	<key>explore.category.hiphop.subtitle</key>
+	<string>Beats y palabras</string>
+	<key>explore.category.hiphop.title</key>
+	<string>Hip-hop</string>
+	<key>explore.category.indie.subtitle</key>
+	<string>Otros caminos</string>
+	<key>explore.category.indie.title</key>
+	<string>Indie y alternativa</string>
+	<key>explore.category.jazz.subtitle</key>
+	<string>Espacio para improvisar</string>
+	<key>explore.category.jazz.title</key>
+	<string>Jazz</string>
+	<key>explore.category.kpop.subtitle</key>
+	<string>Todo el color</string>
+	<key>explore.category.kpop.title</key>
+	<string>K-Pop</string>
+	<key>explore.category.latin.subtitle</key>
+	<string>Ritmos de acá</string>
+	<key>explore.category.latin.title</key>
+	<string>Latina</string>
+	<key>explore.category.metal.subtitle</key>
+	<string>Subí el volumen</string>
+	<key>explore.category.metal.title</key>
+	<string>Metal</string>
+	<key>explore.category.open_hint</key>
+	<string>Abre listas de %@</string>
+	<key>explore.category.party.subtitle</key>
+	<string>Que siga la noche</string>
+	<key>explore.category.party.title</key>
+	<string>Fiesta</string>
+	<key>explore.category.pop.subtitle</key>
+	<string>Melodías que se quedan</string>
+	<key>explore.category.pop.title</key>
+	<string>Pop</string>
+	<key>explore.category.reggae.subtitle</key>
+	<string>A otro ritmo</string>
+	<key>explore.category.reggae.title</key>
+	<string>Reggae</string>
+	<key>explore.category.reggaeton.subtitle</key>
+	<string>Para mover el día</string>
+	<key>explore.category.reggaeton.title</key>
+	<string>Reggaetón</string>
+	<key>explore.category.relax.subtitle</key>
+	<string>Bajá un cambio</string>
+	<key>explore.category.relax.title</key>
+	<string>Relajación</string>
+	<key>explore.category.rnb.subtitle</key>
+	<string>Con alma</string>
+	<key>explore.category.rnb.title</key>
+	<string>R&amp;B y soul</string>
+	<key>explore.category.road.subtitle</key>
+	<string>El viaje también se escucha</string>
+	<key>explore.category.road.title</key>
+	<string>En ruta</string>
+	<key>explore.category.rock.subtitle</key>
+	<string>Guitarras al frente</string>
+	<key>explore.category.rock.title</key>
+	<string>Rock</string>
+	<key>explore.category.romance.subtitle</key>
+	<string>Para compartir</string>
+	<key>explore.category.romance.title</key>
+	<string>Romance</string>
+	<key>explore.category.sleep.subtitle</key>
+	<string>Hasta mañana</string>
+	<key>explore.category.sleep.title</key>
+	<string>Dormir</string>
+	<key>explore.category.soundtracks.subtitle</key>
+	<string>Música de película</string>
+	<key>explore.category.soundtracks.title</key>
+	<string>Bandas sonoras</string>
+	<key>explore.category.workout.subtitle</key>
+	<string>Un poco más de energía</string>
+	<key>explore.category.workout.title</key>
+	<string>Entrenar</string>
+	<key>explore.charts.empty_description</key>
+	<string>Probá con otra región.</string>
+	<key>explore.charts.empty_title</key>
+	<string>No hay rankings disponibles</string>
+	<key>explore.charts.loading</key>
+	<string>Cargando rankings…</string>
+	<key>explore.charts.refresh</key>
+	<string>Actualizar rankings</string>
+	<key>explore.charts.refresh_detect</key>
+	<string>Actualizar rankings y detectar de nuevo tu región</string>
+	<key>explore.empty.description</key>
+	<string>Probá otra categoría o actualizá para volver a buscar.</string>
+	<key>explore.error.load_charts</key>
+	<string>No se pudieron cargar todos los rankings. Volvé a intentar.</string>
+	<key>explore.error.load_music</key>
+	<string>No se pudo cargar la música. Revisá la conexión y volvé a intentar.</string>
+	<key>explore.eyebrow</key>
+	<string>Explorar</string>
+	<key>explore.music.empty_title</key>
+	<string>Todavía no hay música aquí</string>
+	<key>explore.music.loading</key>
+	<string>Buscando música…</string>
+	<key>explore.refresh</key>
+	<string>Actualizar</string>
+	<key>explore.refresh_music</key>
+	<string>Actualizar música</string>
+	<key>explore.region.detect_failed</key>
+	<string>No se pudo detectar tu región. Podés elegir un país en el selector.</string>
+	<key>explore.region.detected</key>
+	<string>Región detectada: %@</string>
+	<key>explore.region.global</key>
+	<string>Global</string>
+	<key>explore.region.global_and_yours</key>
+	<string>Global y tu región</string>
+	<key>explore.region.label</key>
+	<string>Región</string>
+	<key>explore.region.selector</key>
+	<string>País de los rankings</string>
+	<key>explore.region.unsupported</key>
+	<string>YouTube no ofrece rankings de %@. Podés elegir otro país.</string>
+	<key>explore.releases.accessibility</key>
+	<string>Lanzamientos destacados</string>
+	<key>explore.retry</key>
+	<string>Reintentar</string>
+	<key>explore.route.chart_country</key>
+	<string>Rankings · %@</string>
+	<key>explore.route.charts</key>
+	<string>Rankings</string>
+	<key>explore.route.discover</key>
+	<string>Descubrir</string>
+	<key>explore.route.genres</key>
+	<string>Géneros</string>
+	<key>explore.route.moods</key>
+	<string>Momentos</string>
+	<key>explore.route.releases</key>
+	<string>Lanzamientos</string>
+	<key>explore.section.all_genres</key>
+	<string>Todos los géneros</string>
+	<key>explore.section.choose_moment</key>
+	<string>Elegí tu momento</string>
+	<key>explore.section.explore_genres</key>
+	<string>Explorá por género</string>
+	<key>explore.section.for_every_moment</key>
+	<string>Para cada momento</string>
+	<key>explore.section.new_albums_singles</key>
+	<string>Álbumes y sencillos nuevos</string>
+	<key>explore.section.playlists_to_explore</key>
+	<string>Listas para explorar</string>
+	<key>explore.see_all</key>
+	<string>Ver todo</string>
+	<key>explore.see_all_named</key>
+	<string>Ver todo: %@</string>
+	<key>explore.shortcut.global_region</key>
+	<string>Global y tu región</string>
+	<key>explore.shortcut.new_arrivals</key>
+	<string>Recién llegados</string>
+	<key>explore.subtitle.category_fallback</key>
+	<string>Encontrá algo nuevo para escuchar.</string>
+	<key>explore.subtitle.chart_country</key>
+	<string>Las listas de YouTube Charts para %@.</string>
+	<key>explore.subtitle.charts</key>
+	<string>Lo que suena en el mundo y cerca tuyo.</string>
+	<key>explore.subtitle.discover</key>
+	<string>Novedades, géneros y música para acompañar tu día.</string>
+	<key>explore.subtitle.genres</key>
+	<string>Tus sonidos de siempre y otros por conocer.</string>
+	<key>explore.subtitle.moods</key>
+	<string>Una lista para lo que estés haciendo.</string>
+	<key>explore.subtitle.releases</key>
+	<string>Lo nuevo en YouTube Music, listo para descubrir.</string>
+	<key>explore.title.discover</key>
+	<string>Algo nuevo para escuchar.</string>
+	<key>fullscreen.backToArtwork</key>
+	<string>Volver a la carátula</string>
+	<key>fullscreen.fansAlsoLike</key>
+	<string>A los fans también les gusta</string>
+	<key>fullscreen.fromAlbum</key>
+	<string>Del álbum: %@</string>
+	<key>fullscreen.fromSameAlbum</key>
+	<string>Del mismo álbum</string>
+	<key>fullscreen.gesture.back</key>
+	<string>Volver</string>
+	<key>fullscreen.gesture.forward</key>
+	<string>Avanzar</string>
+	<key>fullscreen.gesture.noNextPage</key>
+	<string>No hay una página siguiente</string>
+	<key>fullscreen.gesture.noPreviousPage</key>
+	<string>No hay una página anterior</string>
+	<key>fullscreen.gesture.pullDownToClose</key>
+	<string>Bajá para cerrar</string>
+	<key>fullscreen.gesture.pullDownToCloseNowPlaying</key>
+	<string>Bajá para cerrar Ahora suena</string>
+	<key>fullscreen.gesture.releaseToBack</key>
+	<string>Soltá para volver</string>
+	<key>fullscreen.gesture.releaseToClose</key>
+	<string>Soltá para cerrar</string>
+	<key>fullscreen.gesture.releaseToCloseNowPlaying</key>
+	<string>Soltá para cerrar Ahora suena</string>
+	<key>fullscreen.gesture.releaseToForward</key>
+	<string>Soltá para avanzar</string>
+	<key>fullscreen.goToLyricLine</key>
+	<string>Ir a esta línea</string>
+	<key>fullscreen.information</key>
+	<string>Información</string>
+	<key>fullscreen.lyrics</key>
+	<string>Letras</string>
+	<key>fullscreen.moreByArtist</key>
+	<string>Más de %@</string>
+	<key>fullscreen.moreByThisArtist</key>
+	<string>Más de este artista</string>
+	<key>fullscreen.noLyrics</key>
+	<string>No hay letras disponibles</string>
+	<key>fullscreen.noRecommendations</key>
+	<string>No hay recomendaciones disponibles</string>
+	<key>fullscreen.noSongDescription</key>
+	<string>No hay una descripción disponible para esta canción.</string>
+	<key>fullscreen.noSyncedLyricsForTrack</key>
+	<string>No se encontraron letras sincronizadas para esta pista</string>
+	<key>fullscreen.recommendations</key>
+	<string>Recomendaciones</string>
+	<key>fullscreen.refreshRecommendations</key>
+	<string>Obtener recomendaciones nuevas para esta canción</string>
+	<key>fullscreen.related</key>
+	<string>Relacionado</string>
+	<key>fullscreen.resumeLyricsTracking</key>
+	<string>Reactivar el seguimiento de letras</string>
+	<key>fullscreen.resumeLyricsTrackingHint</key>
+	<string>Centra la línea actual y activa el desplazamiento automático</string>
+	<key>fullscreen.returnToCurrentLyric</key>
+	<string>Volver a la letra actual</string>
+	<key>fullscreen.searchingSyncedLyrics</key>
+	<string>Buscando letras sincronizadas…</string>
+	<key>fullscreen.similarSongs</key>
+	<string>Canciones parecidas</string>
+	<key>fullscreen.songInformation</key>
+	<string>Información de la canción</string>
+	<key>genius.annotation</key>
+	<string>Anotación</string>
+	<key>genius.annotationBy</key>
+	<string>Por %@</string>
+	<key>genius.annotations</key>
+	<string>Anotaciones</string>
+	<key>genius.automaticSearch</key>
+	<string>Buscar automáticamente al reproducir</string>
+	<key>genius.backToLyrics</key>
+	<string>Volver a las letras</string>
+	<key>genius.changeMatch</key>
+	<string>Cambiar coincidencia…</string>
+	<key>genius.chooseMatchingTrack</key>
+	<string>Elegí la versión que corresponde a esta canción.</string>
+	<key>genius.closeAnnotation</key>
+	<string>Cerrar anotación</string>
+	<key>genius.composition</key>
+	<string>Composición</string>
+	<key>genius.diagnostics</key>
+	<string>Diagnóstico de Genius</string>
+	<key>genius.error.saveTrack</key>
+	<string>No se pudo guardar esta canción. Intentá de nuevo.</string>
+	<key>genius.informationPicker</key>
+	<string>Información de Genius</string>
+	<key>genius.loadMoreAnnotations</key>
+	<string>Cargar más anotaciones</string>
+	<key>genius.loadingAnnotations</key>
+	<string>Cargando anotaciones…</string>
+	<key>genius.loadingLyrics</key>
+	<string>Cargando letras de Genius…</string>
+	<key>genius.lyricsAndAnnotations</key>
+	<string>Letras y anotaciones de Genius</string>
+	<key>genius.multipleMatches</key>
+	<string>Hay varias versiones posibles</string>
+	<key>genius.noAdditionalInformation</key>
+	<string>No hay información adicional en Genius</string>
+	<key>genius.noConfidentMatch</key>
+	<string>No se encontró una coincidencia segura</string>
+	<key>genius.noLyricsAvailable</key>
+	<string>No hay letras de Genius disponibles para esta canción.</string>
+	<key>genius.noMatchGuidance</key>
+	<string>Probá otra búsqueda o guardá la canción para revisarla después.</string>
+	<key>genius.noSongDescription</key>
+	<string>Genius no tiene una descripción para esta canción.</string>
+	<key>genius.openAnnotationOnGenius</key>
+	<string>Abrir anotación en Genius</string>
+	<key>genius.options</key>
+	<string>Opciones de Genius</string>
+	<key>genius.production</key>
+	<string>Producción</string>
+	<key>genius.refreshData</key>
+	<string>Actualizar datos</string>
+	<key>genius.saveTrackForReview</key>
+	<string>Guardar esta canción para revisarla</string>
+	<key>genius.savedForReview</key>
+	<string>Guardada para revisar</string>
+	<key>genius.searchAnotherVersion</key>
+	<string>Buscar otra versión</string>
+	<key>genius.searching</key>
+	<string>Buscando en Genius</string>
+	<key>genius.searchingInformation</key>
+	<string>Buscando información en Genius…</string>
+	<key>genius.showDiagnostics</key>
+	<string>Mostrar controles de diagnóstico</string>
+	<key>genius.titleAndArtist</key>
+	<string>Título y artista</string>
+	<key>genius.tryAgainLater</key>
+	<string>Podés intentarlo de nuevo más tarde.</string>
+	<key>genius.unavailable</key>
+	<string>Genius no está disponible</string>
+	<key>genius.useTrackHint</key>
+	<string>Usar esta canción de Genius para la pista actual</string>
+	<key>genius.verifiedAnnotation</key>
+	<string>Anotación verificada</string>
+	<key>genius.viewOnGenius</key>
+	<string>Ver en Genius</string>
+	<key>history.day.friday</key>
+	<string>Viernes</string>
+	<key>history.day.monday</key>
+	<string>Lunes</string>
+	<key>history.day.saturday</key>
+	<string>Sábado</string>
+	<key>history.day.sunday</key>
+	<string>Domingo</string>
+	<key>history.day.thursday</key>
+	<string>Jueves</string>
+	<key>history.day.tuesday</key>
+	<string>Martes</string>
+	<key>history.day.wednesday</key>
+	<string>Miércoles</string>
+	<key>history.empty</key>
+	<string>No hay reproducciones recientes</string>
+	<key>history.error.load</key>
+	<string>No se pudo cargar el historial</string>
+	<key>history.month.april</key>
+	<string>abril</string>
+	<key>history.month.august</key>
+	<string>agosto</string>
+	<key>history.month.december</key>
+	<string>diciembre</string>
+	<key>history.month.february</key>
+	<string>febrero</string>
+	<key>history.month.january</key>
+	<string>enero</string>
+	<key>history.month.july</key>
+	<string>julio</string>
+	<key>history.month.june</key>
+	<string>junio</string>
+	<key>history.month.march</key>
+	<string>marzo</string>
+	<key>history.month.may</key>
+	<string>mayo</string>
+	<key>history.month.november</key>
+	<string>noviembre</string>
+	<key>history.month.october</key>
+	<string>octubre</string>
+	<key>history.month.september</key>
+	<string>septiembre</string>
+	<key>history.subtitle</key>
+	<string>Tus reproducciones recientes ordenadas por día</string>
+	<key>history.title</key>
+	<string>Historial</string>
+	<key>history.today</key>
+	<string>Hoy</string>
+	<key>history.yesterday</key>
+	<string>Ayer</string>
+	<key>home.accessibility.recommendations</key>
+	<string>Recomendaciones de Inicio</string>
+	<key>home.album.label</key>
+	<string>Álbum: %@</string>
+	<key>home.album.view</key>
+	<string>Ver álbum: %@</string>
+	<key>home.artist.label</key>
+	<string>Artista: %@</string>
+	<key>home.artist.view</key>
+	<string>Ver artista: %@</string>
+	<key>home.card.accessibility</key>
+	<string>%@ %@. %@</string>
+	<key>home.close</key>
+	<string>Cerrar</string>
+	<key>home.collection.albums</key>
+	<string>Álbumes</string>
+	<key>home.collection.open</key>
+	<string>Abrir %@ %@</string>
+	<key>home.collection.playlists</key>
+	<string>Listas</string>
+	<key>home.error.load</key>
+	<string>No se pudo cargar Inicio</string>
+	<key>home.explicit_content</key>
+	<string>Contenido explícito</string>
+	<key>home.load_more</key>
+	<string>Cargar más recomendaciones</string>
+	<key>home.loading</key>
+	<string>Cargando Inicio</string>
+	<key>home.loading_more</key>
+	<string>Cargando…</string>
+	<key>home.loading_named</key>
+	<string>Cargando %@</string>
+	<key>home.loading_recommendations</key>
+	<string>Cargando recomendaciones…</string>
+	<key>home.more_options</key>
+	<string>Más opciones</string>
+	<key>home.open</key>
+	<string>Abrir</string>
+	<key>home.page.next</key>
+	<string>Página siguiente de %@</string>
+	<key>home.page.position</key>
+	<string>%@, página %@ de %@</string>
+	<key>home.page.previous</key>
+	<string>Página anterior de %@</string>
+	<key>home.pause</key>
+	<string>Pausar</string>
+	<key>home.pause_named</key>
+	<string>Pausar %@</string>
+	<key>home.play</key>
+	<string>Reproducir</string>
+	<key>home.play_named</key>
+	<string>Reproducir %@</string>
+	<key>home.radio.pause</key>
+	<string>Pausar radio de %@</string>
+	<key>home.radio.resume</key>
+	<string>Retomar radio de %@</string>
+	<key>home.radio.start</key>
+	<string>Iniciar radio de %@</string>
+	<key>home.refresh.changing</key>
+	<string>Cambiando recomendaciones…</string>
+	<key>home.refresh.saved</key>
+	<string>Recomendaciones guardadas</string>
+	<key>home.refresh.saved_updating</key>
+	<string>Recomendaciones guardadas · actualizando</string>
+	<key>home.refresh.updating</key>
+	<string>Actualizando recomendaciones…</string>
+	<key>home.retry</key>
+	<string>Reintentar</string>
+	<key>home.see_all</key>
+	<string>Ver todo</string>
+	<key>home.see_all_named</key>
+	<string>Ver todo: %@</string>
+	<key>home.shelf.next</key>
+	<string>Desplazar estante a la derecha</string>
+	<key>home.shelf.previous</key>
+	<string>Desplazar estante a la izquierda</string>
+	<key>library.create_playlist</key>
+	<string>Crear una lista</string>
+	<key>library.empty.albums</key>
+	<string>No tenés álbumes guardados</string>
+	<key>library.empty.artists</key>
+	<string>No tenés artistas en tu biblioteca</string>
+	<key>library.empty.playlists</key>
+	<string>No tenés listas</string>
+	<key>library.empty.songs</key>
+	<string>No hay canciones en tu biblioteca</string>
+	<key>library.error.load</key>
+	<string>No se pudo cargar la biblioteca</string>
+	<key>library.error.load_songs</key>
+	<string>No se pudieron cargar las canciones</string>
+	<key>library.error.update_songs</key>
+	<string>No se pudieron actualizar las canciones: %@</string>
+	<key>library.eyebrow</key>
+	<string>Colección</string>
+	<key>library.load_error.albums</key>
+	<string>Álbumes: %@</string>
+	<key>library.load_error.history</key>
+	<string>Historial: %@</string>
+	<key>library.load_error.playlists</key>
+	<string>Listas: %@</string>
+	<key>library.load_errors.albums_history</key>
+	<string>Álbumes: %@
+Historial: %@</string>
+	<key>library.load_errors.playlists_albums</key>
+	<string>Listas: %@
+Álbumes: %@</string>
+	<key>library.load_errors.playlists_albums_history</key>
+	<string>Listas: %@
+Álbumes: %@
+Historial: %@</string>
+	<key>library.load_errors.playlists_history</key>
+	<string>Listas: %@
+Historial: %@</string>
+	<key>library.loading_more_songs</key>
+	<string>Cargando más canciones…</string>
+	<key>library.login_required</key>
+	<string>Iniciá sesión para ver tu biblioteca</string>
+	<key>library.new_playlist</key>
+	<string>Nueva lista</string>
+	<key>library.open_card</key>
+	<string>Abrir %@</string>
+	<key>library.refresh</key>
+	<string>Actualizar biblioteca</string>
+	<key>library.retry</key>
+	<string>Reintentar</string>
+	<key>library.tab.albums</key>
+	<string>Álbumes</string>
+	<key>library.tab.playlists</key>
+	<string>Listas</string>
+	<key>library.title</key>
+	<string>Biblioteca</string>
+	<key>login.heading</key>
+	<string>Iniciar sesión en YouTube Music</string>
+	<key>login.passkey_unavailable</key>
+	<string>La opción de iniciar sesión con llave de acceso no está disponible en esta ventana. Google te pedirá la contraseña u otro método de inicio de sesión.</string>
+	<key>menu.accept</key>
+	<string>Aceptar</string>
+	<key>menu.account</key>
+	<string>Cuenta</string>
+	<key>menu.add_liked</key>
+	<string>Añadir a Tus Me Gusta</string>
+	<key>menu.add_to_playlist</key>
+	<string>Añadir a lista de reproducción</string>
+	<key>menu.add_to_queue</key>
+	<string>Añadir a la cola</string>
+	<key>menu.cancel</key>
+	<string>Cancelar</string>
+	<key>menu.check_updates</key>
+	<string>Buscar actualizaciones…</string>
+	<key>menu.close</key>
+	<string>Cerrar</string>
+	<key>menu.confirm_delete_playlist</key>
+	<string>¿Seguro que querés eliminar «%@» de YouTube Music? Esta acción no se puede deshacer.</string>
+	<key>menu.controls</key>
+	<string>Controles</string>
+	<key>menu.delete</key>
+	<string>Eliminar</string>
+	<key>menu.delete_playlist</key>
+	<string>Eliminar lista</string>
+	<key>menu.delete_playlist_question</key>
+	<string>¿Eliminar lista?</string>
+	<key>menu.edit</key>
+	<string>Edición</string>
+	<key>menu.edit_details</key>
+	<string>Editar detalles</string>
+	<key>menu.enter_fullscreen</key>
+	<string>Usar pantalla completa</string>
+	<key>menu.error_add_song</key>
+	<string>No se pudo añadir la canción</string>
+	<key>menu.error_delete_playlist</key>
+	<string>No se pudo eliminar la lista</string>
+	<key>menu.error_play_next_playlist</key>
+	<string>No se pudo añadir la lista a continuación</string>
+	<key>menu.error_queue_playlist</key>
+	<string>No se pudo añadir la lista a la cola</string>
+	<key>menu.error_shuffle_playlist</key>
+	<string>No se pudo reproducir la lista en modo aleatorio</string>
+	<key>menu.error_update_album_library</key>
+	<string>No se pudo actualizar el álbum en la biblioteca</string>
+	<key>menu.error_update_library</key>
+	<string>No se pudo actualizar la biblioteca</string>
+	<key>menu.error_update_playlist_library</key>
+	<string>No se pudo actualizar la lista en la biblioteca</string>
+	<key>menu.error_update_subscription</key>
+	<string>No se pudo actualizar la suscripción</string>
+	<key>menu.exit_fullscreen</key>
+	<string>Salir de pantalla completa</string>
+	<key>menu.file</key>
+	<string>Archivo</string>
+	<key>menu.go_to_album</key>
+	<string>Ir al álbum</string>
+	<key>menu.go_to_artist</key>
+	<string>Ir a artista</string>
+	<key>menu.help</key>
+	<string>Ayuda</string>
+	<key>menu.lyrics</key>
+	<string>Letras</string>
+	<key>menu.more_options</key>
+	<string>Más opciones</string>
+	<key>menu.mute</key>
+	<string>Silenciar</string>
+	<key>menu.new_playlist_ellipsis</key>
+	<string>Nueva lista…</string>
+	<key>menu.next_track</key>
+	<string>Siguiente pista</string>
+	<key>menu.no_options</key>
+	<string>No hay opciones disponibles</string>
+	<key>menu.no_song_selected</key>
+	<string>No hay ninguna canción seleccionada</string>
+	<key>menu.pause</key>
+	<string>Pausar</string>
+	<key>menu.play</key>
+	<string>Reproducir</string>
+	<key>menu.play_mix</key>
+	<string>Reproducir mix</string>
+	<key>menu.play_next</key>
+	<string>Reproducir a continuación</string>
+	<key>menu.play_now</key>
+	<string>Reproducir ahora</string>
+	<key>menu.previous_track</key>
+	<string>Pista anterior</string>
+	<key>menu.queue</key>
+	<string>Cola</string>
+	<key>menu.related</key>
+	<string>Relacionados</string>
+	<key>menu.remove_album_library</key>
+	<string>Quitar álbum de la biblioteca</string>
+	<key>menu.remove_from_playlist</key>
+	<string>Eliminar de esta lista</string>
+	<key>menu.remove_from_queue</key>
+	<string>Quitar de la cola</string>
+	<key>menu.remove_library</key>
+	<string>Quitar de Biblioteca</string>
+	<key>menu.remove_liked</key>
+	<string>Quitar de Tus Me Gusta</string>
+	<key>menu.remove_mix_library</key>
+	<string>Quitar mix de la biblioteca</string>
+	<key>menu.remove_playlist_library</key>
+	<string>Quitar lista de reproducción de la biblioteca</string>
+	<key>menu.repeat</key>
+	<string>Repetición</string>
+	<key>menu.save_album_library</key>
+	<string>Guardar álbum en la biblioteca</string>
+	<key>menu.save_library</key>
+	<string>Guardar en Biblioteca</string>
+	<key>menu.save_mix_library</key>
+	<string>Guardar mix en la biblioteca</string>
+	<key>menu.save_playlist_library</key>
+	<string>Guardar lista de reproducción en la biblioteca</string>
+	<key>menu.search</key>
+	<string>Buscar</string>
+	<key>menu.share</key>
+	<string>Compartir</string>
+	<key>menu.shuffle</key>
+	<string>Aleatorio</string>
+	<key>menu.sidebar</key>
+	<string>Barra lateral</string>
+	<key>menu.song</key>
+	<string>Canción</string>
+	<key>menu.sort</key>
+	<string>Ordenar</string>
+	<key>menu.sort_album</key>
+	<string>Álbum</string>
+	<key>menu.sort_artist</key>
+	<string>Artista</string>
+	<key>menu.sort_manual</key>
+	<string>Orden manual</string>
+	<key>menu.sort_newest</key>
+	<string>Más recientes</string>
+	<key>menu.sort_oldest</key>
+	<string>Más antiguas</string>
+	<key>menu.sort_title</key>
+	<string>Título</string>
+	<key>menu.start_mix</key>
+	<string>Iniciar mix</string>
+	<key>menu.subscribe</key>
+	<string>Suscribirse</string>
+	<key>menu.unmute</key>
+	<string>Activar sonido</string>
+	<key>menu.unsubscribe</key>
+	<string>Cancelar suscripción</string>
+	<key>menu.view</key>
+	<string>Visualización</string>
+	<key>menu.view_album</key>
+	<string>Ver álbum</string>
+	<key>menu.view_artist</key>
+	<string>Ver artista</string>
+	<key>menu.view_mix</key>
+	<string>Ver mix</string>
+	<key>menu.view_playlist</key>
+	<string>Ver lista</string>
+	<key>menu.volume_down</key>
+	<string>Bajar volumen</string>
+	<key>menu.volume_up</key>
+	<string>Subir volumen</string>
+	<key>menu.window</key>
+	<string>Ventana</string>
+	<key>metadata.album</key>
+	<string>Álbum</string>
+	<key>metadata.explicit</key>
+	<string>Explícita</string>
+	<key>metadata.playlist</key>
+	<string>Lista de reproducción</string>
+	<key>metadata.playlist.short</key>
+	<string>Lista</string>
+	<key>metadata.single</key>
+	<string>Sencillo</string>
+	<key>metadata.song</key>
+	<string>Canción</string>
+	<key>metadata.various_artists</key>
+	<string>Varios artistas</string>
+	<key>navigation.back</key>
+	<string>Atrás</string>
+	<key>navigation.back_help</key>
+	<string>Atrás (⌘[)</string>
+	<key>navigation.closed</key>
+	<string>Cerrada</string>
+	<key>navigation.explore</key>
+	<string>Explorar</string>
+	<key>navigation.forward</key>
+	<string>Adelante</string>
+	<key>navigation.forward_help</key>
+	<string>Adelante (⌘])</string>
+	<key>navigation.home</key>
+	<string>Inicio</string>
+	<key>navigation.home_settings</key>
+	<string>Configuración</string>
+	<key>navigation.library</key>
+	<string>Biblioteca</string>
+	<key>navigation.main</key>
+	<string>Navegación principal</string>
+	<key>navigation.open</key>
+	<string>Abierta</string>
+	<key>navigation.refresh</key>
+	<string>Actualizar recomendaciones</string>
+	<key>navigation.refresh_help</key>
+	<string>Actualizar recomendaciones (⌘R)</string>
+	<key>navigation.search</key>
+	<string>Buscar</string>
+	<key>player.closeFullscreen</key>
+	<string>Cerrar pantalla completa</string>
+	<key>player.error.completePlaylist</key>
+	<string>No se pudo completar la lista: %@</string>
+	<key>player.error.completePlaylistCoreUnavailable</key>
+	<string>No se pudo completar la lista: el núcleo de Rust no está inicializado</string>
+	<key>player.error.coreUnavailable</key>
+	<string>El núcleo de Rust no está inicializado</string>
+	<key>player.error.dislike</key>
+	<string>No se pudo registrar el «No me gusta»: %@</string>
+	<key>player.error.loadAlbum</key>
+	<string>No se pudo cargar el álbum: %@</string>
+	<key>player.error.loadPlaylist</key>
+	<string>No se pudo cargar la lista: %@</string>
+	<key>player.error.noAlbumTracks</key>
+	<string>No se encontraron canciones para este álbum.</string>
+	<key>player.error.noPlaylistTracks</key>
+	<string>No se encontraron canciones para esta lista.</string>
+	<key>player.error.rateSong</key>
+	<string>Error al calificar la canción: %@</string>
+	<key>player.error.resolveStream</key>
+	<string>Error al resolver la transmisión: %@</string>
+	<key>player.error.updateRating</key>
+	<string>No se pudo actualizar la valoración: %@</string>
+	<key>player.goToAlbum</key>
+	<string>Ir al álbum: %@</string>
+	<key>player.mute</key>
+	<string>Silenciar</string>
+	<key>player.next</key>
+	<string>Siguiente</string>
+	<key>player.noPlayback</key>
+	<string>Sin reproducción</string>
+	<key>player.openFullscreen</key>
+	<string>Abrir pantalla completa</string>
+	<key>player.pause</key>
+	<string>Pausar</string>
+	<key>player.pauseNamedTrack</key>
+	<string>Pausar %@</string>
+	<key>player.play</key>
+	<string>Reproducir</string>
+	<key>player.playNamedTrack</key>
+	<string>Reproducir %@</string>
+	<key>player.previous</key>
+	<string>Anterior</string>
+	<key>player.radioFor</key>
+	<string>Radio de %@</string>
+	<key>player.repeat.disable</key>
+	<string>Desactivar repetición</string>
+	<key>player.repeat.enable</key>
+	<string>Repetir tema</string>
+	<key>player.retryPlayback</key>
+	<string>Reintentar reproducción</string>
+	<key>player.selectTrack</key>
+	<string>Seleccioná una canción</string>
+	<key>player.showVolume</key>
+	<string>Mostrar control de volumen</string>
+	<key>player.shuffle</key>
+	<string>Aleatorio</string>
+	<key>player.shuffle.disable</key>
+	<string>Desactivar reproducción aleatoria</string>
+	<key>player.shuffle.enable</key>
+	<string>Activar reproducción aleatoria</string>
+	<key>player.shuffledArtist</key>
+	<string>%@ (aleatorio)</string>
+	<key>player.syncedLyrics</key>
+	<string>Letras sincronizadas</string>
+	<key>player.unmute</key>
+	<string>Activar sonido</string>
+	<key>player.viewAlbum</key>
+	<string>Ver álbum: %@</string>
+	<key>provider.chip.commute</key>
+	<string>En camino</string>
+	<key>provider.chip.energize</key>
+	<string>Activá tu energía</string>
+	<key>provider.chip.focus</key>
+	<string>Concentración</string>
+	<key>provider.chip.party</key>
+	<string>Fiesta</string>
+	<key>provider.chip.podcasts</key>
+	<string>Podcasts</string>
+	<key>provider.chip.relax</key>
+	<string>Relajación</string>
+	<key>provider.chip.romance</key>
+	<string>Romance</string>
+	<key>provider.chip.sleep</key>
+	<string>Dormir</string>
+	<key>provider.chip.workout</key>
+	<string>Entrenar</string>
+	<key>provider.heading.featured-playlists</key>
+	<string>Listas destacadas</string>
+	<key>provider.heading.forgotten-favorites</key>
+	<string>Favoritos olvidados</string>
+	<key>provider.heading.from-community</key>
+	<string>De la comunidad</string>
+	<key>provider.heading.from-library</key>
+	<string>De tu biblioteca</string>
+	<key>provider.heading.listen-again</key>
+	<string>Volver a escuchar</string>
+	<key>provider.heading.mixes-for-you</key>
+	<string>Mixes para vos</string>
+	<key>provider.heading.more-artists</key>
+	<string>Más artistas</string>
+	<key>provider.heading.more-to-listen</key>
+	<string>Más para escuchar</string>
+	<key>provider.heading.new-releases</key>
+	<string>Nuevos lanzamientos</string>
+	<key>provider.heading.quick-picks</key>
+	<string>Selecciones rápidas</string>
+	<key>provider.heading.recommended-albums</key>
+	<string>Álbumes para vos</string>
+	<key>provider.heading.similar-artists</key>
+	<string>Artistas similares</string>
+	<key>provider.heading.songs-for-today</key>
+	<string>Canciones para hoy</string>
+	<key>provider.heading.speed-dial</key>
+	<string>Acceso rápido</string>
+	<key>queue.albumContext</key>
+	<string>Álbum: %@</string>
+	<key>queue.empty</key>
+	<string>No hay canciones en la cola</string>
+	<key>queue.error.fetchFailed</key>
+	<string>No se pudo completar la lista: %@</string>
+	<key>queue.error.invalidated</key>
+	<string>La carga de la lista quedó obsoleta y se descartó.</string>
+	<key>queue.error.pageLimit</key>
+	<string>La lista superó el máximo de %@ páginas.</string>
+	<key>queue.error.repeatedContinuation</key>
+	<string>La lista devolvió una continuación repetida.</string>
+	<key>queue.manual</key>
+	<string>Cola manual</string>
+	<key>queue.playlistContext</key>
+	<string>Lista: %@</string>
+	<key>queue.title</key>
+	<string>Cola de reproducción</string>
+	<key>queue.track.dislikeRemove</key>
+	<string>No me gusta (quitar de la cola)</string>
+	<key>queue.track.dislikeRemoveAX</key>
+	<string>No me gusta; quitar de la cola</string>
+	<key>queue.track.reorderSong</key>
+	<string>Arrastrar para reordenar la canción</string>
+	<key>search.category.top_result</key>
+	<string>Mejor resultado</string>
+	<key>search.empty.prompt_description</key>
+	<string>Escribí en la barra superior para buscar canciones, artistas o álbumes.</string>
+	<key>search.empty.prompt_title</key>
+	<string>Explorá el catálogo de música</string>
+	<key>search.empty.query</key>
+	<string>No se encontraron resultados para «%@»</string>
+	<key>search.empty.quick</key>
+	<string>No se encontraron resultados rápidos</string>
+	<key>search.empty.try_another</key>
+	<string>Revisá la ortografía o probá con otro artista o título.</string>
+	<key>search.error.category</key>
+	<string>No se pudo cargar esta categoría.</string>
+	<key>search.error.global</key>
+	<string>No se pudieron cargar los resultados generales. Las demás secciones siguen disponibles.</string>
+	<key>search.error.quick</key>
+	<string>No se pudieron cargar los resultados rápidos. Intentá de nuevo.</string>
+	<key>search.error.songs</key>
+	<string>No se pudo completar la búsqueda de canciones.</string>
+	<key>search.error.videos</key>
+	<string>No se pudieron cargar los videos.</string>
+	<key>search.filter.albums</key>
+	<string>Álbumes</string>
+	<key>search.filter.all</key>
+	<string>Todo</string>
+	<key>search.filter.artists</key>
+	<string>Artistas</string>
+	<key>search.filter.playlists</key>
+	<string>Listas</string>
+	<key>search.filter.songs</key>
+	<string>Canciones</string>
+	<key>search.filter.videos</key>
+	<string>Videos</string>
+	<key>search.full_discography</key>
+	<string>Ver discografía completa</string>
+	<key>search.loading.catalog</key>
+	<string>Buscando en el catálogo…</string>
+	<key>search.loading.quick</key>
+	<string>Buscando respuestas rápidas…</string>
+	<key>search.open_card</key>
+	<string>Abrir %@</string>
+	<key>search.open_detail</key>
+	<string>Abrir detalle</string>
+	<key>search.placeholder</key>
+	<string>Buscar en YouTube Music…</string>
+	<key>search.play_card</key>
+	<string>Reproducir %@</string>
+	<key>search.play_now</key>
+	<string>Reproducir ahora</string>
+	<key>search.see_all.feminine</key>
+	<string>Ver todas</string>
+	<key>search.see_all.masculine</key>
+	<string>Ver todos</string>
+	<key>search.spotlight.all_results_for</key>
+	<string>Ver todos los resultados para</string>
+	<key>search.spotlight.placeholder</key>
+	<string>Buscar canciones, álbumes, artistas y listas…</string>
+	<key>search.spotlight.prompt_description</key>
+	<string>Escribí para ver resultados rápidos por categoría en tiempo real</string>
+	<key>search.spotlight.prompt_title</key>
+	<string>Buscá artistas, canciones, álbumes y más</string>
+	<key>search.spotlight.submit_hint</key>
+	<string>Presioná Enter para buscar en todo el catálogo</string>
+	<key>search.submit.full_results</key>
+	<string>Presioná Enter para ver todos los resultados</string>
+	<key>settings.albums</key>
+	<string>Álbumes</string>
+	<key>settings.categories</key>
+	<string>Categorías de Inicio</string>
+	<key>settings.categoriesHint</key>
+	<string>Ocultar un estante no impide que su fuente aporte destacados.</string>
+	<key>settings.categoriesLoading</key>
+	<string>Las categorías aparecerán cuando cargue Inicio.</string>
+	<key>settings.close</key>
+	<string>Cerrar configuración</string>
+	<key>settings.down</key>
+	<string>Bajar %@</string>
+	<key>settings.drag</key>
+	<string>Arrastrar para ordenar %@</string>
+	<key>settings.dragAX</key>
+	<string>Arrastrar para ordenar %@; también podés usar Subir y Bajar</string>
+	<key>settings.enableSource</key>
+	<string>Activá una fuente para mostrar destacados de este tipo.</string>
+	<key>settings.featured</key>
+	<string>Destacados</string>
+	<key>settings.featuredKind</key>
+	<string>Tipo de recomendaciones de Inicio</string>
+	<key>settings.general</key>
+	<string>General</string>
+	<key>settings.home</key>
+	<string>Inicio</string>
+	<key>settings.language</key>
+	<string>Idioma de la aplicación</string>
+	<key>settings.libraryError</key>
+	<string>No se pudo actualizar la biblioteca.</string>
+	<key>settings.noCategories</key>
+	<string>No hay categorías con ese nombre.</string>
+	<key>settings.orderCustom</key>
+	<string>Orden personalizado</string>
+	<key>settings.orderSideB</key>
+	<string>Orden de Side B</string>
+	<key>settings.orderYouTube</key>
+	<string>Orden de YouTube</string>
+	<key>settings.playlists</key>
+	<string>Listas</string>
+	<key>settings.restoreOrder</key>
+	<string>Restaurar orden de Side B</string>
+	<key>settings.restoreSources</key>
+	<string>Restaurar fuentes</string>
+	<key>settings.retryLibrary</key>
+	<string>Reintentar biblioteca</string>
+	<key>settings.searchCategory</key>
+	<string>Buscar categoría</string>
+	<key>settings.searchCategoryAX</key>
+	<string>Buscar categoría de Inicio</string>
+	<key>settings.showAll</key>
+	<string>Mostrar todas las categorías</string>
+	<key>settings.source.forgottenFavorites</key>
+	<string>Favoritos olvidados</string>
+	<key>settings.source.fromCommunity</key>
+	<string>De la comunidad</string>
+	<key>settings.source.fromLibrary</key>
+	<string>De tu biblioteca en Inicio</string>
+	<key>settings.source.libraryAlbums</key>
+	<string>Álbumes guardados</string>
+	<key>settings.source.libraryPlaylists</key>
+	<string>Listas guardadas</string>
+	<key>settings.source.listenAgain</key>
+	<string>Volver a escuchar</string>
+	<key>settings.source.mixesForYou</key>
+	<string>Mixes para vos</string>
+	<key>settings.source.newReleases</key>
+	<string>Nuevos lanzamientos</string>
+	<key>settings.source.otherHome</key>
+	<string>Otros del Inicio</string>
+	<key>settings.source.recentAlbums</key>
+	<string>De tus escuchas recientes</string>
+	<key>settings.source.recommendedAlbums</key>
+	<string>Recomendados para vos</string>
+	<key>settings.sourcesHint</key>
+	<string>Las fuentes se usan de arriba abajo, hasta completar un máximo de seis páginas.</string>
+	<key>settings.title</key>
+	<string>Configuración</string>
+	<key>settings.up</key>
+	<string>Subir %@</string>
+	<key>settings.youtubeOrder</key>
+	<string>Usar orden de YouTube</string>
+	<key>sidebar.albums</key>
+	<string>Álbumes</string>
+	<key>sidebar.collection</key>
+	<string>Colección</string>
+	<key>sidebar.explore</key>
+	<string>Explorar</string>
+	<key>sidebar.hide</key>
+	<string>Ocultar barra lateral</string>
+	<key>sidebar.history</key>
+	<string>Historial</string>
+	<key>sidebar.home</key>
+	<string>Inicio</string>
+	<key>sidebar.library</key>
+	<string>Biblioteca</string>
+	<key>sidebar.liked</key>
+	<string>Tus Me Gusta</string>
+	<key>sidebar.load_failed</key>
+	<string>No se pudo cargar</string>
+	<key>sidebar.new_playlist</key>
+	<string>Nueva lista</string>
+	<key>sidebar.no_playlists</key>
+	<string>No tenés listas</string>
+	<key>sidebar.no_saved_albums</key>
+	<string>No tenés álbumes guardados</string>
+	<key>sidebar.playlists</key>
+	<string>Listas</string>
+	<key>sidebar.retry</key>
+	<string>Reintentar</string>
+	<key>sidebar.search</key>
+	<string>Buscar</string>
+	<key>sidebar.show</key>
+	<string>Mostrar barra lateral</string>
+	<key>sidebar.sign_in_to_view</key>
+	<string>Iniciá sesión para ver tu música guardada</string>
+	<key>update.available_subtitle</key>
+	<string>Hay una versión más reciente de Side B lista para descargar e instalar.</string>
+	<key>update.available_title</key>
+	<string>Nueva versión disponible: Side B %@</string>
+	<key>update.cancel</key>
+	<string>Cancelar</string>
+	<key>update.cancel_download</key>
+	<string>Cancelar descarga</string>
+	<key>update.checking</key>
+	<string>Comprobando nuevas versiones en GitHub…</string>
+	<key>update.close</key>
+	<string>Cerrar</string>
+	<key>update.current_version_subtitle</key>
+	<string>Versión actual instalada: %@</string>
+	<key>update.downloading</key>
+	<string>Descargando actualización…</string>
+	<key>update.downloading_detail</key>
+	<string>Descargando el paquete optimizado para Apple Silicon desde GitHub Releases.</string>
+	<key>update.downloading_subtitle</key>
+	<string>El paquete se está descargando de forma segura.</string>
+	<key>update.downloading_title</key>
+	<string>Descargando actualización</string>
+	<key>update.error_connection</key>
+	<string>Error de conexión: %@</string>
+	<key>update.error_github_status</key>
+	<string>Error al consultar GitHub (código %@).</string>
+	<key>update.error_install</key>
+	<string>No se pudo completar la actualización: %@</string>
+	<key>update.error_invalid_github_url</key>
+	<string>La URL de GitHub no es válida.</string>
+	<key>update.error_invalid_server_response</key>
+	<string>El servidor no devolvió una respuesta válida.</string>
+	<key>update.error_no_release</key>
+	<string>Todavía no hay releases publicados en el repositorio %@.</string>
+	<key>update.error_release_format</key>
+	<string>El formato de la respuesta del release no es válido.</string>
+	<key>update.error_release_missing_zip</key>
+	<string>El release %@ no incluye un archivo .zip para macOS.</string>
+	<key>update.failed_subtitle</key>
+	<string>Hubo un problema al comprobar las actualizaciones.</string>
+	<key>update.failure_heading</key>
+	<string>No se pudo completar la comprobación o actualización:</string>
+	<key>update.installed</key>
+	<string>Instalada</string>
+	<key>update.installing</key>
+	<string>Instalando actualización…</string>
+	<key>update.installing_subtitle</key>
+	<string>Reemplazando archivos y preparando el reinicio.</string>
+	<key>update.installing_title</key>
+	<string>Instalando versión</string>
+	<key>update.latest_detail</key>
+	<string>Side B está al día con las últimas mejoras.</string>
+	<key>update.latest_installed</key>
+	<string>Tenés instalada la versión más reciente (%@).</string>
+	<key>update.new</key>
+	<string>Nueva</string>
+	<key>update.no_release_notes</key>
+	<string>Este release no incluye notas.</string>
+	<key>update.notice_title</key>
+	<string>Aviso de actualización</string>
+	<key>update.release_notes_heading</key>
+	<string>Novedades y correcciones (Fix Report):</string>
+	<key>update.remind_later</key>
+	<string>Recordar más tarde</string>
+	<key>update.restart_detail</key>
+	<string>Side B se reiniciará automáticamente en unos segundos.</string>
+	<key>update.searching</key>
+	<string>Buscando actualizaciones</string>
+	<key>update.skip_version</key>
+	<string>Omitir esta versión</string>
+	<key>update.skip_version_help</key>
+	<string>No volver a avisar automáticamente sobre la versión %@</string>
+	<key>update.understood</key>
+	<string>Entendido</string>
+	<key>update.up_to_date_subtitle</key>
+	<string>No hay nuevas actualizaciones en este momento.</string>
+	<key>update.up_to_date_title</key>
+	<string>Side B está al día</string>
+	<key>update.update_now</key>
+	<string>Actualizar ahora</string>
+</dict>
+</plist>

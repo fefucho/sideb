@@ -1,4 +1,5 @@
 import SwiftUI
+import Darwin
 import SideBCore
 
 @main
@@ -7,7 +8,7 @@ struct SideBApp: App {
     @State private var playerViewModel = PlayerViewModel()
     @State private var playbackSpaceShortcut = PlaybackSpaceShortcut()
     @State private var cookieStorage = CookieStorage()
-    @State private var initError: String?
+    @State private var initError: AppMessage?
     @State private var showLoginSheet = false
     @State private var accountViewModel = AccountViewModel()
     @State private var libraryViewModel = LibraryViewModel()
@@ -16,6 +17,20 @@ struct SideBApp: App {
     @State private var hasBootstrappedSession = false
 
     init() {
+        if HomeLabConfiguration.enabled && CommandLine.arguments.contains("--localization-diagnostics") {
+            let report: [String: Any] = [
+                "resourceURL": L10n.resourceURL.path,
+                "es": L10n.text("destination.home", language: .es),
+                "en": L10n.text("destination.home", language: .en),
+                "esPlurals": [0, 1, 2].map { L10n.songCount($0, language: .es) },
+                "enPlurals": [0, 1, 2].map { L10n.songCount($0, language: .en) }
+            ]
+            if let data = try? JSONSerialization.data(withJSONObject: report, options: [.sortedKeys]),
+               let json = String(data: data, encoding: .utf8) {
+                print("[Localization diagnostics] \(json)")
+            }
+            Darwin.exit(0)
+        }
         do {
             let appSupport = HomeLabConfiguration.appSupportURL
             try? FileManager.default.createDirectory(at: appSupport, withIntermediateDirectories: true)
@@ -24,7 +39,7 @@ struct SideBApp: App {
             _rustCore = State(initialValue: core)
             _playerViewModel = State(initialValue: PlayerViewModel(rustCore: core))
         } catch {
-            _initError = State(initialValue: "Error al iniciar Rust Core: \(error.localizedDescription)")
+            _initError = State(initialValue: AppMessage(key: "app.startDetails", args: [error.localizedDescription]))
         }
     }
 
@@ -32,11 +47,11 @@ struct SideBApp: App {
         WindowGroup {
             if let error = initError {
                 ContentUnavailableView {
-                    Label("Error al iniciar Side B", systemImage: "exclamationmark.triangle.fill")
+                    Label(L10n.text("app.startError"), systemImage: "exclamationmark.triangle.fill")
                 } description: {
-                    Text(error)
+                    Text(error.text)
                 } actions: {
-                    Button("Cerrar aplicación") {
+                    Button(L10n.text("app.close")) {
                         NSApplication.shared.terminate(nil)
                     }
                     .buttonStyle(.borderedProminent)
@@ -530,6 +545,9 @@ struct WindowRootView: View {
         .onChange(of: canPresentHomeSettings) { _, canPresent in
             if !canPresent { setHomeSettingsPresented(false) }
         }
+        .onChange(of: L10n.revision) { _, _ in
+            DispatchQueue.main.async { AppMenuBarOrganizer.normalize() }
+        }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             DispatchQueue.main.async { AppMenuBarOrganizer.normalize() }
         }
@@ -575,11 +593,11 @@ struct WindowRootView: View {
                 }
             }
         }
-        .alert("No se pudo añadir la canción", isPresented: Binding(
+        .alert(L10n.text("app.addSongError"), isPresented: Binding(
             get: { playlistCreationError != nil },
             set: { if !$0 { playlistCreationError = nil } }
         )) {
-            Button("Aceptar", role: .cancel) { playlistCreationError = nil }
+            Button(L10n.text("app.accept"), role: .cancel) { playlistCreationError = nil }
         } message: {
             Text(playlistCreationError ?? "")
         }

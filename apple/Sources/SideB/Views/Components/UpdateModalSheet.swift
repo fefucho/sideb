@@ -44,11 +44,11 @@ public struct UpdateModalSheet: View {
 
                 if case .available(let info) = updateService.state {
                     HStack(spacing: 8) {
-                        versionBadge(label: "Instalada", version: updateService.currentVersion, isCurrent: true)
+                        versionBadge(label: L10n.text("update.installed"), version: updateService.currentVersion, isCurrent: true)
                         Image(systemName: "arrow.right")
                             .font(.caption2.bold())
                             .foregroundStyle(.secondary)
-                        versionBadge(label: "Nueva", version: info.version, isCurrent: false)
+                        versionBadge(label: L10n.text("update.new"), version: info.version, isCurrent: false)
                     }
                     .padding(.top, 4)
                 }
@@ -86,7 +86,7 @@ public struct UpdateModalSheet: View {
             HStack(spacing: 14) {
                 ProgressView()
                     .controlSize(.regular)
-                Text("Comprobando nuevas versiones en GitHub…")
+                Text(L10n.text("update.checking"))
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
@@ -97,9 +97,9 @@ public struct UpdateModalSheet: View {
                 Image(systemName: "checkmark.circle.fill")
                     .font(.system(size: 38))
                     .foregroundStyle(.green)
-                Text("Tienes la versión más reciente instalada (\(updateService.currentVersion)).")
+                Text(L10n.text("update.latest_installed", args: [updateService.currentVersion]))
                     .font(.callout.weight(.medium))
-                Text("Side B está totalmente actualizado con las últimas mejoras.")
+                Text(L10n.text("update.latest_detail"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -110,12 +110,12 @@ public struct UpdateModalSheet: View {
                 HStack {
                     Image(systemName: "sparkles")
                         .foregroundStyle(.primary)
-                    Text("Novedades y correcciones (Fix Report):")
+                    Text(L10n.text("update.release_notes_heading"))
                         .font(.callout.bold())
                 }
 
                 ScrollView {
-                    Text(LocalizedStringKey(info.releaseNotes))
+                    Text(LocalizedStringKey(info.displayReleaseNotes))
                         .font(.callout)
                         .lineSpacing(4)
                         .textSelection(.enabled)
@@ -133,7 +133,7 @@ public struct UpdateModalSheet: View {
         case .downloading(let progress):
             VStack(alignment: .leading, spacing: 12) {
                 HStack {
-                    Text("Descargando actualización…")
+                    Text(L10n.text("update.downloading"))
                         .font(.callout.weight(.semibold))
                     Spacer()
                     Text("\(Int(progress * 100))%")
@@ -144,7 +144,7 @@ public struct UpdateModalSheet: View {
                 ProgressView(value: progress)
                     .tint(.white)
 
-                Text("Descargando paquete optimizado para Apple Silicon directamente de GitHub Releases.")
+                Text(L10n.text("update.downloading_detail"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -155,9 +155,9 @@ public struct UpdateModalSheet: View {
                 ProgressView()
                     .controlSize(.regular)
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Instalando actualización…")
+                    Text(L10n.text("update.installing"))
                         .font(.callout.weight(.semibold))
-                    Text("Side B se reiniciará automáticamente en unos segundos.")
+                    Text(L10n.text("update.restart_detail"))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -166,10 +166,10 @@ public struct UpdateModalSheet: View {
 
         case .failed(let message):
             VStack(alignment: .leading, spacing: 10) {
-                Text("No se pudo completar la comprobación o actualización:")
+                Text(L10n.text("update.failure_heading"))
                     .font(.callout.bold())
                     .foregroundStyle(.red)
-                Text(message)
+                Text(updateService.failureMessage?.text ?? message)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -184,14 +184,14 @@ public struct UpdateModalSheet: View {
             switch updateService.state {
             case .idle, .checking:
                 Spacer()
-                Button("Cancelar") {
+                Button(L10n.text("update.cancel")) {
                     updateService.isSheetPresented = false
                     dismiss()
                 }
 
             case .upToDate:
                 Spacer()
-                Button("Entendido") {
+                Button(L10n.text("update.understood")) {
                     updateService.isSheetPresented = false
                     dismiss()
                 }
@@ -199,31 +199,31 @@ public struct UpdateModalSheet: View {
 
             case .failed:
                 Spacer()
-                Button("Cerrar") {
+                Button(L10n.text("update.close")) {
                     updateService.isSheetPresented = false
                     dismiss()
                 }
                 .buttonStyle(.borderedProminent)
 
             case .available(let info):
-                Button("Omitir esta versión") {
+                Button(L10n.text("update.skip_version")) {
                     updateService.skipVersion(info.version)
                     dismiss()
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
                 .font(.callout)
-                .help("No volver a avisar automáticamente sobre la versión \(info.version)")
+                .help(L10n.text("update.skip_version_help", args: [info.version]))
 
                 Spacer()
 
-                Button("Recordar más tarde") {
+                Button(L10n.text("update.remind_later")) {
                     updateService.isSheetPresented = false
                     dismiss()
                 }
                 .keyboardShortcut(.cancelAction)
 
-                Button("Actualizar ahora") {
+                Button(L10n.text("update.update_now")) {
                     Task {
                         await updateService.downloadAndInstall(release: info)
                     }
@@ -234,7 +234,7 @@ public struct UpdateModalSheet: View {
 
             case .downloading:
                 Spacer()
-                Button("Cancelar descarga") {
+                Button(L10n.text("update.cancel_download")) {
                     updateService.isSheetPresented = false
                     dismiss()
                 }
@@ -283,34 +283,34 @@ public struct UpdateModalSheet: View {
     private var titleText: String {
         switch updateService.state {
         case .idle, .checking:
-            return "Buscando actualizaciones"
+            return L10n.text("update.searching")
         case .upToDate:
-            return "Side B está al día"
+            return L10n.text("update.up_to_date_title")
         case .available(let info):
-            return "Nueva versión disponible: Side B \(info.version)"
+            return L10n.text("update.available_title", args: [info.version])
         case .downloading:
-            return "Descargando actualización"
+            return L10n.text("update.downloading_title")
         case .installing:
-            return "Instalando versión"
+            return L10n.text("update.installing_title")
         case .failed:
-            return "Aviso de actualización"
+            return L10n.text("update.notice_title")
         }
     }
 
     private var subtitleText: String {
         switch updateService.state {
         case .available:
-            return "Una versión más reciente de Side B está lista para descargar e instalar."
+            return L10n.text("update.available_subtitle")
         case .upToDate:
-            return "No hay nuevas actualizaciones en este momento."
+            return L10n.text("update.up_to_date_subtitle")
         case .downloading:
-            return "El paquete se está descargando de forma segura."
+            return L10n.text("update.downloading_subtitle")
         case .installing:
-            return "Reemplazando archivos y preparando el reinicio."
+            return L10n.text("update.installing_subtitle")
         case .failed:
-            return "Hubo un inconveniente al comprobar las actualizaciones."
+            return L10n.text("update.failed_subtitle")
         default:
-            return "Versión actual instalada: \(updateService.currentVersion)"
+            return L10n.text("update.current_version_subtitle", args: [updateService.currentVersion])
         }
     }
 }

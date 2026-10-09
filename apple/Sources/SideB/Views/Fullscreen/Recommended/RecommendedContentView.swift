@@ -52,7 +52,7 @@ struct RecommendedContentView: View {
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(.primary)
             
-            Text("Recomendaciones")
+            Text(L10n.text("fullscreen.recommendations"))
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.92))
             
@@ -73,7 +73,7 @@ struct RecommendedContentView: View {
                         .font(.system(size: 11, weight: .semibold))
                         .rotationEffect(.degrees(isSpinningRefresh ? 360 : 0))
                     
-                    Text("Actualizar")
+                    Text(L10n.text("common.refresh"))
                         .font(.system(size: 11.5, weight: .medium))
                 }
                 .foregroundStyle(.white.opacity(0.80))
@@ -89,7 +89,7 @@ struct RecommendedContentView: View {
                 )
             }
             .buttonStyle(.plain)
-            .help("Obtener nuevas recomendaciones para esta pista")
+            .help(L10n.text("fullscreen.refreshRecommendations"))
         }
         .padding(.horizontal, 8)
         .padding(.top, 2)
@@ -126,7 +126,7 @@ struct RecommendedContentView: View {
     
     // MARK: - Estante 1: Más del Artista
     private func artistShelf(name: String?, browseId: String?, songs: [SongItemRecord]) -> some View {
-        let title = name.map { "Más de \($0)" } ?? "Más de este artista"
+        let title = name.map { L10n.text("fullscreen.moreByArtist", args: [$0]) } ?? L10n.text("fullscreen.moreByThisArtist")
         let columns = chunkSongs(songs, chunkSize: 3)
         
         return VStack(alignment: .leading, spacing: 10) {
@@ -143,7 +143,7 @@ struct RecommendedContentView: View {
                         navigateToArtist(browseId: bId)
                     } label: {
                         HStack(spacing: 3) {
-                            Text("Ver artista")
+                            Text(L10n.text("detail.viewArtist"))
                                 .font(.system(size: 11.5, weight: .medium))
                             Image(systemName: "chevron.right")
                                 .font(.system(size: 9.5, weight: .semibold))
@@ -160,7 +160,7 @@ struct RecommendedContentView: View {
     
     // MARK: - Estante 2: Del mismo Álbum
     private func albumShelf(title: String?, browseId: String?, songs: [SongItemRecord]) -> some View {
-        let displayTitle = title.map { "Del álbum: \($0)" } ?? "Del mismo álbum"
+        let displayTitle = title.map { L10n.text("fullscreen.fromAlbum", args: [$0]) } ?? L10n.text("fullscreen.fromSameAlbum")
         let columns = chunkSongs(songs, chunkSize: 3)
         
         return VStack(alignment: .leading, spacing: 10) {
@@ -177,7 +177,7 @@ struct RecommendedContentView: View {
                         navigateToAlbum(browseId: bId)
                     } label: {
                         HStack(spacing: 3) {
-                            Text("Ver álbum")
+                            Text(L10n.text("detail.viewAlbum"))
                                 .font(.system(size: 11.5, weight: .medium))
                             Image(systemName: "chevron.right")
                                 .font(.system(size: 9.5, weight: .semibold))
@@ -197,7 +197,7 @@ struct RecommendedContentView: View {
         let columns = chunkSongs(songs, chunkSize: 3)
         
         return VStack(alignment: .leading, spacing: 10) {
-            Text("Canciones parecidas")
+            Text(L10n.text("fullscreen.similarSongs"))
                 .font(.system(size: 14.5, weight: .bold))
                 .foregroundStyle(.white.opacity(0.95))
             
@@ -208,7 +208,7 @@ struct RecommendedContentView: View {
     // MARK: - Estante 4: A los fans también les gusta (Artistas)
     private func relatedArtistsShelf(artists: [BrowseCardRecord]) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("A los fans también les gusta")
+            Text(L10n.text("fullscreen.fansAlsoLike"))
                 .font(.system(size: 14.5, weight: .bold))
                 .foregroundStyle(.white.opacity(0.95))
             
@@ -304,11 +304,11 @@ struct RecommendedContentView: View {
                 .font(.system(size: 36))
                 .foregroundStyle(.white.opacity(0.25))
             
-            Text("No hay recomendaciones disponibles")
+            Text(L10n.text("fullscreen.noRecommendations"))
                 .font(.system(size: 14, weight: .medium))
                 .foregroundStyle(.white.opacity(0.60))
             
-            Button("Reintentar") {
+            Button(L10n.text("common.retry")) {
                 if let track = viewModel.currentTrack {
                     viewModel.fetchRecommendations(for: track, forceRefresh: true)
                 }
@@ -402,7 +402,7 @@ private struct RecommendedTrackRow: View {
                 )
         )
         .contentShape(Rectangle())
-        .mediaCardActivation(label: "Reproducir \(track.title)") { viewModel.activateMediaRadio(track) }
+        .mediaCardActivation(label: L10n.text("player.playNamedTrack", args: [track.title])) { viewModel.activateMediaRadio(track) }
         .mediaCardSurface()
         .onHover { isHovered = $0 }
         .songContextMenu(
@@ -524,6 +524,6 @@ private struct RecommendedArtistCard: View {
         }
         .buttonStyle(.plain)
         .onHover { isHovered = $0 }
-        .help("Ver artista: \(card.title)")
+        .help(L10n.text("detail.artist.viewNamed", args: [card.title]))
     }
 }

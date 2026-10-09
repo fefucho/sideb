@@ -3,6 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "SideB",
+    defaultLocalization: "es",
     platforms: [
         .macOS(.v15)
     ],
@@ -22,7 +23,8 @@ let package = Package(
             dependencies: [
                 "SideBCore"
             ],
-            path: "Sources/SideB"
+            path: "Sources/SideB",
+            resources: [.process("Resources")]
         ),
         .target(
             name: "SideBCore",

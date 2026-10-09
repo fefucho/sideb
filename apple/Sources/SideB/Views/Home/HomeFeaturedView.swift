@@ -98,6 +98,7 @@ struct HomeFeaturedView: View {
     private var collectionIDs: [String] { collections.map(Self.identity) }
 
     var body: some View {
+        let _ = L10n.revision
         // AnyLayout preserves the panels (and their artwork/tasks) across the
         // stacked/side-by-side breakpoint instead of replacing the view tree.
         let panelLayout = wide
@@ -135,7 +136,7 @@ struct HomeFeaturedView: View {
     @ViewBuilder private var songsPanel: some View {
         if !songs.isEmpty {
             VStack(spacing: 0) {
-                sectionHeader("Speed Dial")
+                sectionHeader(L10n.text("app.home.speedDial"))
                 ZStack(alignment: .topLeading) {
                     LazyVGrid(columns: Array(repeating: GridItem(.fixed(tileSize), spacing: 8), count: 3), spacing: 8) {
                         ForEach(currentSongPage.map(FeaturedItem.init), id: \.id) { item in
@@ -153,8 +154,8 @@ struct HomeFeaturedView: View {
                             }
                             .frame(width: tileSize, height: tileSize)
                             .help(isRadioOrigin
-                                ? "\(isPlaying ? "Pausar" : "Retomar") radio de \(record.title)"
-                                : "Iniciar radio de \(record.title)")
+                                ? L10n.text(isPlaying ? "home.radio.pause" : "home.radio.resume", args: [record.title])
+                                : L10n.text("home.radio.start", args: [record.title]))
                         }
                     }
                     .frame(width: 3 * tileSize + 16, alignment: .leading)
@@ -166,7 +167,7 @@ struct HomeFeaturedView: View {
                 .clipped()
                 .overlay { HomeFeaturedPageWheel(enabled: songPages.count > 1) { delta in move($songPage, by: delta, count: songPages.count) } }
                 .padding(.top, HomeFeaturedLayout.contentGap)
-                pageControls(page: $songPage, count: songPages.count, label: "Canciones")
+                pageControls(page: $songPage, count: songPages.count, label: L10n.text("search.filter.songs"))
                     .padding(.top, 8)
             }
             .padding(.bottom, 16)
@@ -236,8 +237,8 @@ struct HomeFeaturedView: View {
         .contentShape(RoundedRectangle(cornerRadius: 5))
     }
 
-    private var collectionName: String { collectionKind == .albums ? "álbum" : "playlist" }
-    private var collectionBadge: String { collectionKind == .albums ? "ÁLBUM" : "PLAYLIST" }
+    private var collectionName: String { collectionKind == .albums ? L10n.text("metadata.album").lowercased() : L10n.text("metadata.playlist").lowercased() }
+    private var collectionBadge: String { collectionKind == .albums ? L10n.text("metadata.album").uppercased() : L10n.text("metadata.playlist.short").uppercased() }
 
     private struct CollectionMetadata {
         let title: String
@@ -288,7 +289,7 @@ struct HomeFeaturedView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .buttonStyle(.plain).mediaCardFocusControl()
-                .accessibilityLabel("Abrir \(collectionName) \(metadata.title)")
+                .accessibilityLabel(L10n.text("home.collection.open", args: [collectionName, metadata.title]))
                 if let artist = metadata.credit {
                     Group {
                         if let artistID = metadata.creditID {
@@ -316,7 +317,7 @@ struct HomeFeaturedView: View {
         }
         .frame(width: width, height: height, alignment: .topLeading)
         .contentShape(Rectangle())
-        .mediaCardActivation(label: "Abrir \(metadata.title)") { onCollection(record) }
+        .mediaCardActivation(label: L10n.text("search.open_card", args: [metadata.title])) { onCollection(record) }
         .mediaCardSurface()
     }
 
@@ -344,7 +345,7 @@ struct HomeFeaturedView: View {
                 Image(systemName: "chevron.left").font(.system(size: 10, weight: .semibold)).frame(width: 20, height: 24)
             }
             .disabled(count < 2 || page.wrappedValue == 0)
-            .accessibilityLabel("Página anterior de \(label)")
+            .accessibilityLabel(L10n.text("home.page.previous", args: [label]))
             HStack(spacing: 5) {
                 ForEach(0..<count, id: \.self) { index in
                     Button { changePage(page, to: index) } label: {
@@ -352,7 +353,7 @@ struct HomeFeaturedView: View {
                             .frame(width: 7, height: 7).frame(width: 14, height: 24)
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel("\(label), página \(index + 1) de \(count)")
+                .accessibilityLabel(L10n.text("home.page.position", args: [label, String(index + 1), String(count)]))
                     .accessibilityAddTraits(index == page.wrappedValue ? .isSelected : [])
                 }
             }
@@ -360,7 +361,7 @@ struct HomeFeaturedView: View {
                 Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold)).frame(width: 20, height: 24)
             }
             .disabled(count < 2 || page.wrappedValue >= count - 1)
-            .accessibilityLabel("Página siguiente de \(label)")
+            .accessibilityLabel(L10n.text("home.page.next", args: [label]))
         }
         .buttonStyle(.plain)
         .foregroundStyle(.secondary)

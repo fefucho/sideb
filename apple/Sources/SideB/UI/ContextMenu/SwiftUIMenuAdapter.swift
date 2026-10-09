@@ -14,7 +14,7 @@ struct MenuItemRowView: View {
             if let subitems = item.subitems {
                 Menu {
                     if subitems.isEmpty {
-                        Label("Sin opciones disponibles", systemImage: "tray")
+                        Label(L10n.text("menu.no_options"), systemImage: "tray")
                     } else {
                         ForEach(subitems) { sub in
                             let subActionId = sub.id
@@ -180,6 +180,6 @@ struct SideBEllipsisMenuButton: View {
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
-        .accessibilityLabel("Más opciones")
+        .accessibilityLabel(L10n.text("menu.more_options"))
     }
 }

@@ -15,6 +15,13 @@ struct GeniusPanelView: View {
         case lyrics = "Letras"
         case story = "Información"
         case annotations = "Anotaciones"
+        var title: String {
+            switch self {
+            case .lyrics: L10n.text("fullscreen.lyrics")
+            case .story: L10n.text("fullscreen.information")
+            case .annotations: L10n.text("genius.annotations")
+            }
+        }
     }
 
     var body: some View {
@@ -51,40 +58,40 @@ struct GeniusPanelView: View {
     private var optionsMenu: some View {
         Menu {
             if model.resolution?.song != nil {
-                Button("Letras", systemImage: section == .lyrics ? "checkmark" : "text.alignleft") {
+                Button(L10n.text("fullscreen.lyrics"), systemImage: section == .lyrics ? "checkmark" : "text.alignleft") {
                     showingCandidates = false
                     section = .lyrics
                 }
-                Button("Información", systemImage: section == .story ? "checkmark" : "info.circle") {
+                Button(L10n.text("fullscreen.information"), systemImage: section == .story ? "checkmark" : "info.circle") {
                     showingCandidates = false
                     section = .story
                 }
-                Button("Anotaciones", systemImage: section == .annotations ? "checkmark" : "text.bubble") {
+                Button(L10n.text("genius.annotations"), systemImage: section == .annotations ? "checkmark" : "text.bubble") {
                     showingCandidates = false
                     section = .annotations
                 }
                 Divider()
-                Button("Cambiar coincidencia…", systemImage: "magnifyingglass") {
+                Button(L10n.text("genius.changeMatch"), systemImage: "magnifyingglass") {
                     showingCandidates = true
                     if manualQuery.isEmpty, let song = model.resolution?.song {
                         manualQuery = "\(song.title) \(song.artist)"
                     }
                 }
                 if let urlText = model.resolution?.song?.url, let url = URL(string: urlText) {
-                    Link("Ver en Genius", destination: url)
+                    Link(L10n.text("genius.viewOnGenius"), destination: url)
                 }
             }
-            Button("Actualizar datos", systemImage: "arrow.clockwise") { model.refresh() }
+            Button(L10n.text("genius.refreshData"), systemImage: "arrow.clockwise") { model.refresh() }
             Divider()
-            Toggle("Buscar automáticamente al reproducir", isOn: automaticFetchBinding)
-            Toggle("Mostrar controles de diagnóstico", isOn: $showsDebugControls)
+            Toggle(L10n.text("genius.automaticSearch"), isOn: automaticFetchBinding)
+            Toggle(L10n.text("genius.showDiagnostics"), isOn: $showsDebugControls)
         } label: {
             SideBEllipsisLabel()
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
-        .help("Opciones de Genius")
-        .accessibilityLabel("Opciones de Genius")
+        .help(L10n.text("genius.options"))
+        .accessibilityLabel(L10n.text("genius.options"))
     }
 
     private var automaticFetchBinding: Binding<Bool> {
@@ -97,19 +104,19 @@ struct GeniusPanelView: View {
     private var debugControls: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text("Diagnóstico de Genius")
+                Text(L10n.text("genius.diagnostics"))
                     .font(.caption.weight(.semibold))
                 Spacer()
                 Text(String(describing: model.phase))
                     .font(.caption.monospaced())
                     .foregroundStyle(.secondary)
             }
-            Toggle("Buscar automáticamente al reproducir", isOn: automaticFetchBinding)
+            Toggle(L10n.text("genius.automaticSearch"), isOn: automaticFetchBinding)
                 .font(.caption)
                 .toggleStyle(.checkbox)
-            Picker("Información de Genius", selection: $section) {
+            Picker(L10n.text("genius.informationPicker"), selection: $section) {
                 ForEach(Section.allCases, id: \.self) { item in
-                    Text(item.rawValue).tag(item)
+                    Text(item.title).tag(item)
                 }
             }
             .pickerStyle(.segmented)
@@ -125,21 +132,21 @@ struct GeniusPanelView: View {
                 VStack(alignment: .leading, spacing: 5) {
                     switch model.phase {
                     case .loading:
-                        Text("Buscando en Genius").font(.headline)
+                        Text(L10n.text("genius.searching")).font(.headline)
                     case .ambiguous:
-                        Text("Varias versiones posibles").font(.headline)
-                        Text("Elegí la que corresponde a esta pista.")
+                        Text(L10n.text("genius.multipleMatches")).font(.headline)
+                        Text(L10n.text("genius.chooseMatchingTrack"))
                             .font(.subheadline).foregroundStyle(.secondary)
                     case .notFound:
-                        Text("Sin coincidencia segura").font(.headline)
-                        Text("Probá otra búsqueda o guardá la pista para revisarla después.")
+                        Text(L10n.text("genius.noConfidentMatch")).font(.headline)
+                        Text(L10n.text("genius.noMatchGuidance"))
                             .font(.subheadline).foregroundStyle(.secondary)
                     case .error:
-                        Text("Genius no está disponible").font(.headline)
-                        Text("Podés intentar de nuevo más tarde.")
+                        Text(L10n.text("genius.unavailable")).font(.headline)
+                        Text(L10n.text("genius.tryAgainLater"))
                             .font(.subheadline).foregroundStyle(.secondary)
                     default:
-                        Text("Buscar otra versión").font(.headline)
+                        Text(L10n.text("genius.searchAnotherVersion")).font(.headline)
                     }
                 }
                 Spacer(minLength: 0)
@@ -147,19 +154,19 @@ struct GeniusPanelView: View {
             }
 
             if showingCandidates, model.resolution?.song != nil {
-                Button("Volver a las letras") { showingCandidates = false }
+                Button(L10n.text("genius.backToLyrics")) { showingCandidates = false }
                     .buttonStyle(.plain)
                     .font(.caption)
             }
 
             if model.phase == .loading {
-                ProgressView("Buscando información en Genius...")
+                ProgressView(L10n.text("genius.searchingInformation"))
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 HStack(spacing: 10) {
-                    TextField("Título y artista", text: $manualQuery)
+                    TextField(L10n.text("genius.titleAndArtist"), text: $manualQuery)
                         .onSubmit { model.search(manualQuery) }
-                    Button("Buscar") { model.search(manualQuery) }
+                    Button(L10n.text("common.search")) { model.search(manualQuery) }
                         .disabled(manualQuery.trimmingCharacters(in: .whitespaces).count < 2 || model.isSearching)
                 }
                 if model.isSearching { ProgressView().controlSize(.small) }
@@ -169,7 +176,7 @@ struct GeniusPanelView: View {
                         model.reportCurrentMiss()
                     } label: {
                         Label(
-                            model.missReportSaved ? "Guardada para revisar" : "Guardar esta pista para revisar",
+                            L10n.text(model.missReportSaved ? "genius.savedForReview" : "genius.saveTrackForReview"),
                             systemImage: model.missReportSaved ? "checkmark.circle.fill" : "tray.and.arrow.down"
                         )
                     }
@@ -197,7 +204,7 @@ struct GeniusPanelView: View {
                                 .padding(.vertical, 5)
                             }
                             .buttonStyle(.plain)
-                            .accessibilityHint("Usar esta canción de Genius para la pista actual")
+                            .accessibilityHint(L10n.text("genius.useTrackHint"))
                         }
                     }
                 }
@@ -209,10 +216,10 @@ struct GeniusPanelView: View {
     private var lyricContent: some View {
         Group {
             if model.isLoadingLyrics && model.lyrics.isEmpty {
-                ProgressView("Cargando letras de Genius...")
+                ProgressView(L10n.text("genius.loadingLyrics"))
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if !model.isLoadingLyrics && model.lyrics.isEmpty {
-                Text("No hay letras de Genius disponibles para esta canción.")
+                Text(L10n.text("genius.noLyricsAvailable"))
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
@@ -256,11 +263,11 @@ struct GeniusPanelView: View {
                 if let description = song.description, !description.isEmpty {
                     Text(description).textSelection(.enabled)
                 } else {
-                    Text("Genius no tiene descripción para esta canción.")
+                    Text(L10n.text("genius.noSongDescription"))
                         .foregroundStyle(.secondary)
                 }
-                if !song.producers.isEmpty { creditRow("Producción", names: song.producers) }
-                if !song.writers.isEmpty { creditRow("Composición", names: song.writers) }
+                if !song.producers.isEmpty { creditRow(L10n.text("genius.production"), names: song.producers) }
+                if !song.writers.isEmpty { creditRow(L10n.text("genius.composition"), names: song.writers) }
                 ForEach(Array(song.performances.enumerated()), id: \.offset) { _, performance in
                     creditRow(performance.label, names: performance.artists)
                 }
@@ -280,7 +287,7 @@ struct GeniusPanelView: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 10) {
                 if model.isLoadingAnnotations && model.annotations.isEmpty {
-                    ProgressView("Cargando anotaciones...")
+                    ProgressView(L10n.text("genius.loadingAnnotations"))
                 }
                 ForEach(model.annotations, id: \.id) { annotation in
                     Button {
@@ -303,7 +310,7 @@ struct GeniusPanelView: View {
                     }
                 }
                 if model.nextAnnotationPage != nil {
-                    Button("Cargar más anotaciones") { model.loadMoreAnnotations() }
+                    Button(L10n.text("genius.loadMoreAnnotations")) { model.loadMoreAnnotations() }
                         .disabled(model.isLoadingAnnotations)
                 }
             }
@@ -315,15 +322,15 @@ struct GeniusPanelView: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .center) {
                 if annotation.verified {
-                    Label("Anotación verificada", systemImage: "checkmark.seal.fill")
+                    Label(L10n.text("genius.verifiedAnnotation"), systemImage: "checkmark.seal.fill")
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(.primary)
                 } else if let author = annotation.author, !author.isEmpty {
-                    Label("Por \(author)", systemImage: "note.text")
+                    Label(L10n.text("genius.annotationBy", args: [author]), systemImage: "note.text")
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(.secondary)
                 } else {
-                    Label("Anotación", systemImage: "note.text")
+                    Label(L10n.text("genius.annotation"), systemImage: "note.text")
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(.secondary)
                 }
@@ -337,7 +344,7 @@ struct GeniusPanelView: View {
                         .frame(width: 24, height: 24)
                 }
                 .buttonStyle(.plain)
-                .help("Cerrar anotación")
+                .help(L10n.text("genius.closeAnnotation"))
             }
             .padding(.bottom, 14)
             ScrollView {
@@ -361,7 +368,7 @@ struct GeniusPanelView: View {
                         }
                     }
                     if let urlText = annotation.shareUrl, let url = URL(string: urlText) {
-                        Link("Abrir anotación en Genius", destination: url)
+                        Link(L10n.text("genius.openAnnotationOnGenius"), destination: url)
                             .font(.caption)
                     }
                 }

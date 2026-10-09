@@ -16,7 +16,7 @@ final class WindowNavigationToolbarTests: XCTestCase {
 
         XCTAssertFalse(bar.settings.isHidden)
         XCTAssertTrue(bar.settings.isEnabled)
-        XCTAssertEqual(bar.settings.accessibilityLabel(), "Configuración de Inicio")
+        XCTAssertEqual(bar.settings.accessibilityLabel(), L10n.text("navigation.home_settings"))
         XCTAssertEqual(bar.settings.accessibilityValue() as? String, "Cerrada")
         bar.settings.sendAction(action, to: bar.settings.target)
         XCTAssertEqual(events, ["initial"])

@@ -308,15 +308,15 @@ struct WindowNavigationGestureBridge: NSViewRepresentable {
 extension PageDestination {
     @MainActor var gestureTitle: String {
         switch self {
-        case .home: return "Inicio"
-        case .explore(let route): return route == .discover ? "Explorar" : route.title
-        case .search(let query): return query.flatMap { $0.isEmpty ? nil : "Buscar: \($0)" } ?? "Buscar"
-        case .album: return "Álbum"
-        case .artist: return "Artista"
+        case .home: return L10n.text("destination.home")
+        case .explore(let route): return route == .discover ? L10n.text("destination.explore") : route.title
+        case .search(let query): return query.flatMap { $0.isEmpty ? nil : L10n.text("destination.searchQuery", args: [$0]) } ?? L10n.text("destination.search")
+        case .album: return L10n.text("destination.album")
+        case .artist: return L10n.text("destination.artist")
         case .catalog(_, _, let title): return title
-        case .playlist(let id): return PlaylistCatalog.shared.cached(id: id)?.title ?? "Playlist"
-        case .library: return "Biblioteca"
-        case .history: return "Historial"
+        case .playlist(let id): return PlaylistCatalog.shared.cached(id: id)?.title ?? L10n.text("destination.playlist")
+        case .library: return L10n.text("destination.library")
+        case .history: return L10n.text("destination.history")
         }
     }
 }

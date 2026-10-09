@@ -12,14 +12,15 @@ struct LibraryView: View {
     private let columns = [GridItem(.adaptive(minimum: 160, maximum: 220), spacing: 18)]
 
     var body: some View {
+        let _ = L10n.revision
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .bottom) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("COLECCIÓN")
+                    Text(L10n.text("library.eyebrow").uppercased())
                         .font(.system(size: 11, weight: .bold))
                         .foregroundStyle(.secondary)
                         .tracking(1.2)
-                    Text("Biblioteca")
+                    Text(L10n.text("library.title"))
                         .font(.system(size: 32, weight: .bold))
                 }
                 Spacer()
@@ -27,10 +28,10 @@ struct LibraryView: View {
                     Button {
                         NotificationCenter.default.post(name: .sideBRequestCreatePlaylist, object: nil)
                     } label: {
-                        Label("Nueva playlist", systemImage: "plus")
+                        Label(L10n.text("library.new_playlist"), systemImage: "plus")
                     }
                     .buttonStyle(.bordered)
-                    .help("Crear una playlist")
+                    .help(L10n.text("library.create_playlist"))
                 }
             }
             .padding(.horizontal, 32)
@@ -43,7 +44,7 @@ struct LibraryView: View {
                     Button {
                         libraryViewModel.selectedPageTab = tab
                     } label: {
-                        Text(tab.rawValue)
+                        Text(tab.displayTitle)
                             .font(.system(size: 13, weight: .semibold))
                             .padding(.horizontal, 15)
                             .padding(.vertical, 8)
@@ -63,8 +64,8 @@ struct LibraryView: View {
                     Image(systemName: "arrow.clockwise")
                 }
                 .buttonStyle(.plain)
-                .help("Actualizar biblioteca")
-                .accessibilityLabel("Actualizar biblioteca")
+                .help(L10n.text("library.refresh"))
+                .accessibilityLabel(L10n.text("library.refresh"))
             }
             .padding(.horizontal, 32)
             .padding(.bottom, 14)
@@ -73,13 +74,13 @@ struct LibraryView: View {
 
             Group {
                 if !accountViewModel.isLoggedIn {
-                    emptyState("Iniciá sesión para ver tu biblioteca", icon: "person.crop.circle")
+                    emptyState(L10n.text("library.login_required"), icon: "person.crop.circle")
                 } else {
                     switch libraryViewModel.selectedPageTab {
                     case .songs: songsContent
-                    case .playlists: cardsContent(libraryViewModel.playlists, icon: "music.note.list", title: "No tenés playlists")
-                    case .albums: cardsContent(libraryViewModel.albums, icon: "opticaldisc", title: "No tenés álbumes guardados")
-                    case .artists: cardsContent(libraryViewModel.artists, icon: "person.crop.circle", title: "No tenés artistas en tu biblioteca")
+                    case .playlists: cardsContent(libraryViewModel.playlists, icon: "music.note.list", title: L10n.text("library.empty.playlists"))
+                    case .albums: cardsContent(libraryViewModel.albums, icon: "opticaldisc", title: L10n.text("library.empty.albums"))
+                    case .artists: cardsContent(libraryViewModel.artists, icon: "person.crop.circle", title: L10n.text("library.empty.artists"))
                     }
                 }
             }
@@ -122,11 +123,11 @@ struct LibraryView: View {
         if libraryViewModel.isSongsLoading && libraryViewModel.songs.isEmpty {
             ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if let error = libraryViewModel.songsErrorMessage, libraryViewModel.songs.isEmpty {
-            DetailErrorStateView(title: "No se pudieron cargar las canciones", message: error) {
+            DetailErrorStateView(title: L10n.text("library.error.load_songs"), message: error) {
                 Task { await libraryViewModel.loadSongs(core: rustCore) }
             }
         } else if libraryViewModel.songs.isEmpty {
-            emptyState("No hay canciones en tu biblioteca", icon: "music.note")
+            emptyState(L10n.text("library.empty.songs"), icon: "music.note")
         } else {
             VStack(spacing: 0) {
                 NativeTrackTableView(
@@ -140,7 +141,7 @@ struct LibraryView: View {
                     menuOrigin: { _ in .library },
                     onPlayTrack: { index in
                         playerViewModel.playPlaylist(
-                            browseId: "FEmusic_liked_videos", title: "Biblioteca",
+                            browseId: "FEmusic_liked_videos", title: L10n.text("library.title"),
                             tracks: libraryViewModel.songs, startingAt: index,
                             continuation: libraryViewModel.songsContinuation
                         )
@@ -153,11 +154,11 @@ struct LibraryView: View {
                 )
                 if let error = libraryViewModel.songsErrorMessage {
                     HStack(spacing: 10) {
-                        Text("No se pudo actualizar Canciones: \(error)")
+                        Text(L10n.text("library.error.update_songs", args: [error]))
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .lineLimit(2)
-                        Button("Reintentar") {
+                        Button(L10n.text("library.retry")) {
                             Task { await libraryViewModel.loadSongs(core: rustCore) }
                         }
                         .buttonStyle(.plain)
@@ -173,7 +174,7 @@ struct LibraryView: View {
                     HStack(spacing: 8) {
                         ProgressView()
                             .controlSize(.small)
-                        Text("Cargando más canciones...")
+                        Text(L10n.text("library.loading_more_songs"))
                             .font(.system(size: 11, weight: .medium))
                             .foregroundStyle(.secondary)
                     }
@@ -194,7 +195,7 @@ struct LibraryView: View {
         } else if libraryViewModel.selectedPageTab == .artists && libraryViewModel.isArtistsLoading && cards.isEmpty {
             ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if let error = cardError, cards.isEmpty {
-            DetailErrorStateView(title: "No se pudo cargar la biblioteca", message: error) {
+            DetailErrorStateView(title: L10n.text("library.error.load"), message: error) {
                 Task { await reloadSelectedTab() }
             }
         } else if cards.isEmpty {
@@ -238,7 +239,7 @@ struct LibraryView: View {
                     isPlaying: playerViewModel.isPlaying,
                     isLoading: (kind == "album" ? playerViewModel.loadingRecommendedAlbumID : playerViewModel.loadingRecommendedPlaylistID)
                         .map(MenuIDNormalizer.normalize) == MenuIDNormalizer.normalize(card.id),
-                    showsIndicator: true, accessibilityTitle: card.title,
+                    showsIndicator: true, accessibilityTitle: card.displayTitle,
                     onOpen: { openLibraryCard(card) },
                     onPlay: { playerViewModel.activateMediaCollection(id: card.id, kind: kind) },
                     menuProvider: { libraryCardMenu(card, kind: kind) }
@@ -247,7 +248,7 @@ struct LibraryView: View {
                 }.aspectRatio(1, contentMode: .fit)
             }
             Button { openLibraryCard(card) } label: {
-                Text(card.title).font(.system(size: 13, weight: .semibold))
+                Text(card.displayTitle).font(.system(size: 13, weight: .semibold))
                     .lineLimit(2).frame(maxWidth: .infinity, alignment: .leading)
             }.buttonStyle(.plain).mediaCardFocusControl()
             if let subtitle = card.subtitle {
@@ -257,7 +258,7 @@ struct LibraryView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
-        .mediaCardActivation(label: "Abrir \(card.title)") { openLibraryCard(card) }
+        .mediaCardActivation(label: L10n.text("library.open_card", args: [card.displayTitle])) { openLibraryCard(card) }
         .mediaCardSurface()
         .browseCardContextMenu(card: card, player: playerViewModel, router: router, core: rustCore, origin: .library)
     }

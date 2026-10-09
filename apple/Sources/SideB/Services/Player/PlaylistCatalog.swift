@@ -191,22 +191,24 @@ final class PlaylistCatalog {
     }
 }
 
-private enum PlaylistCatalogError: LocalizedError {
+enum PlaylistCatalogError: LocalizedError {
     case repeatedContinuation(String)
     case pageLimit(Int)
     case fetchFailed(String)
     case invalidated
 
-    var errorDescription: String? {
+    var appMessage: AppMessage {
         switch self {
         case .repeatedContinuation:
-            return "La playlist devolvió una continuación repetida."
+            return AppMessage(key: "queue.error.repeatedContinuation")
         case .pageLimit(let limit):
-            return "La playlist superó el máximo de \(limit) páginas."
+            return AppMessage(key: "queue.error.pageLimit", args: [String(limit)])
         case .fetchFailed(let message):
-            return "No se pudo completar la playlist: \(message)"
+            return AppMessage(key: "queue.error.fetchFailed", args: [message])
         case .invalidated:
-            return "La carga de la playlist quedó obsoleta y fue descartada."
+            return AppMessage(key: "queue.error.invalidated")
         }
     }
+
+    var errorDescription: String? { appMessage.text }
 }

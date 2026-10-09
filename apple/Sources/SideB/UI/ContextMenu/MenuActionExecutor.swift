@@ -189,7 +189,7 @@ final class MenuActionExecutor {
                         shuffle: true
                     )
                 } catch {
-                    Self.showErrorAlert(title: "No se pudo reproducir la playlist en aleatorio", detail: error.localizedDescription)
+                    Self.showErrorAlert(title: L10n.text("menu.error_shuffle_playlist"), detail: error.localizedDescription)
                 }
             }
         case .radioMix, .artist:
@@ -244,7 +244,7 @@ final class MenuActionExecutor {
                     guard !Task.isCancelled, player.queueManager.queueToken == queueToken else { return }
                     player.playNext(tracks: playlist.items)
                 } catch {
-                    Self.showErrorAlert(title: "No se pudo añadir la playlist a continuación", detail: error.localizedDescription)
+                    Self.showErrorAlert(title: L10n.text("menu.error_play_next_playlist"), detail: error.localizedDescription)
                 }
             }
         case .radioMix, .artist:
@@ -274,7 +274,7 @@ final class MenuActionExecutor {
                     guard !Task.isCancelled, player.queueManager.queueToken == queueToken else { return }
                     player.addToQueue(tracks: playlist.items)
                 } catch {
-                    Self.showErrorAlert(title: "No se pudo añadir la playlist a la cola", detail: error.localizedDescription)
+                    Self.showErrorAlert(title: L10n.text("menu.error_queue_playlist"), detail: error.localizedDescription)
                 }
             }
         case .radioMix, .artist:
@@ -300,7 +300,7 @@ final class MenuActionExecutor {
                     NotificationCenter.default.post(name: .sideBSongLibraryChanged, object: nil)
                 } catch {
                     Self.showErrorAlert(
-                        title: "Error al actualizar la biblioteca",
+                        title: L10n.text("menu.error_update_library"),
                         detail: error.localizedDescription
                     )
                 }
@@ -335,7 +335,7 @@ final class MenuActionExecutor {
                         userInfo: ["browseId": browseId, "inLibrary": inLibrary, "card": card]
                     )
                     Self.showErrorAlert(
-                        title: "No se pudo actualizar el álbum en la biblioteca",
+                        title: L10n.text("menu.error_update_album_library"),
                         detail: error.localizedDescription
                     )
                 }
@@ -368,7 +368,7 @@ final class MenuActionExecutor {
                         userInfo: ["playlistId": canonicalId, "inLibrary": inLibrary, "card": card]
                     )
                     Self.showErrorAlert(
-                        title: "No se pudo actualizar la lista en la biblioteca",
+                        title: L10n.text("menu.error_update_playlist_library"),
                         detail: error.localizedDescription
                     )
                 }
@@ -389,7 +389,7 @@ final class MenuActionExecutor {
                 NotificationCenter.default.post(name: .sideBPlaylistsChanged, object: nil)
             } catch {
                 Self.showErrorAlert(
-                    title: "No se pudo añadir la canción",
+                    title: L10n.text("menu.error_add_song"),
                     detail: error.localizedDescription
                 )
             }
@@ -403,7 +403,7 @@ final class MenuActionExecutor {
                 try await core.subscribeArtist(channelId: channelId, subscribe: !subscribed)
             } catch {
                 Self.showErrorAlert(
-                    title: "No se pudo actualizar la suscripción",
+                    title: L10n.text("menu.error_update_subscription"),
                     detail: error.localizedDescription
                 )
             }
@@ -459,11 +459,11 @@ final class MenuActionExecutor {
         }
 
         let alert = NSAlert()
-        alert.messageText = "¿Eliminar playlist?"
-        alert.informativeText = "¿Seguro que deseas eliminar «\(title)» de YouTube Music? Esta acción no se puede deshacer."
+        alert.messageText = L10n.text("menu.delete_playlist_question")
+        alert.informativeText = L10n.text("menu.confirm_delete_playlist", args: [title])
         alert.alertStyle = .critical
-        alert.addButton(withTitle: "Eliminar")
-        alert.addButton(withTitle: "Cancelar")
+        alert.addButton(withTitle: L10n.text("menu.delete"))
+        alert.addButton(withTitle: L10n.text("menu.cancel"))
 
         let response = alert.runModal()
         guard response == .alertFirstButtonReturn else { return }
@@ -477,7 +477,7 @@ final class MenuActionExecutor {
                     router?.goBack()
                 } catch {
                     Self.showErrorAlert(
-                        title: "No se pudo eliminar la playlist",
+                        title: L10n.text("menu.error_delete_playlist"),
                         detail: error.localizedDescription
                     )
                 }
@@ -492,7 +492,7 @@ final class MenuActionExecutor {
         alert.messageText = title
         alert.informativeText = detail
         alert.alertStyle = .warning
-        alert.addButton(withTitle: "Aceptar")
+        alert.addButton(withTitle: L10n.text("menu.accept"))
         alert.runModal()
     }
 }

@@ -8,8 +8,8 @@ enum HomeFeaturedCollectionKind: String, CaseIterable, Codable, Sendable {
 
     var title: String {
         switch self {
-        case .albums: return "Álbumes"
-        case .playlists: return "Playlists"
+        case .albums: return L10n.text("home.collection.albums")
+        case .playlists: return L10n.text("home.collection.playlists")
         }
     }
 

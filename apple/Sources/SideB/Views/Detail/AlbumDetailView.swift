@@ -69,7 +69,7 @@ struct AlbumDetailView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if let error = viewModel.errorMessage {
                     DetailErrorStateView(
-                        title: "No se pudo cargar el álbum",
+                        title: L10n.text("detail.album.loadFailed"),
                         message: error,
                         onRetry: {
                             Task {
@@ -94,7 +94,7 @@ struct AlbumDetailView: View {
             if showDescriptionModal, let album = viewModel.album, let desc = album.description, !desc.isEmpty {
                 DescriptionCardModal(
                     title: album.title,
-                    subtitle: "Descripción del álbum",
+                    subtitle: L10n.text("detail.album.description"),
                     description: desc,
                     isPresented: $showDescriptionModal
                 )
@@ -138,7 +138,7 @@ struct AlbumDetailView: View {
 
     private func headerView(album: AlbumDetailRecord) -> some View {
         CollectionDetailHeaderView(
-            kind: "ÁLBUM",
+            kind: L10n.text("detail.kind.album"),
             title: album.title,
             thumbnail: album.thumbnail,
             artworkSymbol: "opticaldisc",
@@ -201,7 +201,7 @@ struct AlbumDetailView: View {
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
-        .accessibilityLabel("Más opciones")
+        .accessibilityLabel(L10n.text("common.moreOptions"))
         .font(.system(size: 15.6))
     }
 }

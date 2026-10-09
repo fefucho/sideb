@@ -14,9 +14,19 @@ final class ExploreViewModel {
     private(set) var chartSections: [ChartSection] = []
     private(set) var chartCountries: [ChartCountryRecord] = []
     private(set) var detectedCountry: String?
-    private(set) var regionMessage: String?
+    private var unavailableRegionCode: String?
+    private var regionDetectionFailed = false
+    var regionMessage: String? {
+        if regionDetectionFailed { return L10n.text("explore.region.detect_failed") }
+        guard let unavailableRegionCode else { return nil }
+        return L10n.text("explore.region.unsupported", args: [ExploreChartRegion.name(unavailableRegionCode)])
+    }
     private(set) var isLoading = false
-    private(set) var errorMessage: String?
+    private var errorDescriptor: AppMessage?
+    var errorMessage: String? {
+        get { errorDescriptor?.text }
+        set { errorDescriptor = newValue.map(AppMessage.init(verbatim:)) }
+    }
     @ObservationIgnored private var generation: UInt64 = 0
     @ObservationIgnored private var snapshots: [ExploreSource: [BrowseCardRecord]] = [:]
     @ObservationIgnored private var order: [ExploreSource] = []
@@ -39,7 +49,8 @@ final class ExploreViewModel {
         chartOrder.removeAll()
         detectedCountry = nil
         detectionDate = nil
-        regionMessage = nil
+        unavailableRegionCode = nil
+        regionDetectionFailed = false
         activeRoute = nil
         isLoading = false
         errorMessage = nil
@@ -93,7 +104,7 @@ final class ExploreViewModel {
                 finishCancelled(request)
                 return
             }
-            errorMessage = "No se pudo cargar la música. Revisá la conexión y volvé a intentar."
+            errorDescriptor = AppMessage(key: "explore.error.load_music")
         }
         isLoading = false
     }
@@ -110,7 +121,8 @@ final class ExploreViewModel {
     private func loadCharts(country: String?, core: SideBCore, request: UInt64, force: Bool) async {
         cards = []
         isLoading = true
-        regionMessage = nil
+        unavailableRegionCode = nil
+        regionDetectionFailed = false
         if country == nil, force || detectionDate.map({ Date().timeIntervalSince($0) > 600 }) ?? true {
             let detected = try? await core.detectMusicCountry()
             guard request == generation, !Task.isCancelled else { finishCancelled(request); return }
@@ -129,13 +141,13 @@ final class ExploreViewModel {
                     guard request == generation, !Task.isCancelled else { finishCancelled(request); return }
                     chartSections.append(.init(code: detectedCountry, cards: uniqueCards(local.items)))
                 } else {
-                    regionMessage = detectedCountry.map { "YouTube no ofrece rankings de \(ExploreChartRegion.name($0)). Podés elegir otro país." }
-                        ?? "No se pudo detectar tu región. Podés elegir un país en el selector."
+                    if let detectedCountry { unavailableRegionCode = detectedCountry }
+                    else { regionDetectionFailed = true }
                 }
             }
         } catch {
             guard request == generation, !Task.isCancelled else { finishCancelled(request); return }
-            errorMessage = "No se pudieron cargar todos los rankings. Volvé a intentar."
+            errorDescriptor = AppMessage(key: "explore.error.load_charts")
         }
         isLoading = false
     }

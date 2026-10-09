@@ -1,0 +1,806 @@
+{
+  "common.cancel": {
+    "es": "Cancelar",
+    "en": "Cancel"
+  },
+  "common.closeEscape": {
+    "es": "Cerrar (Esc)",
+    "en": "Close (Esc)"
+  },
+  "common.create": {
+    "es": "Crear",
+    "en": "Create"
+  },
+  "common.loading": {
+    "es": "Cargando…",
+    "en": "Loading…"
+  },
+  "common.moreOptions": {
+    "es": "Más opciones",
+    "en": "More options"
+  },
+  "common.moreOptionsFor": {
+    "es": "Más opciones de %@",
+    "en": "More options for %@"
+  },
+  "common.ok": {
+    "es": "Aceptar",
+    "en": "OK"
+  },
+  "common.refresh": {
+    "es": "Actualizar",
+    "en": "Refresh"
+  },
+  "common.retry": {
+    "es": "Reintentar",
+    "en": "Retry"
+  },
+  "common.save": {
+    "es": "Guardar",
+    "en": "Save"
+  },
+  "common.search": {
+    "es": "Buscar",
+    "en": "Search"
+  },
+  "common.untitled": {
+    "es": "Sin título",
+    "en": "Untitled"
+  },
+  "detail.album.description": {
+    "es": "Descripción del álbum",
+    "en": "Album description"
+  },
+  "detail.album.loadFailed": {
+    "es": "No se pudo cargar el álbum",
+    "en": "Couldn’t load album"
+  },
+  "detail.artist.biography": {
+    "es": "Biografía del artista",
+    "en": "Artist biography"
+  },
+  "detail.artist.loadFailed": {
+    "es": "No se pudo cargar el artista",
+    "en": "Couldn’t load artist"
+  },
+  "detail.artist.readBiographyHint": {
+    "es": "Hacé clic para leer la biografía completa",
+    "en": "Click to read the full biography"
+  },
+  "detail.artist.startMix": {
+    "es": "Iniciar mix",
+    "en": "Start radio"
+  },
+  "detail.artist.subscribe": {
+    "es": "Suscribirse",
+    "en": "Subscribe"
+  },
+  "detail.artist.subscribed": {
+    "es": "Suscrito",
+    "en": "Subscribed"
+  },
+  "detail.artist.topSongs": {
+    "es": "Canciones principales",
+    "en": "Top songs"
+  },
+  "detail.artist.viewAllTopSongs": {
+    "es": "Ver todas las canciones principales",
+    "en": "View all top songs"
+  },
+  "detail.artist.viewNamed": {
+    "es": "Ver artista: %@",
+    "en": "View artist: %@"
+  },
+  "detail.artistCatalog.empty": {
+    "es": "No hay publicaciones",
+    "en": "No releases"
+  },
+  "detail.artistCatalog.loadFailed": {
+    "es": "No se pudo cargar el catálogo",
+    "en": "Couldn’t load catalog"
+  },
+  "detail.collection.empty": {
+    "es": "Esta colección todavía no tiene canciones.",
+    "en": "This collection has no songs yet."
+  },
+  "detail.collection.inLibrary": {
+    "es": "En biblioteca",
+    "en": "In Library"
+  },
+  "detail.collection.noResults": {
+    "es": "No se encontraron canciones para «%@».",
+    "en": "No songs found for “%@”."
+  },
+  "detail.collection.preparingSongs": {
+    "es": "Preparando todas las canciones…",
+    "en": "Preparing all songs…"
+  },
+  "detail.collection.save": {
+    "es": "Guardar",
+    "en": "Save"
+  },
+  "detail.description.readFullHint": {
+    "es": "Hacé clic para leer la descripción completa",
+    "en": "Click to read the full description"
+  },
+  "detail.kind.album": {
+    "es": "ÁLBUM",
+    "en": "ALBUM"
+  },
+  "detail.kind.artist": {
+    "es": "ARTISTA",
+    "en": "ARTIST"
+  },
+  "detail.kind.collection": {
+    "es": "COLECCIÓN",
+    "en": "COLLECTION"
+  },
+  "detail.kind.playlist": {
+    "es": "LISTA DE REPRODUCCIÓN",
+    "en": "PLAYLIST"
+  },
+  "detail.more": {
+    "es": "más",
+    "en": "more"
+  },
+  "detail.openCard": {
+    "es": "Abrir %@",
+    "en": "Open %@"
+  },
+  "detail.openNamed": {
+    "es": "Abrir %@",
+    "en": "Open %@"
+  },
+  "detail.playCard": {
+    "es": "Reproducir %@",
+    "en": "Play %@"
+  },
+  "detail.playlist.actionFailed": {
+    "es": "No se pudo completar la acción",
+    "en": "Couldn’t complete the action"
+  },
+  "detail.playlist.delete": {
+    "es": "Eliminar lista",
+    "en": "Delete playlist"
+  },
+  "detail.playlist.deleteConfirmation": {
+    "es": "¿Eliminar esta lista de reproducción?",
+    "en": "Delete this playlist?"
+  },
+  "detail.playlist.deleteWarning": {
+    "es": "También se eliminará de YouTube Music.",
+    "en": "It will also be deleted from YouTube Music."
+  },
+  "detail.playlist.description": {
+    "es": "Descripción de la lista de reproducción",
+    "en": "Playlist description"
+  },
+  "detail.playlist.loadFailed": {
+    "es": "No se pudo cargar la lista de reproducción",
+    "en": "Couldn’t load playlist"
+  },
+  "detail.playlist.loadingMoreSongs": {
+    "es": "Cargando más canciones…",
+    "en": "Loading more songs…"
+  },
+  "detail.playlistEditor.createTitle": {
+    "es": "Nueva lista de reproducción",
+    "en": "New playlist"
+  },
+  "detail.playlistEditor.description": {
+    "es": "Descripción",
+    "en": "Description"
+  },
+  "detail.playlistEditor.editTitle": {
+    "es": "Editar lista de reproducción",
+    "en": "Edit playlist"
+  },
+  "detail.playlistEditor.name": {
+    "es": "Nombre de la lista",
+    "en": "Playlist name"
+  },
+  "detail.playlistEditor.private": {
+    "es": "Privada",
+    "en": "Private"
+  },
+  "detail.playlistEditor.public": {
+    "es": "Pública",
+    "en": "Public"
+  },
+  "detail.playlistEditor.unlisted": {
+    "es": "No listada",
+    "en": "Unlisted"
+  },
+  "detail.playlistEditor.visibility": {
+    "es": "Visibilidad",
+    "en": "Visibility"
+  },
+  "detail.search.clear": {
+    "es": "Borrar búsqueda",
+    "en": "Clear search"
+  },
+  "detail.search.songs": {
+    "es": "Buscar canciones",
+    "en": "Search songs"
+  },
+  "detail.search.songsInCollection": {
+    "es": "Buscar canciones en esta colección",
+    "en": "Search songs in this collection"
+  },
+  "detail.sort.accessibility": {
+    "es": "Ordenar canciones: %@",
+    "en": "Sort songs: %@"
+  },
+  "detail.sort.album": {
+    "es": "Álbum",
+    "en": "Album"
+  },
+  "detail.sort.artist": {
+    "es": "Artista",
+    "en": "Artist"
+  },
+  "detail.sort.custom": {
+    "es": "Orden personalizado",
+    "en": "Custom order"
+  },
+  "detail.sort.duration": {
+    "es": "Duración",
+    "en": "Duration"
+  },
+  "detail.sort.oldestAdded": {
+    "es": "Agregado hace más tiempo",
+    "en": "Oldest added"
+  },
+  "detail.sort.recentlyAdded": {
+    "es": "Agregado recientemente",
+    "en": "Recently added"
+  },
+  "detail.sort.title": {
+    "es": "Título",
+    "en": "Title"
+  },
+  "detail.track.album": {
+    "es": "Álbum",
+    "en": "Album"
+  },
+  "detail.track.artist": {
+    "es": "Artista",
+    "en": "Artist"
+  },
+  "detail.track.artwork": {
+    "es": "Carátula de canción",
+    "en": "Song artwork"
+  },
+  "detail.track.columnsAX": {
+    "es": "Canción, artista, álbum y duración",
+    "en": "Song, artist, album, and duration"
+  },
+  "detail.track.duration": {
+    "es": "Duración",
+    "en": "Duration"
+  },
+  "detail.track.like": {
+    "es": "Me gusta",
+    "en": "Like"
+  },
+  "detail.track.moreOptions": {
+    "es": "Más opciones",
+    "en": "More options"
+  },
+  "detail.track.moreOptionsForSong": {
+    "es": "Más opciones de la canción",
+    "en": "More song options"
+  },
+  "detail.track.play": {
+    "es": "Reproducir canción",
+    "en": "Play song"
+  },
+  "detail.track.reorder": {
+    "es": "Arrastrar para reordenar",
+    "en": "Drag to reorder"
+  },
+  "detail.track.song": {
+    "es": "Canción",
+    "en": "Song"
+  },
+  "detail.track.unlike": {
+    "es": "Quitar de Me gusta",
+    "en": "Unlike"
+  },
+  "detail.track.variousArtists": {
+    "es": "Varios artistas",
+    "en": "Various artists"
+  },
+  "detail.viewAlbum": {
+    "es": "Ver álbum",
+    "en": "View album"
+  },
+  "detail.viewAll": {
+    "es": "Ver todo",
+    "en": "View all"
+  },
+  "detail.viewAllSection": {
+    "es": "Ver todo: %@",
+    "en": "View all: %@"
+  },
+  "detail.viewArtist": {
+    "es": "Ver artista",
+    "en": "View artist"
+  },
+  "fullscreen.backToArtwork": {
+    "es": "Volver a la carátula",
+    "en": "Back to artwork"
+  },
+  "fullscreen.fansAlsoLike": {
+    "es": "A los fans también les gusta",
+    "en": "Fans also like"
+  },
+  "fullscreen.fromAlbum": {
+    "es": "Del álbum: %@",
+    "en": "From album: %@"
+  },
+  "fullscreen.fromSameAlbum": {
+    "es": "Del mismo álbum",
+    "en": "From the same album"
+  },
+  "fullscreen.gesture.back": {
+    "es": "Volver",
+    "en": "Back"
+  },
+  "fullscreen.gesture.forward": {
+    "es": "Avanzar",
+    "en": "Forward"
+  },
+  "fullscreen.gesture.noNextPage": {
+    "es": "No hay una página siguiente",
+    "en": "No next page"
+  },
+  "fullscreen.gesture.noPreviousPage": {
+    "es": "No hay una página anterior",
+    "en": "No previous page"
+  },
+  "fullscreen.gesture.pullDownToClose": {
+    "es": "Bajá para cerrar",
+    "en": "Pull down to close"
+  },
+  "fullscreen.gesture.pullDownToCloseNowPlaying": {
+    "es": "Bajá para cerrar Ahora suena",
+    "en": "Pull down to close Now Playing"
+  },
+  "fullscreen.gesture.releaseToBack": {
+    "es": "Soltá para volver",
+    "en": "Release to go back"
+  },
+  "fullscreen.gesture.releaseToClose": {
+    "es": "Soltá para cerrar",
+    "en": "Release to close"
+  },
+  "fullscreen.gesture.releaseToCloseNowPlaying": {
+    "es": "Soltá para cerrar Ahora suena",
+    "en": "Release to close Now Playing"
+  },
+  "fullscreen.gesture.releaseToForward": {
+    "es": "Soltá para avanzar",
+    "en": "Release to go forward"
+  },
+  "fullscreen.goToLyricLine": {
+    "es": "Ir a esta línea",
+    "en": "Go to this line"
+  },
+  "fullscreen.information": {
+    "es": "Información",
+    "en": "Info"
+  },
+  "fullscreen.lyrics": {
+    "es": "Letras",
+    "en": "Lyrics"
+  },
+  "fullscreen.moreByArtist": {
+    "es": "Más de %@",
+    "en": "More by %@"
+  },
+  "fullscreen.moreByThisArtist": {
+    "es": "Más de este artista",
+    "en": "More by this artist"
+  },
+  "fullscreen.noLyrics": {
+    "es": "No hay letras disponibles",
+    "en": "No lyrics available"
+  },
+  "fullscreen.noRecommendations": {
+    "es": "No hay recomendaciones disponibles",
+    "en": "No recommendations available"
+  },
+  "fullscreen.noSongDescription": {
+    "es": "No hay una descripción disponible para esta canción.",
+    "en": "No description is available for this song."
+  },
+  "fullscreen.noSyncedLyricsForTrack": {
+    "es": "No se encontraron letras sincronizadas para esta pista",
+    "en": "No synced lyrics were found for this track"
+  },
+  "fullscreen.recommendations": {
+    "es": "Recomendaciones",
+    "en": "Recommendations"
+  },
+  "fullscreen.refreshRecommendations": {
+    "es": "Obtener recomendaciones nuevas para esta canción",
+    "en": "Get new recommendations for this song"
+  },
+  "fullscreen.related": {
+    "es": "Relacionado",
+    "en": "Related"
+  },
+  "fullscreen.resumeLyricsTracking": {
+    "es": "Reactivar el seguimiento de letras",
+    "en": "Resume lyric tracking"
+  },
+  "fullscreen.resumeLyricsTrackingHint": {
+    "es": "Centra la línea actual y activa el desplazamiento automático",
+    "en": "Centers the current line and resumes automatic scrolling"
+  },
+  "fullscreen.returnToCurrentLyric": {
+    "es": "Volver a la letra actual",
+    "en": "Return to current lyric"
+  },
+  "fullscreen.searchingSyncedLyrics": {
+    "es": "Buscando letras sincronizadas…",
+    "en": "Searching for synced lyrics…"
+  },
+  "fullscreen.similarSongs": {
+    "es": "Canciones parecidas",
+    "en": "Similar songs"
+  },
+  "fullscreen.songInformation": {
+    "es": "Información de la canción",
+    "en": "Song information"
+  },
+  "genius.annotation": {
+    "es": "Anotación",
+    "en": "Annotation"
+  },
+  "genius.annotationBy": {
+    "es": "Por %@",
+    "en": "By %@"
+  },
+  "genius.annotations": {
+    "es": "Anotaciones",
+    "en": "Annotations"
+  },
+  "genius.automaticSearch": {
+    "es": "Buscar automáticamente al reproducir",
+    "en": "Search automatically during playback"
+  },
+  "genius.backToLyrics": {
+    "es": "Volver a las letras",
+    "en": "Back to lyrics"
+  },
+  "genius.changeMatch": {
+    "es": "Cambiar coincidencia…",
+    "en": "Change match…"
+  },
+  "genius.chooseMatchingTrack": {
+    "es": "Elegí la versión que corresponde a esta canción.",
+    "en": "Choose the version that matches this song."
+  },
+  "genius.closeAnnotation": {
+    "es": "Cerrar anotación",
+    "en": "Close annotation"
+  },
+  "genius.diagnostics": {
+    "es": "Diagnóstico de Genius",
+    "en": "Genius diagnostics"
+  },
+  "genius.informationPicker": {
+    "es": "Información de Genius",
+    "en": "Genius information"
+  },
+  "genius.loadMoreAnnotations": {
+    "es": "Cargar más anotaciones",
+    "en": "Load more annotations"
+  },
+  "genius.loadingAnnotations": {
+    "es": "Cargando anotaciones…",
+    "en": "Loading annotations…"
+  },
+  "genius.loadingLyrics": {
+    "es": "Cargando letras de Genius…",
+    "en": "Loading Genius lyrics…"
+  },
+  "genius.lyricsAndAnnotations": {
+    "es": "Letras y anotaciones de Genius",
+    "en": "Genius lyrics and annotations"
+  },
+  "genius.multipleMatches": {
+    "es": "Hay varias versiones posibles",
+    "en": "Several possible matches"
+  },
+  "genius.noAdditionalInformation": {
+    "es": "No hay información adicional en Genius",
+    "en": "No additional information on Genius"
+  },
+  "genius.noConfidentMatch": {
+    "es": "No se encontró una coincidencia segura",
+    "en": "No confident match found"
+  },
+  "genius.noLyricsAvailable": {
+    "es": "No hay letras de Genius disponibles para esta canción.",
+    "en": "Genius lyrics are unavailable for this song."
+  },
+  "genius.noMatchGuidance": {
+    "es": "Probá otra búsqueda o guardá la canción para revisarla después.",
+    "en": "Try another search or save this song to review later."
+  },
+  "genius.noSongDescription": {
+    "es": "Genius no tiene una descripción para esta canción.",
+    "en": "Genius has no description for this song."
+  },
+  "genius.openAnnotationOnGenius": {
+    "es": "Abrir anotación en Genius",
+    "en": "Open annotation on Genius"
+  },
+  "genius.options": {
+    "es": "Opciones de Genius",
+    "en": "Genius options"
+  },
+  "genius.refreshData": {
+    "es": "Actualizar datos",
+    "en": "Refresh data"
+  },
+  "genius.saveTrackForReview": {
+    "es": "Guardar esta canción para revisarla",
+    "en": "Save this song for review"
+  },
+  "genius.savedForReview": {
+    "es": "Guardada para revisar",
+    "en": "Saved for review"
+  },
+  "genius.searchAnotherVersion": {
+    "es": "Buscar otra versión",
+    "en": "Search for another version"
+  },
+  "genius.searching": {
+    "es": "Buscando en Genius",
+    "en": "Searching Genius"
+  },
+  "genius.searchingInformation": {
+    "es": "Buscando información en Genius…",
+    "en": "Searching Genius for information…"
+  },
+  "genius.showDiagnostics": {
+    "es": "Mostrar controles de diagnóstico",
+    "en": "Show diagnostic controls"
+  },
+  "genius.titleAndArtist": {
+    "es": "Título y artista",
+    "en": "Title and artist"
+  },
+  "genius.tryAgainLater": {
+    "es": "Podés intentarlo de nuevo más tarde.",
+    "en": "You can try again later."
+  },
+  "genius.unavailable": {
+    "es": "Genius no está disponible",
+    "en": "Genius is unavailable"
+  },
+  "genius.useTrackHint": {
+    "es": "Usar esta canción de Genius para la pista actual",
+    "en": "Use this Genius song for the current track"
+  },
+  "genius.verifiedAnnotation": {
+    "es": "Anotación verificada",
+    "en": "Verified annotation"
+  },
+  "genius.viewOnGenius": {
+    "es": "Ver en Genius",
+    "en": "View on Genius"
+  },
+  "genius.error.saveTrack": {
+    "es": "No se pudo guardar esta canción. Intentá de nuevo.",
+    "en": "Couldn’t save this song. Try again."
+  },
+  "player.closeFullscreen": {
+    "es": "Cerrar pantalla completa",
+    "en": "Close full screen"
+  },
+  "player.goToAlbum": {
+    "es": "Ir al álbum: %@",
+    "en": "Go to album: %@"
+  },
+  "player.mute": {
+    "es": "Silenciar",
+    "en": "Mute"
+  },
+  "player.next": {
+    "es": "Siguiente",
+    "en": "Next"
+  },
+  "player.noPlayback": {
+    "es": "Sin reproducción",
+    "en": "Not playing"
+  },
+  "player.openFullscreen": {
+    "es": "Abrir pantalla completa",
+    "en": "Open full screen"
+  },
+  "player.pause": {
+    "es": "Pausar",
+    "en": "Pause"
+  },
+  "player.pauseNamedTrack": {
+    "es": "Pausar %@",
+    "en": "Pause %@"
+  },
+  "player.play": {
+    "es": "Reproducir",
+    "en": "Play"
+  },
+  "player.playNamedTrack": {
+    "es": "Reproducir %@",
+    "en": "Play %@"
+  },
+  "player.previous": {
+    "es": "Anterior",
+    "en": "Previous"
+  },
+  "player.retryPlayback": {
+    "es": "Reintentar reproducción",
+    "en": "Retry playback"
+  },
+  "player.selectTrack": {
+    "es": "Seleccioná una canción",
+    "en": "Select a song"
+  },
+  "player.showVolume": {
+    "es": "Mostrar control de volumen",
+    "en": "Show volume control"
+  },
+  "player.shuffle": {
+    "es": "Aleatorio",
+    "en": "Shuffle"
+  },
+  "player.shuffle.disable": {
+    "es": "Desactivar reproducción aleatoria",
+    "en": "Turn off shuffle"
+  },
+  "player.shuffle.enable": {
+    "es": "Activar reproducción aleatoria",
+    "en": "Turn on shuffle"
+  },
+  "player.syncedLyrics": {
+    "es": "Letras sincronizadas",
+    "en": "Synced lyrics"
+  },
+  "player.unmute": {
+    "es": "Activar sonido",
+    "en": "Unmute"
+  },
+  "player.viewAlbum": {
+    "es": "Ver álbum: %@",
+    "en": "View album: %@"
+  },
+  "player.radioFor": {
+    "es": "Radio de %@",
+    "en": "Radio for %@"
+  },
+  "player.shuffledArtist": {
+    "es": "%@ (aleatorio)",
+    "en": "%@ (shuffled)"
+  },
+  "queue.albumContext": {
+    "es": "Álbum: %@",
+    "en": "Album: %@"
+  },
+  "queue.empty": {
+    "es": "No hay canciones en la cola",
+    "en": "The queue is empty"
+  },
+  "queue.error.fetchFailed": {
+    "es": "No se pudo completar la lista: %@",
+    "en": "Couldn’t load the playlist: %@"
+  },
+  "queue.error.invalidated": {
+    "es": "La carga de la lista quedó obsoleta y se descartó.",
+    "en": "The playlist load became stale and was discarded."
+  },
+  "queue.error.pageLimit": {
+    "es": "La lista superó el máximo de %@ páginas.",
+    "en": "The playlist exceeded the maximum of %@ pages."
+  },
+  "queue.error.repeatedContinuation": {
+    "es": "La lista devolvió una continuación repetida.",
+    "en": "The playlist returned a repeated continuation."
+  },
+  "queue.playlistContext": {
+    "es": "Lista: %@",
+    "en": "Playlist: %@"
+  },
+  "queue.title": {
+    "es": "Cola de reproducción",
+    "en": "Queue"
+  },
+  "queue.track.dislikeRemove": {
+    "es": "No me gusta (quitar de la cola)",
+    "en": "Dislike (remove from queue)"
+  },
+  "queue.track.dislikeRemoveAX": {
+    "es": "No me gusta; quitar de la cola",
+    "en": "Dislike; remove from queue"
+  },
+  "queue.track.reorderSong": {
+    "es": "Arrastrar para reordenar la canción",
+    "en": "Drag to reorder song"
+  },
+  "player.error.noAlbumTracks": {
+    "es": "No se encontraron canciones para este álbum.",
+    "en": "No songs were found for this album."
+  },
+  "player.error.noPlaylistTracks": {
+    "es": "No se encontraron canciones para esta lista.",
+    "en": "No songs were found for this playlist."
+  },
+  "player.error.loadAlbum": {
+    "es": "No se pudo cargar el álbum: %@",
+    "en": "Couldn’t load the album: %@"
+  },
+  "player.error.loadPlaylist": {
+    "es": "No se pudo cargar la lista: %@",
+    "en": "Couldn’t load the playlist: %@"
+  },
+  "player.error.completePlaylistCoreUnavailable": {
+    "es": "No se pudo completar la lista: el núcleo de Rust no está inicializado",
+    "en": "Couldn’t load the playlist: the Rust core is not initialized"
+  },
+  "player.error.completePlaylist": {
+    "es": "No se pudo completar la lista: %@",
+    "en": "Couldn’t load the playlist: %@"
+  },
+  "player.error.coreUnavailable": {
+    "es": "El núcleo de Rust no está inicializado",
+    "en": "The Rust core is not initialized"
+  },
+  "player.error.resolveStream": {
+    "es": "Error al resolver la transmisión: %@",
+    "en": "Couldn’t resolve the stream: %@"
+  },
+  "player.error.updateRating": {
+    "es": "No se pudo actualizar la valoración: %@",
+    "en": "Couldn’t update the rating: %@"
+  },
+  "player.error.dislike": {
+    "es": "No se pudo registrar el «No me gusta»: %@",
+    "en": "Couldn’t record the dislike: %@"
+  },
+  "player.error.rateSong": {
+    "es": "Error al calificar la canción: %@",
+    "en": "Couldn’t rate the song: %@"
+  },
+  "detail.playlist.loadMoreError": {
+    "es": "No se pudieron cargar más canciones: %@",
+    "en": "Couldn’t load more songs: %@"
+  },
+  "detail.playlist.completeError": {
+    "es": "No se pudo completar la lista: %@",
+    "en": "Couldn’t load the playlist: %@"
+  },
+  "detail.playlist.completingForOrder": {
+    "es": "Completando la lista para reproducir el orden elegido…",
+    "en": "Loading the playlist to play in the selected order…"
+  },
+  "player.repeat.disable": {
+    "es": "Desactivar repetición",
+    "en": "Turn off repeat"
+  },
+  "player.repeat.enable": {
+    "es": "Repetir tema",
+    "en": "Repeat track"
+  },
+  "genius.production": {
+    "es": "Producción",
+    "en": "Production"
+  },
+  "genius.composition": {
+    "es": "Composición",
+    "en": "Composition"
+  }
+}

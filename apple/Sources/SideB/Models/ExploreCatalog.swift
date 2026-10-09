@@ -9,13 +9,13 @@ enum ExploreRoute: Hashable {
 
     var title: String {
         switch self {
-        case .discover: return "Descubrir"
-        case .releases: return "Lanzamientos"
-        case .charts: return "Rankings"
-        case .chartCountry(let code): return "Rankings · \(ExploreChartRegion.name(code))"
-        case .genres: return "Géneros"
-        case .moods: return "Momentos"
-        case .category(let id): return ExploreCategory.find(id)?.title ?? "Playlists"
+        case .discover: return L10n.text("explore.route.discover")
+        case .releases: return L10n.text("explore.route.releases")
+        case .charts: return L10n.text("explore.route.charts")
+        case .chartCountry(let code): return L10n.text("explore.route.chart_country", args: [ExploreChartRegion.name(code)])
+        case .genres: return L10n.text("explore.route.genres")
+        case .moods: return L10n.text("explore.route.moods")
+        case .category(let id): return ExploreCategory.find(id)?.displayTitle ?? L10n.text("home.collection.playlists")
         }
     }
 
@@ -58,7 +58,7 @@ enum ExploreSource: Hashable {
 
 enum ExploreChartRegion {
     static func name(_ code: String) -> String {
-        code == "ZZ" ? "Global" : (Locale(identifier: "es").localizedString(forRegionCode: code) ?? code)
+        code == "ZZ" ? L10n.text("explore.region.global") : (Locale(identifier: L10n.language.rawValue).localizedString(forRegionCode: code) ?? code)
     }
 }
 
@@ -71,6 +71,9 @@ struct ExploreCategory: Identifiable {
     let symbol: String
     let hue: Double
     let query: String
+
+    var displayTitle: String { L10n.text("explore.category.\(id).title") }
+    var displaySubtitle: String { L10n.text("explore.category.\(id).subtitle") }
 
     static func find(_ id: String) -> Self? { (genres + moods).first { $0.id == id } }
 

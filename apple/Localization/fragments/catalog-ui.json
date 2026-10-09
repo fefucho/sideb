@@ -1,0 +1,938 @@
+{
+  "home.collection.albums": {
+    "es": "Álbumes",
+    "en": "Albums"
+  },
+  "home.collection.playlists": {
+    "es": "Listas",
+    "en": "Playlists"
+  },
+  "home.loading": {
+    "es": "Cargando Inicio",
+    "en": "Loading Home"
+  },
+  "home.loading_recommendations": {
+    "es": "Cargando recomendaciones…",
+    "en": "Loading recommendations…"
+  },
+  "home.refresh.changing": {
+    "es": "Cambiando recomendaciones…",
+    "en": "Changing recommendations…"
+  },
+  "home.retry": {
+    "es": "Reintentar",
+    "en": "Try Again"
+  },
+  "home.close": {
+    "es": "Cerrar",
+    "en": "Close"
+  },
+  "home.refresh.saved_updating": {
+    "es": "Recomendaciones guardadas · actualizando",
+    "en": "Saved recommendations · updating"
+  },
+  "home.refresh.saved": {
+    "es": "Recomendaciones guardadas",
+    "en": "Recommendations saved"
+  },
+  "home.refresh.updating": {
+    "es": "Actualizando recomendaciones…",
+    "en": "Updating recommendations…"
+  },
+  "home.error.load": {
+    "es": "No se pudo cargar Inicio",
+    "en": "Couldn't load Home"
+  },
+  "home.radio.pause": {
+    "es": "Pausar radio de %@",
+    "en": "Pause radio for %@"
+  },
+  "home.radio.resume": {
+    "es": "Retomar radio de %@",
+    "en": "Resume radio for %@"
+  },
+  "home.radio.start": {
+    "es": "Iniciar radio de %@",
+    "en": "Start radio for %@"
+  },
+  "home.collection.open": {
+    "es": "Abrir %@ %@",
+    "en": "Open %@ %@"
+  },
+  "home.page.previous": {
+    "es": "Página anterior de %@",
+    "en": "Previous %@ page"
+  },
+  "home.page.position": {
+    "es": "%@, página %@ de %@",
+    "en": "%@, page %@ of %@"
+  },
+  "home.page.next": {
+    "es": "Página siguiente de %@",
+    "en": "Next %@ page"
+  },
+  "home.accessibility.recommendations": {
+    "es": "Recomendaciones de Inicio",
+    "en": "Home recommendations"
+  },
+  "home.see_all": {
+    "es": "Ver todo",
+    "en": "See all"
+  },
+  "home.see_all_named": {
+    "es": "Ver todo: %@",
+    "en": "See all: %@"
+  },
+  "home.play": {
+    "es": "Reproducir",
+    "en": "Play"
+  },
+  "home.pause": {
+    "es": "Pausar",
+    "en": "Pause"
+  },
+  "home.open": {
+    "es": "Abrir",
+    "en": "Open"
+  },
+  "home.explicit_content": {
+    "es": "Contenido explícito",
+    "en": "Explicit content"
+  },
+  "home.more_options": {
+    "es": "Más opciones",
+    "en": "More options"
+  },
+  "home.shelf.previous": {
+    "es": "Desplazar estante a la izquierda",
+    "en": "Scroll shelf left"
+  },
+  "home.shelf.next": {
+    "es": "Desplazar estante a la derecha",
+    "en": "Scroll shelf right"
+  },
+  "home.load_more": {
+    "es": "Cargar más recomendaciones",
+    "en": "Load more recommendations"
+  },
+  "home.loading_more": {
+    "es": "Cargando…",
+    "en": "Loading…"
+  },
+  "home.artist.view": {
+    "es": "Ver artista: %@",
+    "en": "View artist: %@"
+  },
+  "home.artist.label": {
+    "es": "Artista: %@",
+    "en": "Artist: %@"
+  },
+  "home.album.view": {
+    "es": "Ver álbum: %@",
+    "en": "View album: %@"
+  },
+  "home.album.label": {
+    "es": "Álbum: %@",
+    "en": "Album: %@"
+  },
+  "home.card.accessibility": {
+    "es": "%@ %@. %@",
+    "en": "%@ %@. %@"
+  },
+  "home.pause_named": {
+    "es": "Pausar %@",
+    "en": "Pause %@"
+  },
+  "home.play_named": {
+    "es": "Reproducir %@",
+    "en": "Play %@"
+  },
+  "home.loading_named": {
+    "es": "Cargando %@",
+    "en": "Loading %@"
+  },
+  "metadata.album": {
+    "es": "Álbum",
+    "en": "Album"
+  },
+  "metadata.playlist": {
+    "es": "Lista de reproducción",
+    "en": "Playlist"
+  },
+  "metadata.song": {
+    "es": "Canción",
+    "en": "Song"
+  },
+  "metadata.single": {
+    "es": "Sencillo",
+    "en": "Single"
+  },
+  "metadata.explicit": {
+    "es": "Explícita",
+    "en": "Explicit"
+  },
+  "search.filter.all": {
+    "es": "Todo",
+    "en": "All"
+  },
+  "search.filter.songs": {
+    "es": "Canciones",
+    "en": "Songs"
+  },
+  "search.filter.videos": {
+    "es": "Videos",
+    "en": "Videos"
+  },
+  "search.filter.albums": {
+    "es": "Álbumes",
+    "en": "Albums"
+  },
+  "search.filter.artists": {
+    "es": "Artistas",
+    "en": "Artists"
+  },
+  "search.filter.playlists": {
+    "es": "Listas",
+    "en": "Playlists"
+  },
+  "search.category.top_result": {
+    "es": "Mejor resultado",
+    "en": "Top result"
+  },
+  "search.error.quick": {
+    "es": "No se pudieron cargar los resultados rápidos. Intentá de nuevo.",
+    "en": "Couldn't load quick results. Try again."
+  },
+  "search.error.global": {
+    "es": "No se pudieron cargar los resultados generales. Las demás secciones siguen disponibles.",
+    "en": "Couldn't load the full results. The other sections are still available."
+  },
+  "search.error.songs": {
+    "es": "No se pudo completar la búsqueda de canciones.",
+    "en": "Couldn't finish searching songs."
+  },
+  "search.error.videos": {
+    "es": "No se pudieron cargar los videos.",
+    "en": "Couldn't load videos."
+  },
+  "search.error.category": {
+    "es": "No se pudo cargar esta categoría.",
+    "en": "Couldn't load this category."
+  },
+  "search.open_card": {
+    "es": "Abrir %@",
+    "en": "Open %@"
+  },
+  "search.play_card": {
+    "es": "Reproducir %@",
+    "en": "Play %@"
+  },
+  "search.loading.quick": {
+    "es": "Buscando respuestas rápidas…",
+    "en": "Finding quick results…"
+  },
+  "search.empty.quick": {
+    "es": "No se encontraron resultados rápidos",
+    "en": "No quick results found"
+  },
+  "search.submit.full_results": {
+    "es": "Presioná Enter para ver todos los resultados",
+    "en": "Press Enter to see all results"
+  },
+  "search.see_all.feminine": {
+    "es": "Ver todas",
+    "en": "See all"
+  },
+  "search.see_all.masculine": {
+    "es": "Ver todos",
+    "en": "See all"
+  },
+  "search.full_discography": {
+    "es": "Ver discografía completa",
+    "en": "View full discography"
+  },
+  "search.play_now": {
+    "es": "Reproducir ahora",
+    "en": "Play now"
+  },
+  "search.open_detail": {
+    "es": "Abrir detalle",
+    "en": "Open details"
+  },
+  "search.loading.catalog": {
+    "es": "Buscando en el catálogo…",
+    "en": "Searching the catalog…"
+  },
+  "search.empty.query": {
+    "es": "No se encontraron resultados para «%@»",
+    "en": "No results found for “%@”"
+  },
+  "search.empty.try_another": {
+    "es": "Revisá la ortografía o probá con otro artista o título.",
+    "en": "Check the spelling or try another artist or title."
+  },
+  "search.empty.prompt_title": {
+    "es": "Explorá el catálogo de música",
+    "en": "Explore the music catalog"
+  },
+  "search.empty.prompt_description": {
+    "es": "Escribí en la barra superior para buscar canciones, artistas o álbumes.",
+    "en": "Type in the top bar to search for songs, artists, or albums."
+  },
+  "search.spotlight.all_results_for": {
+    "es": "Ver todos los resultados para",
+    "en": "See all results for"
+  },
+  "search.spotlight.prompt_title": {
+    "es": "Buscá artistas, canciones, álbumes y más",
+    "en": "Find artists, songs, albums, and more"
+  },
+  "search.spotlight.prompt_description": {
+    "es": "Escribí para ver resultados rápidos por categoría en tiempo real",
+    "en": "Type to see quick results by category as you go"
+  },
+  "search.spotlight.submit_hint": {
+    "es": "Presioná Enter para buscar en todo el catálogo",
+    "en": "Press Enter to search the full catalog"
+  },
+  "explore.route.discover": {
+    "es": "Descubrir",
+    "en": "Discover"
+  },
+  "explore.route.releases": {
+    "es": "Lanzamientos",
+    "en": "New Releases"
+  },
+  "explore.route.charts": {
+    "es": "Rankings",
+    "en": "Charts"
+  },
+  "explore.route.chart_country": {
+    "es": "Rankings · %@",
+    "en": "Charts · %@"
+  },
+  "explore.route.genres": {
+    "es": "Géneros",
+    "en": "Genres"
+  },
+  "explore.route.moods": {
+    "es": "Momentos",
+    "en": "Moods"
+  },
+  "explore.region.global": {
+    "es": "Global",
+    "en": "Global"
+  },
+  "explore.region.detect_failed": {
+    "es": "No se pudo detectar tu región. Podés elegir un país en el selector.",
+    "en": "Couldn't detect your region. You can choose a country from the menu."
+  },
+  "explore.region.unsupported": {
+    "es": "YouTube no ofrece rankings de %@. Podés elegir otro país.",
+    "en": "YouTube doesn't offer charts for %@. You can choose another country."
+  },
+  "explore.error.load_music": {
+    "es": "No se pudo cargar la música. Revisá la conexión y volvé a intentar.",
+    "en": "Couldn't load music. Check your connection and try again."
+  },
+  "explore.error.load_charts": {
+    "es": "No se pudieron cargar todos los rankings. Volvé a intentar.",
+    "en": "Couldn't load all charts. Try again."
+  },
+  "explore.shortcut.new_arrivals": {
+    "es": "Recién llegados",
+    "en": "Just released"
+  },
+  "explore.shortcut.global_region": {
+    "es": "Global y tu región",
+    "en": "Global and your region"
+  },
+  "explore.section.new_albums_singles": {
+    "es": "Álbumes y sencillos nuevos",
+    "en": "New albums and singles"
+  },
+  "explore.section.for_every_moment": {
+    "es": "Para cada momento",
+    "en": "For every moment"
+  },
+  "explore.section.explore_genres": {
+    "es": "Explorá por género",
+    "en": "Explore by genre"
+  },
+  "explore.section.all_genres": {
+    "es": "Todos los géneros",
+    "en": "All genres"
+  },
+  "explore.section.choose_moment": {
+    "es": "Elegí tu momento",
+    "en": "Choose your mood"
+  },
+  "explore.section.playlists_to_explore": {
+    "es": "Listas para explorar",
+    "en": "Playlists to explore"
+  },
+  "explore.eyebrow": {
+    "es": "Explorar",
+    "en": "Explore"
+  },
+  "explore.title.discover": {
+    "es": "Algo nuevo para escuchar.",
+    "en": "Something new to listen to."
+  },
+  "explore.subtitle.discover": {
+    "es": "Novedades, géneros y música para acompañar tu día.",
+    "en": "New releases, genres, and music for your day."
+  },
+  "explore.subtitle.releases": {
+    "es": "Lo nuevo en YouTube Music, listo para descubrir.",
+    "en": "New on YouTube Music, ready to discover."
+  },
+  "explore.subtitle.charts": {
+    "es": "Lo que suena en el mundo y cerca tuyo.",
+    "en": "What's playing around the world and near you."
+  },
+  "explore.subtitle.chart_country": {
+    "es": "Las listas de YouTube Charts para %@.",
+    "en": "YouTube Charts playlists for %@."
+  },
+  "explore.subtitle.genres": {
+    "es": "Tus sonidos de siempre y otros por conocer.",
+    "en": "Familiar sounds and new ones to discover."
+  },
+  "explore.subtitle.moods": {
+    "es": "Una lista para lo que estés haciendo.",
+    "en": "A playlist for whatever you're doing."
+  },
+  "explore.subtitle.category_fallback": {
+    "es": "Encontrá algo nuevo para escuchar.",
+    "en": "Find something new to listen to."
+  },
+  "explore.category.accessibility": {
+    "es": "%@, %@",
+    "en": "%@, %@"
+  },
+  "explore.category.open_hint": {
+    "es": "Abre listas de %@",
+    "en": "Opens %@ playlists"
+  },
+  "explore.region.global_and_yours": {
+    "es": "Global y tu región",
+    "en": "Global and your region"
+  },
+  "explore.region.selector": {
+    "es": "País de los rankings",
+    "en": "Charts country"
+  },
+  "explore.refresh": {
+    "es": "Actualizar",
+    "en": "Refresh"
+  },
+  "explore.region.detected": {
+    "es": "Región detectada: %@",
+    "en": "Detected region: %@"
+  },
+  "explore.retry": {
+    "es": "Reintentar",
+    "en": "Try again"
+  },
+  "explore.charts.empty_title": {
+    "es": "No hay rankings disponibles",
+    "en": "No charts available"
+  },
+  "explore.charts.empty_description": {
+    "es": "Probá con otra región.",
+    "en": "Try another region."
+  },
+  "explore.refresh_music": {
+    "es": "Actualizar música",
+    "en": "Refresh music"
+  },
+  "explore.empty.description": {
+    "es": "Probá otra categoría o actualizá para volver a buscar.",
+    "en": "Try another category or refresh to search again."
+  },
+  "explore.see_all": {
+    "es": "Ver todo",
+    "en": "See all"
+  },
+  "explore.see_all_named": {
+    "es": "Ver todo: %@",
+    "en": "See all: %@"
+  },
+  "explore.catalog.accessibility": {
+    "es": "Catálogo de Explorar",
+    "en": "Explore catalog"
+  },
+  "explore.releases.accessibility": {
+    "es": "Lanzamientos destacados",
+    "en": "Featured releases"
+  },
+  "library.tab.playlists": {
+    "es": "Listas",
+    "en": "Playlists"
+  },
+  "library.tab.albums": {
+    "es": "Álbumes",
+    "en": "Albums"
+  },
+  "library.eyebrow": {
+    "es": "Colección",
+    "en": "Collection"
+  },
+  "library.title": {
+    "es": "Biblioteca",
+    "en": "Library"
+  },
+  "library.new_playlist": {
+    "es": "Nueva lista",
+    "en": "New playlist"
+  },
+  "library.create_playlist": {
+    "es": "Crear una lista",
+    "en": "Create a playlist"
+  },
+  "library.refresh": {
+    "es": "Actualizar biblioteca",
+    "en": "Refresh library"
+  },
+  "library.login_required": {
+    "es": "Iniciá sesión para ver tu biblioteca",
+    "en": "Sign in to see your library"
+  },
+  "library.empty.playlists": {
+    "es": "No tenés listas",
+    "en": "No playlists yet"
+  },
+  "library.empty.albums": {
+    "es": "No tenés álbumes guardados",
+    "en": "No saved albums"
+  },
+  "library.empty.artists": {
+    "es": "No tenés artistas en tu biblioteca",
+    "en": "No artists in your library"
+  },
+  "library.empty.songs": {
+    "es": "No hay canciones en tu biblioteca",
+    "en": "No songs in your library"
+  },
+  "library.error.load_songs": {
+    "es": "No se pudieron cargar las canciones",
+    "en": "Couldn't load songs"
+  },
+  "library.error.update_songs": {
+    "es": "No se pudieron actualizar las canciones: %@",
+    "en": "Couldn't refresh songs: %@"
+  },
+  "library.error.load": {
+    "es": "No se pudo cargar la biblioteca",
+    "en": "Couldn't load the library"
+  },
+  "library.retry": {
+    "es": "Reintentar",
+    "en": "Try again"
+  },
+  "library.loading_more_songs": {
+    "es": "Cargando más canciones…",
+    "en": "Loading more songs…"
+  },
+  "library.open_card": {
+    "es": "Abrir %@",
+    "en": "Open %@"
+  },
+  "history.today": {
+    "es": "Hoy",
+    "en": "Today"
+  },
+  "history.yesterday": {
+    "es": "Ayer",
+    "en": "Yesterday"
+  },
+  "history.title": {
+    "es": "Historial",
+    "en": "History"
+  },
+  "history.subtitle": {
+    "es": "Tus reproducciones recientes ordenadas por día",
+    "en": "Your recent plays, grouped by day"
+  },
+  "history.error.load": {
+    "es": "No se pudo cargar el historial",
+    "en": "Couldn't load history"
+  },
+  "history.empty": {
+    "es": "No hay reproducciones recientes",
+    "en": "No recent plays"
+  },
+  "history.day.monday": {
+    "es": "Lunes",
+    "en": "Monday"
+  },
+  "history.day.tuesday": {
+    "es": "Martes",
+    "en": "Tuesday"
+  },
+  "history.day.wednesday": {
+    "es": "Miércoles",
+    "en": "Wednesday"
+  },
+  "history.day.thursday": {
+    "es": "Jueves",
+    "en": "Thursday"
+  },
+  "history.day.friday": {
+    "es": "Viernes",
+    "en": "Friday"
+  },
+  "history.day.saturday": {
+    "es": "Sábado",
+    "en": "Saturday"
+  },
+  "history.day.sunday": {
+    "es": "Domingo",
+    "en": "Sunday"
+  },
+  "history.month.january": {
+    "es": "enero",
+    "en": "January"
+  },
+  "history.month.february": {
+    "es": "febrero",
+    "en": "February"
+  },
+  "history.month.march": {
+    "es": "marzo",
+    "en": "March"
+  },
+  "history.month.april": {
+    "es": "abril",
+    "en": "April"
+  },
+  "history.month.may": {
+    "es": "mayo",
+    "en": "May"
+  },
+  "history.month.june": {
+    "es": "junio",
+    "en": "June"
+  },
+  "history.month.july": {
+    "es": "julio",
+    "en": "July"
+  },
+  "history.month.august": {
+    "es": "agosto",
+    "en": "August"
+  },
+  "history.month.september": {
+    "es": "septiembre",
+    "en": "September"
+  },
+  "history.month.october": {
+    "es": "octubre",
+    "en": "October"
+  },
+  "history.month.november": {
+    "es": "noviembre",
+    "en": "November"
+  },
+  "history.month.december": {
+    "es": "diciembre",
+    "en": "December"
+  },
+  "explore.category.focus.title": {
+    "es": "Concentración",
+    "en": "Focus"
+  },
+  "explore.category.focus.subtitle": {
+    "es": "Menos ruido, más foco",
+    "en": "Less noise, more focus"
+  },
+  "explore.category.relax.title": {
+    "es": "Relajación",
+    "en": "Relax"
+  },
+  "explore.category.relax.subtitle": {
+    "es": "Bajá un cambio",
+    "en": "Slow things down"
+  },
+  "explore.category.workout.title": {
+    "es": "Entrenar",
+    "en": "Workout"
+  },
+  "explore.category.workout.subtitle": {
+    "es": "Un poco más de energía",
+    "en": "A little more energy"
+  },
+  "explore.category.party.title": {
+    "es": "Fiesta",
+    "en": "Party"
+  },
+  "explore.category.party.subtitle": {
+    "es": "Que siga la noche",
+    "en": "Keep the night going"
+  },
+  "explore.category.sleep.title": {
+    "es": "Dormir",
+    "en": "Sleep"
+  },
+  "explore.category.sleep.subtitle": {
+    "es": "Hasta mañana",
+    "en": "Until tomorrow"
+  },
+  "explore.category.road.title": {
+    "es": "En ruta",
+    "en": "On the road"
+  },
+  "explore.category.road.subtitle": {
+    "es": "El viaje también se escucha",
+    "en": "Make the trip part of the soundtrack"
+  },
+  "explore.category.good-mood.title": {
+    "es": "Buen día",
+    "en": "Good vibes"
+  },
+  "explore.category.good-mood.subtitle": {
+    "es": "Para sentirse bien",
+    "en": "Feel-good music"
+  },
+  "explore.category.romance.title": {
+    "es": "Romance",
+    "en": "Romance"
+  },
+  "explore.category.romance.subtitle": {
+    "es": "Para compartir",
+    "en": "Made to share"
+  },
+  "explore.category.pop.title": {
+    "es": "Pop",
+    "en": "Pop"
+  },
+  "explore.category.pop.subtitle": {
+    "es": "Melodías que se quedan",
+    "en": "Songs that stay with you"
+  },
+  "explore.category.rock.title": {
+    "es": "Rock",
+    "en": "Rock"
+  },
+  "explore.category.rock.subtitle": {
+    "es": "Guitarras al frente",
+    "en": "Guitars up front"
+  },
+  "explore.category.latin.title": {
+    "es": "Latina",
+    "en": "Latin"
+  },
+  "explore.category.latin.subtitle": {
+    "es": "Ritmos de acá",
+    "en": "Local rhythms"
+  },
+  "explore.category.hiphop.title": {
+    "es": "Hip-hop",
+    "en": "Hip-hop"
+  },
+  "explore.category.hiphop.subtitle": {
+    "es": "Beats y palabras",
+    "en": "Beats and words"
+  },
+  "explore.category.electronic.title": {
+    "es": "Electrónica",
+    "en": "Electronic"
+  },
+  "explore.category.electronic.subtitle": {
+    "es": "Seguí el pulso",
+    "en": "Follow the beat"
+  },
+  "explore.category.indie.title": {
+    "es": "Indie y alternativa",
+    "en": "Indie & alternative"
+  },
+  "explore.category.indie.subtitle": {
+    "es": "Otros caminos",
+    "en": "A different path"
+  },
+  "explore.category.rnb.title": {
+    "es": "R&B y soul",
+    "en": "R&B and soul"
+  },
+  "explore.category.rnb.subtitle": {
+    "es": "Con alma",
+    "en": "With soul"
+  },
+  "explore.category.jazz.title": {
+    "es": "Jazz",
+    "en": "Jazz"
+  },
+  "explore.category.jazz.subtitle": {
+    "es": "Espacio para improvisar",
+    "en": "Room to improvise"
+  },
+  "explore.category.cumbia.title": {
+    "es": "Cumbia",
+    "en": "Cumbia"
+  },
+  "explore.category.cumbia.subtitle": {
+    "es": "Siempre hay una más",
+    "en": "There is always one more"
+  },
+  "explore.category.reggaeton.title": {
+    "es": "Reggaetón",
+    "en": "Reggaeton"
+  },
+  "explore.category.reggaeton.subtitle": {
+    "es": "Para mover el día",
+    "en": "Move through the day"
+  },
+  "explore.category.classical.title": {
+    "es": "Clásica",
+    "en": "Classical"
+  },
+  "explore.category.classical.subtitle": {
+    "es": "Sin apuro",
+    "en": "Take your time"
+  },
+  "explore.category.metal.title": {
+    "es": "Metal",
+    "en": "Metal"
+  },
+  "explore.category.metal.subtitle": {
+    "es": "Subí el volumen",
+    "en": "Turn it up"
+  },
+  "explore.category.kpop.title": {
+    "es": "K-Pop",
+    "en": "K-pop"
+  },
+  "explore.category.kpop.subtitle": {
+    "es": "Todo el color",
+    "en": "All the color"
+  },
+  "explore.category.acoustic.title": {
+    "es": "Folk y acústica",
+    "en": "Folk & acoustic"
+  },
+  "explore.category.acoustic.subtitle": {
+    "es": "Más cerca",
+    "en": "A little closer"
+  },
+  "explore.category.reggae.title": {
+    "es": "Reggae",
+    "en": "Reggae"
+  },
+  "explore.category.reggae.subtitle": {
+    "es": "A otro ritmo",
+    "en": "A different rhythm"
+  },
+  "explore.category.soundtracks.title": {
+    "es": "Bandas sonoras",
+    "en": "Soundtracks"
+  },
+  "explore.category.soundtracks.subtitle": {
+    "es": "Música de película",
+    "en": "Music for the movies"
+  },
+  "metadata.playlist.short": {
+    "es": "Lista",
+    "en": "Playlist"
+  },
+  "explore.charts.refresh_detect": {
+    "es": "Actualizar rankings y detectar de nuevo tu región",
+    "en": "Refresh charts and detect your region again"
+  },
+  "explore.charts.refresh": {
+    "es": "Actualizar rankings",
+    "en": "Refresh charts"
+  },
+  "explore.charts.loading": {
+    "es": "Cargando rankings…",
+    "en": "Loading charts…"
+  },
+  "explore.music.loading": {
+    "es": "Buscando música…",
+    "en": "Finding music…"
+  },
+  "explore.music.empty_title": {
+    "es": "Todavía no hay música aquí",
+    "en": "No music here yet"
+  },
+  "search.placeholder": {
+    "es": "Buscar en YouTube Music…",
+    "en": "Search YouTube Music…"
+  },
+  "search.spotlight.placeholder": {
+    "es": "Buscar canciones, álbumes, artistas y listas…",
+    "en": "Search songs, albums, artists, and playlists…"
+  },
+  "explore.region.label": {
+    "es": "Región",
+    "en": "Region"
+  },
+  "metadata.various_artists": {
+    "es": "Varios artistas",
+    "en": "Various artists"
+  },
+  "library.load_error.playlists": {
+    "es": "Listas: %@",
+    "en": "Playlists: %@"
+  },
+  "library.load_error.albums": {
+    "es": "Álbumes: %@",
+    "en": "Albums: %@"
+  },
+  "library.load_error.history": {
+    "es": "Historial: %@",
+    "en": "History: %@"
+  },
+  "library.load_errors.playlists_albums": {
+    "es": "Listas: %@\nÁlbumes: %@",
+    "en": "Playlists: %@\nAlbums: %@"
+  },
+  "library.load_errors.playlists_history": {
+    "es": "Listas: %@\nHistorial: %@",
+    "en": "Playlists: %@\nHistory: %@"
+  },
+  "library.load_errors.albums_history": {
+    "es": "Álbumes: %@\nHistorial: %@",
+    "en": "Albums: %@\nHistory: %@"
+  },
+  "library.load_errors.playlists_albums_history": {
+    "es": "Listas: %@\nÁlbumes: %@\nHistorial: %@",
+    "en": "Playlists: %@\nAlbums: %@\nHistory: %@"
+  },
+  "provider.chip.relax": {
+    "es": "Relajación",
+    "en": "Relax"
+  },
+  "provider.chip.workout": {
+    "es": "Entrenar",
+    "en": "Workout"
+  },
+  "provider.chip.focus": {
+    "es": "Concentración",
+    "en": "Focus"
+  },
+  "provider.chip.podcasts": {
+    "es": "Podcasts",
+    "en": "Podcasts"
+  },
+  "provider.chip.energize": {
+    "es": "Activá tu energía",
+    "en": "Energize"
+  },
+  "provider.chip.commute": {
+    "es": "En camino",
+    "en": "Commute"
+  },
+  "provider.chip.sleep": {
+    "es": "Dormir",
+    "en": "Sleep"
+  },
+  "provider.chip.party": {
+    "es": "Fiesta",
+    "en": "Party"
+  },
+  "provider.chip.romance": {
+    "es": "Romance",
+    "en": "Romance"
+  }
+}

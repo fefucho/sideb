@@ -7,7 +7,11 @@ import SideBCore
 final class AlbumDetailViewModel {
     var album: AlbumDetailRecord?
     var isLoading: Bool = false
-    var errorMessage: String?
+    private var errorDescriptor: AppMessage?
+    var errorMessage: String? {
+        get { errorDescriptor?.text }
+        set { errorDescriptor = newValue.map { AppMessage(verbatim: $0) } }
+    }
     var searchQuery: String = ""
     @ObservationIgnored private var loadGeneration: UInt = 0
     @ObservationIgnored private var projectionCacheTracks: [SongItemRecord]?
@@ -68,7 +72,7 @@ final class AlbumDetailViewModel {
         } catch {
             guard generation == loadGeneration else { return }
             print("[AlbumDetailViewModel] Error al cargar álbum \(browseId): \(error)")
-            self.errorMessage = error.localizedDescription
+            self.errorDescriptor = AppMessage(verbatim: error.localizedDescription)
         }
         if generation == loadGeneration { self.isLoading = false }
     }

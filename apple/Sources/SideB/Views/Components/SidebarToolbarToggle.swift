@@ -1,4 +1,5 @@
 import AppKit
+import Observation
 import SwiftUI
 
 /// The native toolbar hosts the entire hit region at its fixed window anchor.
@@ -17,21 +18,54 @@ struct SidebarToolbarToggle: NSViewRepresentable {
         button.target = context.coordinator
         button.action = #selector(Coordinator.toggle)
         context.coordinator.button = button
+        context.coordinator.observeLocalization()
         return WindowAlignedToolbarContainer(contentView: button, topInset: 17, leadingInset: 105)
     }
 
     func updateNSView(_ view: WindowAlignedToolbarContainer, context: Context) {
         context.coordinator.parent = self
-        let label = isExpanded ? "Ocultar barra lateral" : "Mostrar barra lateral"
-        context.coordinator.button?.toolTip = label
-        context.coordinator.button?.setAccessibilityLabel(label)
+        context.coordinator.updateLocalization()
     }
 
-    final class Coordinator: NSObject {
+    @MainActor final class Coordinator: NSObject {
         var parent: SidebarToolbarToggle
         weak var button: NSButton?
+        var localizationObserver: AppKitLocalizationObserver?
         init(_ parent: SidebarToolbarToggle) { self.parent = parent }
+        func updateLocalization() {
+            let label = parent.isExpanded ? L10n.text("sidebar.hide") : L10n.text("sidebar.show")
+            button?.toolTip = label
+            button?.setAccessibilityLabel(label)
+        }
+        func observeLocalization() {
+            localizationObserver = AppKitLocalizationObserver { [weak self] in self?.updateLocalization() }
+            localizationObserver?.start()
+        }
         @objc func toggle() { parent.isExpanded.toggle() }
+    }
+}
+
+/// Observes the language revision and refreshes labels on existing AppKit controls.
+@MainActor
+final class AppKitLocalizationObserver {
+    private let update: @MainActor () -> Void
+
+    init(update: @escaping @MainActor () -> Void) {
+        self.update = update
+    }
+
+    func start() { observeNextChange() }
+
+    private func observeNextChange() {
+        withObservationTracking {
+            _ = L10n.revision
+        } onChange: { [weak self] in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.update()
+                self.observeNextChange()
+            }
+        }
     }
 }
 

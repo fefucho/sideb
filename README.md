@@ -74,6 +74,8 @@ Guardar en `apple/plans/`, `windows/plans/` o `plans/`. Los índices enlazan pla
 
 Cada plan indica objetivo, estado, alcance/exclusiones, referencias, pasos con casillas, comprobaciones de cierre y enlaces a fixes/builds. Actualizar el mismo archivo. Usar nombres como `PLAN-001-shuffle-reversible.md`. Un plan describe trabajo; un fix registra lo realizado.
 
+La auditoría completa Mac → Windows del 2026-10-09 está en [PLAN-001 Windows](windows/plans/PLAN-001-feature-parity.md): diferencia funciones ausentes, implementaciones parciales, adaptaciones y validación nativa pendiente. El estado agregado sigue en [PARIDAD](PARIDAD.md).
+
 ## Referencias anteriores
 
 `archive/` conserva las referencias que deben acompañar al repositorio. Sus instrucciones y resultados son históricos:

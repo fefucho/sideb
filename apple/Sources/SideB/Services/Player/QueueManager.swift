@@ -68,8 +68,31 @@ public final class QueueManager {
     public var onStateChange: (() -> Void)?
     public private(set) var queue: [SongItemRecord] = [] { didSet { stateChanged() } }
     public private(set) var currentIndex: Int = 0 { didSet { stateChanged() } }
-    public var context: QueueContext? = nil { didSet { stateChanged() } }
+    public var context: QueueContext? = nil { didSet { contextLocalizationKey = nil; contextLocalizationArguments = []; stateChanged() } }
     public var contextTitle: String = "Cola de reproducción" { didSet { stateChanged() } }
+    private(set) var contextLocalizationKey: String?
+    private(set) var contextLocalizationArguments: [String] = []
+
+    /// Presentation metadata never changes context equality or queue occurrences.
+    func setContextLocalizationKey(_ key: String?, args: [String] = []) {
+        let allowed = ["queue.manual": 0, "history.title": 0, "player.shuffledArtist": 1]
+        let next = key.flatMap { allowed[$0] == args.count ? $0 : nil }
+        let nextArguments = next == nil ? [] : args
+        guard contextLocalizationKey != next || contextLocalizationArguments != nextArguments else { return }
+        contextLocalizationKey = next
+        contextLocalizationArguments = nextArguments
+        stateChanged()
+    }
+
+    var displayContextTitle: String {
+        switch context {
+        case .radio(_, _, let seedName): L10n.text("player.radioFor", args: [seedName])
+        case .album(_, let title): L10n.text("queue.albumContext", args: [title])
+        case .playlist(_, let title): L10n.text("queue.playlistContext", args: [title])
+        case .custom(let title): contextLocalizationKey.map { L10n.text($0, args: contextLocalizationArguments) } ?? title
+        case nil: L10n.text("queue.title")
+        }
+    }
     public var radioSeed: String? = nil { didSet { stateChanged() } }
     public var continuationToken: String? = nil
     public private(set) var queueToken: UUID = UUID()
@@ -274,7 +297,10 @@ public final class QueueManager {
             placements[id] = placementAnchor.map(QueuePlacement.after) ?? .end
             placementAnchor = id
         }
-        if context == nil { context = .custom(title: "Cola manual") }
+        if context == nil {
+            context = .custom(title: "Cola manual")
+            setContextLocalizationKey("queue.manual")
+        }
         visibleCount = min(queue.count, max(visibleCount + tracks.count, insertIndex + tracks.count))
     }
 
@@ -414,6 +440,7 @@ public final class QueueManager {
     private func replaceManualQueue(with items: [SongItemRecord]) {
         beginMutation(); defer { endMutation() }
         replaceQueue(with: items, context: .custom(title: "Cola manual"))
+        setContextLocalizationKey("queue.manual")
         sourceRanks.removeAll(keepingCapacity: true)
         nextSourceRank = 0
         var anchor: String?

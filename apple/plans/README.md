@@ -4,6 +4,7 @@
 
 | Plan | Estado | Referencia |
 |---|---|---|
+| [PLAN-014: español e inglés](PLAN-014-localization.md) | FIX-131/build-0067: 688 claves ES/EN, 562 pruebas y QA aislada aprobadas; comprobaciones físicas pendientes | Selector primero en Configuración, cambio en vivo/persistencia, recursos instalados, IDs/cola/país y render conservados; PAR-014 |
 | [PLAN-013: fullscreen con Inicio de fondo](PLAN-013-fullscreen-home-performance.md) | FIX-123/124/build-0052: 485 pruebas + 10 del runner aprobadas; caso sidebar cerrado→fullscreen→abrir y cuatro alternancias comprobados visualmente | FIX-095/109/119/122/123; viewport externo ajustado al shell, tamaño nativo interno retenido, pausa y snapshots diferidos; FPS reales sin certificar |
 | [PLAN-012: navegación con gestos](PLAN-012-navigation-gestures.md) | FIX-129/build-0061: Inicio conserva scroll/páginas locales, 49 pruebas focales y 532 release aprobadas; geometría y botones comprobados, ensayo físico pendiente | FIX-125/126/127/128/129; propietarios limitados al viewport, headers/huecos con historial, secuencia fija hasta terminar |
 | [PLAN-011: Explorar](PLAN-011-explore.md) | Implementado y optimizado en build-0048; suite release completa aprobada, UI en sesión aislada y trazas comprobadas; FPS/audio/trackpad físico no certificados | FIX-120/121/PAR-012; Global + región y selector, lanzamientos/categorías con tarjetas nativas recicladas y viewport acotado |

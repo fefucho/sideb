@@ -18,5 +18,6 @@ protocol NativeTrackCellPresenting: AnyObject {
     func updateHover(isHovered: Bool)
     func updateSelection(isSelected: Bool)
     func updateCreditFocus(_ isFocused: Bool)
+    func refreshLocalization()
     var containsKeyboardFocus: Bool { get }
 }

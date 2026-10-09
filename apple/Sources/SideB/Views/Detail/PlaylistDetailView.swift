@@ -89,7 +89,7 @@ struct PlaylistDetailView: View {
                             HStack(spacing: 8) {
                                 ProgressView()
                                     .controlSize(.small)
-                                Text("Cargando más canciones...")
+                                Text(L10n.text("detail.playlist.loadingMoreSongs"))
                                     .font(.system(size: 12))
                                     .foregroundStyle(.secondary)
                             }
@@ -102,7 +102,7 @@ struct PlaylistDetailView: View {
                     }
                 } else if let error = viewModel.errorMessage {
                     DetailErrorStateView(
-                        title: "No se pudo cargar la playlist",
+                        title: L10n.text("detail.playlist.loadFailed"),
                         message: error,
                         onRetry: {
                             Task {
@@ -136,7 +136,7 @@ struct PlaylistDetailView: View {
             if showDescriptionModal, let playlist = viewModel.playlist, let desc = playlist.description, !desc.isEmpty {
                 DescriptionCardModal(
                     title: playlist.title,
-                    subtitle: "Descripción de la playlist",
+                    subtitle: L10n.text("detail.playlist.description"),
                     description: desc,
                     isPresented: $showDescriptionModal
                 )
@@ -150,21 +150,21 @@ struct PlaylistDetailView: View {
             }
         }
         .confirmationDialog(
-            "¿Eliminar esta playlist?",
+            L10n.text("detail.playlist.deleteConfirmation"),
             isPresented: $showDeleteConfirmation,
             titleVisibility: .visible
         ) {
-            Button("Eliminar playlist", role: .destructive) {
+            Button(L10n.text("detail.playlist.delete"), role: .destructive) {
                 Task { await deletePlaylist() }
             }
         } message: {
-            Text("También se eliminará de YouTube Music.")
+            Text(L10n.text("detail.playlist.deleteWarning"))
         }
-        .alert("No se pudo completar la acción", isPresented: Binding(
+        .alert(L10n.text("detail.playlist.actionFailed"), isPresented: Binding(
             get: { mutationError != nil },
             set: { if !$0 { mutationError = nil } }
         )) {
-            Button("Aceptar", role: .cancel) { mutationError = nil }
+            Button(L10n.text("common.ok"), role: .cancel) { mutationError = nil }
         } message: {
             Text(mutationError ?? "")
         }
@@ -174,7 +174,7 @@ struct PlaylistDetailView: View {
 
     private func headerView(playlist: PlaylistDetailRecord) -> some View {
         CollectionDetailHeaderView(
-            kind: playlist.id == "LM" || playlist.id == "VLLM" ? "COLECCIÓN" : "PLAYLIST",
+            kind: L10n.text(playlist.id == "LM" || playlist.id == "VLLM" ? "detail.kind.collection" : "detail.kind.playlist"),
             title: playlist.title,
             thumbnail: playlist.thumbnail,
             artworkSymbol: playlist.id == "LM" || playlist.id == "VLLM" ? "heart.fill" : "music.note.list",
@@ -270,7 +270,7 @@ struct PlaylistDetailView: View {
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
-        .accessibilityLabel("Más opciones")
+        .accessibilityLabel(L10n.text("common.moreOptions"))
         .font(.system(size: 15.6))
     }
 

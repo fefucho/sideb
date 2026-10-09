@@ -20,6 +20,7 @@ struct ExploreView: View {
     private var requestIdentity: RequestIdentity { .init(route: route, session: sessionRevision, refresh: refreshRevision) }
 
     var body: some View {
+        let _ = L10n.revision
         Group {
             if route == .releases || isCategoryRoute {
                 nativeCatalog(cards: model.cards, header: AnyView(catalogHeader),
@@ -51,17 +52,17 @@ struct ExploreView: View {
                     switch route {
                     case .discover:
                         HStack(spacing: 16) {
-                            shortcut(.releases, subtitle: "Recién llegados", hue: 0.02)
-                            shortcut(.charts, subtitle: "Global y tu región", hue: 0.64)
+                            shortcut(.releases, subtitle: L10n.text("explore.shortcut.new_arrivals"), hue: 0.02)
+                            shortcut(.charts, subtitle: L10n.text("explore.shortcut.global_region"), hue: 0.64)
                         }
-                        music(title: "Álbumes y sencillos nuevos", preview: true)
-                        categories(ExploreCategory.moods, title: "Para cada momento", destination: .moods)
-                        categories(Array(ExploreCategory.genres.prefix(8)), title: "Explorá por género", destination: .genres)
-                    case .releases: music(title: "Álbumes y sencillos nuevos")
+                        music(title: L10n.text("explore.section.new_albums_singles"), preview: true)
+                        categories(ExploreCategory.moods, title: L10n.text("explore.section.for_every_moment"), destination: .moods)
+                        categories(Array(ExploreCategory.genres.prefix(8)), title: L10n.text("explore.section.explore_genres"), destination: .genres)
+                    case .releases: music(title: L10n.text("explore.section.new_albums_singles"))
                     case .charts, .chartCountry: chartContents
-                    case .genres: categories(ExploreCategory.genres, title: "Todos los géneros")
-                    case .moods: categories(ExploreCategory.moods, title: "Elegí tu momento")
-                    case .category: music(title: "Playlists para explorar")
+                    case .genres: categories(ExploreCategory.genres, title: L10n.text("explore.section.all_genres"))
+                    case .moods: categories(ExploreCategory.moods, title: L10n.text("explore.section.choose_moment"))
+                    case .category: music(title: L10n.text("explore.section.playlists_to_explore"))
                     }
                 }
                 .padding(.horizontal, 32)
@@ -79,7 +80,7 @@ struct ExploreView: View {
             header
             tabs
             VStack(alignment: .leading, spacing: 16) {
-                musicHeader(title: route == .releases ? "Álbumes y sencillos nuevos" : "Playlists para explorar")
+                musicHeader(title: route == .releases ? L10n.text("explore.section.new_albums_singles") : L10n.text("explore.section.playlists_to_explore"))
                 musicStatus
             }
         }
@@ -89,9 +90,9 @@ struct ExploreView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Label("EXPLORAR", systemImage: "safari")
+            Label(L10n.text("explore.eyebrow").uppercased(), systemImage: "safari")
                 .font(.system(size: 11, weight: .semibold)).tracking(2).foregroundStyle(.secondary)
-            Text(route == .discover ? "Algo nuevo para escuchar." : route.title)
+            Text(route == .discover ? L10n.text("explore.title.discover") : route.title)
                 .font(.system(size: route == .discover ? 36 : 32, weight: .bold)).accessibilityAddTraits(.isHeader)
             Text(headerSubtitle).font(.system(size: 14)).foregroundStyle(.secondary)
         }
@@ -100,13 +101,13 @@ struct ExploreView: View {
 
     private var headerSubtitle: String {
         switch route {
-        case .discover: return "Novedades, géneros y música para acompañar tu día."
-        case .releases: return "Lo nuevo en YouTube Music, listo para descubrir."
-        case .charts: return "Lo que suena en el mundo y cerca tuyo."
-        case .chartCountry(let code): return "Las playlists de YouTube Charts para \(ExploreChartRegion.name(code))."
-        case .genres: return "Tus sonidos de siempre y otros por conocer."
-        case .moods: return "Una playlist para lo que estés haciendo."
-        case .category(let id): return ExploreCategory.find(id)?.subtitle ?? "Encontrá algo nuevo para escuchar."
+        case .discover: return L10n.text("explore.subtitle.discover")
+        case .releases: return L10n.text("explore.subtitle.releases")
+        case .charts: return L10n.text("explore.subtitle.charts")
+        case .chartCountry(let code): return L10n.text("explore.subtitle.chart_country", args: [ExploreChartRegion.name(code)])
+        case .genres: return L10n.text("explore.subtitle.genres")
+        case .moods: return L10n.text("explore.subtitle.moods")
+        case .category(let id): return ExploreCategory.find(id)?.displaySubtitle ?? L10n.text("explore.subtitle.category_fallback")
         }
     }
 
@@ -162,8 +163,8 @@ struct ExploreView: View {
                                 Image(systemName: "arrow.up.right").font(.system(size: 11)).foregroundStyle(.white.opacity(0.45))
                             }
                             Spacer(minLength: 18)
-                            Text(category.title).font(.system(size: 16, weight: .bold)).lineLimit(1)
-                            Text(category.subtitle).font(.system(size: 11)).foregroundStyle(.white.opacity(0.65)).lineLimit(1).padding(.top, 5)
+                            Text(category.displayTitle).font(.system(size: 16, weight: .bold)).lineLimit(1)
+                            Text(category.displaySubtitle).font(.system(size: 11)).foregroundStyle(.white.opacity(0.65)).lineLimit(1).padding(.top, 5)
                         }
                         .padding(18).frame(maxWidth: .infinity, alignment: .leading).frame(height: 135)
                         .background(tileGradient(category.hue), in: RoundedRectangle(cornerRadius: 14))
@@ -171,8 +172,8 @@ struct ExploreView: View {
                         .contentShape(RoundedRectangle(cornerRadius: 14))
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel("\(category.title), \(category.subtitle)")
-                    .accessibilityHint("Abre playlists de \(category.title)")
+                    .accessibilityLabel(L10n.text("explore.category.accessibility", args: [category.displayTitle, category.displaySubtitle]))
+                    .accessibilityHint(L10n.text("explore.category.open_hint", args: [category.displayTitle]))
                 }
             }
         }
@@ -185,9 +186,9 @@ struct ExploreView: View {
     private var chartContents: some View {
         VStack(alignment: .leading, spacing: 24) {
             HStack(spacing: 16) {
-                Picker("Región", selection: Binding(get: { route }, set: { navigate($0) })) {
-                    Text("Global y tu región").tag(ExploreRoute.charts)
-                    Text("Global").tag(ExploreRoute.chartCountry("ZZ"))
+                Picker(L10n.text("explore.region.label"), selection: Binding(get: { route }, set: { navigate($0) })) {
+                    Text(L10n.text("explore.region.global_and_yours")).tag(ExploreRoute.charts)
+                    Text(L10n.text("explore.region.global")).tag(ExploreRoute.chartCountry("ZZ"))
                     ForEach(model.chartCountries.filter { $0.code != "ZZ" }.sorted {
                         ExploreChartRegion.name($0.code).localizedStandardCompare(ExploreChartRegion.name($1.code)) == .orderedAscending
                     }, id: \.code) { country in
@@ -195,15 +196,15 @@ struct ExploreView: View {
                     }
                 }
                 .pickerStyle(.menu).fixedSize()
-                .accessibilityLabel("País de los rankings")
+                .accessibilityLabel(L10n.text("explore.region.selector"))
                 Spacer()
                 if model.isLoading { ProgressView().controlSize(.small) }
-                Button { refreshRevision &+= 1 } label: { Label("Actualizar", systemImage: "arrow.clockwise") }
+                Button { refreshRevision &+= 1 } label: { Label(L10n.text("explore.refresh"), systemImage: "arrow.clockwise") }
                     .buttonStyle(.bordered).disabled(model.isLoading)
-                    .help(route == .charts ? "Actualizar rankings y detectar de nuevo tu región" : "Actualizar rankings")
+                .help(L10n.text(route == .charts ? "explore.charts.refresh_detect" : "explore.charts.refresh"))
             }
             if route == .charts, let code = model.detectedCountry {
-                Label("Región detectada: \(ExploreChartRegion.name(code))", systemImage: "location.circle")
+                Label(L10n.text("explore.region.detected", args: [ExploreChartRegion.name(code)]), systemImage: "location.circle")
                     .font(.system(size: 12)).foregroundStyle(.secondary)
             }
             if let message = model.regionMessage { Text(message).font(.system(size: 12)).foregroundStyle(.secondary) }
@@ -211,17 +212,17 @@ struct ExploreView: View {
                 HStack {
                     Text(error).font(.system(size: 12)).foregroundStyle(.secondary)
                     Spacer()
-                    Button("Reintentar") { refreshRevision &+= 1 }.buttonStyle(.bordered)
+                    Button(L10n.text("explore.retry")) { refreshRevision &+= 1 }.buttonStyle(.bordered)
                 }
             }
             if model.chartSections.isEmpty, model.isLoading {
-                ProgressView("Cargando rankings…").frame(maxWidth: .infinity, minHeight: 190)
+                ProgressView(L10n.text("explore.charts.loading")).frame(maxWidth: .infinity, minHeight: 190)
             }
             ForEach(model.chartSections) { section in
                 VStack(alignment: .leading, spacing: 16) {
-                    sectionHeader("Rankings · \(ExploreChartRegion.name(section.code))")
+                    sectionHeader(L10n.text("app.explore.chartRegion", args: [ExploreChartRegion.name(section.code)]))
                     if section.cards.isEmpty {
-                        ContentUnavailableView("No hay rankings disponibles", systemImage: "chart.line.uptrend.xyaxis", description: Text("Probá con otra región."))
+                        ContentUnavailableView(L10n.text("explore.charts.empty_title"), systemImage: "chart.line.uptrend.xyaxis", description: Text(L10n.text("explore.charts.empty_description")))
                     } else {
                         LazyVGrid(columns: [GridItem(.adaptive(minimum: 160, maximum: 230), spacing: 20)], alignment: .leading, spacing: 26) {
                             ForEach(section.cards, id: \.exploreIdentity) { mediaCard($0) }
@@ -248,7 +249,7 @@ struct ExploreView: View {
             sectionHeader(title, destination: preview ? .releases : nil)
             if model.isLoading, !model.cards.isEmpty { ProgressView().controlSize(.small) }
             Button { refreshRevision &+= 1 } label: { Image(systemName: "arrow.clockwise") }
-                .buttonStyle(.plain).disabled(model.isLoading).help("Actualizar música").accessibilityLabel("Actualizar música")
+                .buttonStyle(.plain).disabled(model.isLoading).help(L10n.text("explore.refresh_music")).accessibilityLabel(L10n.text("explore.refresh_music"))
         }
     }
 
@@ -258,15 +259,15 @@ struct ExploreView: View {
                 Image(systemName: "wifi.exclamationmark").foregroundStyle(.secondary)
                 Text(error).font(.system(size: 12)).foregroundStyle(.secondary)
                 Spacer()
-                Button("Reintentar") { refreshRevision &+= 1 }.buttonStyle(.bordered)
+                Button(L10n.text("explore.retry")) { refreshRevision &+= 1 }.buttonStyle(.bordered)
             }
             .padding(16).background(.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 12))
         }
         if model.isLoading, model.cards.isEmpty {
-            ProgressView("Buscando música…").frame(maxWidth: .infinity, minHeight: 190)
+            ProgressView(L10n.text("explore.music.loading")).frame(maxWidth: .infinity, minHeight: 190)
         } else if model.cards.isEmpty, model.errorMessage == nil {
-            ContentUnavailableView("Todavía no hay música aquí", systemImage: route.symbol,
-                description: Text("Probá otra categoría o actualizá para volver a buscar."))
+            ContentUnavailableView(L10n.text("explore.music.empty_title"), systemImage: route.symbol,
+                description: Text(L10n.text("explore.empty.description")))
         }
     }
 
@@ -326,9 +327,9 @@ struct ExploreView: View {
             Spacer()
             if let destination {
                 Button { navigate(destination) } label: {
-                    HStack(spacing: 5) { Text("Ver todo"); Image(systemName: "chevron.right").font(.system(size: 9, weight: .bold)) }
+                    HStack(spacing: 5) { Text(L10n.text("explore.see_all")); Image(systemName: "chevron.right").font(.system(size: 9, weight: .bold)) }
                         .font(.system(size: 12, weight: .medium)).foregroundStyle(.secondary)
-                }.buttonStyle(.plain).accessibilityLabel("Ver todo: \(title)")
+                }.buttonStyle(.plain).accessibilityLabel(L10n.text("explore.see_all_named", args: [title]))
             }
         }
     }

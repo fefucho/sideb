@@ -11,6 +11,17 @@ public enum SearchFilter: String, CaseIterable, Identifiable, Sendable {
     case artists = "Artistas"
     case playlists = "Playlists"
 
+    public var displayTitle: String {
+        switch self {
+        case .all: return L10n.text("search.filter.all")
+        case .songs: return L10n.text("search.filter.songs")
+        case .videos: return L10n.text("search.filter.videos")
+        case .albums: return L10n.text("search.filter.albums")
+        case .artists: return L10n.text("search.filter.artists")
+        case .playlists: return L10n.text("search.filter.playlists")
+        }
+    }
+
     public var id: String { rawValue }
 
     public var icon: String {
@@ -33,6 +44,16 @@ public enum SearchCategory: String, Identifiable, Sendable {
     case songs = "Canciones"
     case albums = "Álbumes"
     case playlists = "Playlists"
+
+    public var displayTitle: String {
+        switch self {
+        case .topResult: return L10n.text("search.category.top_result")
+        case .artists: return L10n.text("search.filter.artists")
+        case .songs: return L10n.text("search.filter.songs")
+        case .albums: return L10n.text("search.filter.albums")
+        case .playlists: return L10n.text("search.filter.playlists")
+        }
+    }
 
     public var id: String { rawValue }
 
@@ -64,7 +85,11 @@ public final class SearchViewModel {
 
     public var quickResults: SearchResultsRecord?
     public private(set) var associatedQuickQuery = ""
-    public private(set) var quickErrorMessage: String?
+    private var quickError: AppMessage?
+    public var quickErrorMessage: String? {
+        get { quickError?.text }
+        set { quickError = newValue.map(AppMessage.init(verbatim:)) }
+    }
     public var isQuickSearching = false
     public var isTopdownVisible = false
 
@@ -72,8 +97,16 @@ public final class SearchViewModel {
     public private(set) var committedSongs: [SongItemRecord] = []
     public private(set) var committedVideos: [SongItemRecord] = []
     public private(set) var isCommittedLoading = false
-    public private(set) var errorMessage: String?
-    public private(set) var partialErrors: [SearchPartialError: String] = [:]
+    private var searchError: AppMessage?
+    public var errorMessage: String? {
+        get { searchError?.text }
+        set { searchError = newValue.map(AppMessage.init(verbatim:)) }
+    }
+    private var partialErrorMessages: [SearchPartialError: AppMessage] = [:]
+    public var partialErrors: [SearchPartialError: String] {
+        get { partialErrorMessages.mapValues(\.text) }
+        set { partialErrorMessages = newValue.mapValues(AppMessage.init(verbatim:)) }
+    }
 
     public var selectedFilter: SearchFilter = .all
     public var filteredSongs: [SongItemRecord] = []
@@ -129,7 +162,7 @@ public final class SearchViewModel {
                 isTopdownVisible = true
             } catch {
                 guard !Task.isCancelled, generation == previewGeneration else { return }
-                quickErrorMessage = "No se pudieron cargar los resultados rápidos. Intenta de nuevo."
+                quickError = AppMessage(key: "search.error.quick")
                 isQuickSearching = false
             }
         }
@@ -181,29 +214,26 @@ public final class SearchViewModel {
             let (mixedResult, songsResult, videosResult) = await (mixed, songs, videos)
             guard !Task.isCancelled, generation == queryGeneration, committedQuery == trimmed else { return }
 
-            var errors = partialErrors
             switch mixedResult {
             case .success(let results): committedResults = results
             case .failure:
-                let message = "No se pudieron cargar los resultados generales. Las demás secciones siguen disponibles."
-                errorMessage = message
-                errors[.global] = message
+                let message = AppMessage(key: "search.error.global")
+                searchError = message
+                partialErrorMessages[.global] = message
             }
 
             switch songsResult {
             case .success(let songs): committedSongs = songs
             case .failure:
-                let message = "No se pudo completar la búsqueda de canciones."
-                errors[.songs] = message
+                partialErrorMessages[.songs] = AppMessage(key: "search.error.songs")
                 committedSongs = (committedResults?.songs ?? []).filter { !$0.isVideo }
             }
 
             switch videosResult {
             case .success(let videos): committedVideos = videos
-            case .failure: errors[.videos] = "No se pudieron cargar los videos."
+            case .failure: partialErrorMessages[.videos] = AppMessage(key: "search.error.videos")
             }
 
-            partialErrors = errors
             if selectedFilter == .songs { filteredSongs = committedSongs }
             isCommittedLoading = false
         }
@@ -250,11 +280,11 @@ public final class SearchViewModel {
                 guard !Task.isCancelled, generation == filterGeneration,
                       queryGeneration > 0, committedQuery == query, selectedFilter == filter else { return }
                 filteredCards = cards
-                partialErrors[.categories] = nil
+                partialErrorMessages[.categories] = nil
             } catch {
                 guard !Task.isCancelled, generation == filterGeneration,
                       committedQuery == query, selectedFilter == filter else { return }
-                partialErrors[.categories] = "No se pudo cargar esta categoría."
+                partialErrorMessages[.categories] = AppMessage(key: "search.error.category")
             }
             guard !Task.isCancelled, generation == filterGeneration,
                   committedQuery == query, selectedFilter == filter else { return }
@@ -342,7 +372,7 @@ public final class SearchViewModel {
         isCommittedLoading = false
         isFilterLoading = false
         errorMessage = nil
-        partialErrors = [:]
+        partialErrorMessages = [:]
     }
 }
 

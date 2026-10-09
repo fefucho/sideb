@@ -18,6 +18,7 @@ if [ -e "$APP_DIR" ]; then
     exit 1
 fi
 cd "$SCRIPT_DIR/../apple"
+node "$SCRIPT_DIR/sync-localizations.mjs" --check
 
 # Cargar configuración de versión y repositorio si existe
 if [ -f "$SCRIPT_DIR/../version.env" ]; then
@@ -57,6 +58,22 @@ mkdir -p "$MACOS_DIR" "$RESOURCES_DIR"
 echo "📦 Copiando ejecutable $CONF (SDK $BUILT_SDK)..."
 cp "$SWIFT_BIN" "$MACOS_DIR/$APP_NAME"
 
+# L10n resolves this signed resource inside the app before SwiftPM's build fallback.
+LOCALIZATION_BUNDLE="$BIN_DIR/SideB_SideB.bundle"
+if [ ! -d "$LOCALIZATION_BUNDLE" ]; then
+    echo "Falta el bundle de recursos SwiftPM: $LOCALIZATION_BUNDLE" >&2
+    exit 1
+fi
+cp -R "$LOCALIZATION_BUNDLE" "$RESOURCES_DIR/"
+for LANGUAGE in es en; do
+    for RESOURCE in Localizable.strings Localizable.stringsdict; do
+        if [ ! -f "$RESOURCES_DIR/SideB_SideB.bundle/$LANGUAGE.lproj/$RESOURCE" ]; then
+            echo "Falta el recurso $LANGUAGE/$RESOURCE empaquetado." >&2
+            exit 1
+        fi
+    done
+done
+
 # Ícono: buscar AppIcon.icns en Resources/ junto al script
 ICON_SRC="$SCRIPT_DIR/../apple/Resources/AppIcon.icns"
 ICON_KEY=""
@@ -92,7 +109,7 @@ cat > "$APP_DIR/Contents/Info.plist" <<EOF
     <key>CFBundleDevelopmentRegion</key>
     <string>es</string>
     <key>CFBundleLocalizations</key>
-    <array><string>es</string></array>
+    <array><string>es</string><string>en</string></array>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleVersion</key>

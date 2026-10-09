@@ -18,6 +18,7 @@ final class NativeQueueTrackCellView: NSTableCellView, NativeTrackCellPresenting
     private var imageFetchTask: Task<Void, Never>?
     private var imageRequestID: UUID?
     private var boundTrack: SongItemRecord?
+    private var includesAlbumInSubtitle = false
     private var isReorderable: Bool = false
     private var isLiked: Bool = false
     private var isPointerHovered = false
@@ -103,7 +104,7 @@ final class NativeQueueTrackCellView: NSTableCellView, NativeTrackCellPresenting
         artworkImageView.imageScaling = .scaleProportionallyUpOrDown
         artworkImageView.translatesAutoresizingMaskIntoConstraints = false
         artworkImageView.setAccessibilityIdentifier("NativeQueueTrackArtwork")
-        artworkImageView.setAccessibilityLabel("Carátula de canción")
+        artworkImageView.setAccessibilityLabel(L10n.text("detail.track.artwork"))
         addSubview(artworkImageView)
 
         // 3. Título y Subtítulo
@@ -136,14 +137,14 @@ final class NativeQueueTrackCellView: NSTableCellView, NativeTrackCellPresenting
         dislikeButton.isBordered = false
         dislikeButton.imagePosition = .imageOnly
         dislikeButton.imageScaling = .scaleProportionallyDown
-        dislikeButton.image = NSImage(systemSymbolName: "hand.thumbsdown", accessibilityDescription: "No me gusta (quitar de la cola)")
+        dislikeButton.image = NSImage(systemSymbolName: "hand.thumbsdown", accessibilityDescription: L10n.text("queue.track.dislikeRemove"))
         dislikeButton.contentTintColor = NSColor.white.withAlphaComponent(0.65)
         dislikeButton.alphaValue = 0.0
         dislikeButton.target = self
         dislikeButton.action = #selector(onDislikeClicked)
-        dislikeButton.toolTip = "No me gusta (quitar de la cola)"
+        dislikeButton.toolTip = L10n.text("queue.track.dislikeRemove")
         dislikeButton.setAccessibilityIdentifier("NativeQueueTrackDislike")
-        dislikeButton.setAccessibilityLabel("No me gusta; quitar de la cola")
+        dislikeButton.setAccessibilityLabel(L10n.text("queue.track.dislikeRemoveAX"))
         dislikeButton.translatesAutoresizingMaskIntoConstraints = false
         addSubview(dislikeButton)
 
@@ -156,12 +157,12 @@ final class NativeQueueTrackCellView: NSTableCellView, NativeTrackCellPresenting
         likeButton.isBordered = false
         likeButton.imagePosition = .imageOnly
         likeButton.imageScaling = .scaleProportionallyDown
-        likeButton.image = NSImage(systemSymbolName: "heart", accessibilityDescription: "Me gusta")
+        likeButton.image = NSImage(systemSymbolName: "heart", accessibilityDescription: L10n.text("detail.track.like"))
         likeButton.contentTintColor = NSColor.white.withAlphaComponent(0.65)
         likeButton.alphaValue = 0.0
         likeButton.target = self
         likeButton.action = #selector(onLikeClicked)
-        likeButton.toolTip = "Me gusta"
+        likeButton.toolTip = L10n.text("detail.track.like")
         likeButton.setAccessibilityIdentifier("NativeQueueTrackLike")
         likeButton.translatesAutoresizingMaskIntoConstraints = false
         addSubview(likeButton)
@@ -189,12 +190,12 @@ final class NativeQueueTrackCellView: NSTableCellView, NativeTrackCellPresenting
         addSubview(durationLabel)
 
         reorderHandleImageView.imageScaling = .scaleProportionallyDown
-        reorderHandleImageView.image = NSImage(systemSymbolName: "line.3.horizontal", accessibilityDescription: "Arrastrar para reordenar")
+        reorderHandleImageView.image = NSImage(systemSymbolName: "line.3.horizontal", accessibilityDescription: L10n.text("detail.track.reorder"))
         reorderHandleImageView.contentTintColor = NSColor.white.withAlphaComponent(0.45)
         reorderHandleImageView.translatesAutoresizingMaskIntoConstraints = false
         reorderHandleImageView.isHidden = true
         reorderHandleImageView.setAccessibilityIdentifier("NativeQueueTrackReorderGrip")
-        reorderHandleImageView.setAccessibilityLabel("Arrastrar para reordenar canción")
+        reorderHandleImageView.setAccessibilityLabel(L10n.text("queue.track.reorderSong"))
         addSubview(reorderHandleImageView)
 
         let reorderW = reorderHandleImageView.widthAnchor.constraint(equalToConstant: 18)
@@ -306,6 +307,26 @@ final class NativeQueueTrackCellView: NSTableCellView, NativeTrackCellPresenting
         updateActionVisibility()
     }
 
+    func refreshLocalization() {
+        if let track = boundTrack, track.artists.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            if includesAlbumInSubtitle, let album = track.displayAlbum, !album.isEmpty {
+                subtitleLabel.stringValue = "\(track.displayArtist) • \(album)"
+            } else {
+                subtitleLabel.stringValue = track.displayArtist
+            }
+            subtitleLabel.setAccessibilityLabel(subtitleLabel.stringValue)
+        }
+        let like = L10n.text(isLiked ? "detail.track.unlike" : "detail.track.like")
+        let dislike = L10n.text("queue.track.dislikeRemove")
+        likeButton.toolTip = like
+        likeButton.setAccessibilityLabel(like)
+        dislikeButton.toolTip = dislike
+        dislikeButton.setAccessibilityLabel(L10n.text("queue.track.dislikeRemoveAX"))
+        artworkImageView.setAccessibilityLabel(L10n.text("detail.track.artwork"))
+        reorderHandleImageView.setAccessibilityLabel(L10n.text("queue.track.reorderSong"))
+        reorderHandleImageView.toolTip = L10n.text("queue.track.reorderSong")
+    }
+
     var containsKeyboardFocus: Bool {
         var responder = window?.firstResponder
         while let current = responder {
@@ -341,6 +362,7 @@ final class NativeQueueTrackCellView: NSTableCellView, NativeTrackCellPresenting
         imageFetchTask = nil
         imageRequestID = nil
         self.boundTrack = track
+        includesAlbumInSubtitle = showAlbumInSubtitle
         self.currentVideoId = track.videoId
         self.isReorderable = isReorderable
         self.isLiked = isLiked
@@ -415,11 +437,11 @@ final class NativeQueueTrackCellView: NSTableCellView, NativeTrackCellPresenting
         let buttonSymbolConfig = NSImage.SymbolConfiguration(pointSize: buttonSymbolPtSize, weight: .regular)
 
         let heartSymbol = isLiked ? "heart.fill" : "heart"
-        likeButton.image = NSImage(systemSymbolName: heartSymbol, accessibilityDescription: "Me gusta")?.withSymbolConfiguration(buttonSymbolConfig)
+        likeButton.image = NSImage(systemSymbolName: heartSymbol, accessibilityDescription: L10n.text(isLiked ? "detail.track.unlike" : "detail.track.like"))?.withSymbolConfiguration(buttonSymbolConfig)
         likeButton.contentTintColor = isLiked ? .white : NSColor.white.withAlphaComponent(0.65)
-        likeButton.setAccessibilityLabel(isLiked ? "Quitar de Me gusta" : "Me gusta")
+        likeButton.setAccessibilityLabel(L10n.text(isLiked ? "detail.track.unlike" : "detail.track.like"))
 
-        dislikeButton.image = NSImage(systemSymbolName: "hand.thumbsdown", accessibilityDescription: "No me gusta")?.withSymbolConfiguration(buttonSymbolConfig)
+        dislikeButton.image = NSImage(systemSymbolName: "hand.thumbsdown", accessibilityDescription: L10n.text("queue.track.dislikeRemove"))?.withSymbolConfiguration(buttonSymbolConfig)
         dislikeButton.contentTintColor = NSColor.white.withAlphaComponent(0.65)
         updateActionVisibility()
 
@@ -429,7 +451,7 @@ final class NativeQueueTrackCellView: NSTableCellView, NativeTrackCellPresenting
         reorderHandleWidthConstraint?.constant = handleW
         reorderHandleHeightConstraint?.constant = handleH
         let handleConfig = NSImage.SymbolConfiguration(pointSize: isCompact ? 12.0 : 13.5, weight: .regular)
-        reorderHandleImageView.image = NSImage(systemSymbolName: "line.3.horizontal", accessibilityDescription: "Arrastrar para reordenar")?.withSymbolConfiguration(handleConfig)
+        reorderHandleImageView.image = NSImage(systemSymbolName: "line.3.horizontal", accessibilityDescription: L10n.text("detail.track.reorder"))?.withSymbolConfiguration(handleConfig)
         reorderHandleImageView.isHidden = true
 
         // Icono de reproducción

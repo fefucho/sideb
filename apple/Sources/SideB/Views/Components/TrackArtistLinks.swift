@@ -32,7 +32,7 @@ struct TrackArtistLinks: View {
         }
         .buttonStyle(.plain)
         .onHover { hoveredIndex = $0 ? index : nil }
-        .help("Ver artista: \(name)")
+        .help(L10n.text("detail.artist.viewNamed", args: [name]))
     }
 }
 

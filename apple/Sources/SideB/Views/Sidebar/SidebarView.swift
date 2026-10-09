@@ -29,19 +29,19 @@ struct SidebarView: View {
                     // Sección 1: Descubrir
                     VStack(spacing: 2) {
                         sidebarRow(
-                            title: "Inicio",
+                            title: L10n.text("sidebar.home"),
                             icon: "house.fill",
                             isSelected: !isSearchPresented && router.currentPage == .home
                         ) {
                             navigate(to: .home)
                         }
 
-                        sidebarRow(title: "Explorar", icon: "sparkles", isSelected: !isSearchPresented && isExploreSelected) {
+                        sidebarRow(title: L10n.text("sidebar.explore"), icon: "sparkles", isSelected: !isSearchPresented && isExploreSelected) {
                             navigate(to: .explore(.discover))
                         }
 
                         sidebarRow(
-                            title: "Buscar",
+                            title: L10n.text("sidebar.search"),
                             icon: "magnifyingglass",
                             shortcutBadge: "⌘K",
                             isSelected: isSearchSelected
@@ -58,7 +58,7 @@ struct SidebarView: View {
                     
                     // Sección 2: Colección (Tus Me Gusta e Historial)
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("COLECCIÓN")
+                        Text(L10n.text("sidebar.collection"))
                             .font(.system(size: 10, weight: .bold))
                             .foregroundStyle(.secondary.opacity(0.8))
                             .tracking(0.8)
@@ -66,7 +66,7 @@ struct SidebarView: View {
                             .padding(.bottom, 2)
                         
                         let likedRow = sidebarRow(
-                            title: "Tus Me Gusta",
+                            title: L10n.text("sidebar.liked"),
                             icon: "heart.fill",
                             isSelected: isLikedMusicSelected
                         ) {
@@ -76,8 +76,8 @@ struct SidebarView: View {
                         if let player = playerViewModel {
                             likedRow.playlistCardContextMenu(
                                 id: "LM",
-                                title: "Tus Me Gusta",
-                                subtitle: "Colección",
+                                title: L10n.text("sidebar.liked"),
+                                subtitle: L10n.text("sidebar.collection"),
                                 thumbnail: nil,
                                 inLibrary: true,
                                 origin: .sidebar,
@@ -90,7 +90,7 @@ struct SidebarView: View {
                         }
 
                         sidebarRow(
-                            title: "Biblioteca",
+                            title: L10n.text("sidebar.library"),
                             icon: "books.vertical.fill",
                             isSelected: !isSearchPresented && router.currentPage == .library
                         ) {
@@ -98,7 +98,7 @@ struct SidebarView: View {
                         }
                         
                         sidebarRow(
-                            title: "Historial",
+                            title: L10n.text("sidebar.history"),
                             icon: "clock.arrow.circlepath",
                             isSelected: !isSearchPresented && router.currentPage == .history
                         ) {
@@ -118,7 +118,7 @@ struct SidebarView: View {
                                         libraryViewModel.selectedTab = .playlists
                                     }
                                 } label: {
-                                    Text("Playlists")
+                                    Text(L10n.text("sidebar.playlists"))
                                         .font(.system(size: 11, weight: libraryViewModel.selectedTab == .playlists ? .semibold : .medium))
                                         .foregroundStyle(libraryViewModel.selectedTab == .playlists ? .primary : .secondary)
                                         .padding(.horizontal, 9)
@@ -137,7 +137,7 @@ struct SidebarView: View {
                                         libraryViewModel.selectedTab = .albums
                                     }
                                 } label: {
-                                    Text("Álbumes")
+                                    Text(L10n.text("sidebar.albums"))
                                         .font(.system(size: 11, weight: libraryViewModel.selectedTab == .albums ? .semibold : .medium))
                                         .foregroundStyle(libraryViewModel.selectedTab == .albums ? .primary : .secondary)
                                         .padding(.horizontal, 9)
@@ -165,8 +165,8 @@ struct SidebarView: View {
                                         .foregroundStyle(.secondary)
                                 }
                                 .buttonStyle(.plain)
-                                .help("Nueva playlist")
-                                .accessibilityLabel("Nueva playlist")
+                                .help(L10n.text("sidebar.new_playlist"))
+                                .accessibilityLabel(L10n.text("sidebar.new_playlist"))
                             }
                         }
                         .padding(.horizontal, 14)
@@ -174,7 +174,7 @@ struct SidebarView: View {
 
                         // Lista según pestaña seleccionada
                         if !accountViewModel.isLoggedIn {
-                            Text("Inicia sesión para ver tu música guardada")
+                            Text(L10n.text("sidebar.sign_in_to_view"))
                                 .font(.system(size: 11))
                                 .foregroundStyle(.secondary)
                                 .padding(.horizontal, 14)
@@ -186,10 +186,10 @@ struct SidebarView: View {
                                 .padding(.vertical, 10)
                         } else if let error = libraryViewModel.errorMessage, currentListEmpty {
                             VStack(spacing: 4) {
-                                Text("No se pudo cargar")
+                                Text(L10n.text("sidebar.load_failed"))
                                     .font(.system(size: 11, weight: .medium))
                                     .foregroundStyle(.secondary)
-                                Button("Reintentar") {
+                                Button(L10n.text("sidebar.retry")) {
                                     Task { await libraryViewModel.loadLibrary(core: rustCore) }
                                 }
                                 .font(.system(size: 11, weight: .semibold))
@@ -204,7 +204,7 @@ struct SidebarView: View {
                                 switch libraryViewModel.selectedTab {
                                 case .playlists:
                                     if libraryViewModel.playlists.isEmpty {
-                                        Text("No tienes playlists")
+                                        Text(L10n.text("sidebar.no_playlists"))
                                             .font(.system(size: 11))
                                             .foregroundStyle(.tertiary)
                                             .padding(.horizontal, 14)
@@ -212,7 +212,7 @@ struct SidebarView: View {
                                     } else {
                                         ForEach(libraryViewModel.playlists, id: \.id) { playlist in
                                             let row = sidebarItemRow(
-                                                title: playlist.title,
+                                                title: playlist.displayTitle,
                                                 icon: "music.note.list",
                                                 thumbnailURL: playlist.thumbnail,
                                                 isSelected: isPlaylistSelected(id: playlist.id)
@@ -239,7 +239,7 @@ struct SidebarView: View {
                                     }
                                 case .albums:
                                     if libraryViewModel.albums.isEmpty {
-                                        Text("No tienes álbumes guardados")
+                                        Text(L10n.text("sidebar.no_saved_albums"))
                                             .font(.system(size: 11))
                                             .foregroundStyle(.tertiary)
                                             .padding(.horizontal, 14)
@@ -247,7 +247,7 @@ struct SidebarView: View {
                                     } else {
                                         ForEach(libraryViewModel.albums, id: \.id) { album in
                                             let row = sidebarItemRow(
-                                                title: album.title,
+                                                title: album.displayTitle,
                                                 icon: "opticaldisc",
                                                 thumbnailURL: album.thumbnail,
                                                 isSelected: isAlbumSelected(id: album.id)

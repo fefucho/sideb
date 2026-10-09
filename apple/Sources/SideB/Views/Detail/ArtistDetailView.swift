@@ -60,12 +60,12 @@ struct ArtistDetailView: View {
                         Image(systemName: "exclamationmark.triangle")
                             .font(.system(size: 36))
                             .foregroundStyle(.secondary)
-                        Text("No se pudo cargar el artista")
+                        Text(L10n.text("detail.artist.loadFailed"))
                             .font(.headline)
                         Text(error)
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                        Button("Reintentar") {
+                        Button(L10n.text("common.retry")) {
                             Task {
                                 await viewModel.loadArtist(core: rustCore, browseId: browseId)
                             }
@@ -84,7 +84,7 @@ struct ArtistDetailView: View {
             if showDescriptionModal, let artist = viewModel.artist, let desc = artist.description, !desc.isEmpty {
                 DescriptionCardModal(
                     title: artist.name,
-                    subtitle: "Biografía del artista",
+                    subtitle: L10n.text("detail.artist.biography"),
                     description: desc,
                     isPresented: $showDescriptionModal
                 )
@@ -117,7 +117,7 @@ struct ArtistDetailView: View {
 
             // Metadatos y Acciones
             VStack(alignment: .leading, spacing: 8) {
-                Text("ARTISTA")
+                Text(L10n.text("detail.kind.artist").uppercased())
                     .font(.system(size: 11, weight: .bold))
                     .foregroundStyle(.secondary)
                     .tracking(1.2)
@@ -154,7 +154,7 @@ struct ArtistDetailView: View {
                                 .lineLimit(3)
                                 .multilineTextAlignment(.leading)
 
-                            Text("más")
+                            Text(L10n.text("detail.more"))
                                 .font(.system(size: 11, weight: .semibold))
                                 .foregroundStyle(.primary)
                         }
@@ -170,7 +170,7 @@ struct ArtistDetailView: View {
                             NSCursor.pop()
                         }
                     }
-                    .help("Haz clic para leer la biografía completa")
+                    .help(L10n.text("detail.artist.readBiographyHint"))
                 }
 
                 Spacer(minLength: 8)
@@ -184,7 +184,7 @@ struct ArtistDetailView: View {
                         HStack(spacing: 6) {
                             Image(systemName: "dot.radiowaves.left.and.right")
                                 .font(.system(size: 13, weight: .semibold))
-                            Text("Iniciar mix")
+                            Text(L10n.text("detail.artist.startMix"))
                                 .font(.system(size: 13, weight: .semibold))
                         }
                         .padding(.horizontal, 16)
@@ -203,7 +203,7 @@ struct ArtistDetailView: View {
                             HStack(spacing: 6) {
                                 Image(systemName: "shuffle")
                                     .font(.system(size: 13, weight: .medium))
-                                Text("Aleatorio")
+                                Text(L10n.text("player.shuffle"))
                                     .font(.system(size: 13, weight: .medium))
                             }
                             .padding(.horizontal, 16)
@@ -224,7 +224,7 @@ struct ArtistDetailView: View {
                         HStack(spacing: 6) {
                             Image(systemName: artist.subscribed ? "bell.fill" : "bell")
                                 .font(.system(size: 13, weight: .medium))
-                            Text(artist.subscribed ? "Suscrito" : "Suscribirse")
+                            Text(L10n.text(artist.subscribed ? "detail.artist.subscribed" : "detail.artist.subscribe"))
                                 .font(.system(size: 13, weight: .medium))
                         }
                         .padding(.horizontal, 14)
@@ -265,7 +265,7 @@ struct ArtistDetailView: View {
                     }
                     .menuStyle(.borderlessButton)
                     .menuIndicator(.hidden)
-                    .accessibilityLabel("Más opciones")
+                    .accessibilityLabel(L10n.text("common.moreOptions"))
                 }
             }
             .frame(height: 180, alignment: .leading)
@@ -278,19 +278,19 @@ struct ArtistDetailView: View {
     private func topSongsSection(artist: ArtistDetailRecord) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("Canciones principales")
+                Text(L10n.text("detail.artist.topSongs"))
                     .font(.system(size: 20, weight: .bold))
 
                 Spacer()
 
                 if let topSongsId = artist.topSongsId, !topSongsId.isEmpty {
-                    Button("Ver todo") {
+                    Button(L10n.text("detail.viewAll")) {
                         router?.navigate(to: .playlist(browseId: topSongsId))
                     }
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(.primary)
                     .buttonStyle(.plain)
-                    .accessibilityLabel("Ver todas las canciones principales")
+                    .accessibilityLabel(L10n.text("detail.artist.viewAllTopSongs"))
                 }
             }
 
@@ -401,7 +401,7 @@ struct ArtistDetailView: View {
                 Spacer()
 
                 if let moreBrowseId = section.moreBrowseId, !moreBrowseId.isEmpty {
-                    Button("Ver todo") {
+                    Button(L10n.text("detail.viewAll")) {
                         router?.navigate(to: .catalog(
                             browseId: moreBrowseId,
                             params: section.moreParams,
@@ -411,7 +411,7 @@ struct ArtistDetailView: View {
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(.primary)
                     .buttonStyle(.plain)
-                    .accessibilityLabel("Ver todo: \(section.title)")
+                    .accessibilityLabel(L10n.text("detail.viewAllSection", args: [section.title]))
                 }
             }
             .padding(.horizontal, 32)
@@ -513,7 +513,7 @@ struct ArtistDetailView: View {
 
         cardView
         .mediaCardActivation(label: card.kind == "song" || card.kind == "video"
-            ? "Reproducir \(card.title)" : "Abrir \(card.title)") { handleCardClick(card) }
+            ? L10n.text("detail.playCard", args: [card.title]) : L10n.text("detail.openCard", args: [card.title])) { handleCardClick(card) }
         .mediaCardSurface()
         .browseCardContextMenu(
             card: card,

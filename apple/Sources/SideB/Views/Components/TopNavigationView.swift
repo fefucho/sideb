@@ -27,6 +27,10 @@ struct TopNavigationView: NSViewRepresentable {
         bar.select(selection.index)
         let container = WindowAlignedToolbarContainer(contentView: surface, topInset: ShellLayout.navigationTopInset)
         coordinator.container = container
+        coordinator.localizationObserver = AppKitLocalizationObserver { [weak coordinator] in
+            coordinator?.bar?.updateLocalization()
+        }
+        coordinator.localizationObserver?.start()
         coordinator.setPresentation(progress: revealProgress ?? (isPresented ? 1 : 0), isPresented: isPresented, reduceMotion: reduceMotion)
         return container
     }
@@ -40,6 +44,7 @@ struct TopNavigationView: NSViewRepresentable {
                                reduceTransparency: Bool) {
         coordinator.parent = self
         coordinator.surface?.update(reduceTransparency: reduceTransparency)
+        coordinator.bar?.updateLocalization()
         coordinator.bar?.select(selection.index)
         coordinator.setPresentation(progress: revealProgress ?? (isPresented ? 1 : 0), isPresented: isPresented, reduceMotion: reduceMotion)
     }
@@ -49,6 +54,7 @@ struct TopNavigationView: NSViewRepresentable {
         weak var bar: NativeNavigationBar?
         weak var surface: NavigationGlassSurface?
         weak var container: WindowAlignedToolbarContainer?
+        var localizationObserver: AppKitLocalizationObserver?
         private var presented = false
 
         init(_ parent: TopNavigationView) { self.parent = parent }
@@ -107,7 +113,7 @@ final class NativeNavigationBar: NSView {
     private let controlSize: NSSize
 
     init(target: AnyObject, action: Selector) {
-        let titles = ["Inicio", "Explorar", "Biblioteca", "Buscar"]
+        let titles = Self.localizedTitles
         let symbols = ["house", "sparkles", "books.vertical", "magnifyingglass"]
         let images = zip(symbols, titles).map { symbol, title in
             NSImage(systemSymbolName: symbol, accessibilityDescription: title)!
@@ -127,7 +133,7 @@ final class NativeNavigationBar: NSView {
             control.setToolTip(titles[index], forSegment: index)
             control.setTag(index, forSegment: index)
         }
-        control.setAccessibilityLabel("Navegación principal")
+        control.setAccessibilityLabel(L10n.text("navigation.main"))
         control.sizeToFit()
         // Account for AppKit's own horizontal padding instead of scaling the control.
         let adjustment = (control.frame.width - (Self.preferredWidth - 2 * Self.inset)) / 4
@@ -142,6 +148,24 @@ final class NativeNavigationBar: NSView {
         control.wantsLayer = true
         control.frame.origin = NSPoint(x: Self.inset, y: Self.inset)
         addSubview(control)
+    }
+
+    private static var localizedTitles: [String] {
+        [L10n.text("navigation.home"), L10n.text("navigation.explore"),
+         L10n.text("navigation.library"), L10n.text("navigation.search")]
+    }
+
+    func updateLocalization() {
+        let titles = Self.localizedTitles
+        let symbols = ["house", "sparkles", "books.vertical", "magnifyingglass"]
+        for index in 0..<4 {
+            if let image = NSImage(systemSymbolName: symbols[index], accessibilityDescription: titles[index])?
+                .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 14, weight: .medium)) {
+                control.setImage(image, forSegment: index)
+            }
+            control.setToolTip(titles[index], forSegment: index)
+        }
+        control.setAccessibilityLabel(L10n.text("navigation.main"))
     }
 
     required init?(coder: NSCoder) { nil }

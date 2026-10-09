@@ -3,10 +3,19 @@ import Observation
 import SideBCore
 
 struct HomePlaylistMetadata: Equatable {
-    let title: String
+    private let originalTitle: String
+    var title: String { originalTitle.isEmpty ? L10n.text("metadata.playlist") : originalTitle }
     let creator: String?
     let creatorID: String?
-    let summary: String
+    private let trackCount: Int?
+    private let duration: String?
+
+    var summary: String {
+        var parts = [L10n.text("metadata.playlist")]
+        if let trackCount { parts.append(L10n.songCount(trackCount)) }
+        if let duration { parts.append(duration) }
+        return parts.joined(separator: " • ")
+    }
 
     static func make(item: HomeItemRecord, playlist: PlaylistDetailRecord?) -> Self {
         let title = clean(playlist?.title) ?? clean(item.title) ?? ""
@@ -20,20 +29,17 @@ struct HomePlaylistMetadata: Equatable {
                 cleanCreator($0.text) == creator && channelID($0.id) != nil
             }).flatMap { channelID($0.id) }
 
-        var parts = ["Playlist"]
         let providerSubtitles = [playlist?.subtitle, item.subtitle].compactMap(clean)
         let providerCount = providerSubtitles.lazy.compactMap(trackCount).first
         let isComplete = playlist.map { clean($0.continuation) == nil } ?? false
         let knownCount = providerCount ?? (isComplete && playlist?.items.isEmpty == false ? playlist?.items.count : nil)
-        if let knownCount { parts.append(knownCount == 1 ? "1 canción" : "\(knownCount) canciones") }
+        let trackCount = knownCount
 
         let providerDuration = providerSubtitles.lazy.compactMap {
             HomeCollectionMetadataFormatting.providerDuration($0, acceptsBareSeconds: false)
         }.first
-        if let duration = providerDuration ?? completeDuration(playlist, isComplete: isComplete) {
-            parts.append(duration)
-        }
-        return Self(title: title, creator: creator, creatorID: creatorID, summary: parts.joined(separator: " • "))
+        let duration = providerDuration ?? completeDuration(playlist, isComplete: isComplete)
+        return Self(originalTitle: title, creator: creator, creatorID: creatorID, trackCount: trackCount, duration: duration)
     }
 
     private static func completeDuration(_ playlist: PlaylistDetailRecord?, isComplete: Bool) -> String? {

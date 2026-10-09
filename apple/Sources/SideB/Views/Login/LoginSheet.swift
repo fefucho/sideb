@@ -14,10 +14,10 @@ struct LoginSheet: View {
         VStack(spacing: 0) {
             // Header
             VStack(alignment: .leading, spacing: 4) {
-                Text(String(localized: "Sign in to YouTube Music"))
+                Text(L10n.text("login.heading"))
                     .font(.headline)
 
-                Text(String(localized: "Passkey sign-in is not available in this window. Google will ask for your password or another sign-in method instead."))
+                Text(L10n.text("login.passkey_unavailable"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

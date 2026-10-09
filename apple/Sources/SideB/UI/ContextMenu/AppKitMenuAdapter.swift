@@ -98,7 +98,7 @@ enum AppKitMenuAdapter {
             submenu.autoenablesItems = false
 
             if subitems.isEmpty {
-                let emptyItem = NSMenuItem(title: "Sin opciones disponibles", action: nil, keyEquivalent: "")
+                let emptyItem = NSMenuItem(title: L10n.text("menu.no_options"), action: nil, keyEquivalent: "")
                 emptyItem.image = menuSymbol(named: "tray")
                 if #available(macOS 27.0, *) {
                     emptyItem.preferredImageVisibility = .visible

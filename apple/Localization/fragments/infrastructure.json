@@ -1,0 +1,370 @@
+{
+  "settings.title": {
+    "es": "Configuración",
+    "en": "Settings"
+  },
+  "settings.close": {
+    "es": "Cerrar configuración",
+    "en": "Close settings"
+  },
+  "settings.featured": {
+    "es": "Destacados",
+    "en": "Featured"
+  },
+  "settings.albums": {
+    "es": "Álbumes",
+    "en": "Albums"
+  },
+  "settings.playlists": {
+    "es": "Listas",
+    "en": "Playlists"
+  },
+  "settings.featuredKind": {
+    "es": "Tipo de recomendaciones de Inicio",
+    "en": "Home recommendation type"
+  },
+  "settings.sourcesHint": {
+    "es": "Las fuentes se usan de arriba abajo, hasta completar un máximo de seis páginas.",
+    "en": "Sources are used from top to bottom, up to six pages."
+  },
+  "settings.enableSource": {
+    "es": "Activá una fuente para mostrar destacados de este tipo.",
+    "en": "Enable a source to show featured collections of this type."
+  },
+  "settings.libraryError": {
+    "es": "No se pudo actualizar la biblioteca.",
+    "en": "Couldn’t update your library."
+  },
+  "settings.retryLibrary": {
+    "es": "Reintentar biblioteca",
+    "en": "Retry library"
+  },
+  "settings.restoreSources": {
+    "es": "Restaurar fuentes",
+    "en": "Restore sources"
+  },
+  "settings.categories": {
+    "es": "Categorías de Inicio",
+    "en": "Home categories"
+  },
+  "settings.categoriesHint": {
+    "es": "Ocultar un estante no impide que su fuente aporte destacados.",
+    "en": "Hiding a shelf still lets its source contribute featured collections."
+  },
+  "settings.searchCategory": {
+    "es": "Buscar categoría",
+    "en": "Search categories"
+  },
+  "settings.searchCategoryAX": {
+    "es": "Buscar categoría de Inicio",
+    "en": "Search Home categories"
+  },
+  "settings.categoriesLoading": {
+    "es": "Las categorías aparecerán cuando cargue Inicio.",
+    "en": "Categories will appear when Home loads."
+  },
+  "settings.noCategories": {
+    "es": "No hay categorías con ese nombre.",
+    "en": "No categories match that name."
+  },
+  "settings.showAll": {
+    "es": "Mostrar todas las categorías",
+    "en": "Show all categories"
+  },
+  "settings.youtubeOrder": {
+    "es": "Usar orden de YouTube",
+    "en": "Use YouTube order"
+  },
+  "settings.restoreOrder": {
+    "es": "Restaurar orden de Side B",
+    "en": "Restore Side B order"
+  },
+  "settings.orderSideB": {
+    "es": "Orden de Side B",
+    "en": "Side B order"
+  },
+  "settings.orderYouTube": {
+    "es": "Orden de YouTube",
+    "en": "YouTube order"
+  },
+  "settings.orderCustom": {
+    "es": "Orden personalizado",
+    "en": "Custom order"
+  },
+  "settings.general": {
+    "es": "General",
+    "en": "General"
+  },
+  "settings.language": {
+    "es": "Idioma de la aplicación",
+    "en": "App language"
+  },
+  "settings.home": {
+    "es": "Inicio",
+    "en": "Home"
+  },
+  "settings.drag": {
+    "es": "Arrastrar para ordenar %@",
+    "en": "Drag to reorder %@"
+  },
+  "settings.dragAX": {
+    "es": "Arrastrar para ordenar %@; también podés usar Subir y Bajar",
+    "en": "Drag to reorder %@; you can also use Move up and Move down"
+  },
+  "settings.up": {
+    "es": "Subir %@",
+    "en": "Move %@ up"
+  },
+  "settings.down": {
+    "es": "Bajar %@",
+    "en": "Move %@ down"
+  },
+  "settings.source.recommendedAlbums": {
+    "es": "Recomendados para vos",
+    "en": "Recommended for you"
+  },
+  "settings.source.mixesForYou": {
+    "es": "Mixes para vos",
+    "en": "Mixes for you"
+  },
+  "settings.source.listenAgain": {
+    "es": "Volver a escuchar",
+    "en": "Listen again"
+  },
+  "settings.source.newReleases": {
+    "es": "Nuevos lanzamientos",
+    "en": "New releases"
+  },
+  "settings.source.forgottenFavorites": {
+    "es": "Favoritos olvidados",
+    "en": "Forgotten favorites"
+  },
+  "settings.source.fromLibrary": {
+    "es": "De tu biblioteca en Inicio",
+    "en": "From your library on Home"
+  },
+  "settings.source.fromCommunity": {
+    "es": "De la comunidad",
+    "en": "From the community"
+  },
+  "settings.source.otherHome": {
+    "es": "Otros del Inicio",
+    "en": "Other Home recommendations"
+  },
+  "settings.source.libraryAlbums": {
+    "es": "Álbumes guardados",
+    "en": "Saved albums"
+  },
+  "settings.source.recentAlbums": {
+    "es": "De tus escuchas recientes",
+    "en": "From your recent listening"
+  },
+  "settings.source.libraryPlaylists": {
+    "es": "Listas guardadas",
+    "en": "Saved playlists"
+  },
+  "app.startError": {
+    "es": "Error al iniciar Side B",
+    "en": "Couldn’t start Side B"
+  },
+  "app.close": {
+    "es": "Cerrar aplicación",
+    "en": "Quit app"
+  },
+  "app.addSongError": {
+    "es": "No se pudo añadir la canción",
+    "en": "Couldn’t add the song"
+  },
+  "app.accept": {
+    "es": "Aceptar",
+    "en": "OK"
+  },
+  "app.startDetails": {
+    "es": "No se pudo iniciar Side B: %@",
+    "en": "Couldn’t start Side B: %@"
+  },
+  "destination.home": {
+    "es": "Inicio",
+    "en": "Home"
+  },
+  "destination.explore": {
+    "es": "Explorar",
+    "en": "Explore"
+  },
+  "destination.search": {
+    "es": "Buscar",
+    "en": "Search"
+  },
+  "destination.album": {
+    "es": "Álbum",
+    "en": "Album"
+  },
+  "destination.artist": {
+    "es": "Artista",
+    "en": "Artist"
+  },
+  "destination.playlist": {
+    "es": "Lista de reproducción",
+    "en": "Playlist"
+  },
+  "destination.library": {
+    "es": "Biblioteca",
+    "en": "Library"
+  },
+  "destination.history": {
+    "es": "Historial",
+    "en": "History"
+  },
+  "destination.searchQuery": {
+    "es": "Buscar: %@",
+    "en": "Search: %@"
+  },
+  "app.home.noMore": {
+    "es": "No hay más recomendaciones por ahora.",
+    "en": "No more recommendations for now."
+  },
+  "app.home.noVisible": {
+    "es": "Esta tanda no trajo recomendaciones visibles nuevas. Podés cargar la siguiente.",
+    "en": "This batch has no new visible recommendations. You can load the next one."
+  },
+  "app.home.moreError": {
+    "es": "No se pudieron cargar más recomendaciones. Volvé a intentarlo.",
+    "en": "Couldn’t load more recommendations. Try again."
+  },
+  "app.home.loadError": {
+    "es": "No se pudo cargar Inicio: %@",
+    "en": "Couldn’t load Home: %@"
+  },
+  "provider.heading.quick-picks": {
+    "es": "Selecciones rápidas",
+    "en": "Quick picks"
+  },
+  "provider.heading.speed-dial": {
+    "es": "Acceso rápido",
+    "en": "Speed Dial"
+  },
+  "provider.heading.recommended-albums": {
+    "es": "Álbumes para vos",
+    "en": "Albums for you"
+  },
+  "provider.heading.mixes-for-you": {
+    "es": "Mixes para vos",
+    "en": "Mixes for you"
+  },
+  "provider.heading.listen-again": {
+    "es": "Volver a escuchar",
+    "en": "Listen again"
+  },
+  "provider.heading.new-releases": {
+    "es": "Nuevos lanzamientos",
+    "en": "New releases"
+  },
+  "provider.heading.forgotten-favorites": {
+    "es": "Favoritos olvidados",
+    "en": "Forgotten favorites"
+  },
+  "provider.heading.from-library": {
+    "es": "De tu biblioteca",
+    "en": "From your library"
+  },
+  "provider.heading.from-community": {
+    "es": "De la comunidad",
+    "en": "From the community"
+  },
+  "common.songCount": {
+    "es": {
+      "one": "%lld canción",
+      "other": "%lld canciones"
+    },
+    "en": {
+      "one": "%lld song",
+      "other": "%lld songs"
+    }
+  },
+  "common.trackCount": {
+    "es": {
+      "one": "%lld pista",
+      "other": "%lld pistas"
+    },
+    "en": {
+      "one": "%lld track",
+      "other": "%lld tracks"
+    }
+  },
+  "app.audioOutput": {
+    "es": "Salida de audio / AirPlay",
+    "en": "Audio output / AirPlay"
+  },
+  "app.home.sourcesDisabled": {
+    "es": "Activá fuentes desde Configuración.",
+    "en": "Enable sources in Settings."
+  },
+  "app.home.emptySubtitle": {
+    "es": "Tu próximo lado B empieza acá",
+    "en": "Your next B-side starts here"
+  },
+  "app.home.allChip": {
+    "es": "Todos",
+    "en": "All"
+  },
+  "app.home.savedFeed": {
+    "es": "No se pudo actualizar · Contenido guardado",
+    "en": "Couldn’t refresh · Saved content"
+  },
+  "app.home.offlineFeed": {
+    "es": "Sin conexión · se muestran las últimas recomendaciones",
+    "en": "Offline · Showing your latest recommendations"
+  },
+  "app.home.morning": {
+    "es": "Buen día",
+    "en": "Good morning"
+  },
+  "app.home.afternoon": {
+    "es": "Buenas tardes",
+    "en": "Good afternoon"
+  },
+  "app.home.evening": {
+    "es": "Buenas noches",
+    "en": "Good evening"
+  },
+  "app.home.greetingName": {
+    "es": "%@, %@",
+    "en": "%@, %@"
+  },
+  "app.home.speedDial": {
+    "es": "Acceso rápido",
+    "en": "Speed Dial"
+  },
+  "app.explore.chartRegion": {
+    "es": "Rankings · %@",
+    "en": "Charts · %@"
+  },
+  "app.playNamed": {
+    "es": "Reproducir %@",
+    "en": "Play %@"
+  },
+  "queue.manual": {
+    "es": "Cola manual",
+    "en": "Manual queue"
+  },
+  "provider.heading.similar-artists": {
+    "es": "Artistas similares",
+    "en": "Similar artists"
+  },
+  "provider.heading.songs-for-today": {
+    "es": "Canciones para hoy",
+    "en": "Songs for today"
+  },
+  "provider.heading.featured-playlists": {
+    "es": "Listas destacadas",
+    "en": "Featured playlists"
+  },
+  "provider.heading.more-to-listen": {
+    "es": "Más para escuchar",
+    "en": "More to listen"
+  },
+  "provider.heading.more-artists": {
+    "es": "Más artistas",
+    "en": "More artists"
+  }
+}

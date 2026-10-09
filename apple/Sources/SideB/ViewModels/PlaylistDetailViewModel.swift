@@ -11,7 +11,11 @@ final class PlaylistDetailViewModel {
     var isLoadingMore: Bool = false
     var isMovingTrack: Bool = false
     var isChangingOrder: Bool = false
-    var errorMessage: String?
+    private var errorDescriptor: AppMessage?
+    var errorMessage: String? {
+        get { errorDescriptor?.text }
+        set { errorDescriptor = newValue.map { AppMessage(verbatim: $0) } }
+    }
     var searchQuery: String = ""
     var selectedOrder: DetailTrackOrder = .custom
     var isCompletingCatalog: Bool = false
@@ -163,7 +167,7 @@ final class PlaylistDetailViewModel {
             let res = try await core.getPlaylistContinuation(token: continuation)
             guard generation == loadGeneration else { return }
             guard res.continuation != continuation else {
-                errorMessage = "La playlist devolvió una continuación repetida"
+                errorDescriptor = AppMessage(key: "queue.error.repeatedContinuation")
                 isLoadingMore = false
                 return
             }
@@ -176,7 +180,7 @@ final class PlaylistDetailViewModel {
         } catch {
             guard generation == loadGeneration, playlist?.id == playlistID else { return }
             print("[PlaylistDetailViewModel] Error al cargar continuación: \(error)")
-            errorMessage = "No se pudieron cargar más canciones: \(error.localizedDescription)"
+            errorDescriptor = AppMessage(key: "detail.playlist.loadMoreError", args: [error.localizedDescription])
         }
     }
 
@@ -303,14 +307,15 @@ final class PlaylistDetailViewModel {
         } catch {
             guard !Task.isCancelled, generation == projectionGeneration,
                   expectedLoad == loadGeneration, playlist?.id == snapshot.id else { return }
-            errorMessage = "No se pudo completar la playlist: \(error.localizedDescription)"
+            errorDescriptor = (error as? PlaylistCatalogError)?.appMessage
+                ?? AppMessage(key: "detail.playlist.completeError", args: [error.localizedDescription])
         }
     }
 
     func playDisplayedTrack(at index: Int, player: PlayerViewModel) {
         guard let entry = displayedEntries[safe: index], let pl = playlist else { return }
         guard !needsCompletePlaybackOrder, !isChangingOrder else {
-            errorMessage = "Completando la playlist para reproducir el orden elegido…"
+            errorDescriptor = AppMessage(key: "detail.playlist.completingForOrder")
             return
         }
         let entries = playbackEntries

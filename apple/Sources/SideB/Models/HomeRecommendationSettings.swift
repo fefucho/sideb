@@ -20,17 +20,17 @@ enum HomeRecommendationSource: String, CaseIterable, Codable, Sendable, Identifi
 
     var title: String {
         switch self {
-        case .recommendedAlbums: "Recomendados para vos"
-        case .mixesForYou: "Mixes para vos"
-        case .listenAgain: "Volver a escuchar"
-        case .newReleases: "Nuevos lanzamientos"
-        case .forgottenFavorites: "Favoritos olvidados"
-        case .fromLibrary: "De tu biblioteca en Inicio"
-        case .fromCommunity: "De la comunidad"
-        case .otherHome: "Otros del Inicio"
-        case .libraryAlbums: "Álbumes guardados"
-        case .recentAlbums: "De tus escuchas recientes"
-        case .libraryPlaylists: "Playlists guardadas"
+        case .recommendedAlbums: L10n.text("settings.source.recommendedAlbums")
+        case .mixesForYou: L10n.text("settings.source.mixesForYou")
+        case .listenAgain: L10n.text("settings.source.listenAgain")
+        case .newReleases: L10n.text("settings.source.newReleases")
+        case .forgottenFavorites: L10n.text("settings.source.forgottenFavorites")
+        case .fromLibrary: L10n.text("settings.source.fromLibrary")
+        case .fromCommunity: L10n.text("settings.source.fromCommunity")
+        case .otherHome: L10n.text("settings.source.otherHome")
+        case .libraryAlbums: L10n.text("settings.source.libraryAlbums")
+        case .recentAlbums: L10n.text("settings.source.recentAlbums")
+        case .libraryPlaylists: L10n.text("settings.source.libraryPlaylists")
         }
     }
 

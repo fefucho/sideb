@@ -107,6 +107,7 @@ enum TrackTableInteractionPolicy {
 /// - Hover de fuente única de verdad (`hoveredRowIndex`): solo una fila puede estar resaltada a la vez, a 120 FPS.
 /// - Reordenamiento de cola, enlaces y menú secundarios separados de la reproducción de fila.
 struct NativeTrackTableView: NSViewRepresentable {
+    private var localizationRevision = L10n.revision
     @Environment(\.sideBMenuContext) private var menuContext
     @Environment(\.collectionBackgroundController) private var collectionBackgroundController
     let sections: [TrackTableSection]
@@ -442,6 +443,9 @@ struct NativeTrackTableView: NSViewRepresentable {
                 // refresh the message's query without replacing the header.
                 cell.configure(footer)
             }
+            if oldParent.localizationRevision != localizationRevision {
+                context.coordinator.refreshVisibleLocalization(in: tableView)
+            }
         }
     }
 
@@ -613,6 +617,15 @@ struct NativeTrackTableView: NSViewRepresentable {
             }
         }
 
+        func refreshVisibleLocalization(in tableView: NSTableView) {
+            tableView.enumerateAvailableRowViews { rowView, _ in
+                guard rowView.numberOfColumns > 0,
+                      let content = rowView.view(atColumn: 0) else { return }
+                if let cell = content as? any NativeTrackCellPresenting { cell.refreshLocalization() }
+                if let labels = content as? NativeCollectionColumnsCellView { labels.updateLocalization() }
+            }
+        }
+
         public func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
             guard row >= 0 && row < parent.rowItems.count else { return nil }
             switch parent.rowItems[row] {
@@ -708,6 +721,7 @@ struct NativeTrackTableView: NSViewRepresentable {
                                    isPlaying: isCurrent && parent.isPlaying, isLiked: parent.likedVideoIds.contains(track.videoId),
                                    hideAlbum: !showsAlbum, showAlbumInSubtitle: false,
                                    isReorderable: parent.isReorderable, rowHeight: parent.rowHeight)
+                    cell.refreshLocalization()
                     cell.updateCreditFocus(cell.containsKeyboardFocus)
                     cell.updateHover(isHovered: (tableView as? NativeTrackTableViewInternal)?.hoveredRowIndex == row)
                     return cell
@@ -726,6 +740,7 @@ struct NativeTrackTableView: NSViewRepresentable {
                                    isLiked: parent.likedVideoIds.contains(track.videoId),
                                    hideAlbum: true, showAlbumInSubtitle: true,
                                    isReorderable: parent.isReorderable, rowHeight: parent.rowHeight)
+                    cell.refreshLocalization()
                     cell.updateCreditFocus(cell.containsKeyboardFocus)
                     cell.updateHover(isHovered: (tableView as? NativeTrackTableViewInternal)?.hoveredRowIndex == row)
                     cell.updateSelection(isSelected: tableView.selectedRow == row)
@@ -793,6 +808,7 @@ struct NativeTrackTableView: NSViewRepresentable {
                     isReorderable: parent.isReorderable,
                     rowHeight: parent.rowHeight
                 )
+                cell?.refreshLocalization()
                 cell?.updateCreditFocus(cell?.containsKeyboardFocus == true)
                 cell?.updateHover(isHovered: isHovered)
                 cell?.updateSelection(isSelected: tableView.selectedRow == row)
@@ -1296,7 +1312,7 @@ final class NativeTrackCellView: NSTableCellView, NativeTrackCellPresenting {
         thumbnailPlayButton.isBordered = false
         thumbnailPlayButton.imagePosition = .imageOnly
         thumbnailPlayButton.imageScaling = .scaleProportionallyDown
-        thumbnailPlayButton.image = NSImage(systemSymbolName: "play.fill", accessibilityDescription: "Reproducir canción")
+        thumbnailPlayButton.image = NSImage(systemSymbolName: "play.fill", accessibilityDescription: L10n.text("detail.track.play"))
         thumbnailPlayButton.contentTintColor = .white
         thumbnailPlayButton.wantsLayer = true
         thumbnailPlayButton.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.58).cgColor
@@ -1304,7 +1320,7 @@ final class NativeTrackCellView: NSTableCellView, NativeTrackCellPresenting {
         thumbnailPlayButton.isHidden = true
         thumbnailPlayButton.target = self
         thumbnailPlayButton.action = #selector(onThumbnailPlayClicked)
-        thumbnailPlayButton.setAccessibilityLabel("Reproducir canción")
+        thumbnailPlayButton.setAccessibilityLabel(L10n.text("detail.track.play"))
         thumbnailPlayButton.identifier = NSUserInterfaceItemIdentifier("NativeTrackThumbnailPlay")
         thumbnailPlayButton.translatesAutoresizingMaskIntoConstraints = false
         for button in [thumbnailPlayButton, menuButton] {
@@ -1327,12 +1343,12 @@ final class NativeTrackCellView: NSTableCellView, NativeTrackCellPresenting {
         menuButton.isBordered = false
         menuButton.imagePosition = .imageOnly
         menuButton.imageScaling = .scaleProportionallyDown
-        menuButton.image = NSImage(systemSymbolName: "ellipsis", accessibilityDescription: "Más opciones")
+        menuButton.image = NSImage(systemSymbolName: "ellipsis", accessibilityDescription: L10n.text("common.moreOptions"))
         menuButton.contentTintColor = NSColor.white.withAlphaComponent(0.78)
         menuButton.isHidden = true
         menuButton.target = self
         menuButton.action = #selector(onMenuClicked)
-        menuButton.setAccessibilityLabel("Más opciones de la canción")
+        menuButton.setAccessibilityLabel(L10n.text("detail.track.moreOptionsForSong"))
         menuButton.identifier = NSUserInterfaceItemIdentifier("NativeTrackMenu")
         menuButton.translatesAutoresizingMaskIntoConstraints = false
         addSubview(menuButton)
@@ -1350,7 +1366,7 @@ final class NativeTrackCellView: NSTableCellView, NativeTrackCellPresenting {
         addSubview(durationLabel)
 
         reorderHandleImageView.imageScaling = .scaleProportionallyDown
-        reorderHandleImageView.image = NSImage(systemSymbolName: "line.3.horizontal", accessibilityDescription: "Arrastrar para reordenar")
+        reorderHandleImageView.image = NSImage(systemSymbolName: "line.3.horizontal", accessibilityDescription: L10n.text("detail.track.reorder"))
         reorderHandleImageView.contentTintColor = NSColor.white.withAlphaComponent(0.45)
         reorderHandleImageView.translatesAutoresizingMaskIntoConstraints = false
         reorderHandleImageView.isHidden = true
@@ -1478,6 +1494,29 @@ final class NativeTrackCellView: NSTableCellView, NativeTrackCellPresenting {
         updateHoverControls()
     }
 
+    func refreshLocalization() {
+        if let track = boundTrack {
+            if track.artists.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                subtitleLabel.stringValue = track.displayArtist
+                subtitleLabel.setAccessibilityLabel(track.displayArtist)
+            }
+            if track.displayAlbum == nil {
+                albumLabel.stringValue = L10n.text("detail.track.album")
+                albumLabel.setAccessibilityLabel(albumLabel.stringValue)
+            }
+        }
+        let play = L10n.text("detail.track.play")
+        let more = L10n.text("detail.track.moreOptionsForSong")
+        let reorder = L10n.text("detail.track.reorder")
+        artworkImageView.setAccessibilityLabel(L10n.text("detail.track.artwork"))
+        thumbnailPlayButton.setAccessibilityLabel(play)
+        thumbnailPlayButton.toolTip = play
+        menuButton.setAccessibilityLabel(more)
+        menuButton.toolTip = more
+        reorderHandleImageView.setAccessibilityLabel(reorder)
+        reorderHandleImageView.toolTip = reorder
+    }
+
     var containsKeyboardFocus: Bool {
         var responder = window?.firstResponder
         while let current = responder {
@@ -1514,7 +1553,7 @@ final class NativeTrackCellView: NSTableCellView, NativeTrackCellPresenting {
         subtitleLabel.configureLink(label: track.displayArtist, destinationExists: artistDestination != nil) { [weak self] in
             self?.performArtistCreditAction()
         } fallback: { [weak self] in self?.performPrimaryAction() }
-        albumLabel.configureLink(label: track.displayAlbum ?? "Álbum", destinationExists: track.albumId != nil) { [weak self] in
+        albumLabel.configureLink(label: track.displayAlbum ?? L10n.text("detail.track.album"), destinationExists: track.albumId != nil) { [weak self] in
             self?.performAlbumCreditAction()
         } fallback: { [weak self] in self?.performPrimaryAction() }
 
@@ -1558,7 +1597,7 @@ final class NativeTrackCellView: NSTableCellView, NativeTrackCellPresenting {
         albumLabel.isHidden = !showsAlbum
         inlineAlbumLeading?.isActive = usesInlineAlbum
         subtitleLabel.setAccessibilityLabel(track.displayArtist)
-        albumLabel.setAccessibilityLabel(albumName ?? "Álbum")
+        albumLabel.setAccessibilityLabel(albumName ?? L10n.text("detail.track.album"))
 
         if usesSeparateAlbum {
             titleTrailingNoAlbum?.isActive = false
@@ -1583,7 +1622,7 @@ final class NativeTrackCellView: NSTableCellView, NativeTrackCellPresenting {
         durationLabel.stringValue = track.duration ?? ""
         durationLabel.font = .systemFont(ofSize: subtitleFontSize, weight: .regular)
 
-        menuButton.image = NSImage(systemSymbolName: "ellipsis", accessibilityDescription: "Más opciones")?
+        menuButton.image = NSImage(systemSymbolName: "ellipsis", accessibilityDescription: L10n.text("common.moreOptions"))?
             .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: isCompact ? 12 : 13, weight: .semibold))
 
         // Handle de reordenar
@@ -1592,7 +1631,7 @@ final class NativeTrackCellView: NSTableCellView, NativeTrackCellPresenting {
         reorderHandleWidthConstraint?.constant = handleW
         reorderHandleHeightConstraint?.constant = handleH
         let handleConfig = NSImage.SymbolConfiguration(pointSize: isCompact ? 12.0 : 13.5, weight: .regular)
-        reorderHandleImageView.image = NSImage(systemSymbolName: "line.3.horizontal", accessibilityDescription: "Arrastrar para reordenar")?.withSymbolConfiguration(handleConfig)
+        reorderHandleImageView.image = NSImage(systemSymbolName: "line.3.horizontal", accessibilityDescription: L10n.text("detail.track.reorder"))?.withSymbolConfiguration(handleConfig)
 
         // Icono de reproducción
         let playIconSize: CGFloat = isCompact ? 12.0 : 14.0

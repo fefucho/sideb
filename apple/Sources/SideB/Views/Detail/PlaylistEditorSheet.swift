@@ -24,15 +24,15 @@ struct PlaylistEditorSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text(playlist == nil ? "Nueva playlist" : "Editar playlist")
+            Text(L10n.text(playlist == nil ? "detail.playlistEditor.createTitle" : "detail.playlistEditor.editTitle"))
                 .font(.title2.bold())
 
-            TextField("Nombre", text: $name)
+            TextField(L10n.text("detail.playlistEditor.name"), text: $name)
                 .textFieldStyle(.roundedBorder)
-                .accessibilityLabel("Nombre de la playlist")
+                .accessibilityLabel(L10n.text("detail.playlistEditor.name"))
 
             VStack(alignment: .leading, spacing: 6) {
-                Text("Descripción")
+                Text(L10n.text("detail.playlistEditor.description"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 TextEditor(text: $description)
@@ -42,10 +42,10 @@ struct PlaylistEditorSheet: View {
                     .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 8))
             }
 
-            Picker("Visibilidad", selection: $privacy) {
-                Text("Privada").tag("PRIVATE")
-                Text("No listada").tag("UNLISTED")
-                Text("Pública").tag("PUBLIC")
+            Picker(L10n.text("detail.playlistEditor.visibility"), selection: $privacy) {
+                Text(L10n.text("detail.playlistEditor.private")).tag("PRIVATE")
+                Text(L10n.text("detail.playlistEditor.unlisted")).tag("UNLISTED")
+                Text(L10n.text("detail.playlistEditor.public")).tag("PUBLIC")
             }
 
             if let errorMessage {
@@ -57,9 +57,9 @@ struct PlaylistEditorSheet: View {
 
             HStack {
                 Spacer()
-                Button("Cancelar") { dismiss() }
+                Button(L10n.text("common.cancel")) { dismiss() }
                     .disabled(isSaving)
-                Button(playlist == nil ? "Crear" : "Guardar") {
+                Button(L10n.text(playlist == nil ? "common.create" : "common.save")) {
                     Task { await save() }
                 }
                 .buttonStyle(.borderedProminent)

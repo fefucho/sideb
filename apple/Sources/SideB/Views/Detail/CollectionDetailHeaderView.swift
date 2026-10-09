@@ -46,7 +46,7 @@ struct CollectionDetailHeaderView: View {
             if isCompletingCatalog {
                 HStack(spacing: 8) {
                     ProgressView().controlSize(.small)
-                    Text("Preparando todas las canciones…")
+                    Text(L10n.text("detail.collection.preparingSongs"))
                         .font(.system(size: 14.4))
                         .foregroundStyle(.secondary)
                 }
@@ -55,7 +55,7 @@ struct CollectionDetailHeaderView: View {
                 HStack(spacing: 12) {
                     Text(catalogError).font(.system(size: 14.4)).foregroundStyle(.secondary)
                     if let onRetryCatalog {
-                        Button("Reintentar", action: onRetryCatalog).buttonStyle(.plain)
+                        Button(L10n.text("common.retry"), action: onRetryCatalog).buttonStyle(.plain)
                     }
                 }
             }
@@ -137,7 +137,7 @@ struct CollectionDetailHeaderView: View {
                             .lineLimit(2)
                             .multilineTextAlignment(.leading)
                             .frame(maxWidth: 744, alignment: .leading)
-                        Text("más")
+                        Text(L10n.text("detail.more"))
                             .font(.system(size: 13.2, weight: .semibold))
                             .foregroundStyle(.primary)
                     }
@@ -145,7 +145,7 @@ struct CollectionDetailHeaderView: View {
                 }
                 .buttonStyle(.plain)
                 .onHover { isHoveringDescription = $0 }
-                .help("Haz clic para leer la descripción completa")
+                .help(L10n.text("detail.description.readFullHint"))
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -175,12 +175,12 @@ struct CollectionDetailHeaderView: View {
 
     private func actions(compact: Bool) -> some View {
         HStack(spacing: 12) {
-            actionButton("Reproducir", symbol: "play.fill", compact: compact, action: onPlay)
+            actionButton(L10n.text("player.play"), symbol: "play.fill", compact: compact, action: onPlay)
                 .disabled(isPlaybackUnavailable)
-            actionButton("Aleatorio", symbol: "shuffle", compact: compact, action: onShuffle)
+            actionButton(L10n.text("player.shuffle"), symbol: "shuffle", compact: compact, action: onShuffle)
                 .disabled(isPlaybackUnavailable)
             if showsSave, let onSave {
-                actionButton(isSaved ? "En biblioteca" : "Guardar",
+                actionButton(L10n.text(isSaved ? "detail.collection.inLibrary" : "detail.collection.save"),
                              symbol: isSaved ? "bookmark.fill" : "bookmark",
                              compact: compact, action: onSave)
             }
@@ -239,8 +239,8 @@ struct CollectionDetailHeaderView: View {
                 }
                 .menuStyle(.borderlessButton)
                 .menuIndicator(.hidden)
-                .accessibilityLabel("Ordenar canciones: \(selectedOrder.title)")
-                .help("Ordenar canciones: \(selectedOrder.title)")
+                .accessibilityLabel(L10n.text("detail.sort.accessibility", args: [selectedOrder.title]))
+                .help(L10n.text("detail.sort.accessibility", args: [selectedOrder.title]))
             }
         }
     }
@@ -253,8 +253,8 @@ struct CollectionDetailEmptyResultsView: View {
 
     var body: some View {
         Text(query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-             ? "Esta colección todavía no tiene canciones."
-             : "No se encontraron canciones para “\(query)”.")
+             ? L10n.text("detail.collection.empty")
+             : L10n.text("detail.collection.noResults", args: [query]))
             .font(.system(size: 14.4))
             .foregroundStyle(.secondary)
             .lineLimit(2)

@@ -15,6 +15,10 @@ struct HistoryToolbarView: NSViewRepresentable {
         surface.update(reduceTransparency: reduceTransparency)
         coordinator.bar = bar
         coordinator.surface = surface
+        coordinator.localizationObserver = AppKitLocalizationObserver { [weak bar] in
+            bar?.updateLocalization()
+        }
+        coordinator.localizationObserver?.start()
         update(bar)
         return WindowAlignedToolbarContainer(contentView: surface, topInset: ShellLayout.navigationTopInset,
                                              trailingInset: ShellLayout.navigationTopInset)
@@ -39,6 +43,8 @@ struct HistoryToolbarView: NSViewRepresentable {
     }
 
     private func update(_ bar: NativeHistoryBar) {
+        _ = L10n.revision
+        bar.updateLocalization()
         let showsHomeActions = router.currentPage == .home && !isDisabled
         bar.update(showsRefresh: showsHomeActions, showsSettings: showsHomeActions,
                    isSettingsPresented: isHomeSettingsPresented, canGoBack: router.canGoBack,
@@ -49,6 +55,7 @@ struct HistoryToolbarView: NSViewRepresentable {
         var parent: HistoryToolbarView
         weak var bar: NativeHistoryBar?
         weak var surface: NavigationGlassSurface?
+        var localizationObserver: AppKitLocalizationObserver?
         init(_ parent: HistoryToolbarView) { self.parent = parent }
         @objc func refresh(_ sender: NSButton) {
             guard sender.isEnabled, !parent.isDisabled, parent.router.currentPage == .home else { return }
@@ -88,12 +95,13 @@ final class NativeHistoryBar: NSView {
         super.init(frame: NSRect(x: 0, y: 0, width: 132, height: 34))
         wantsLayer = true
         let specs: [(NSButton, String, String, String, Selector)] = [
-            (refresh, "arrow.clockwise", "Actualizar recomendaciones", "r", #selector(HistoryToolbarView.Coordinator.refresh(_:))),
-            (back, "chevron.left", "Atrás", "[", #selector(HistoryToolbarView.Coordinator.back(_:))),
-            (forward, "chevron.right", "Adelante", "]", #selector(HistoryToolbarView.Coordinator.forward(_:))),
-            (settings, "gearshape", "Configuración de Inicio", "", #selector(HistoryToolbarView.Coordinator.homeSettings(_:)))
+            (refresh, "arrow.clockwise", "navigation.refresh", "r", #selector(HistoryToolbarView.Coordinator.refresh(_:))),
+            (back, "chevron.left", "navigation.back", "[", #selector(HistoryToolbarView.Coordinator.back(_:))),
+            (forward, "chevron.right", "navigation.forward", "]", #selector(HistoryToolbarView.Coordinator.forward(_:))),
+            (settings, "gearshape", "navigation.home_settings", "", #selector(HistoryToolbarView.Coordinator.homeSettings(_:)))
         ]
-        for (button, symbol, title, key, action) in specs {
+        for (button, symbol, titleKey, key, action) in specs {
+            let title = L10n.text(titleKey)
             button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: title)?
                 .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 13, weight: .medium))
             button.isBordered = false
@@ -115,9 +123,26 @@ final class NativeHistoryBar: NSView {
         addSubview(settingsDivider)
         settings.layer?.cornerRadius = 7
         settings.setAccessibilityIdentifier("home-settings-toggle")
+        updateLocalization()
         needsLayout = true
     }
     required init?(coder: NSCoder) { nil }
+
+    func updateLocalization() {
+        let labels: [(NSButton, String, String)] = [
+            (refresh, "arrow.clockwise", "navigation.refresh"),
+            (back, "chevron.left", "navigation.back"),
+            (forward, "chevron.right", "navigation.forward"),
+            (settings, "gearshape", "navigation.home_settings")
+        ]
+        for (button, symbol, key) in labels {
+            let title = L10n.text(key)
+            button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: title)?
+                .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 13, weight: .medium))
+            button.toolTip = title
+            button.setAccessibilityLabel(title)
+        }
+    }
 
     func update(showsRefresh: Bool, showsSettings: Bool, isSettingsPresented: Bool,
                 canGoBack: Bool, canGoForward: Bool, isDisabled: Bool) {
@@ -137,7 +162,7 @@ final class NativeHistoryBar: NSView {
         settings.state = isSettingsPresented ? .on : .off
         settings.layer?.backgroundColor = isSettingsPresented
             ? NSColor.labelColor.withAlphaComponent(0.12).cgColor : nil
-        settings.setAccessibilityValue(isSettingsPresented ? "Abierta" : "Cerrada")
+        settings.setAccessibilityValue(L10n.text(isSettingsPresented ? "navigation.open" : "navigation.closed"))
         back.isEnabled = canGoBack && !isDisabled
         forward.isEnabled = canGoForward && !isDisabled
         needsLayout = true

@@ -2,11 +2,28 @@ import Foundation
 import Observation
 import SideBCore
 
+enum LibraryLoadErrorSection: String, CaseIterable, Sendable {
+    case playlists, albums, history
+}
+
+struct LibraryLoadFailure: Equatable, Sendable {
+    let section: LibraryLoadErrorSection
+    let detail: String
+    let message: AppMessage
+
+    init(section: LibraryLoadErrorSection, detail: String) {
+        self.section = section
+        self.detail = detail
+        self.message = AppMessage(key: "library.load_error.\(section.rawValue)", args: [detail])
+    }
+}
+
 enum LibraryTab: String, CaseIterable, Identifiable {
     case playlists = "Playlists"
     case albums = "Álbumes"
 
     var id: String { self.rawValue }
+    var displayTitle: String { self == .playlists ? L10n.text("library.tab.playlists") : L10n.text("library.tab.albums") }
 }
 
 enum LibraryPageTab: String, CaseIterable, Identifiable {
@@ -16,6 +33,14 @@ enum LibraryPageTab: String, CaseIterable, Identifiable {
     case artists = "Artistas"
 
     var id: String { rawValue }
+    var displayTitle: String {
+        switch self {
+        case .songs: return L10n.text("search.filter.songs")
+        case .playlists: return L10n.text("library.tab.playlists")
+        case .albums: return L10n.text("library.tab.albums")
+        case .artists: return L10n.text("search.filter.artists")
+        }
+    }
 }
 
 @MainActor
@@ -29,23 +54,64 @@ final class LibraryViewModel {
     var isSongsLoading = false
     var isSongsLoadingMore = false
     var isArtistsLoading = false
-    var songsErrorMessage: String?
-    var artistsErrorMessage: String?
-    var playlistsErrorMessage: String?
-    var albumsErrorMessage: String?
+    var songsErrorDescriptor: AppMessage?
+    var artistsErrorDescriptor: AppMessage?
+    var playlistsErrorDescriptor: AppMessage?
+    var albumsErrorDescriptor: AppMessage?
+    var songsErrorMessage: String? {
+        get { songsErrorDescriptor?.text }
+        set { songsErrorDescriptor = newValue.map(AppMessage.init(verbatim:)) }
+    }
+    var artistsErrorMessage: String? {
+        get { artistsErrorDescriptor?.text }
+        set { artistsErrorDescriptor = newValue.map(AppMessage.init(verbatim:)) }
+    }
+    var playlistsErrorMessage: String? {
+        get { playlistsErrorDescriptor?.text }
+        set { playlistsErrorDescriptor = newValue.map(AppMessage.init(verbatim:)) }
+    }
+    var albumsErrorMessage: String? {
+        get { albumsErrorDescriptor?.text }
+        set { albumsErrorDescriptor = newValue.map(AppMessage.init(verbatim:)) }
+    }
     var historyGroups: [HistoryGroupRecord] = []
     var selectedTab: LibraryTab = .playlists
     var selectedPageTab: LibraryPageTab = .songs
     var isLoading: Bool = false
-    var errorMessage: String?
+    private var libraryLoadFailures: [LibraryLoadFailure] = []
+    private var manualErrorDescriptor: AppMessage?
+    var errorDescriptor: AppMessage? {
+        get { Self.aggregateLoadErrorDescriptor(libraryLoadFailures) ?? manualErrorDescriptor }
+        set {
+            manualErrorDescriptor = newValue
+            libraryLoadFailures = []
+        }
+    }
+    var errorMessage: String? {
+        get { errorDescriptor?.text }
+        set { errorDescriptor = newValue.map(AppMessage.init(verbatim:)) }
+    }
     var isHistoryLoading: Bool = false
-    var historyErrorMessage: String?
+    var historyErrorDescriptor: AppMessage?
+    var historyErrorMessage: String? {
+        get { historyErrorDescriptor?.text }
+        set { historyErrorDescriptor = newValue.map(AppMessage.init(verbatim:)) }
+    }
     var rustCore: SideBCore? = nil
     @ObservationIgnored private var sessionGeneration: UInt = 0
     @ObservationIgnored private var libraryGeneration: UInt = 0
 
     init() {
         setupNotificationObservers()
+    }
+
+    static func aggregateLoadErrorDescriptor(_ failures: [LibraryLoadFailure]) -> AppMessage? {
+        let ordered = LibraryLoadErrorSection.allCases.compactMap { section in
+            failures.first(where: { $0.section == section })
+        }
+        guard !ordered.isEmpty else { return nil }
+        let key = "library.load_errors." + ordered.map { $0.section.rawValue }.joined(separator: "_")
+        return AppMessage(key: key, args: ordered.map(\.detail))
     }
 
     private func setupNotificationObservers() {
@@ -97,7 +163,7 @@ final class LibraryViewModel {
     func handleAlbumToggled(browseId: String, inLibrary: Bool, card: BrowseCardRecord?, tracks: [SongItemRecord]? = nil) {
         if inLibrary {
             if !self.albums.contains(where: { $0.id == browseId }) {
-                let newCard = card ?? BrowseCardRecord(kind: "album", id: browseId, title: "Álbum", subtitle: nil, thumbnail: nil, duration: nil)
+                let newCard = card ?? BrowseCardRecord(kind: "album", id: browseId, title: "", subtitle: nil, thumbnail: nil, duration: nil)
                 self.albums.append(newCard)
                 self.albums.sort { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
             }
@@ -128,7 +194,7 @@ final class LibraryViewModel {
     func handlePlaylistToggled(playlistId: String, inLibrary: Bool, card: BrowseCardRecord?) {
         if inLibrary {
             if !self.playlists.contains(where: { $0.id == playlistId }) {
-                let newCard = card ?? BrowseCardRecord(kind: "playlist", id: playlistId, title: "Playlist", subtitle: nil, thumbnail: nil, duration: nil)
+                let newCard = card ?? BrowseCardRecord(kind: "playlist", id: playlistId, title: "", subtitle: nil, thumbnail: nil, duration: nil)
                 self.playlists.insert(newCard, at: 0)
             }
         } else {
@@ -226,7 +292,7 @@ final class LibraryViewModel {
 
         let (pRes, aRes, hRes) = await (fetchedPlaylists, fetchedAlbums, fetchedHistory)
         guard generation == libraryGeneration, session == sessionGeneration, core.isLoggedIn() else { return }
-        var errors: [String] = []
+        var failures: [LibraryLoadFailure] = []
 
         switch pRes {
         case .success(let p):
@@ -236,7 +302,7 @@ final class LibraryViewModel {
         case .failure(let err):
             print("[LibraryViewModel] Error al cargar playlists: \(err)")
             self.playlistsErrorMessage = err.localizedDescription
-            errors.append("Playlists: \(err.localizedDescription)")
+            failures.append(LibraryLoadFailure(section: .playlists, detail: err.localizedDescription))
         }
 
         switch aRes {
@@ -248,7 +314,7 @@ final class LibraryViewModel {
         case .failure(let err):
             print("[LibraryViewModel] Error al cargar álbumes: \(err)")
             self.albumsErrorMessage = err.localizedDescription
-            errors.append("Álbumes: \(err.localizedDescription)")
+            failures.append(LibraryLoadFailure(section: .albums, detail: err.localizedDescription))
         }
 
         switch hRes {
@@ -258,12 +324,11 @@ final class LibraryViewModel {
         case .failure(let err):
             print("[LibraryViewModel] Error al cargar historial: \(err)")
             self.historyErrorMessage = err.localizedDescription
-            errors.append("Historial: \(err.localizedDescription)")
+            failures.append(LibraryLoadFailure(section: .history, detail: err.localizedDescription))
         }
 
-        if !errors.isEmpty {
-            self.errorMessage = errors.joined(separator: "\n")
-        }
+        libraryLoadFailures = failures
+        manualErrorDescriptor = nil
         self.isLoading = false
     }
 

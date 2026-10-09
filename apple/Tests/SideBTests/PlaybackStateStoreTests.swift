@@ -116,7 +116,7 @@ import SideBCore
     #expect(restored.currentTrack?.videoId == "track-2")
 
     restored.togglePlayPause()
-    #expect(restored.errorMessage == "Núcleo de Rust no inicializado")
+    #expect(restored.errorMessage == L10n.text("player.error.coreUnavailable"))
     #expect(!restored.isPlaying)
 }
 
@@ -140,7 +140,7 @@ import SideBCore
 
     #expect(player.queueManager.currentIndex == 4)
     #expect(player.currentTrack?.videoId == "track-4")
-    #expect(player.errorMessage == "Núcleo de Rust no inicializado")
+    #expect(player.errorMessage == L10n.text("player.error.coreUnavailable"))
     #expect(audio.avPlayer.currentItem == nil)
     player.playPrevious()
     #expect(player.queueManager.currentIndex == 3)

@@ -146,7 +146,8 @@ struct PlayerBarView: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .help(viewModel.queueManager.isShuffle ? "Desactivar aleatorio" : "Activar aleatorio")
+            .help(L10n.text(viewModel.queueManager.isShuffle ? "player.shuffle.disable" : "player.shuffle.enable"))
+            .accessibilityLabel(L10n.text(viewModel.queueManager.isShuffle ? "player.shuffle.disable" : "player.shuffle.enable"))
 
             // Anterior
             Button {
@@ -164,7 +165,8 @@ struct PlayerBarView: View {
             }
             .buttonStyle(.plain)
             .disabled(viewModel.currentTrack == nil)
-            .help("Anterior")
+            .help(L10n.text("player.previous"))
+            .accessibilityLabel(L10n.text("player.previous"))
 
             // Play / Pause Principal (Limpio, directo, tamaño prominente)
             Button {
@@ -203,7 +205,8 @@ struct PlayerBarView: View {
             }
             .buttonStyle(.plain)
             .disabled(viewModel.currentTrack == nil)
-            .help(viewModel.errorMessage != nil ? "Reintentar reproducción" : (viewModel.isPlaying ? "Pausar" : "Reproducir"))
+            .help(L10n.text(viewModel.errorMessage != nil ? "player.retryPlayback" : (viewModel.isPlaying ? "player.pause" : "player.play")))
+            .accessibilityLabel(L10n.text(viewModel.errorMessage != nil ? "player.retryPlayback" : (viewModel.isPlaying ? "player.pause" : "player.play")))
 
             // Siguiente
             Button {
@@ -217,7 +220,8 @@ struct PlayerBarView: View {
             }
             .buttonStyle(.plain)
             .disabled(!viewModel.queueManager.hasNext)
-            .help("Siguiente")
+            .help(L10n.text("player.next"))
+            .accessibilityLabel(L10n.text("player.next"))
 
             // Repeat
             Button {
@@ -230,7 +234,8 @@ struct PlayerBarView: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .help(viewModel.queueManager.isRepeat ? "Desactivar repetición" : "Repetir tema")
+            .help(L10n.text(viewModel.queueManager.isRepeat ? "player.repeat.disable" : "player.repeat.enable"))
+            .accessibilityLabel(L10n.text(viewModel.queueManager.isRepeat ? "player.repeat.disable" : "player.repeat.enable"))
         }
     }
 
@@ -263,7 +268,7 @@ struct PlayerBarView: View {
             // Título con Corazón y Subtítulo Artista • Álbum (sin subrayado)
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 7) {
-                    ScrollingTrackTitle(title: viewModel.currentTrack?.title ?? "Sin reproducción")
+                    ScrollingTrackTitle(title: viewModel.currentTrack?.title ?? L10n.text("player.noPlayback"))
                         .frame(maxWidth: .infinity)
                         .layoutPriority(1)
 
@@ -286,7 +291,7 @@ struct PlayerBarView: View {
                         Button {
                             viewModel.retryPlayback()
                         } label: {
-                            Text("Reintentar")
+                            Text(L10n.text("common.retry"))
                                 .font(.system(size: 10, weight: .semibold))
                                 .foregroundStyle(Color.white)
                                 .padding(.horizontal, 6)
@@ -295,7 +300,8 @@ struct PlayerBarView: View {
                                 .clipShape(Capsule())
                         }
                         .buttonStyle(.plain)
-                        .help("Reintentar reproducción")
+                        .help(L10n.text("player.retryPlayback"))
+                        .accessibilityLabel(L10n.text("player.retryPlayback"))
                     }
                 } else {
                     HStack(spacing: 6) {
@@ -304,7 +310,7 @@ struct PlayerBarView: View {
                                 navigateToArtist(track: track, artistId: id, name: name)
                             }
                         } else {
-                            Text("Selecciona una pista")
+                            Text(L10n.text("player.selectTrack"))
                                 .font(.system(size: 11.5, weight: .regular))
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)
@@ -325,7 +331,8 @@ struct PlayerBarView: View {
                             }
                             .buttonStyle(.plain)
                             .onHover { isHoveringAlbum = $0 }
-                            .help("Ver álbum: \(album)")
+                            .help(L10n.text("player.viewAlbum", args: [album]))
+                            .accessibilityLabel(L10n.text("player.viewAlbum", args: [album]))
                         }
 
                         if isCompact && viewModel.currentTrack != nil {
@@ -351,7 +358,7 @@ struct PlayerBarView: View {
                 }
                 .menuStyle(.borderlessButton)
                 .menuIndicator(.hidden)
-                .accessibilityLabel("Más opciones")
+                .accessibilityLabel(L10n.text("common.moreOptions"))
                 .frame(width: 28, height: 28)
             }
         }
@@ -368,7 +375,8 @@ struct PlayerBarView: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .help(viewModel.isCurrentTrackLiked ? "Quitar de Me Gusta" : "Me Gusta")
+        .help(L10n.text(viewModel.isCurrentTrackLiked ? "detail.track.unlike" : "detail.track.like"))
+        .accessibilityLabel(L10n.text(viewModel.isCurrentTrackLiked ? "detail.track.unlike" : "detail.track.like"))
     }
 
     // MARK: - 4. Controles Derechos (Shortcuts Letras/Cola, AirPlay, Volumen y Flecha)
@@ -416,7 +424,8 @@ struct PlayerBarView: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .help("Letras sincronizadas")
+        .help(L10n.text("player.syncedLyrics"))
+        .accessibilityLabel(L10n.text("player.syncedLyrics"))
     }
 
     private var geniusLyricsShortcutButton: some View {
@@ -432,8 +441,8 @@ struct PlayerBarView: View {
         }
         .buttonStyle(.plain)
         .disabled(viewModel.currentTrack == nil)
-        .help("Letras y anotaciones de Genius")
-        .accessibilityLabel("Letras y anotaciones de Genius")
+        .help(L10n.text("genius.lyricsAndAnnotations"))
+        .accessibilityLabel(L10n.text("genius.lyricsAndAnnotations"))
     }
 
     private var queueShortcutButton: some View {
@@ -447,7 +456,8 @@ struct PlayerBarView: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .help("Cola de reproducción")
+        .help(L10n.text("queue.title"))
+        .accessibilityLabel(L10n.text("queue.title"))
     }
 
     // MARK: - Volumen Adaptativo (Overlay Flotante hacia la izquierda)
@@ -471,7 +481,8 @@ struct PlayerBarView: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .help("Mostrar control de volumen")
+                .help(L10n.text("player.showVolume"))
+                .accessibilityLabel(L10n.text("player.showVolume"))
                 .transition(.opacity)
             }
         }
@@ -540,7 +551,8 @@ struct PlayerBarView: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .help(viewModel.volume <= 0.01 ? "Activar sonido" : "Silenciar")
+            .help(L10n.text(viewModel.volume <= 0.01 ? "player.unmute" : "player.mute"))
+            .accessibilityLabel(L10n.text(viewModel.volume <= 0.01 ? "player.unmute" : "player.mute"))
 
         }
         .padding(.leading, 14)
@@ -582,7 +594,8 @@ struct PlayerBarView: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .help(viewModel.isFullscreenPresented ? "Cerrar pantalla completa" : "Abrir pantalla completa")
+        .help(L10n.text(viewModel.isFullscreenPresented ? "player.closeFullscreen" : "player.openFullscreen"))
+        .accessibilityLabel(L10n.text(viewModel.isFullscreenPresented ? "player.closeFullscreen" : "player.openFullscreen"))
     }
 
     // MARK: - Navegación

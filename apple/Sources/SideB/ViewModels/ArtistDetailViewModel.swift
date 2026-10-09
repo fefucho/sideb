@@ -7,7 +7,11 @@ import SideBCore
 final class ArtistDetailViewModel {
     var artist: ArtistDetailRecord?
     var isLoading: Bool = false
-    var errorMessage: String?
+    private var errorDescriptor: AppMessage?
+    var errorMessage: String? {
+        get { errorDescriptor?.text }
+        set { errorDescriptor = newValue.map { AppMessage(verbatim: $0) } }
+    }
 
     init() {}
 
@@ -19,7 +23,7 @@ final class ArtistDetailViewModel {
             self.artist = detail
         } catch {
             print("[ArtistDetailViewModel] Error al cargar artista \(browseId): \(error)")
-            self.errorMessage = error.localizedDescription
+            self.errorDescriptor = AppMessage(verbatim: error.localizedDescription)
         }
         self.isLoading = false
     }
@@ -57,6 +61,7 @@ final class ArtistDetailViewModel {
             artistBrowseId: a.channelId,
             shuffle: true
         )
+        player.queueManager.setContextLocalizationKey("player.shuffledArtist", args: [a.name])
     }
 
     func playTopSong(at index: Int, player: PlayerViewModel) {

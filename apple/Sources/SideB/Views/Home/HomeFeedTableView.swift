@@ -36,6 +36,7 @@ struct HomeFeedRows {
 /// El scroll vertical recicla estantes completos; cada estante recicla sus tarjetas en horizontal.
 /// Así las categorías agregadas por paginación no mantienen scrollers ortogonales fuera de pantalla.
 struct HomeFeedTableView: NSViewRepresentable {
+    let localizationRevision = L10n.revision
     @Environment(\.sideBGesturePreviewVisible) var gesturePreviewVisible
     let headerContent: AnyView?
     let headerHeight: CGFloat
@@ -149,7 +150,7 @@ struct HomeFeedTableView: NSViewRepresentable {
         table.columnAutoresizingStyle = .uniformColumnAutoresizingStyle
         table.delegate = coordinator
         table.dataSource = coordinator
-        table.setAccessibilityLabel("Recomendaciones de Inicio")
+        table.setAccessibilityLabel(L10n.text("home.accessibility.recommendations"))
         let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("HomeShelfColumn"))
         column.minWidth = 260
         column.resizingMask = .autoresizingMask
@@ -181,6 +182,11 @@ struct HomeFeedTableView: NSViewRepresentable {
     }
 
     func updateNSView(_ scroll: NSScrollView, context: Context) {
+        if context.coordinator.localizationRevision != localizationRevision, !isObscured {
+            context.coordinator.localizationRevision = localizationRevision
+            (scroll.documentView as? NSTableView)?.setAccessibilityLabel(L10n.text("home.accessibility.recommendations"))
+            context.coordinator.updateLocalization()
+        }
         updateNativeScrollView(scroll, coordinator: context.coordinator)
     }
 
@@ -271,6 +277,7 @@ struct HomeFeedTableView: NSViewRepresentable {
     final class Coordinator: NSObject, NSTableViewDataSource, NSTableViewDelegate {
         var parent: HomeFeedTableView
         var latestParent: HomeFeedTableView
+        var localizationRevision = -1
         var isObscured: Bool
         var suspendedViewportSize: CGSize?
         weak var table: NSTableView?
@@ -291,6 +298,17 @@ struct HomeFeedTableView: NSViewRepresentable {
                 transaction.disablesAnimations = true
                 withTransaction(transaction) { headerHost?.rootView = headerContent }
             }
+        }
+
+        func updateLocalization() {
+            guard let table else { return }
+            let visibleRows = table.rows(in: table.visibleRect)
+            guard visibleRows.location != NSNotFound else { return }
+            for row in visibleRows.location..<NSMaxRange(visibleRows) {
+                guard rows.sectionIndex(forRow: row) != nil else { continue }
+                (table.view(atColumn: 0, row: row, makeIfNecessary: false) as? HomeShelfRowView)?.refreshLocalization()
+            }
+            updateLoadMore()
         }
         private var viewportWidth: CGFloat {
             if isObscured, let retained = suspendedViewportSize { return max(260, retained.width) }
@@ -710,7 +728,7 @@ final class HomeShelfRowView: NSView, NSCollectionViewDataSource {
         self.onHorizontalOffset = onHorizontalOffset
         self.onActivate = onActivate
         self.onConfigure = onConfigure
-        header.configure(title: section.title, showsMore: section.isNavigableMore,
+        header.configure(title: L10n.providerHeading(section.title), showsMore: section.isNavigableMore,
                          showsArrows: false,
                          previous: { [weak self] in self?.scrollShelf(direction: -1) },
                          next: { [weak self] in self?.scrollShelf(direction: 1) },
@@ -725,6 +743,17 @@ final class HomeShelfRowView: NSView, NSCollectionViewDataSource {
             pendingHorizontalOffset = horizontalOffset
             collection.reloadData()
             needsLayout = true
+        }
+    }
+
+    func refreshLocalization() {
+        guard let section else { return }
+        header.setLocalizedTitle(L10n.providerHeading(section.title))
+        header.refreshLocalization()
+        for path in collection.indexPathsForVisibleItems() {
+            guard section.items.indices.contains(path.item),
+                  let cell = collection.item(at: path) as? HomeCollectionItem else { continue }
+            onConfigure?(cell, section.items[path.item])
         }
     }
 
@@ -820,7 +849,7 @@ final class HomeShelfRowView: NSView, NSCollectionViewDataSource {
 @MainActor
 private final class HomeLoadMoreRowView: NSView {
     static let identifier = NSUserInterfaceItemIdentifier("HomeLoadMoreRow")
-    private let button = NSButton(title: "Cargar más recomendaciones", target: nil, action: nil)
+    private let button = NSButton(title: L10n.text("home.load_more"), target: nil, action: nil)
     private let messageLabel = NSTextField(labelWithString: "")
     private var action: (() -> Void)?
     override var isFlipped: Bool { true }
@@ -848,7 +877,7 @@ private final class HomeLoadMoreRowView: NSView {
     }
     func configure(loading: Bool, hasMore: Bool, message: String?, action: @escaping () -> Void) {
         self.action = action
-        button.title = loading ? "Cargando recomendaciones…" : "Cargar más recomendaciones"
+        button.title = loading ? L10n.text("home.loading_recommendations") : L10n.text("home.load_more")
         button.isEnabled = hasMore && !loading
         button.isHidden = !hasMore
         messageLabel.stringValue = message ?? ""

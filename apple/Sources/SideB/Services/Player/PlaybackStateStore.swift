@@ -57,9 +57,13 @@ struct SavedPlaybackState: Codable {
         let id: String?
         let title: String
         let seedName: String?
+        var localizationKey: String? = nil
+        var localizationArguments: [String]? = nil
 
-        init?(_ context: QueueContext?) {
+        init?(_ context: QueueContext?, localizationKey: String? = nil, localizationArguments: [String] = []) {
             guard let context else { return nil }
+            self.localizationKey = localizationKey
+            self.localizationArguments = localizationArguments.isEmpty ? nil : localizationArguments
             switch context {
             case .radio(let seed, let title, let name):
                 kind = "radio"; id = seed; self.title = title; seedName = name

@@ -65,7 +65,7 @@ struct DetailErrorStateView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
-            Button("Reintentar") {
+            Button(L10n.text("common.retry")) {
                 onRetry()
             }
             .buttonStyle(.borderedProminent)

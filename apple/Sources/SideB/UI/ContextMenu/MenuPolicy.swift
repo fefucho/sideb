@@ -57,7 +57,7 @@ public enum MenuPolicy {
         if !isNowPlaying {
             playbackItems.append(MenuActionItem(
                 id: .play,
-                title: "Reproducir ahora",
+                title: L10n.text("menu.play_now"),
                 systemImage: "play.fill"
             ))
         }
@@ -65,7 +65,7 @@ public enum MenuPolicy {
         if !song.videoId.isEmpty {
             playbackItems.append(MenuActionItem(
                 id: .startMix,
-                title: "Iniciar mix",
+                title: L10n.text("menu.start_mix"),
                 systemImage: "dot.radiowaves.left.and.right"
             ))
         }
@@ -73,14 +73,14 @@ public enum MenuPolicy {
         if !isNowPlaying {
             playbackItems.append(MenuActionItem(
                 id: .playNext,
-                title: "Reproducir a continuación",
+                title: L10n.text("menu.play_next"),
                 systemImage: "text.line.first.and.arrowtriangle.forward"
             ))
         }
 
         playbackItems.append(MenuActionItem(
             id: .addToQueue,
-            title: "Añadir a la cola",
+            title: L10n.text("menu.add_to_queue"),
             systemImage: "text.line.last.and.arrowtriangle.forward"
         ))
 
@@ -92,7 +92,7 @@ public enum MenuPolicy {
         var collectionItems: [MenuActionItem] = []
 
         // Me gusta
-        let likedTitle = facts.isLiked ? "Quitar de Tus Me Gusta" : "Añadir a Tus Me Gusta"
+        let likedTitle = L10n.text(facts.isLiked ? "menu.remove_liked" : "menu.add_liked")
         let likedIcon = facts.isLiked ? "heart.slash" : "heart"
         collectionItems.append(MenuActionItem(
             id: .toggleLike,
@@ -104,7 +104,7 @@ public enum MenuPolicy {
         if let library = song.library,
            let token = library.inLibrary ? library.removeToken : library.addToken,
            !token.isEmpty {
-            let libTitle = library.inLibrary ? "Quitar de Biblioteca" : "Guardar en Biblioteca"
+            let libTitle = L10n.text(library.inLibrary ? "menu.remove_library" : "menu.save_library")
             let libIcon = library.inLibrary ? "bookmark.fill" : "bookmark"
             collectionItems.append(MenuActionItem(
                 id: .toggleLibrary(inLibrary: library.inLibrary),
@@ -117,24 +117,24 @@ public enum MenuPolicy {
         if !song.videoId.isEmpty {
             var playlistSubitems: [MenuActionItem] = []
             for playlist in facts.userPlaylists {
-                let isLikes = playlist.id == "LM" || playlist.title.localizedCaseInsensitiveContains("me gusta")
+                let isLikes = MenuIDNormalizer.canonicalPlaylistId(playlist.id) == "LM"
                 let plIcon = isLikes ? "heart.fill" : "music.note.list"
                 playlistSubitems.append(MenuActionItem(
                     id: .addToPlaylist(playlistId: playlist.id, title: playlist.title),
-                    title: playlist.title,
+                    title: playlist.displayTitle,
                     systemImage: plIcon
                 ))
             }
 
             playlistSubitems.append(MenuActionItem(
                 id: .createPlaylistAndAdd,
-                title: "Nueva playlist…",
+                title: L10n.text("menu.new_playlist_ellipsis"),
                 systemImage: "plus.circle"
             ))
 
             collectionItems.append(MenuActionItem(
                 id: .addToPlaylist(playlistId: "", title: ""),
-                title: "Añadir a lista de reproducción",
+                title: L10n.text("menu.add_to_playlist"),
                 systemImage: "text.badge.plus",
                 subitems: playlistSubitems
             ))
@@ -159,7 +159,7 @@ public enum MenuPolicy {
             if !isCurrentAlbum {
                 navigationItems.append(MenuActionItem(
                     id: .goToAlbum(browseId: albumId),
-                    title: "Ir al álbum",
+                    title: L10n.text("menu.go_to_album"),
                     systemImage: "opticaldisc"
                 ))
             }
@@ -177,7 +177,7 @@ public enum MenuPolicy {
             if !isCurrentArtist {
                 navigationItems.append(MenuActionItem(
                     id: .goToArtist(channelId: artistId),
-                    title: "Ir a artista",
+                    title: L10n.text("menu.go_to_artist"),
                     systemImage: "person.crop.circle"
                 ))
             }
@@ -192,7 +192,7 @@ public enum MenuPolicy {
             sections.append(MenuSection(kind: .share, items: [
                 MenuActionItem(
                     id: .share,
-                    title: "Compartir",
+                    title: L10n.text("menu.share"),
                     systemImage: "square.and.arrow.up"
                 )
             ]))
@@ -207,7 +207,7 @@ public enum MenuPolicy {
            facts.onRemoveFromPlaylist != nil {
             destructiveItems.append(MenuActionItem(
                 id: .removeFromPlaylist,
-                title: "Eliminar de esta playlist",
+                title: L10n.text("menu.remove_from_playlist"),
                 systemImage: "trash",
                 isDestructive: true
             ))
@@ -218,7 +218,7 @@ public enum MenuPolicy {
             if !facts.isCurrentPlayingTrack {
                 destructiveItems.append(MenuActionItem(
                     id: .removeFromQueue(index: occIndex),
-                    title: "Quitar de la cola",
+                    title: L10n.text("menu.remove_from_queue"),
                     systemImage: "minus.circle",
                     isDestructive: true
                 ))
@@ -248,16 +248,16 @@ public enum MenuPolicy {
 
         // --- 1. Reproducción ---
         sections.append(MenuSection(kind: .playback, items: [
-            MenuActionItem(id: .play, title: "Reproducir", systemImage: "play.fill"),
-            MenuActionItem(id: .shuffle, title: "Aleatorio", systemImage: "shuffle"),
-            MenuActionItem(id: .startMix, title: "Iniciar mix", systemImage: "dot.radiowaves.left.and.right"),
-            MenuActionItem(id: .playNext, title: "Reproducir a continuación", systemImage: "text.line.first.and.arrowtriangle.forward"),
-            MenuActionItem(id: .addToQueue, title: "Añadir a la cola", systemImage: "text.line.last.and.arrowtriangle.forward")
+            MenuActionItem(id: .play, title: L10n.text("menu.play"), systemImage: "play.fill"),
+            MenuActionItem(id: .shuffle, title: L10n.text("menu.shuffle"), systemImage: "shuffle"),
+            MenuActionItem(id: .startMix, title: L10n.text("menu.start_mix"), systemImage: "dot.radiowaves.left.and.right"),
+            MenuActionItem(id: .playNext, title: L10n.text("menu.play_next"), systemImage: "text.line.first.and.arrowtriangle.forward"),
+            MenuActionItem(id: .addToQueue, title: L10n.text("menu.add_to_queue"), systemImage: "text.line.last.and.arrowtriangle.forward")
         ]))
 
         // --- 2. Colección ---
         if case .known(let inLib) = facts.inLibrary {
-            let libTitle = inLib ? "Quitar álbum de la biblioteca" : "Guardar álbum en la biblioteca"
+            let libTitle = L10n.text(inLib ? "menu.remove_album_library" : "menu.save_album_library")
             let libIcon = inLib ? "bookmark.fill" : "bookmark"
             sections.append(MenuSection(kind: .collection, items: [
                 MenuActionItem(id: .toggleLibrary(inLibrary: inLib), title: libTitle, systemImage: libIcon)
@@ -276,7 +276,7 @@ public enum MenuPolicy {
         if !isCurrentAlbum {
             navItems.append(MenuActionItem(
                 id: .goToAlbum(browseId: browseId),
-                title: "Ver álbum",
+                title: L10n.text("menu.view_album"),
                 systemImage: "opticaldisc"
             ))
         }
@@ -292,7 +292,7 @@ public enum MenuPolicy {
             if !isCurrentArtist {
                 navItems.append(MenuActionItem(
                     id: .goToArtist(channelId: artistId),
-                    title: "Ir al artista",
+                    title: L10n.text("menu.go_to_artist"),
                     systemImage: "person.crop.circle"
                 ))
             }
@@ -304,7 +304,7 @@ public enum MenuPolicy {
 
         // --- 4. Compartir ---
         sections.append(MenuSection(kind: .share, items: [
-            MenuActionItem(id: .share, title: "Compartir", systemImage: "square.and.arrow.up")
+            MenuActionItem(id: .share, title: L10n.text("menu.share"), systemImage: "square.and.arrow.up")
         ]))
 
         return sections
@@ -324,14 +324,14 @@ public enum MenuPolicy {
 
         // --- 1. Reproducción ---
         var playbackItems: [MenuActionItem] = [
-            MenuActionItem(id: .play, title: "Reproducir", systemImage: "play.fill")
+            MenuActionItem(id: .play, title: L10n.text("menu.play"), systemImage: "play.fill")
         ]
 
         // El ejecutor resuelve todas las páginas antes de realizar acciones masivas.
-        playbackItems.append(MenuActionItem(id: .shuffle, title: "Aleatorio", systemImage: "shuffle"))
-        playbackItems.append(MenuActionItem(id: .startMix, title: "Iniciar mix", systemImage: "dot.radiowaves.left.and.right"))
-        playbackItems.append(MenuActionItem(id: .playNext, title: "Reproducir a continuación", systemImage: "text.line.first.and.arrowtriangle.forward"))
-        playbackItems.append(MenuActionItem(id: .addToQueue, title: "Añadir a la cola", systemImage: "text.line.last.and.arrowtriangle.forward"))
+        playbackItems.append(MenuActionItem(id: .shuffle, title: L10n.text("menu.shuffle"), systemImage: "shuffle"))
+        playbackItems.append(MenuActionItem(id: .startMix, title: L10n.text("menu.start_mix"), systemImage: "dot.radiowaves.left.and.right"))
+        playbackItems.append(MenuActionItem(id: .playNext, title: L10n.text("menu.play_next"), systemImage: "text.line.first.and.arrowtriangle.forward"))
+        playbackItems.append(MenuActionItem(id: .addToQueue, title: L10n.text("menu.add_to_queue"), systemImage: "text.line.last.and.arrowtriangle.forward"))
 
         sections.append(MenuSection(kind: .playback, items: playbackItems))
 
@@ -340,7 +340,7 @@ public enum MenuPolicy {
         if canonicalId != "LM" {
             // Si es ajena y conocemos el estado de biblioteca
             if !facts.isOwned.isTrue, case .known(let inLib) = facts.inLibrary {
-                let libTitle = inLib ? "Quitar lista de reproducción de la biblioteca" : "Guardar lista de reproducción en la biblioteca"
+                let libTitle = L10n.text(inLib ? "menu.remove_playlist_library" : "menu.save_playlist_library")
                 let libIcon = inLib ? "bookmark.fill" : "bookmark"
                 sections.append(MenuSection(kind: .collection, items: [
                     MenuActionItem(id: .toggleLibrary(inLibrary: inLib), title: libTitle, systemImage: libIcon)
@@ -358,13 +358,13 @@ public enum MenuPolicy {
 
         if !isCurrentPlaylist {
             sections.append(MenuSection(kind: .navigation, items: [
-                MenuActionItem(id: .goToPlaylist(id: id), title: "Ver playlist", systemImage: "music.note.list")
+                MenuActionItem(id: .goToPlaylist(id: id), title: L10n.text("menu.view_playlist"), systemImage: "music.note.list")
             ]))
         }
 
         // --- 4. Compartir ---
         sections.append(MenuSection(kind: .share, items: [
-            MenuActionItem(id: .share, title: "Compartir", systemImage: "square.and.arrow.up")
+            MenuActionItem(id: .share, title: L10n.text("menu.share"), systemImage: "square.and.arrow.up")
         ]))
 
         // --- 5. Edición y Destructivas (Playlist propia) ---
@@ -373,22 +373,22 @@ public enum MenuPolicy {
 
             destructiveItems.append(MenuActionItem(
                 id: .editDetails,
-                title: "Editar detalles",
+                title: L10n.text("menu.edit_details"),
                 systemImage: "pencil"
             ))
 
             if facts.sortEditable {
                 let sortSubmenu: [MenuActionItem] = [
-                    MenuActionItem(id: .sort(value: "default", title: "Orden manual"), title: "Orden manual", systemImage: "line.3.horizontal"),
-                    MenuActionItem(id: .sort(value: "newest", title: "Más recientes"), title: "Más recientes", systemImage: "clock.arrow.circlepath"),
-                    MenuActionItem(id: .sort(value: "oldest", title: "Más antiguas"), title: "Más antiguas", systemImage: "clock"),
-                    MenuActionItem(id: .sort(value: "title", title: "Título"), title: "Título", systemImage: "textformat.abc"),
-                    MenuActionItem(id: .sort(value: "artist", title: "Artista"), title: "Artista", systemImage: "person.crop.circle"),
-                    MenuActionItem(id: .sort(value: "album", title: "Álbum"), title: "Álbum", systemImage: "opticaldisc")
+                    MenuActionItem(id: .sort(value: "default", title: "Orden manual"), title: L10n.text("menu.sort_manual"), systemImage: "line.3.horizontal"),
+                    MenuActionItem(id: .sort(value: "newest", title: "Más recientes"), title: L10n.text("menu.sort_newest"), systemImage: "clock.arrow.circlepath"),
+                    MenuActionItem(id: .sort(value: "oldest", title: "Más antiguas"), title: L10n.text("menu.sort_oldest"), systemImage: "clock"),
+                    MenuActionItem(id: .sort(value: "title", title: "Título"), title: L10n.text("menu.sort_title"), systemImage: "textformat.abc"),
+                    MenuActionItem(id: .sort(value: "artist", title: "Artista"), title: L10n.text("menu.sort_artist"), systemImage: "person.crop.circle"),
+                    MenuActionItem(id: .sort(value: "album", title: "Álbum"), title: L10n.text("menu.sort_album"), systemImage: "opticaldisc")
                 ]
                 destructiveItems.append(MenuActionItem(
                     id: .sort(value: "", title: ""),
-                    title: "Ordenar",
+                    title: L10n.text("menu.sort"),
                     systemImage: "arrow.up.arrow.down",
                     subitems: sortSubmenu
                 ))
@@ -396,7 +396,7 @@ public enum MenuPolicy {
 
             destructiveItems.append(MenuActionItem(
                 id: .deletePlaylist,
-                title: "Eliminar playlist",
+                title: L10n.text("menu.delete_playlist"),
                 systemImage: "trash",
                 isDestructive: true
             ))
@@ -421,12 +421,12 @@ public enum MenuPolicy {
 
         // --- 1. Reproducción (Solo radio continua; sin aleatorio ni añadir toda la cola) ---
         sections.append(MenuSection(kind: .playback, items: [
-            MenuActionItem(id: .play, title: "Reproducir mix", systemImage: "dot.radiowaves.left.and.right")
+            MenuActionItem(id: .play, title: L10n.text("menu.play_mix"), systemImage: "dot.radiowaves.left.and.right")
         ]))
 
         // --- 2. Colección ---
         if case .known(let inLib) = facts.inLibrary {
-            let libTitle = inLib ? "Quitar mix de la biblioteca" : "Guardar mix en la biblioteca"
+            let libTitle = L10n.text(inLib ? "menu.remove_mix_library" : "menu.save_mix_library")
             let libIcon = inLib ? "bookmark.fill" : "bookmark"
             sections.append(MenuSection(kind: .collection, items: [
                 MenuActionItem(id: .toggleLibrary(inLibrary: inLib), title: libTitle, systemImage: libIcon)
@@ -444,13 +444,13 @@ public enum MenuPolicy {
         // Si no estamos ya en esa página y es navegable
         if !isCurrent {
             sections.append(MenuSection(kind: .navigation, items: [
-                MenuActionItem(id: .goToPlaylist(id: id), title: "Ver mix", systemImage: "dot.radiowaves.left.and.right")
+                MenuActionItem(id: .goToPlaylist(id: id), title: L10n.text("menu.view_mix"), systemImage: "dot.radiowaves.left.and.right")
             ]))
         }
 
         // --- 4. Compartir ---
         sections.append(MenuSection(kind: .share, items: [
-            MenuActionItem(id: .share, title: "Compartir", systemImage: "square.and.arrow.up")
+            MenuActionItem(id: .share, title: L10n.text("menu.share"), systemImage: "square.and.arrow.up")
         ]))
 
         return sections
@@ -470,12 +470,12 @@ public enum MenuPolicy {
 
         // --- 1. Reproducción ---
         sections.append(MenuSection(kind: .playback, items: [
-            MenuActionItem(id: .startMix, title: "Iniciar mix", systemImage: "dot.radiowaves.left.and.right")
+            MenuActionItem(id: .startMix, title: L10n.text("menu.start_mix"), systemImage: "dot.radiowaves.left.and.right")
         ]))
 
         // --- 2. Colección (Suscripción si es conocida) ---
         if case .known(let subscribed) = facts.isSubscribed {
-            let subTitle = subscribed ? "Cancelar suscripción" : "Suscribirse"
+            let subTitle = L10n.text(subscribed ? "menu.unsubscribe" : "menu.subscribe")
             let subIcon = subscribed ? "bell.slash" : "bell.badge"
             sections.append(MenuSection(kind: .collection, items: [
                 MenuActionItem(id: .toggleSubscription(subscribed: subscribed), title: subTitle, systemImage: subIcon)
@@ -492,13 +492,13 @@ public enum MenuPolicy {
 
         if !isCurrentArtist {
             sections.append(MenuSection(kind: .navigation, items: [
-                MenuActionItem(id: .goToArtist(channelId: channelId), title: "Ver artista", systemImage: "person.crop.circle")
+                MenuActionItem(id: .goToArtist(channelId: channelId), title: L10n.text("menu.view_artist"), systemImage: "person.crop.circle")
             ]))
         }
 
         // --- 4. Compartir ---
         sections.append(MenuSection(kind: .share, items: [
-            MenuActionItem(id: .share, title: "Compartir", systemImage: "square.and.arrow.up")
+            MenuActionItem(id: .share, title: L10n.text("menu.share"), systemImage: "square.and.arrow.up")
         ]))
 
         return sections

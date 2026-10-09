@@ -4,6 +4,7 @@ import SideBCore
 
 /// Un solo viewport vertical; los estantes horizontales son secciones del layout nativo.
 struct HomeFeedCollectionView: NSViewRepresentable {
+    let localizationRevision = L10n.revision
     let sections: [HomeSectionPresentation]
     let revision: UInt64
     let selectedChip: String?
@@ -71,7 +72,7 @@ struct HomeFeedCollectionView: NSViewRepresentable {
             forSupplementaryViewOfKind: Coordinator.headerKind,
             withIdentifier: HomeSectionHeaderView.identifier
         )
-        collection.setAccessibilityLabel("Recomendaciones de Inicio")
+        collection.setAccessibilityLabel(L10n.text("home.accessibility.recommendations"))
         collection.onActivateSelection = { [weak coordinator] indexPath in
             coordinator?.activate(at: indexPath)
         }
@@ -123,6 +124,10 @@ struct HomeFeedCollectionView: NSViewRepresentable {
         let old = coordinator.parent
         coordinator.parent = self
         guard scroll.documentView is HomeNativeCollectionView else { return }
+        if coordinator.localizationRevision != localizationRevision, !playerViewModelIsFullscreen {
+            coordinator.localizationRevision = localizationRevision
+            coordinator.updateLocalization()
+        }
         if old.revision != revision || old.hasMore != hasMore {
             coordinator.applyContent()
             if old.selectedChip != selectedChip {
@@ -144,6 +149,8 @@ struct HomeFeedCollectionView: NSViewRepresentable {
         }
     }
 
+    private var playerViewModelIsFullscreen: Bool { player.isFullscreenPresented }
+
     @MainActor
     final class Coordinator: NSObject, NSCollectionViewDelegate {
         static let headerKind = "HomeSectionHeader"
@@ -151,6 +158,7 @@ struct HomeFeedCollectionView: NSViewRepresentable {
         static let footerItem = "__home_load_more__"
 
         var parent: HomeFeedCollectionView
+        var localizationRevision = -1
         fileprivate weak var collection: HomeNativeCollectionView?
         var dataSource: NSCollectionViewDiffableDataSource<String, String>?
         private var itemByID: [String: HomeItemPresentation] = [:]
@@ -188,7 +196,7 @@ struct HomeFeedCollectionView: NSViewRepresentable {
                 ) as! HomeSectionHeaderView
                 if indexPath.section < self.appliedSectionIDs.count,
                    let section = self.sectionByID[self.appliedSectionIDs[indexPath.section]] {
-                    header.configure(title: section.title, showsMore: section.isNavigableMore,
+                    header.configure(title: L10n.providerHeading(section.title), showsMore: section.isNavigableMore,
                                      showsArrows: false,
                                      previous: { [weak self] in self?.scrollSection(section.id, direction: -1) },
                                      next: { [weak self] in self?.scrollSection(section.id, direction: 1) },
@@ -465,6 +473,28 @@ struct HomeFeedCollectionView: NSViewRepresentable {
             }
         }
 
+        func updateLocalization() {
+            guard let collection else { return }
+            collection.setAccessibilityLabel(L10n.text("home.accessibility.recommendations"))
+            for indexPath in collection.indexPathsForVisibleItems() {
+                if let header = collection.supplementaryView(forElementKind: Self.headerKind, at: indexPath) as? HomeSectionHeaderView {
+                    if indexPath.section < appliedSectionIDs.count,
+                       let section = sectionByID[appliedSectionIDs[indexPath.section]] {
+                        header.setLocalizedTitle(L10n.providerHeading(section.title))
+                    }
+                    header.refreshLocalization()
+                }
+                (collection.item(at: indexPath) as? HomeCollectionItem)?.content.refreshLocalization(
+                    currentTrackID: parent.currentTrackID,
+                    currentAlbumBrowseId: parent.currentAlbumBrowseId ?? parent.player.currentAlbumBrowseId,
+                    currentPlaylistBrowseId: parent.currentPlaylistBrowseId ?? parent.player.currentPlaylistBrowseId,
+                    isPlaying: parent.isPlaying,
+                    queueContext: parent.queueContext
+                )
+            }
+            updateLoadMore()
+        }
+
         func updateLoadMore() {
             guard let collection, let dataSource,
                   let path = dataSource.indexPath(for: Self.footerItem),
@@ -614,7 +644,7 @@ final class HomeCollectionItem: NSCollectionViewItem {
 final class HomeSectionHeaderView: NSView, NSCollectionViewElement {
     static let identifier = NSUserInterfaceItemIdentifier("HomeFeedHeader")
     private let title = NSTextField(labelWithString: "")
-    private let more = NSButton(title: "Ver todo", target: nil, action: nil)
+    private let more = NSButton(title: L10n.text("home.see_all"), target: nil, action: nil)
     private let previous = NSButton(title: "", target: nil, action: nil)
     private let next = NSButton(title: "", target: nil, action: nil)
     private var action: (() -> Void)?
@@ -632,11 +662,11 @@ final class HomeSectionHeaderView: NSView, NSCollectionViewElement {
         more.contentTintColor = .labelColor
         more.target = self
         more.action = #selector(openMore)
-        more.setAccessibilityLabel("Ver todo")
+        more.setAccessibilityLabel(L10n.text("home.see_all"))
         addSubview(more)
         for (button, symbol, selector, label) in [
-            (previous, "chevron.left", #selector(scrollPrevious), "Desplazar estante a la izquierda"),
-            (next, "chevron.right", #selector(scrollNext), "Desplazar estante a la derecha")
+            (previous, "chevron.left", #selector(scrollPrevious), L10n.text("home.shelf.previous")),
+            (next, "chevron.right", #selector(scrollNext), L10n.text("home.shelf.next"))
         ] {
             button.isBordered = false
             button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: label)
@@ -667,14 +697,24 @@ final class HomeSectionHeaderView: NSView, NSCollectionViewElement {
                    previous: @escaping () -> Void, next: @escaping () -> Void,
                    action: @escaping () -> Void) {
         self.title.stringValue = title
+        self.more.title = L10n.text("home.see_all")
         self.more.isHidden = !showsMore
         self.previous.isHidden = !showsArrows
         self.next.isHidden = !showsArrows
-        self.more.setAccessibilityLabel("Ver todo: \(title)")
+        self.more.setAccessibilityLabel(L10n.text("home.see_all_named", args: [title]))
         self.action = action
         previousAction = previous
         nextAction = next
     }
+    func refreshLocalization() {
+        more.title = L10n.text("home.see_all")
+        previous.setAccessibilityLabel(L10n.text("home.shelf.previous"))
+        next.setAccessibilityLabel(L10n.text("home.shelf.next"))
+        more.setAccessibilityLabel(L10n.text("home.see_all_named", args: [title.stringValue]))
+        previous.setAccessibilityLabel(L10n.text("home.shelf.previous"))
+        next.setAccessibilityLabel(L10n.text("home.shelf.next"))
+    }
+    func setLocalizedTitle(_ value: String) { title.stringValue = value }
     @objc private func openMore() { action?() }
     @objc private func scrollPrevious() { previousAction?() }
     @objc private func scrollNext() { nextAction?() }
@@ -682,7 +722,7 @@ final class HomeSectionHeaderView: NSView, NSCollectionViewElement {
 
 private final class HomeLoadMoreItem: NSCollectionViewItem {
     static let identifier = NSUserInterfaceItemIdentifier("HomeLoadMore")
-    private let button = NSButton(title: "Cargar más recomendaciones", target: nil, action: nil)
+    private let button = NSButton(title: L10n.text("home.load_more"), target: nil, action: nil)
     private var action: (() -> Void)?
     override func loadView() {
         let root = NSView(frame: NSRect(x: 0, y: 0, width: 500, height: 64))
@@ -698,8 +738,8 @@ private final class HomeLoadMoreItem: NSCollectionViewItem {
         button.frame = NSRect(x: max(0, (view.bounds.width - 220) / 2), y: 12, width: 220, height: 32)
     }
     func configure(loading: Bool, action: @escaping () -> Void) {
+        button.title = loading ? L10n.text("home.loading_recommendations") : L10n.text("home.load_more")
         self.action = action
-        button.title = loading ? "Cargando recomendaciones…" : "Cargar más recomendaciones"
         button.isEnabled = !loading
     }
     @objc private func loadMore() { action?() }
@@ -868,7 +908,7 @@ final class HomeItemView: NSView {
         playButton.refusesFirstResponder = false
         playButton.focusRingType = .default
         playButton.onFocusChanged = { [weak self] in self?.scheduleFocusAppearanceRefresh() }
-        playButton.setAccessibilityLabel("Reproducir")
+        playButton.setAccessibilityLabel(L10n.text("home.play"))
 
         title.font = Self.largeTitleFont
         title.textColor = .labelColor
@@ -913,14 +953,14 @@ final class HomeItemView: NSView {
         explicitBadge.wantsLayer = true
         explicitBadge.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.78).cgColor
         explicitBadge.layer?.cornerRadius = 3
-        explicitBadge.setAccessibilityLabel("Contenido explícito")
+        explicitBadge.setAccessibilityLabel(L10n.text("home.explicit_content"))
 
         setup(more, selector: #selector(morePressed), font: nil)
         more.onFocusChanged = { [weak self] in self?.scheduleFocusAppearanceRefresh() }
-        more.image = NSImage(systemSymbolName: "ellipsis", accessibilityDescription: "Más opciones")
+        more.image = NSImage(systemSymbolName: "ellipsis", accessibilityDescription: L10n.text("home.more_options"))
         more.imagePosition = .imageOnly
         more.contentTintColor = NSColor.white.withAlphaComponent(0.78)
-        more.setAccessibilityLabel("Más opciones")
+        more.setAccessibilityLabel(L10n.text("home.more_options"))
         more.refusesFirstResponder = false
         more.focusRingType = .default
 
@@ -1081,7 +1121,7 @@ final class HomeItemView: NSView {
                 return first
             }
         }
-        return record.subtitle ?? "Varios Artistas"
+        return record.subtitle ?? L10n.text("metadata.various_artists")
     }
 
     static func cleanAlbumName(from record: HomeItemRecord) -> String? {
@@ -1143,6 +1183,7 @@ final class HomeItemView: NSView {
         self.onDirectPlay = onDirectPlay
         self.menuProvider = menuProvider
         if samePresentation {
+            refreshMetadataAccessibility(for: record)
             updatePlayback(
                 currentTrackID: currentTrackID,
                 currentAlbumBrowseId: currentAlbumBrowseId,
@@ -1173,12 +1214,12 @@ final class HomeItemView: NSView {
         artist.toolTip = artistName
         let hasArtistDestination = (record.artistId ?? record.artistRuns.first(where: { $0.id?.isEmpty == false })?.id)?.isEmpty == false
         artist.isEnabled = hasArtistDestination
-        artist.setAccessibilityLabel(hasArtistDestination ? "Ver artista: \(artistName)" : "Artista: \(artistName)")
+        artist.setAccessibilityLabel(hasArtistDestination ? L10n.text("home.artist.view", args: [artistName]) : L10n.text("home.artist.label", args: [artistName]))
         rawAlbumTitle = Self.cleanAlbumName(from: record) ?? ""
         album.title = rawAlbumTitle
         let hasAlbumDestination = record.albumId?.isEmpty == false
         album.isEnabled = hasAlbumDestination
-        album.setAccessibilityLabel(hasAlbumDestination ? "Ver álbum: \(rawAlbumTitle)" : "Álbum: \(rawAlbumTitle)")
+        album.setAccessibilityLabel(hasAlbumDestination ? L10n.text("home.album.view", args: [rawAlbumTitle]) : L10n.text("home.album.label", args: [rawAlbumTitle]))
 
         let creatorHasLink = record.kind == "playlist" && record.artistRuns.contains { $0.id?.isEmpty == false }
         let artistCanShow = !artistName.isEmpty && record.kind != "artist" && (record.kind != "playlist" || creatorHasLink)
@@ -1193,6 +1234,7 @@ final class HomeItemView: NSView {
         showMetadata(bullet, when: style == .compactSong ? artistCanShow && showsAlbum : artistCanShow || showsSubtitle)
         showMetadata(explicitBadge, when: record.explicit)
 
+        refreshMetadataAccessibility(for: record)
         refreshArtistAppearance()
         updatePlayback(
             currentTrackID: currentTrackID,
@@ -1228,18 +1270,56 @@ final class HomeItemView: NSView {
     private static func displayType(for record: HomeItemRecord) -> String {
         if record.kind == "album", let prefix = Self.parseSubtitleComponents(record.subtitle).first?.lowercased() {
             switch prefix {
-            case "single", "sencillo": return "Sencillo"
+            case "single", "sencillo": return L10n.text("metadata.single")
             case "ep": return "EP"
-            case "album", "álbum": return "Álbum"
+            case "album", "álbum": return L10n.text("metadata.album")
             default: break
             }
         }
         return switch record.kind {
-        case "song": "Canción"
-        case "album": "Álbum"
-        case "artist": "Artista"
-        default: "Playlist"
+        case "song": L10n.text("metadata.song")
+        case "video": L10n.text("search.filter.videos")
+        case "album": L10n.text("metadata.album")
+        case "artist": L10n.text("search.filter.artists")
+        default: L10n.text("metadata.playlist")
         }
+    }
+
+    private func refreshMetadataAccessibility(for record: HomeItemRecord) {
+        // Missing provider names are presentation fallbacks, never translated identities.
+        if record.title.isEmpty {
+            title.stringValue = Self.displayType(for: record)
+            title.toolTip = title.stringValue
+            cardButton.toolTip = title.stringValue
+        }
+        let artistName = Self.cleanArtistName(from: record)
+        if rawArtistTitle != artistName {
+            rawArtistTitle = artistName
+            artist.title = artistName
+            largeArtistLabel.stringValue = artistName
+            largeArtistLabel.toolTip = artistName
+            artist.toolTip = artistName
+            compactArtistTextWidth = ceil((artistName as NSString).size(withAttributes: [.font: Self.compactArtistMeasureFont]).width) + 2
+            measuredLargeCardWidth = -1
+            refreshArtistAppearance()
+        }
+        typeLabel.stringValue = Self.displayType(for: record)
+        let hasArtistDestination = (record.artistId ?? record.artistRuns.first(where: { $0.id?.isEmpty == false })?.id)?.isEmpty == false
+        let hasAlbumDestination = record.albumId?.isEmpty == false
+        artist.setAccessibilityLabel(rawArtistTitle.isEmpty ? "" : L10n.text(hasArtistDestination ? "home.artist.view" : "home.artist.label", args: [rawArtistTitle]))
+        album.setAccessibilityLabel(rawAlbumTitle.isEmpty ? "" : L10n.text(hasAlbumDestination ? "home.album.view" : "home.album.label", args: [rawAlbumTitle]))
+        explicitBadge.setAccessibilityLabel(L10n.text("home.explicit_content"))
+        more.setAccessibilityLabel(L10n.text("home.more_options"))
+    }
+
+    func refreshLocalization(currentTrackID: String?, currentAlbumBrowseId: String?,
+                             currentPlaylistBrowseId: String?, isPlaying: Bool,
+                             queueContext: QueueContext?) {
+        guard let record = representedRecord else { return }
+        refreshMetadataAccessibility(for: record)
+        updatePlayback(currentTrackID: currentTrackID, currentAlbumBrowseId: currentAlbumBrowseId,
+                       currentPlaylistBrowseId: currentPlaylistBrowseId, isPlaying: isPlaying,
+                       queueContext: queueContext)
     }
 
     private func refreshArtistAppearance() {
@@ -1304,16 +1384,16 @@ final class HomeItemView: NSView {
         isCurrent = isSongMatch || isAlbumMatch || isPlaylistMatch
         playing = isCurrent && isPlaying
 
-        let metadata = [typeLabel.stringValue, explicitBadge.isHidden ? nil : "Explícita",
+        let metadata = [typeLabel.stringValue, explicitBadge.isHidden ? nil : L10n.text("metadata.explicit"),
                         rawArtistTitle.isEmpty ? nil : rawArtistTitle,
                         rawAlbumTitle.isEmpty ? nil : rawAlbumTitle]
             .compactMap { $0 }
             .joined(separator: " · ")
-        let action = playing ? "Pausar" : (representedKind == "song" ? "Reproducir" : "Abrir")
-        let actionLabel = "\(action) \(title.stringValue). \(metadata)"
+        let action = playing ? L10n.text("home.pause") : (representedKind == "song" ? L10n.text("home.play") : L10n.text("home.open"))
+        let actionLabel = L10n.text("home.card.accessibility", args: [action, title.stringValue, metadata])
         cover.setAccessibilityLabel(actionLabel)
         cardButton.setAccessibilityLabel(actionLabel)
-        playButton.setAccessibilityLabel(playing ? "Pausar \(title.stringValue)" : "Reproducir \(title.stringValue)")
+        playButton.setAccessibilityLabel(L10n.text(playing ? "home.pause_named" : "home.play_named", args: [title.stringValue]))
         cardButton.title = ""
         cardButton.isTransparent = true
         refreshAppearance()
@@ -1399,7 +1479,7 @@ final class HomeItemView: NSView {
             indicator.controlSize = .small
             indicator.isDisplayedWhenStopped = false
             indicator.appearance = NSAppearance(named: .darkAqua)
-            indicator.setAccessibilityLabel("Cargando \(title.stringValue)")
+            indicator.setAccessibilityLabel(L10n.text("home.loading_named", args: [title.stringValue]))
             indicator.frame = playSymbol.frame.insetBy(dx: -1, dy: -1)
             addSubview(indicator)
             if feedVisible { indicator.startAnimation(nil) }

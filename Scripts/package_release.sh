@@ -3,6 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR/../apple"
+node "$SCRIPT_DIR/sync-localizations.mjs" --check
 
 APP_NAME="Side B"
 APP_DIR=".build/app/$APP_NAME.app"
@@ -12,8 +13,18 @@ RESOURCES_DIR="$APP_DIR/Contents/Resources"
 rm -rf "$APP_DIR"
 mkdir -p "$MACOS_DIR" "$RESOURCES_DIR"
 
-BIN_PATH=$(swift build -c release --show-bin-path)/SideB
-cp "$BIN_PATH" "$MACOS_DIR/$APP_NAME"
+BIN_DIR=$(swift build -c release --show-bin-path)
+cp "$BIN_DIR/SideB" "$MACOS_DIR/$APP_NAME"
+LOCALIZATION_BUNDLE="$BIN_DIR/SideB_SideB.bundle"
+for LANGUAGE in es en; do
+  for RESOURCE in Localizable.strings Localizable.stringsdict; do
+    if [ ! -f "$LOCALIZATION_BUNDLE/$LANGUAGE.lproj/$RESOURCE" ]; then
+      echo "Falta recurso de idioma: $LANGUAGE/$RESOURCE" >&2
+      exit 1
+    fi
+  done
+done
+cp -R "$LOCALIZATION_BUNDLE" "$RESOURCES_DIR/"
 
 ICON_KEY=""
 if [ -f "Resources/AppIcon.icns" ]; then
@@ -48,7 +59,7 @@ cat > "$APP_DIR/Contents/Info.plist" <<EOF
     <key>CFBundleDevelopmentRegion</key>
     <string>es</string>
     <key>CFBundleLocalizations</key>
-    <array><string>es</string></array>
+    <array><string>es</string><string>en</string></array>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
@@ -69,6 +80,7 @@ $ICON_KEY
 EOF
 
 codesign --force --deep -s - "$APP_DIR"
+codesign --verify --deep --strict "$APP_DIR"
 ditto -c -k --keepParent "$APP_DIR" "SideB-macOS.zip"
 
 echo "✅ SideB-macOS.zip creado exitosamente."

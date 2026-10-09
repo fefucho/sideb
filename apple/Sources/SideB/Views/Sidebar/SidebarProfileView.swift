@@ -55,11 +55,11 @@ struct SidebarProfileView: View {
                     .foregroundStyle(.secondary)
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Modo Invitado")
+                    Text(L10n.text("account.guest_mode"))
                         .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(.primary)
 
-                    Text("Iniciar sesión")
+                    Text(L10n.text("account.sign_in"))
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                 }
@@ -106,7 +106,7 @@ struct SidebarProfileView: View {
 
                 // Name & Handle
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(account.name ?? "Usuario")
+                    Text(account.name ?? L10n.text("account.user"))
                         .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(.primary)
                         .lineLimit(1)
@@ -152,11 +152,11 @@ struct SidebarProfileView: View {
                     .frame(width: 32, height: 32)
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Error de perfil")
+                    Text(L10n.text("account.profile_error"))
                         .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(.primary)
 
-                    Text("Clic para opciones")
+                    Text(L10n.text("account.click_for_options"))
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                 }
@@ -169,7 +169,7 @@ struct SidebarProfileView: View {
         .buttonStyle(.plain)
         .popover(isPresented: $showingErrorPopover, arrowEdge: .top) {
             VStack(alignment: .leading, spacing: 12) {
-                Text("No se pudo cargar el perfil")
+                Text(L10n.text("account.profile_failed"))
                     .font(.system(size: 13, weight: .semibold))
                 if let msg = errorMessage {
                     Text(msg)
@@ -184,7 +184,7 @@ struct SidebarProfileView: View {
                         await accountViewModel.fetchAccount(core: rustCore)
                     }
                 } label: {
-                    Label("Reintentar conexión", systemImage: "arrow.clockwise")
+                    Label(L10n.text("account.retry_connection"), systemImage: "arrow.clockwise")
                 }
                 .buttonStyle(.plain)
 
@@ -194,7 +194,7 @@ struct SidebarProfileView: View {
                         onLogout()
                     }
                 } label: {
-                    Label("Cerrar sesión", systemImage: "rectangle.portrait.and.arrow.right")
+                    Label(L10n.text("account.sign_out"), systemImage: "rectangle.portrait.and.arrow.right")
                         .foregroundStyle(.red)
                 }
                 .buttonStyle(.plain)
@@ -208,14 +208,14 @@ struct SidebarProfileView: View {
                     await accountViewModel.fetchAccount(core: rustCore)
                 }
             } label: {
-                Label("Reintentar conexión", systemImage: "arrow.clockwise")
+                Label(L10n.text("account.retry_connection"), systemImage: "arrow.clockwise")
             }
             Button(role: .destructive) {
                 accountViewModel.logout(core: rustCore, storage: cookieStorage) {
                     onLogout()
                 }
             } label: {
-                Label("Cerrar sesión", systemImage: "rectangle.portrait.and.arrow.right")
+                Label(L10n.text("account.sign_out"), systemImage: "rectangle.portrait.and.arrow.right")
             }
         }
         .labelStyle(.titleAndIcon)

@@ -64,13 +64,13 @@ struct NavigationGestureIndicatorView: View {
     }
 
     private func action(_ snapshot: WindowGesturePresentation.HorizontalSnapshot) -> String {
-        guard snapshot.available else { return snapshot.direction == .back ? "Volver" : "Avanzar" }
-        if snapshot.armed { return snapshot.direction == .back ? "Soltá para volver" : "Soltá para avanzar" }
-        return snapshot.direction == .back ? "Volver" : "Avanzar"
+        guard snapshot.available else { return L10n.text(snapshot.direction == .back ? "fullscreen.gesture.back" : "fullscreen.gesture.forward") }
+        if snapshot.armed { return L10n.text(snapshot.direction == .back ? "fullscreen.gesture.releaseToBack" : "fullscreen.gesture.releaseToForward") }
+        return L10n.text(snapshot.direction == .back ? "fullscreen.gesture.back" : "fullscreen.gesture.forward")
     }
 
     private func unavailableTitle(_ snapshot: WindowGesturePresentation.HorizontalSnapshot) -> String {
-        snapshot.direction == .back ? "No hay una página anterior" : "No hay una página siguiente"
+        L10n.text(snapshot.direction == .back ? "fullscreen.gesture.noPreviousPage" : "fullscreen.gesture.noNextPage")
     }
 
     private func accessibilityDescription(_ snapshot: WindowGesturePresentation.HorizontalSnapshot) -> String {
@@ -93,7 +93,7 @@ struct FullscreenDismissGestureIndicatorView: View {
         HStack(spacing: 6) {
             Image(systemName: "chevron.down")
                 .font(.system(size: 11, weight: .semibold))
-            Text(presentation.fullscreenArmed ? "Soltá para cerrar" : "Bajá para cerrar")
+            Text(L10n.text(presentation.fullscreenArmed ? "fullscreen.gesture.releaseToClose" : "fullscreen.gesture.pullDownToClose"))
                 .font(.system(size: 10, weight: .medium))
         }
         .foregroundStyle(presentation.fullscreenArmed ? AppTheme.accentHighlight : Color.secondary)
@@ -104,7 +104,7 @@ struct FullscreenDismissGestureIndicatorView: View {
         .opacity(isVisible ? 1 : 0)
         .allowsHitTesting(false)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(presentation.fullscreenArmed ? "Soltá para cerrar Ahora suena" : "Bajá para cerrar Ahora suena")
+        .accessibilityLabel(L10n.text(presentation.fullscreenArmed ? "fullscreen.gesture.releaseToCloseNowPlaying" : "fullscreen.gesture.pullDownToCloseNowPlaying"))
         .accessibilityHidden(!isVisible)
         .onChange(of: announcement) { _, text in GestureAccessibility.announce(text) }
     }
@@ -115,7 +115,7 @@ struct FullscreenDismissGestureIndicatorView: View {
 
     private var announcement: String? {
         guard isVisible else { return nil }
-        return presentation.fullscreenArmed ? "Soltá para cerrar Ahora suena" : "Bajá para cerrar Ahora suena"
+        return L10n.text(presentation.fullscreenArmed ? "fullscreen.gesture.releaseToCloseNowPlaying" : "fullscreen.gesture.pullDownToCloseNowPlaying")
     }
 }
 

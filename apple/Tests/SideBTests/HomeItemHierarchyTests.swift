@@ -75,7 +75,7 @@ final class HomeItemHierarchyTests: XCTestCase {
         card.frame.size = NSSize(width: 140, height: 234)
         configure(card, id: "playlist", kind: "playlist", style: .largeCard)
         XCTAssertNil(card.artist.superview) // No linked creator; native subtitle remains visible.
-        XCTAssertEqual(Set(labels(in: card).map(\.stringValue)), ["playlist", "Playlist", "Publisher • 10 songs", "•"])
+        XCTAssertEqual(Set(labels(in: card).map(\.stringValue)), ["playlist", L10n.text("metadata.playlist"), "Publisher • 10 songs", "•"])
         XCTAssertFalse(card.subviews.contains { $0.isHidden && $0 is NSTextField })
 
         card.frame.size = NSSize(width: 330, height: 56)

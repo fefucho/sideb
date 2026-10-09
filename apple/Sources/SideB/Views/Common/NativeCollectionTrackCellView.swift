@@ -46,7 +46,7 @@ struct CollectionTrackColumnLayout: Equatable {
 }
 
 final class NativeCollectionColumnsCellView: NSTableCellView {
-    private let labels = ["Canción", "Artista", "Álbum", "Duración"].map { NSTextField(labelWithString: $0) }
+    private let labels = (0..<4).map { _ in NSTextField(labelWithString: "") }
     override init(frame: NSRect) {
         super.init(frame: frame)
         for label in labels {
@@ -55,9 +55,16 @@ final class NativeCollectionColumnsCellView: NSTableCellView {
             label.lineBreakMode = .byTruncatingTail
             addSubview(label)
         }
-        setAccessibilityLabel("Canción, artista, álbum y duración")
+        updateLocalization()
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+    func updateLocalization() {
+        labels[0].stringValue = L10n.text("detail.track.song")
+        labels[1].stringValue = L10n.text("detail.track.artist")
+        labels[2].stringValue = L10n.text("detail.track.album")
+        labels[3].stringValue = L10n.text("detail.track.duration")
+        setAccessibilityLabel(L10n.text("detail.track.columnsAX"))
+    }
     override func layout() {
         super.layout()
         let geometry = CollectionTrackColumnLayout.make(width: bounds.width, height: bounds.height, showsAlbum: true)
@@ -88,6 +95,7 @@ final class NativeCollectionTrackCellView: NSTableCellView, NativeTrackCellPrese
     private var hovered = false
     private var focused = false
     private var reorderable = false
+    private var currentIsLiked = false
     private var requestID = UUID()
     private var imageTask: Task<Void, Never>?
     var onPlay: (() -> Void)?
@@ -151,18 +159,18 @@ final class NativeCollectionTrackCellView: NSTableCellView, NativeTrackCellPrese
                 }
             }
         }
-        playButton.image = NSImage(systemSymbolName: "play.fill", accessibilityDescription: "Reproducir canción")?
+        playButton.image = NSImage(systemSymbolName: "play.fill", accessibilityDescription: L10n.text("detail.track.play"))?
             .withSymbolConfiguration(.init(pointSize: 15.5, weight: .semibold))
         playButton.wantsLayer = true
         playButton.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.58).cgColor
         playButton.layer?.cornerRadius = 8
         playButton.action = #selector(playClicked)
-        menuButton.image = NSImage(systemSymbolName: "ellipsis", accessibilityDescription: "Más opciones")?
+        menuButton.image = NSImage(systemSymbolName: "ellipsis", accessibilityDescription: L10n.text("common.moreOptions"))?
             .withSymbolConfiguration(.init(pointSize: 15.5, weight: .semibold))
         menuButton.action = #selector(menuClicked)
-        menuButton.setAccessibilityLabel("Más opciones de la canción")
+        menuButton.setAccessibilityLabel(L10n.text("detail.track.moreOptionsForSong"))
         likeButton.action = #selector(likeClicked)
-        grip.image = NSImage(systemSymbolName: "line.3.horizontal", accessibilityDescription: "Arrastrar para reordenar")?
+        grip.image = NSImage(systemSymbolName: "line.3.horizontal", accessibilityDescription: L10n.text("detail.track.reorder"))?
             .withSymbolConfiguration(.init(pointSize: 15.5, weight: .regular))
         grip.contentTintColor = NSColor.white.withAlphaComponent(0.45)
         playingIcon.contentTintColor = .white
@@ -186,6 +194,7 @@ final class NativeCollectionTrackCellView: NSTableCellView, NativeTrackCellPrese
     func configure(track: SongItemRecord, index: Int, isCurrentTrack: Bool, isPlaying: Bool,
                    isLiked: Bool, hideAlbum: Bool, showAlbumInSubtitle: Bool, isReorderable: Bool, rowHeight: CGFloat) {
         self.track = track
+        currentIsLiked = isLiked
         reorderable = isReorderable
         indexLabel.stringValue = "\(index + 1)"
         indexLabel.isHidden = isCurrentTrack; playingIcon.isHidden = !isCurrentTrack
@@ -201,12 +210,30 @@ final class NativeCollectionTrackCellView: NSTableCellView, NativeTrackCellPrese
         } fallback: { [weak self] in self?.onPlay?() }
         album.isHidden = !showsAlbum
         duration.stringValue = track.duration ?? "—"
-        likeButton.image = NSImage(systemSymbolName: isLiked ? "heart.fill" : "heart", accessibilityDescription: "Me gusta")?
+        likeButton.image = NSImage(systemSymbolName: isLiked ? "heart.fill" : "heart", accessibilityDescription: L10n.text(isLiked ? "detail.track.unlike" : "detail.track.like"))?
             .withSymbolConfiguration(.init(pointSize: 15.5, weight: .regular))
         likeButton.contentTintColor = isLiked ? .white : NSColor.white.withAlphaComponent(0.65)
-        likeButton.setAccessibilityLabel(isLiked ? "Quitar de Me gusta" : "Me gusta")
+        likeButton.setAccessibilityLabel(L10n.text(isLiked ? "detail.track.unlike" : "detail.track.like"))
         updateControls(); needsLayout = true
         loadArtwork(track)
+    }
+    func refreshLocalization() {
+        if let track, track.artists.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            artist.stringValue = track.displayArtist
+            artist.setAccessibilityLabel(track.displayArtist)
+        }
+        let play = L10n.text("detail.track.play")
+        let reorder = L10n.text("detail.track.reorder")
+        let like = L10n.text(currentIsLiked ? "detail.track.unlike" : "detail.track.like")
+        artwork.setAccessibilityLabel(L10n.text("detail.track.artwork"))
+        playButton.setAccessibilityLabel(play)
+        playButton.toolTip = play
+        menuButton.setAccessibilityLabel(L10n.text("detail.track.moreOptionsForSong"))
+        menuButton.toolTip = L10n.text("detail.track.moreOptionsForSong")
+        likeButton.setAccessibilityLabel(like)
+        likeButton.toolTip = like
+        grip.setAccessibilityLabel(reorder)
+        grip.toolTip = reorder
     }
     func updateHover(isHovered: Bool) { hovered = isHovered; updateControls() }
     func updateSelection(isSelected: Bool) { }

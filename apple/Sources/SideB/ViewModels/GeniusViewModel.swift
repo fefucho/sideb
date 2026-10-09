@@ -33,11 +33,19 @@ final class GeniusViewModel {
     private(set) var isLoadingLyrics = false
     private(set) var isSearching = false
     private(set) var searchResults: [GeniusCandidateRecord] = []
-    private(set) var errorMessage: String?
+    private var errorDescriptor: AppMessage?
+    private(set) var errorMessage: String? {
+        get { errorDescriptor?.text }
+        set { errorDescriptor = newValue.map { AppMessage(verbatim: $0) } }
+    }
     private(set) var automaticFetchEnabled = false
     private(set) var isReportingMiss = false
     private(set) var missReportSaved = false
-    private(set) var missReportError: String?
+    private var missReportDescriptor: AppMessage?
+    private(set) var missReportError: String? {
+        get { missReportDescriptor?.text }
+        set { missReportDescriptor = newValue.map { AppMessage(verbatim: $0) } }
+    }
     var selectedAnnotation: GeniusAnnotationRecord?
 
     @ObservationIgnored private var core: SideBCore?
@@ -218,7 +226,7 @@ final class GeniusViewModel {
                 self.isReportingMiss = false
             } catch {
                 guard let self, self.identity == identity else { return }
-                self.missReportError = "No se pudo guardar esta pista. Intentá de nuevo."
+                self.missReportDescriptor = AppMessage(key: "genius.error.saveTrack")
                 self.isReportingMiss = false
             }
         }

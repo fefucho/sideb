@@ -97,7 +97,7 @@ struct SpotlightSearchModal: View {
                 .font(.system(size: 18, weight: .medium))
                 .foregroundStyle(.primary)
             
-            TextField("Buscar canciones, álbumes, artistas, playlists...", text: $searchViewModel.query)
+            TextField(L10n.text("search.spotlight.placeholder"), text: $searchViewModel.query)
                 .font(.system(size: 16, weight: .regular))
                 .textFieldStyle(.plain)
                 .focused($isFieldFocused)
@@ -196,7 +196,7 @@ struct SpotlightSearchModal: View {
                     .font(.system(size: 11, weight: .bold))
                     .foregroundStyle(category == .topResult ? .primary : .secondary)
                 
-                Text(category.rawValue.uppercased())
+                Text(category.displayTitle.uppercased())
                     .font(.system(size: 10.5, weight: .bold))
                     .foregroundStyle(category == .topResult ? .primary : .secondary)
                     .tracking(0.6)
@@ -357,7 +357,7 @@ struct SpotlightSearchModal: View {
                     .padding(4)
                     .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 4))
                 
-                Text("Ver todos los resultados para")
+                Text(L10n.text("search.spotlight.all_results_for"))
                     .font(.system(size: 12.5, weight: .regular))
                     .foregroundStyle(.secondary)
                 
@@ -389,11 +389,11 @@ struct SpotlightSearchModal: View {
                 .foregroundStyle(.secondary.opacity(0.5))
                 .padding(.top, 16)
             
-            Text("Busca artistas, canciones, álbumes y más")
+            Text(L10n.text("search.spotlight.prompt_title"))
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(.secondary)
             
-            Text("Escribe para ver resultados rápidos categorizados en tiempo real")
+            Text(L10n.text("search.spotlight.prompt_description"))
                 .font(.system(size: 11.5))
                 .foregroundStyle(.tertiary)
                 .padding(.bottom, 16)
@@ -409,11 +409,11 @@ struct SpotlightSearchModal: View {
                 .foregroundStyle(.secondary.opacity(0.5))
                 .padding(.top, 16)
             
-            Text("No se encontraron resultados rápidos")
+            Text(L10n.text("search.empty.quick"))
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(.secondary)
             
-            Text("Pulsa Enter para realizar una búsqueda completa en el catálogo")
+            Text(L10n.text("search.spotlight.submit_hint"))
                 .font(.system(size: 11.5))
                 .foregroundStyle(.tertiary)
                 .padding(.bottom, 16)

@@ -22,20 +22,20 @@ struct ArtistCatalogView: View {
                     .font(.system(size: 28, weight: .bold))
 
                 if isLoading {
-                    ProgressView("Cargando…")
+                    ProgressView(L10n.text("common.loading"))
                         .frame(maxWidth: .infinity, minHeight: 200)
                 } else if let errorMessage {
                     VStack(spacing: 12) {
-                        Text("No se pudo cargar el catálogo")
+                        Text(L10n.text("detail.artistCatalog.loadFailed"))
                             .font(.headline)
                         Text(errorMessage)
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                        Button("Reintentar") { Task { await load() } }
+                        Button(L10n.text("common.retry")) { Task { await load() } }
                     }
                     .frame(maxWidth: .infinity, minHeight: 200)
                 } else if cards.isEmpty {
-                    ContentUnavailableView("No hay publicaciones", systemImage: "square.stack")
+                    ContentUnavailableView(L10n.text("detail.artistCatalog.empty"), systemImage: "square.stack")
                         .frame(maxWidth: .infinity, minHeight: 200)
                 } else {
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 150, maximum: 190), spacing: 18)], alignment: .leading, spacing: 24) {
@@ -148,7 +148,7 @@ struct CatalogCardView: View {
         }
 
         content
-        .mediaCardActivation(label: "Abrir \(card.title)", action: open)
+        .mediaCardActivation(label: L10n.text("detail.openCard", args: [card.title]), action: open)
         .mediaCardSurface()
         .browseCardContextMenu(
             card: card,

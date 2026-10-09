@@ -9,6 +9,13 @@ public enum FullscreenPanel: String, CaseIterable, Identifiable {
     case recommended = "Relacionado"
     
     public var id: String { self.rawValue }
+    var title: String {
+        switch self {
+        case .queue: L10n.text("queue.title")
+        case .lyrics: L10n.text("fullscreen.lyrics")
+        case .recommended: L10n.text("fullscreen.related")
+        }
+    }
     
     public var icon: String {
         switch self {
@@ -30,6 +37,10 @@ struct FullscreenNowPlayingView: View, Animatable {
     private var selectedPanel: FullscreenPanel {
         get { viewModel.selectedFullscreenPanel }
         nonmutating set { viewModel.selectedFullscreenPanel = newValue }
+    }
+
+    private var localizedQueueContextTitle: String {
+        viewModel.queueManager.displayContextTitle
     }
     @State private var isHoveringArtwork: Bool = false
     @State private var isHoveringAlbum: Bool = false
@@ -186,12 +197,12 @@ struct FullscreenNowPlayingView: View, Animatable {
     private func artworkInformationCard(size: CGFloat) -> some View {
         let song = viewModel.genius.resolution?.song
         let track = viewModel.currentTrack
-        let displayTitle = song?.title ?? track?.title ?? "Sin título"
-        let displayArtist = song?.artist ?? track?.artists ?? ""
+        let displayTitle = song?.title ?? track?.title ?? L10n.text("common.untitled")
+        let displayArtist = song?.artist ?? track?.displayArtist ?? ""
 
         return VStack(alignment: .leading, spacing: size < 300 ? 8 : 13) {
             HStack(alignment: .center) {
-                Label("Información", systemImage: "info.circle.fill")
+                Label(L10n.text("fullscreen.information"), systemImage: "info.circle.fill")
                     .font(.system(size: size < 300 ? 13 : 15, weight: .semibold))
                     .foregroundStyle(.white.opacity(0.85))
                 Spacer(minLength: 4)
@@ -203,7 +214,8 @@ struct FullscreenNowPlayingView: View, Animatable {
                         .foregroundStyle(.white.opacity(0.72))
                 }
                 .buttonStyle(.plain)
-                .help("Volver a la carátula")
+                .help(L10n.text("fullscreen.backToArtwork"))
+                .accessibilityLabel(L10n.text("fullscreen.backToArtwork"))
             }
 
             Text(displayTitle)
@@ -225,7 +237,7 @@ struct FullscreenNowPlayingView: View, Animatable {
                                 .foregroundStyle(.white.opacity(0.88))
                                 .textSelection(.enabled)
                         } else {
-                            Text("No hay descripción disponible para esta canción.")
+                            Text(L10n.text("fullscreen.noSongDescription"))
                                 .foregroundStyle(.white.opacity(0.6))
                         }
                         if let date = song.releaseDate, !date.isEmpty {
@@ -234,10 +246,10 @@ struct FullscreenNowPlayingView: View, Animatable {
                                 .foregroundStyle(.white.opacity(0.7))
                         }
                         if !song.producers.isEmpty {
-                            informationCredit("Producción", names: song.producers)
+                            informationCredit(L10n.text("genius.production"), names: song.producers)
                         }
                         if !song.writers.isEmpty {
-                            informationCredit("Composición", names: song.writers)
+                            informationCredit(L10n.text("genius.composition"), names: song.writers)
                         }
                         ForEach(Array(song.performances.enumerated()), id: \.offset) { _, item in
                             informationCredit(item.label, names: item.artists)
@@ -248,11 +260,11 @@ struct FullscreenNowPlayingView: View, Animatable {
             } else {
                 Spacer(minLength: 4)
                 if viewModel.genius.phase == .loading {
-                    ProgressView("Buscando información...")
+                    ProgressView(L10n.text("genius.searchingInformation"))
                         .frame(maxWidth: .infinity, alignment: .center)
                 } else {
                     VStack(alignment: .center, spacing: 6) {
-                        Text("Sin información adicional en Genius")
+                        Text(L10n.text("genius.noAdditionalInformation"))
                             .font(.subheadline)
                             .foregroundStyle(.white.opacity(0.65))
                         if let album = track?.album, !album.isEmpty {
@@ -269,7 +281,7 @@ struct FullscreenNowPlayingView: View, Animatable {
             Button {
                 viewModel.toggleLyricsPanel(genius: true)
             } label: {
-                Label("Letras y anotaciones", systemImage: "text.book.closed")
+                Label(L10n.text("genius.lyricsAndAnnotations"), systemImage: "text.book.closed")
                     .font(.system(size: 12, weight: .semibold))
             }
             .buttonStyle(.plain)
@@ -348,7 +360,7 @@ struct FullscreenNowPlayingView: View, Animatable {
         return HStack(alignment: .center, spacing: 14) {
             VStack(alignment: .leading, spacing: 4) {
                 // Título de la Canción (Bold prominente estilo cartel Now Playing)
-                Text(viewModel.currentTrack?.title ?? "Sin reproducción")
+                Text(viewModel.currentTrack?.title ?? L10n.text("player.noPlayback"))
                     .font(.system(size: titleSize, weight: .bold))
                     .foregroundStyle(.white)
                     .lineLimit(1)
@@ -360,7 +372,7 @@ struct FullscreenNowPlayingView: View, Animatable {
                             navigateToArtist(track: track, artistId: id, name: name)
                         }
                     } else {
-                        Text("Selecciona una canción")
+                        Text(L10n.text("player.selectTrack"))
                             .font(.system(size: subtitleSize, weight: .medium))
                             .foregroundStyle(.white.opacity(0.55))
                     }
@@ -380,7 +392,8 @@ struct FullscreenNowPlayingView: View, Animatable {
                         }
                         .buttonStyle(.plain)
                         .onHover { isHoveringAlbum = $0 }
-                        .help("Ir al álbum: \(album)")
+                        .help(L10n.text("player.goToAlbum", args: [album]))
+                        .accessibilityLabel(L10n.text("player.goToAlbum", args: [album]))
                     }
                 }
             }
@@ -403,7 +416,8 @@ struct FullscreenNowPlayingView: View, Animatable {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .help(viewModel.isCurrentTrackLiked ? "Quitar de Me Gusta" : "Me Gusta")
+            .help(L10n.text(viewModel.isCurrentTrackLiked ? "detail.track.unlike" : "detail.track.like"))
+            .accessibilityLabel(L10n.text(viewModel.isCurrentTrackLiked ? "detail.track.unlike" : "detail.track.like"))
 
             Button {
                 isArtworkFlipped.toggle()
@@ -417,7 +431,8 @@ struct FullscreenNowPlayingView: View, Animatable {
             }
             .buttonStyle(.plain)
             .disabled(viewModel.currentTrack == nil)
-            .help(isArtworkFlipped ? "Volver a la carátula" : "Información de la canción")
+            .help(L10n.text(isArtworkFlipped ? "fullscreen.backToArtwork" : "fullscreen.songInformation"))
+            .accessibilityLabel(L10n.text(isArtworkFlipped ? "fullscreen.backToArtwork" : "fullscreen.songInformation"))
         }
         .frame(width: width, alignment: .leading)
     }
@@ -437,7 +452,7 @@ struct FullscreenNowPlayingView: View, Animatable {
                     HStack(spacing: 7) {
                         Image(systemName: panel.icon)
                             .font(.system(size: 12.5, weight: selectedPanel == panel ? .semibold : .medium))
-                        Text(panel.rawValue)
+                Text(panel.title)
                             .font(.system(size: 13, weight: selectedPanel == panel ? .semibold : .medium))
                             .lineLimit(1)
                             .fixedSize(horizontal: true, vertical: false)
@@ -492,7 +507,7 @@ struct FullscreenNowPlayingView: View, Animatable {
                 Image(systemName: "music.note.list")
                     .font(.system(size: 38))
                     .foregroundStyle(.white.opacity(0.25))
-                Text("No hay pistas en la cola")
+                Text(L10n.text("queue.empty"))
                     .font(.system(size: 14, weight: .medium))
                     .foregroundStyle(.white.opacity(0.55))
             }
@@ -505,7 +520,7 @@ struct FullscreenNowPlayingView: View, Animatable {
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(.primary)
                     
-                    Text(viewModel.queueManager.contextTitle)
+                    Text(localizedQueueContextTitle)
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(.white.opacity(0.9))
                         .lineLimit(1)
@@ -516,7 +531,7 @@ struct FullscreenNowPlayingView: View, Animatable {
                         .foregroundStyle(.white.opacity(0.3))
                         .fixedSize()
                     
-                    Text("\(viewModel.queueManager.queue.count) canciones")
+                    Text(L10n.songCount(viewModel.queueManager.queue.count))
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(.white.opacity(0.5))
                         .fixedSize()
@@ -527,7 +542,7 @@ struct FullscreenNowPlayingView: View, Animatable {
                         HStack(spacing: 4) {
                             ProgressView()
                                 .scaleEffect(0.5)
-                            Text("Cargando...")
+                            Text(L10n.text("common.loading"))
                                 .font(.system(size: 10, weight: .medium))
                                 .foregroundStyle(.white.opacity(0.6))
                         }
@@ -589,7 +604,7 @@ struct FullscreenNowPlayingView: View, Animatable {
         if viewModel.isLoadingLyrics {
             VStack(spacing: 12) {
                 ProgressView()
-                Text("Buscando letras sincronizadas...")
+                Text(L10n.text("fullscreen.searchingSyncedLyrics"))
                     .font(.system(size: 13.5))
                     .foregroundStyle(.white.opacity(0.6))
             }
@@ -608,10 +623,10 @@ struct FullscreenNowPlayingView: View, Animatable {
                 Image(systemName: "quote.bubble")
                     .font(.system(size: 36))
                     .foregroundStyle(.white.opacity(0.25))
-                Text("No hay letras disponibles")
+                Text(L10n.text("fullscreen.noLyrics"))
                     .font(.system(size: 14.5, weight: .medium))
                     .foregroundStyle(.white.opacity(0.55))
-                Text("No se encontraron letras sincronizadas para esta pista")
+                Text(L10n.text("fullscreen.noSyncedLyricsForTrack"))
                     .font(.system(size: 11.5))
                     .foregroundStyle(.white.opacity(0.35))
             }
@@ -717,7 +732,7 @@ private struct SyncedLyricsPanel: View {
                         isFollowing = true
                         centerCurrentLine(using: proxy, animated: true)
                     } label: {
-                        Label("Volver a la letra actual", systemImage: "location.fill")
+                        Label(L10n.text("fullscreen.returnToCurrentLyric"), systemImage: "location.fill")
                             .font(.system(size: 13, weight: .semibold))
                             .foregroundStyle(.white)
                             .padding(.horizontal, 17)
@@ -736,8 +751,9 @@ private struct SyncedLyricsPanel: View {
                     .shadow(color: .black.opacity(0.3), radius: 12, y: 5)
                     .padding(.bottom, 18)
                     .transition(.opacity.combined(with: .move(edge: .bottom)))
-                    .help("Reactivar el seguimiento de letras")
-                    .accessibilityHint("Centra la línea que se está reproduciendo y activa el desplazamiento automático")
+                    .help(L10n.text("fullscreen.resumeLyricsTracking"))
+                    .accessibilityLabel(L10n.text("fullscreen.resumeLyricsTracking"))
+                    .accessibilityHint(L10n.text("fullscreen.resumeLyricsTrackingHint"))
                 }
             }
             .animation(transition, value: isFollowing)
@@ -775,7 +791,7 @@ private struct SyncedLyricsPanel: View {
             }
             .buttonStyle(.plain)
             .accessibilityAddTraits(index == activeIndex ? [.isSelected] : [])
-            .accessibilityHint("Ir a esta línea")
+            .accessibilityHint(L10n.text("fullscreen.goToLyricLine"))
         } else {
             text
         }

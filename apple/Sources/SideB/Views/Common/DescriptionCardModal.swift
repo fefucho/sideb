@@ -64,7 +64,7 @@ public struct DescriptionCardModal: View {
                     }
                     .buttonStyle(.plain)
                     .keyboardShortcut(.cancelAction)
-                    .help("Cerrar (Esc)")
+                    .help(L10n.text("common.closeEscape"))
                 }
 
                 Divider()

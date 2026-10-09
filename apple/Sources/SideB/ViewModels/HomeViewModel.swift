@@ -21,7 +21,8 @@ final class HomeViewModel {
     private(set) var receivedCategories: [HomeCategoryOption] = []
     private(set) var selectionRevision: UInt64 = 0
     private(set) var featuredCapacity = 2
-    private(set) var supplementalError: String?
+    private var supplementalErrorDescriptor: AppMessage?
+    var supplementalError: String? { supplementalErrorDescriptor?.text }
     @ObservationIgnored private var supplemental: [HomeRecommendationSource: [HomeItemRecord]] = [:]
     @ObservationIgnored private var didRequestSupplemental = false
     @ObservationIgnored private var forceSupplementalReload = false
@@ -31,8 +32,13 @@ final class HomeViewModel {
     var isRefreshing = false
     var isLoadingMore = false
     var isShowingSavedFeed = false
-    var errorMessage: String?
-    private(set) var loadMoreMessage: String?
+    private var errorDescriptor: AppMessage?
+    var errorMessage: String? {
+        get { errorDescriptor?.text }
+        set { errorDescriptor = newValue.map { AppMessage(verbatim: $0) } }
+    }
+    private var loadMoreDescriptor: AppMessage?
+    var loadMoreMessage: String? { loadMoreDescriptor?.text }
     private(set) var contentRevision: UInt64 = 0
 
     @ObservationIgnored private let signposter = OSSignposter(subsystem: "com.fefucho.SideB", category: .pointsOfInterest)
@@ -129,7 +135,7 @@ final class HomeViewModel {
         let recent = history.flatMap(\.items).compactMap { song -> HomeItemRecord? in
             guard let id = song.albumId, !id.isEmpty, seen.insert(id).inserted else { return nil }
             if let card = albumCards[id] { return item(card) }
-            return HomeItemRecord(kind: "album", id: id, title: song.album ?? "Álbum", subtitle: song.artists,
+            return HomeItemRecord(kind: "album", id: id, title: song.album ?? "", subtitle: song.artists,
                 thumbnail: nil, duration: nil, artists: song.artists, artistId: song.artistId,
                 album: nil, albumId: nil, artistRuns: song.artistRuns, explicit: false)
         }
@@ -147,13 +153,13 @@ final class HomeViewModel {
               !didRequestSupplemental, core.isLoggedIn(), !library.isLoading else { return }
         didRequestSupplemental = true
         let requestedSession = sessionToken
-        supplementalError = nil
+        supplementalErrorDescriptor = nil
         if forceSupplementalReload || (library.albums.isEmpty && library.playlists.isEmpty && library.historyGroups.isEmpty) {
             forceSupplementalReload = false
             await library.loadLibrary(core: core)
             guard requestedSession == sessionToken, !Task.isCancelled else { return }
         }
-        supplementalError = library.errorMessage
+        supplementalErrorDescriptor = library.errorDescriptor
         updateSupplemental(albums: library.albums, playlists: library.playlists, history: library.historyGroups)
     }
 
@@ -173,7 +179,7 @@ final class HomeViewModel {
         priorityPrefetchTask = nil
         supplemental.removeAll()
         didRequestSupplemental = false
-        supplementalError = nil
+        supplementalErrorDescriptor = nil
         forceSupplementalReload = false
         receivedCategories = []
         let oldKey = sessionKey
@@ -200,7 +206,7 @@ final class HomeViewModel {
         isLoadingMore = false
         isShowingSavedFeed = false
         errorMessage = nil
-        loadMoreMessage = nil
+        loadMoreDescriptor = nil
         contentRevision &+= 1
         cacheTransition = Task { [cacheStore] in
             await previousTransition?.value
@@ -215,7 +221,7 @@ final class HomeViewModel {
         priorityPrefetchTask?.cancel()
         priorityPrefetchTask = nil
         isLoadingMore = false
-        loadMoreMessage = nil
+        loadMoreDescriptor = nil
         requestGeneration &+= 1
         let generation = requestGeneration
         let key = chipParams ?? ""
@@ -284,7 +290,7 @@ final class HomeViewModel {
                     selectedChipParams = previousChip
                     continuationToken = snapshots[previousChip ?? ""]?.continuation
                 }
-                errorMessage = error.localizedDescription
+                errorDescriptor = AppMessage(key: "app.home.loadError", args: [error.localizedDescription])
             }
             finishLoading()
         }
@@ -295,7 +301,7 @@ final class HomeViewModel {
               !isLoadingMore, !isLoading, !isLoadingChip, !isRefreshing else { return }
         let generation = requestGeneration
         let key = selectedChipParams ?? ""
-        loadMoreMessage = nil
+        loadMoreDescriptor = nil
         isLoadingMore = true
         defer {
             if generation == requestGeneration { isLoadingMore = false }
@@ -322,16 +328,16 @@ final class HomeViewModel {
                 }
                 remember(FeedSnapshot(records: sectionRecords, continuation: next), for: key)
                 guard let next else {
-                    loadMoreMessage = "No hay más recomendaciones por ahora."
+                    loadMoreDescriptor = AppMessage(key: "app.home.noMore")
                     return
                 }
                 if contentRevision != visibleRevision { return }
                 token = next
             }
-            loadMoreMessage = "Esta tanda no trajo recomendaciones visibles nuevas. Podés cargar la siguiente."
+            loadMoreDescriptor = AppMessage(key: "app.home.noVisible")
         } catch {
             guard generation == requestGeneration, !Task.isCancelled else { return }
-            loadMoreMessage = "No se pudieron cargar más recomendaciones. Volvé a intentarlo."
+            loadMoreDescriptor = AppMessage(key: "app.home.moreError")
         }
     }
 

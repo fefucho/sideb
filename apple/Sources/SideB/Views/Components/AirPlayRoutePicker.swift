@@ -30,6 +30,6 @@ struct AirPlayButton: View {
     public var body: some View {
         AirPlayRoutePickerView()
             .frame(width: 32, height: 32)
-            .help("Salida de audio / AirPlay")
+            .help(L10n.text("app.audioOutput"))
     }
 }
