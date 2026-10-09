@@ -5,7 +5,7 @@
 - Versión: patch 1.1.8, build pública 12, tag v1.1.8; estable/Latest para el actualizador.
 - Ámbito: macOS Apple Silicon, mínimo macOS 15. Incluye FIX-131 (interfaz ES/EN) y conserva los comportamientos de 1.1.7. El repositorio incorpora el checklist Windows de 113 tareas; esta release no implementa esos ports.
 - Fuente funcional/documental: commit f92b6b39bf0d386c7092a209091ac5b38155d8db.
-- Estado: build-0068 y paquete verificados; publicación pendiente.
+- Estado: publicada estable/Latest; API, notas, digest y descarga pública verificados.
 
 ## Pasos
 
@@ -14,10 +14,10 @@
 - [x] Elegir versión/build y preparar notas fieles al alcance.
 - [x] Runner numerado, suites, fuentes estables y firma.
 - [x] ZIP con bundle/idiomas y extracción: CRC, bytes, versión, arquitectura y firma.
-- [ ] Commit release [skip ci], revisión de commits salientes y push main/tag.
-- [ ] Draft con asset verificado, publicación estable/Latest.
-- [ ] API latest, digest, notas y descarga pública verificados.
-- [ ] Cierre documental enviado a main.
+- [x] Commit release [skip ci], revisión de commits salientes y push main/tag.
+- [x] Draft con asset verificado, publicación estable/Latest.
+- [x] API latest, digest, notas y descarga pública verificados.
+- [x] Cierre documental enviado a main en commit posterior, sin mover tag/asset.
 
 ## Protocolo
 
@@ -40,7 +40,13 @@ La validación previa build-0067 aprobó 562 pruebas y QA aislada. Para esta ver
 
 ## Publicación verificada
 
-Pendiente de draft, asset y API pública.
+- Commit release/tag: `3cec7ac713f5d39ac4c69c9e0bef3ee8592c804e`, tag anotado `v1.1.8`, enviado con main en push atómico; traducciones y auditoría en `f92b6b39bf0d386c7092a209091ac5b38155d8db`.
+- Release: [Side B v1.1.8](https://github.com/fefucho/SIDE-B-CLIENT-NATIVE/releases/tag/v1.1.8), ID 407500922; publicación 2026-10-09T04:13:10Z (01:13:10 del 2026-10-09, America/Montevideo).
+- Draft y asset comprobados antes de activar estable/Latest; `draft: false`, `prerelease: false`; API pública `/releases/latest` devuelve `v1.1.8`.
+- Asset SideB-macOS.zip: ID 623855967, uploaded, 27348395 bytes; digest remoto `sha256:4060bcaf8a2b67351ce6493123ac30dc50dcfae40ecf8b04c3c363976746b54f` coincide con local.
+- Notas publicadas iguales al archivo preparado; descarga pública sin autenticación con tamaño/SHA-256/CRC iguales. Evidencia: `release-draft-verification.json`, `release-publication-verification.json` y `public-download-verification/` dentro de build-0068.
+- `gh run list --branch v1.1.8` no muestra runs: [skip ci] conserva workflow y paquete local verificado.
+- Fuentes y versión compiladas conservadas; cierre documental posterior en main no mueve tag ni reemplaza asset. Windows mantiene los ports pendientes de PARIDAD/PLAN-001.
 
 ## Notas de la release
 
@@ -59,4 +65,3 @@ El repositorio incluye además la auditoría y el plan de paridad Windows, con l
 SideB-macOS.zip contiene Side B 1.1.8 (build 12), para Mac con Apple Silicon y macOS 15 o posterior. Firma ad hoc verificada; sin notarización Developer ID.
 
 Esta release aprobó 562 pruebas automáticas (182 Rust, 140 XCTest y 240 Swift Testing). Ensayo físico de VoiceOver, ventanas múltiples, cuenta/audio reales, trackpad y FPS pendiente según FIX-131.
-

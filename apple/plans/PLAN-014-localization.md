@@ -120,6 +120,10 @@ En copia HomeLabFixture reubicada, el diagnóstico del ejecutable eligió `Conte
 
 La primera build 0063 falló por expectativas textuales anteriores, corregidas sin alterar acciones. Las builds intermedias 0064–0066 permitieron detectar dependencia de `.build` en el resolver, encabezados genéricos y etiquetas/títulos nativos; la entrega es 0067. Copias de QA cerradas, datos/preferencias reales preservados, fuentes Windows/core/bindings y versión pública sin cambios. `package_release.sh` auditado estáticamente, sin ejecutarlo ni publicar; su CI y las comprobaciones físicas arriba siguen pendientes. No se afirma audio audible, VoiceOver ni FPS por tests/AX.
 
+## Publicación posterior — 2026-10-09
+
+La actualización autorizada se publicó como [Mac 1.1.8/build 12](../../plans/RELEASE-1.1.8.md), tag v1.1.8 y build local 0068. El runner aprobó nuevamente 562 pruebas, con fuentes estables; paquete ES/EN, diez hashes, CRC y firma original/extraída verificados. Draft/asset, API Latest, notas y descarga pública coinciden con SHA-256 local. No se ejecutó la actualización de la instalación real ni se cierra validación física o port Windows por publicar.
+
 ## Documentación primaria consultada
 
 - [Apple: catálogos, contexto y plurales](https://developer.apple.com/documentation/xcode/localizing-and-varying-text-with-a-string-catalog).

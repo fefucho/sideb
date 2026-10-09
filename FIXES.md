@@ -10,6 +10,8 @@ Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-132**. Se
 
 Los FIX-120–129 se incluyen en la [release estable 1.1.7](plans/RELEASE-1.1.7.md), publicada el 2026-10-06 con build-0062 (versión pública 1.1.7/build 11), 532 pruebas aprobadas y paquete/descarga verificados. Los límites de cada comprobación física y los antecedentes se conservan en sus entradas.
 
+FIX-131 se publica en la [release estable 1.1.8](plans/RELEASE-1.1.8.md), 2026-10-09, build-0068 (versión pública 1.1.8/build 12), con 562 pruebas, recursos ES/EN, firma, paquete y descarga/hash remoto verificados. El código incluye además la auditoría Windows de 113 tareas; su implementación permanece pendiente.
+
 <a id="fix-131"></a>
 
 ### [FIX-131] [Apple] - Español coherente e inglés seleccionable sin reiniciar el estado de la app
