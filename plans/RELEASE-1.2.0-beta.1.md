@@ -1,7 +1,7 @@
-# Side B 1.2.0 Beta — macOS & Windows Feature Parity
+# Side B 1.2.0 — macOS & Windows Feature Parity
 
-- Status: corrected GitHub run stopped macOS at an existing geometry test; Windows still running. Draft remains unpublished.
-- Version: 1.2.0, public build 13, tag v1.2.0-beta.1, GitHub prerelease; keep stable/Latest at v1.1.8.
+- Status: corrected GitHub run stopped macOS at an existing geometry test; Windows completed successfully. Draft remains unpublished.
+- Version: 1.2.0, public build 13, tag v1.2.0-beta.1, GitHub prerelease; v1.1.8 remains the published Latest in GitHub; all current and earlier versions are betas.
 - Scope: current reviewed Apple/Windows integrations and joint packaging. No protected core changes.
 - Authorization: user requested release preparation, compilation on GitHub, beta publication, English release information, and a feature-parity release title.
 - References: FIX-132–151, PARIDAD, RELEASE-1.1.8 and official [Xcode 27 runner](https://github.com/actions/runner-images/issues/14404).
@@ -17,7 +17,7 @@
 
 ## Packages and limits
 
-Both platforms use the numbered build runner. Mac requires xcode-27/Apple Silicon and native Swift tests. Windows requires MSVC2022, pinned libmpv/Vulkan, tests, standalone ZIP and NSIS setup built from the same executable. The release stays a draft if either platform fails; partial artifacts/logs remain available in Actions. No stable-channel promotion. Windows volume/annotation options are platform-specific; feature parity here describes the shared client feature set, not identical native implementations.
+Both platforms use the numbered build runner. Mac requires xcode-27/Apple Silicon and native Swift tests. Windows requires MSVC2022, pinned libmpv/Vulkan, tests, standalone ZIP and NSIS setup built from the same executable. The release stays a draft if either platform fails; partial artifacts/logs remain available in Actions. No Latest promotion; this remains a beta. Windows volume/annotation options are platform-specific; feature parity here describes the shared client feature set, not identical native implementations.
 
 The previous local Windows build0012 is compiled with646 passing tests and a verified rounded PE icon, but predates the version bump. Its binaries are not relabeled as this beta. Mac's recent12 Swift regressions must execute in CI; no local Mac compilation is claimed.
 
@@ -28,6 +28,10 @@ FIX-152 / PAR-026: six release-validation regressions and real beta preflight pa
 ## Hosted build attempts
 
 - Source834395d: [run38081906898](https://github.com/fefucho/SIDE-B-CLIENT-NATIVE/actions/runs/38081906898), draft created with requested English title/prerelease flag. Windows failed before compilation: nested legacy PowerShell lacked Get-FileHash; diagnostics artifact11680492662 preserved. The incomplete attempt is stopped before retry; no packages published. FIX-153 corrects shell selection. GitHub did not create the draft's tag automatically, so the pipeline now creates/verifies it explicitly with its workflow token.
-- Retry preparation:16 build/release tests passed,1 Mac-only fixture skipped on Windows; actionlint/diffcheck passed. Only this task's unpublished empty beta draft/tag is replaced to point at corrected source; stable v1.1.8 remains unchanged.
-- Corrected source9594f4721c3e467a5b7f201392febc849079250b: [run38082175075](https://github.com/fefucho/SIDE-B-CLIENT-NATIVE/actions/runs/38082175075). Preparation succeeded; both native jobs started. [Current draft](https://github.com/fefucho/SIDE-B-CLIENT-NATIVE/releases/tag/untagged-38d582d7872d5cfcc063) title is **Side B 1.2.0 Beta — macOS & Windows Feature Parity**, isDraft/isPrerelease both true, targetCommitish and actual beta tag both match9594f47. Stable Latest independently confirmed v1.1.8. Joint publication is automatic only after both build/package/hash jobs pass; otherwise this draft stays unpublished. Diagnostics and final results are available through the run link; no completed native build is claimed while jobs are running.
+- Retry preparation:16 build/release tests passed,1 Mac-only fixture skipped on Windows; actionlint/diffcheck passed. Only this task's unpublished empty beta draft/tag is replaced to point at corrected source; published v1.1.8 remains unchanged.
+- Corrected source9594f4721c3e467a5b7f201392febc849079250b: [run38082175075](https://github.com/fefucho/SIDE-B-CLIENT-NATIVE/actions/runs/38082175075). Preparation succeeded; both native jobs started. [Current draft](https://github.com/fefucho/SIDE-B-CLIENT-NATIVE/releases/tag/untagged-cd71356acef7f50feede) title is **Side B 1.2.0 — macOS & Windows Feature Parity**, isDraft/isPrerelease both true, targetCommitish and actual beta tag both match9594f47. GitHub Latest independently confirmed v1.1.8; this delivery label does not mean the app is stable. Joint publication is automatic only after both build/package/hash jobs pass; otherwise this draft stays unpublished. Diagnostics and final results are available through the run link; no completed native build is claimed while jobs are running.
 - Subsequent observation during the public README task: macOS compiled its test targets but XCTest reported10 assertions in existing HomeFeedScrollTests.swift lines125/128/131. They compare floating-point dimensions exactly (e.g.959.9999999999999 vs960); no product regression is inferred solely from these differences. [Mac diagnostics](https://github.com/fefucho/SIDE-B-CLIENT-NATIVE/actions/runs/38082175075/artifacts/11681207345) retained. Windows still in verification/build; joint publication is blocked by the Mac result. No test weakening/source edits or release-tag changes were made as part of the README task. User informed; fixing/retrying native CI remains pending.
+
+- Final CI result (2026-10-10): Windows verification/build/package succeeded; macOS failed in one existing geometry test with10 exact floating-point comparison failures, so joint publication was skipped. Draft still has no assets and remains a prerelease. FIX-155 corrects the earlier stability wording: all versions remain beta; title is Side B 1.2.0 — macOS & Windows Feature Parity. Test repair/retry remains pending.
+
+- User will repair/verify the geometry test on the Mac. The display title and English notes were updated on the existing draft and re-read through GitHub: isDraft/isPrerelease both true, zero assets; no publication or retagging. FIX-155 checks:6 release-helper tests passed, actionlint passed, diffcheck clean.

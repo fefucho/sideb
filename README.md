@@ -40,7 +40,7 @@ On Mac, the interface uses SwiftUI and AppKit. Windows follows the same layout a
 
 ## Download
 
-Get builds from the [Releases page](https://github.com/fefucho/SIDE-B-CLIENT-NATIVE/releases). Choose the files listed for your platform; beta builds are marked as prereleases.
+Side B is currently in beta, including all earlier releases. Get builds from the [Releases page](https://github.com/fefucho/SIDE-B-CLIENT-NATIVE/releases) and choose the files listed for your platform.
 
 | Platform | Requirements | Package |
 |---|---|---|

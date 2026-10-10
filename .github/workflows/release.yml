@@ -58,7 +58,6 @@ jobs:
           title="Side B $VERSION — macOS & Windows Feature Parity"
           flags=()
           if [ "$PRERELEASE" = true ]; then
-            title="Side B $VERSION Beta — macOS & Windows Feature Parity"
             flags+=(--prerelease)
           fi
           if is_draft=$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft 2>/dev/null); then

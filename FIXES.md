@@ -4,9 +4,22 @@ Memoria de cambios de Side B para investigar problemas y regresiones. Buscar aqu
 
 Tags de ámbito: `[Apple]`, `[Windows]`, `[Compartido]`. Core y herramientas comunes usan Compartido, detallando el componente. El tag indica dónde se hizo el cambio; no demuestra que ambas plataformas hayan sido verificadas. Estados, fechas, componentes y relaciones se conservan dentro de cada entrada.
 
-Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-155**. Se conservaron los FIX/FEAT históricos. Dos números antiguos repetidos se distinguen como `FIX-027-2` y `FIX-028-2`, anotando el ID original; al citar FIX-027/028 comprobar título y entrada exacta.
+Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-156**. Se conservaron los FIX/FEAT históricos. Dos números antiguos repetidos se distinguen como `FIX-027-2` y `FIX-028-2`, anotando el ID original; al citar FIX-027/028 comprobar título y entrada exacta.
 
 ## Cambios recientes
+
+<a id="fix-155"></a>
+
+### [FIX-155] [Compartido] - Describe all current releases as beta
+
+- Date: 2026-10-10 (America/Montevideo).
+- Component / status: release wording and public documentation; corrected following the user's clarification. Native CI failure remains pending, not resolved by this documentation change.
+- Problem / cause: the release notes and active plan incorrectly equated GitHub's Latest/non-prerelease classification of1.1.8 with a stable product. The user confirmed that earlier versions are also betas;1.2.0 is not a stable milestone.
+- Change / reason: state that all current and earlier releases remain beta; remove the extra Beta word from the1.2.0 display title, while preserving its existing tag, prerelease flag and draft status. Correct active plan-index labels, retaining historical GitHub delivery facts and older fix entries. No updater policy, previous release flags, version numbers or source tags are changed.
+- Files: README.md, release-notes/1.2.0-beta.1.md, .github/workflows/release.yml, plans/RELEASE-1.2.0-beta.1.md, plans/README.md, FIXES.md and PARIDAD.md.
+- Related fixes: corrects terminology introduced in FIX-152/153 and the public README from FIX-154. These entries retain their historical evidence; references to stability do not establish product maturity.
+- Verification / limits: GitHub run38082175075 completed: Windows build/package succeeded, macOS failed one HomeFeedScrollTests geometry test with10 exact floating-point assertion failures, and joint publication was skipped. The draft is still isDraft=true/isPrerelease=true with no assets. Release-helper checks, workflow lint and diff review verify the wording/title change; no new native build or test repair is claimed.
+- Parity: shared public release information applies to both platforms; no application port required. [PAR-026](PARIDAD.md), [release plan](plans/RELEASE-1.2.0-beta.1.md). Installation, playback and native UI acceptance are not implied by Windows CI success.
 
 <a id="fix-154"></a>
 
