@@ -1,8 +1,8 @@
 # Side B 1.2.0 — macOS & Windows Feature Parity
 
-- Status: user requests attachment of both verified packages to the existing published release. Windows CI packages recovered and hash-verified; macOS follow-up fixes passed build-0073, with platform selection fix FIX-161 awaiting final numbered build and upload.
+- Status: delivered under FIX-162. Six assets and updated English notes attached to the existing published release; GitHub SHA-256 digests verified. Mac build-0074 passed584 tests; recovered Windows CI packages passed646 tests.
 - Version: 1.2.0, public build 13, tag v1.2.0-beta.1. GitHub now marks this release published/Latest/non-prerelease, with zero assets before this request. All current and earlier versions remain betas; preserve the user's existing release/tag/flags.
-- Scope: current reviewed Apple/Windows integrations and attachment to the existing release. The published tag remains at 9594f47; Windows is built from that CI revision and its sources/core are unchanged by the Mac follow-ups. Mac source revision and package provenance will be recorded. No protected core changes.
+- Scope: current reviewed Apple/Windows integrations and attachment to the existing release. The published tag remains at 9594f47; Windows is built from that CI revision and its sources/core are unchanged by the Mac follow-ups. Mac package comes from977d436; sanitized per-platform provenance is published in SideB-build-info.json. No protected core changes.
 - Authorization: user requested release preparation, compilation on GitHub, beta publication, English release information, and a feature-parity release title.
 - References: FIX-132–151, PARIDAD, RELEASE-1.1.8 and official [Xcode 27 runner](https://github.com/actions/runner-images/issues/14404).
 
@@ -13,9 +13,9 @@
 - [x] Align Windows manifests and add a joint Mac/Windows release workflow.
 - [x] Check source, version/package regression tests and outgoing commits; exclude local artifacts/secrets. Explicit staged paths reviewed before commit.
 - [x] Commit and push the authorized release sources to main, then dispatch the GitHub workflow at that revision.
-- [ ] Record workflow/draft links and build results. Publish only after both packages and their checksums are available.
+- [x] Record workflow/build results and attach both verified packages/checksums to the release already published by the user; see final delivery below.
 
-## Packages and limits
+## Original workflow policy and preparation (historical)
 
 Both platforms use the numbered build runner. Mac requires xcode-27/Apple Silicon and native Swift tests. Windows requires MSVC2022, pinned libmpv/Vulkan, tests, standalone ZIP and NSIS setup built from the same executable. The release stays a draft if either platform fails; partial artifacts/logs remain available in Actions. No Latest promotion; this remains a beta. Windows volume/annotation options are platform-specific; feature parity here describes the shared client feature set, not identical native implementations.
 
@@ -52,15 +52,32 @@ FIX-157/158 port Windows' artwork/contrast/neutral Genius annotation colors and 
 
 ## Attach packages to the published release — user request 2026-10-10
 
-FIX-159/160 closed queue feedback in build-0073: 582 passing tests, preserving resolved duration after skip/back/restore and Like across rows. Before uploading both platforms, FIX-161 restricts the Mac updater to SideB-macOS.zip, avoiding the Windows portable ZIP regardless of API asset order. A final numbered Mac build is required for this additional correction.
+FIX-159/160 closed queue feedback in build-0073: 582 passing tests, preserving resolved duration after skip/back/restore and Like across rows. FIX-161 then restricts the Mac updater to SideB-macOS.zip, avoiding the Windows portable ZIP regardless of API asset order.
 
-Read-only recheck: release409175343/v1.2.0-beta.1 is already published, Latest and non-prerelease, with no assets. The user explicitly requests adding Mac and Windows to this release. Do not rerun the original draft-only workflow or replace a published tag. Keep version1.2.0/build13; existing1.2.0 installations need a manual refreshed download because updater comparison uses the version, not the local build number.
+Initial recheck found release409175343/v1.2.0-beta.1 already published, Latest and non-prerelease, with no assets. The user explicitly requested adding Mac and Windows to this release. The original draft-only workflow was not rerun; the published tag and version1.2.0/build13/flags remain unchanged.
 
-Windows packages recovered from run38082175075/release-windows artifact11681363325. Diagnostics compiled/sourceChangedDuringBuild false at9594f47, version1.2.0/build13; 280 frontend + 366 native = **646 passing tests**, 14 Rust live ignored, check0/0. Setup/portable checksums verified, and all four portable runtime hashes match BUILD.json. Production core/Windows source diff against this revision is empty (documentation-only differences excluded). No new Windows build, native UI/account/audio acceptance or binary relabeling claimed.
+Windows packages recovered from run38082175075/release-windows artifact11681363325. Diagnostics compiled/sourceChangedDuringBuild false at9594f47, version1.2.0/build13; 280 frontend + 366 native = **646 passing tests**, 14 Rust live ignored, check0/0. Setup/portable checksums verified, and all four portable runtime hashes match BUILD.json. Production core/Windows source diff against977d436 is empty (documentation-only differences excluded). No new Windows build, native UI/account/audio acceptance or binary relabeling claimed.
+
+Mac source FIX-156–161 committed/pushed as977d436f84d8337fa279775d7887ced803d37c00 before final numbered build. Build-0074 compiled from that clean, stable revision: **584 passing tests** (182 Rust/140 XCTest/262 Swift Testing;7 live Rust ignored), 692 ES/EN keys, arm64/SDK27.0/minimum macOS15. Original app and re-extracted ZIP both pass signature and ten artifact hashes. Signature remains ad hoc, without notarization. Documentation closure follows the build.
 
 - [x] Recover and verify Windows installer, portable package and runtime hashes.
 - [x] Preserve the existing release's tag/version/flags and prepare accurate platform-specific notes.
-- [ ] Commit reviewed Mac fixes, build the final Mac package and push its source revision.
-- [ ] Upload Mac first for legacy clients, then Windows, checksums and sanitized build provenance; verify GitHub asset digests and Latest API selection.
+- [x] Commit reviewed Mac fixes, build the final Mac package and push its source revision.
+- [x] Upload Mac first for legacy clients, then Windows, checksums and sanitized build provenance; verify GitHub asset digests and Latest API selection.
 
-FIX-162 records the actual delivery result after uploads complete.
+FIX-162: [published release](https://github.com/fefucho/SIDE-B-CLIENT-NATIVE/releases/tag/v1.2.0-beta.1), ID409175343. Six assets are uploaded and each remote size/digest matches staging:
+
+| Asset | SHA-256 |
+|---|---|
+| SideB-macOS.zip | daa462a66d1ac3fe665a4de5c6f511df809f2a18b04a5e7f22e7bf05302d1f06 |
+| SideB-Windows-x64-setup.exe | c39aa062b4ee7c8214169ff646cdbe3c6854227a0670914a9d7f177e50e86dc6 |
+| SideB-windows-x64.zip | 0cff7be4d7bd448630136cdcf0286921d54bb0f2afc1dd56f96f77fa4129f48c |
+| SideB-macOS-SHA256.txt | 03452ace9fc193d42cc781a4f681ab1d86d7bd42988a55b4b214501d46ff026f |
+| SideB-Windows-x64-SHA256.txt | 822ee5eab257d52e48258790d5f86e686849dc63489d173ef0b8a76546324556 |
+| SideB-build-info.json | 0e0bfa2d81c70a87bbb0081c9b5ddf8ee38e5aac1e7a7ab5ef1b2d9707e5531e |
+
+Portable Windows bytes match CI exactly; its asset filename uses lowercase windows to preserve ordering alongside the Mac ZIP for legacy clients. The checksum filename entry and sanitized provenance were updated accordingly. Latest returns SideB-macOS.zip as its first ZIP, and the new Mac selects that package explicitly. Published body matches the prepared English notes. Tag and targetCommitish still point to9594f4721c3e467a5b7f201392febc849079250b; draft=false/prerelease=false remain the existing GitHub flags. All app versions remain beta.
+
+## Follow-up outside this package delivery
+
+The actual Swift and Rust numeric comparison functions both return true for v1.2.0-beta.1 >1.2.0. This corrects the earlier assumption that the unchanged public version prevents an update prompt: the beta tag can be offered repeatedly after installation. Public notes recommend downloading the refreshed Mac ZIP directly and choosing Skip this version if the prompt returns. Normalize beta tags in both clients in a follow-up; this delivery does not modify version comparison or claim a new Windows build. Future packaging should retain the legacy-compatible ZIP order. Physical UI/account/audible playback acceptance remains pending.

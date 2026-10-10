@@ -13,25 +13,28 @@ Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-163**. Se
 ### [FIX-162] [Compartido] - Adjuntar paquetes Mac y Windows al release 1.2.0 existente
 
 - Fecha: 2026-10-10 (America/Montevideo).
-- Tipo / estado: entrega autorizada por el usuario; preparación/verificación en curso, subida pendiente.
+- Tipo / estado: entrega autorizada por el usuario; seis assets subidos, notas actualizadas y digests remotos verificados.
 - Componente: release v1.2.0-beta.1, código main, paquetes y notas de ambas plataformas.
-- Problema / evidencia: GitHub ya muestra release409175343 publicado/Latest/non-prerelease, pero sin assets. Windows había compilado correctamente en run38082175075 y la publicación conjunta se omitió por el antiguo test Mac. El usuario pide subir ambos paquetes al release existente.
-- Cambio previsto: conservar tag/version1.2.0/build13/flags; publicar fuente Mac FIX-156–161 en main, generar/verificar el paquete final y recuperar el instalador/portable Windows ya verificados en CI. Sin forzar tag publicado ni reetiquetar binarios Windows. Notas inglesas corrigen procedencia por plataforma, colores Genius Mac y descarga manual para instalaciones ya1.2.0.
-- Verificación disponible: Windows CI a9594f47, 646 pruebas aprobadas (280 frontend/366 nativas;14 live ignoradas), compiled/fuentes estables, dos checksums de paquetes y cuatro hashes del runtime verificados. Fuentes de producción core/Windows sin diff respecto a esa revisión. Mac build-0073 aprobó582 pruebas; FIX-161 requiere nueva build. Subida/digests remotos pendientes.
-- Archivos / antecedentes: release-notes/1.2.0-beta.1.md, FIXES/PARIDAD/plans; FIX-152/153/155 y FIX-156–161. [PAR-026](PARIDAD.md), [plan de release](plans/RELEASE-1.2.0-beta.1.md). Artefactos/diagnósticos permanecen fuera de Git.
-- Límites: sin nueva compilación Windows, aceptación física de cuenta/UI/audio ni ejecución conjunta nueva en GitHub. La misma versión1.2.0 no dispara actualización desde otra1.2.0; descargar el ZIP nuevo manualmente. Resultado final se registra al completar la entrega.
+- Problema / evidencia: GitHub ya mostraba release409175343 publicado/Latest/non-prerelease, pero sin assets. Windows había compilado correctamente en run38082175075 y la publicación conjunta se omitió por el antiguo test Mac. El usuario pidió subir ambos paquetes al release existente.
+- Cambio / motivo: FIX-156–161 commiteados y subidos a main en 977d436; Mac final build-0074 desde esa revisión limpia. Instalador/portable Windows recuperados del CI verificado a9594f47, sin recompilar ni modificar sus binarios. Tag publicado9594f47/version1.2.0/build13/flags conservados. Notas inglesas explican procedencia por plataforma, colores Genius Mac y alcance de las comprobaciones.
+- Verificación Mac: 584 pruebas (182 Rust/140 XCTest/262 Swift Testing;7 live Rust ignoradas), 692 claves ES/EN; compiled/fuentes estables, arm64/SDK27.0/mínimo macOS15. Firma ad hoc y diez hashes comprobados tanto en la app original como en el ZIP extraído. No se abrió la app del usuario.
+- Verificación Windows: CI a9594f47, 646 pruebas (280 frontend/366 nativas;14 live ignoradas), compiled/fuentes estables y Svelte check0/0. Setup/portable y cuatro hashes del runtime verificados. Fuentes de producción core/Windows sin diff respecto a977d436; sólo documentación Windows difiere.
+- Entrega: [release existente](https://github.com/fefucho/SIDE-B-CLIENT-NATIVE/releases/tag/v1.2.0-beta.1), ID409175343. SideB-macOS.zip, SideB-Windows-x64-setup.exe, SideB-windows-x64.zip, dos SHA256.txt y SideB-build-info.json sanitizado. Los seis tamaños/digests SHA256 de GitHub coinciden con staging, estado uploaded; notas coinciden con el archivo público. Latest sigue apuntando al mismo release; tag/targetCommitish/flags intactos. Mac se subió primero; nombre portable con windows en minúscula conserva orden compatible y el primer ZIP de Latest es SideB-macOS.zip. El portable conserva exactamente el hash CI; sólo se adapta el nombre en su checksum y procedencia.
+- Archivos / antecedentes: release-notes/1.2.0-beta.1.md, FIXES/PARIDAD/plans; FIX-152/153/155 y FIX-156–161. [PAR-026](PARIDAD.md), [plan de release](plans/RELEASE-1.2.0-beta.1.md). Artefactos/diagnósticos permanecen fuera de Git; BUILD.json y rutas personales no se publican.
+- Límites / pendiente separado: sin nueva compilación Windows, aceptación física de cuenta/UI/audio ni ejecución conjunta nueva en GitHub. Todas las versiones siguen beta. Se reprodujo con las funciones reales Swift/Rust que v1.2.0-beta.1 se considera posterior a1.2.0: el aviso puede repetirse después de instalar. Las notas indican descargar el Mac nuevo directamente y usar Skip this version si reaparece; normalizar tags beta en ambos comparadores queda pendiente. Esto corrige la afirmación anterior de que la misma versión impedía el aviso; FIX-161 sólo corrige selección de plataforma.
 
 <a id="fix-161"></a>
 
 ### [FIX-161] [Apple] - Actualizador selecciona el ZIP de Mac en releases compartidos
 
 - Fecha: 2026-10-10 (America/Montevideo).
-- Componente / estado: UpdateService; implementado, build/pruebas pendientes antes de subir.
+- Componente / estado: UpdateService; implementado, build-0074/pruebas aprobadas y paquete entregado mediante FIX-162.
 - Problema / causa: FEAT-060 elegía el primer asset terminado en .zip. Al adjuntar por primera vez instalador y portable Windows junto al Mac, el orden de la API podía dirigir la actualización Mac al ZIP Windows.
-- Solución / motivo: seleccionar explícitamente SideB-macOS.zip, sin depender del orden; aceptar URL HTTPS válida y tratar ausencia/invalidez del paquete Mac con el error existente. Subir Mac primero mantiene la ruta adecuada para clientes históricos que aún seleccionan el primer ZIP; verificar también el orden realmente devuelto por Latest.
+- Solución / motivo: seleccionar explícitamente SideB-macOS.zip, sin depender del orden; aceptar URL HTTPS válida y tratar ausencia/invalidez del paquete Mac con el error existente. Para clientes históricos se subió Mac primero, se usó SideB-windows-x64.zip para el portable y se comprobó que el primer ZIP realmente devuelto por Latest es Mac.
 - Archivos: apple/Sources/SideB/Services/Update/UpdateService.swift, apple/Tests/SideBTests/UpdateServiceTests.swift; registro/paridad/plan/notas de release.
 - Antecedentes / paridad: completa FEAT-060 para empaquetado compartido FIX-152. [PAR-026](PARIDAD.md); Windows select_best_windows_asset ya prioriza setup/installer.exe, comprobado en fuente sin modificar destino. Core/Windows intactos.
-- Verificación / límites: dos regresiones nuevas cubren orden mixto/inverso, sólo Mac, sólo Windows, ausencia y URLs inválidas. Pendiente de ejecutar runner/build numerada. No se modifica SemVer, skippedVersion, descarga/instalación ni flags del release. [Plan](plans/RELEASE-1.2.0-beta.1.md).
+- Verificación: dos regresiones nuevas cubren orden mixto/inverso, sólo Mac, sólo Windows, ausencia y URLs inválidas. Runner build-0074 desde977d436 limpio: 584 pruebas (182 Rust/140 XCTest/262 Swift Testing/5 suites;7 live Rust ignoradas), 692 claves ES/EN. BUILD.json compiled/sourceChangedDuringBuild false, SDK27.0/arm64/mínimo macOS15, firma ad hoc y diez hashes verificados; ZIP extraído conserva firma/hashes.
+- Límites: no modifica comparador de versiones, skippedVersion, instalación ni flags del release. Normalización del tag beta documentada como pendiente en FIX-162; aceptación física/cuenta/audio separada. [Plan](plans/RELEASE-1.2.0-beta.1.md).
 
 <a id="fix-160"></a>
 

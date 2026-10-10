@@ -1,7 +1,7 @@
 # Colores Genius y alineación de cola desde Windows
 
 - Fecha: 2026-10-10 (America/Montevideo).
-- Estado: implementado, pruebas/renders nativos aislados y build-0073 aprobados, incluyendo feedback de canción activa y skip FIX-159/160; aceptación física pendiente.
+- Estado: implementado, pruebas/renders nativos aislados aprobados, incluyendo feedback de canción activa y skip FIX-159/160; entrega final build-0074/FIX-162 completada, aceptación física pendiente.
 - Objetivo: llevar a Mac el color de anotaciones de FIX-140 y corregir el centrado duración/asa observado tras FIX-145.
 - Alcance: presentación Apple, duración resuelta como metadata de la ocurrencia, traducciones ES/EN y comprobaciones. Windows sólo referencia; core, transporte de audio, identidades y algoritmos de cola conservados.
 - Referencias: FIX-073/113/140/145; PAR-023/PAR-009.
@@ -14,7 +14,7 @@
 - [x] Verificar paletas/contraste, actualización sin reconstruir letras, acciones existentes y build numerada Mac.
 - [x] Registrar FIX-157/158 y actualizar paridad con evidencia y límites.
 
-Aceptación física del color, hover, foco y arrastre separada de pruebas/compilación. No subir/publicar antes de cerrar esta revisión.
+Aceptación física del color, hover, foco y arrastre separada de pruebas/compilación. Revisión automatizada cerrada antes de la entrega posterior autorizada por el usuario, registrada en FIX-162.
 
 ## Resultado
 
@@ -41,3 +41,7 @@ FIX-160 completa el alcance insuficiente de FIX-159: Like disponible en toda la 
 - [x] Comprobar skip/back, duplicados, restauración, datos inválidos, prioridad de catálogo y cuenta distinta; nueva build numerada.
 
 Nueve focales Swift aprobadas. El caso nuevo ejecuta playNext/playPrevious con dos ocurrencias del mismo video y comprueba la duración/Like de la primera celda ya inactiva, duraciones independientes, IDs/token estables, restauración y cuenta distinta. Runner build-0073: 182 Rust + 140 XCTest + 260 Swift Testing/5 suites = **582 aprobadas**, 7 live Rust ignoradas. 692 claves ES/EN verificadas; BUILD.json compiled/fuentes estables, SDK 27.0/arm64/mínimo macOS 15, firma ad hoc y diez hashes verificados. App: builds/macos/build-0073/Side B.app. XCFramework/bindings sin diff, core/Windows/transporte de audio intactos. Sin aceptación física, apertura automática, cuenta/audio real ni push/publicación; cierre documental posterior a build.
+
+## Entrega posterior autorizada
+
+FIX-161 añadió selección explícita del ZIP Mac para el release compartido. FIX-156–161 subidos a main en977d436; build-0074 desde esa revisión limpia aprobó584 pruebas (182 Rust/140 XCTest/262 Swift Testing;7 live Rust ignoradas), 692 claves ES/EN, firma y diez hashes originales/ZIP extraído. FIX-162 adjuntó este Mac y los paquetes Windows CI verificados al [release existente](https://github.com/fefucho/SIDE-B-CLIENT-NATIVE/releases/tag/v1.2.0-beta.1); seis digests remotos verificados, tag/version/flags conservados. Aceptación física sigue pendiente; el comparador del tag beta puede repetir el aviso1.2.0 y su normalización está registrada por separado en PAR-026.

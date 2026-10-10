@@ -5,7 +5,7 @@ Herramientas compartidas o fixes para ambas plataformas. [Formato](../.agents/WO
 | Plan | Estado |
 |---|---|
 | [Public GitHub README](PLAN-004-public-readme.md) | Published/visually verified; internal guide preserved, About updated; optional native screenshots pending, FIX-154 |
-| [1.2.0 — macOS & Windows Feature Parity](RELEASE-1.2.0-beta.1.md) | FIX-156/157/158, build-0071: Mac compiled locally, 578 tests and isolated renders passed; hosted CI pending, draft unpublished; PAR-026 |
+| [1.2.0 — macOS & Windows Feature Parity](RELEASE-1.2.0-beta.1.md) | FIX-162: existing release now has Mac build-0074 (584 tests), Windows CI packages (646 tests), checksums/provenance and verified remote digests; beta-tag comparison and physical acceptance pending; PAR-026 |
 | [Saludo de Inicio](PLAN-003-home-greeting.md) | FIX-150/156, PAR-003; Windows comprobado, dos pruebas Swift/build Mac aprobadas; aceptación física pendiente |
 | [Álbum de Acceso rápido](PLAN-002-quick-access-album-metadata.md) | FIX-148/149/156, PAR-022; pruebas Windows y diez regresiones Swift/build Mac aprobadas; aceptación física pendiente |
 | [Historial público y material local](PLAN-001-git-publication.md) | Completado; checkpoints retirados de main/tags y temp excluida, fuentes/releases conservadas |
