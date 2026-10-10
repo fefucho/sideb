@@ -4,7 +4,7 @@ export type PlayerRpc = <T>(command: string, args?: Record<string, unknown>) => 
 export type PlayerUnlisten = () => void | Promise<void>;
 export type PlayerListen = <T>(event: string, handler: (event: { payload: T }) => void) => Promise<PlayerUnlisten>;
 export type PlaybackSnapshot = { state: PlaybackStateDto; error: string | null };
-export type PlayerSong = Pick<SongDto, 'videoId' | 'title' | 'artists' | 'thumbnail' | 'duration'> & Partial<Pick<SongDto, 'artistId' | 'albumId' | 'album' | 'artistRuns'>> | PlaybackTrackDto | QueueEntryDto;
+export type PlayerSong = Pick<SongDto, 'videoId' | 'title' | 'artists' | 'thumbnail' | 'duration'> & Partial<Pick<SongDto, 'artistId' | 'albumId' | 'album' | 'artistRuns' | 'isUpload'>> | PlaybackTrackDto | QueueEntryDto;
 export type PlaybackQueueSource = { kind: string; id: string | null; title: string | null };
 export interface PlaySongOptions {
   queueItems?: PlayerSong[];
@@ -14,12 +14,20 @@ export interface PlaySongOptions {
   shuffle?: boolean;
 }
 
+export function collectionEntryId(source: PlaybackQueueSource, song: SongDto, index: number) {
+  const id = source.kind === 'playlist' ? (source.id ?? '').trim().replace(/^VL/, '') : source.id ?? '';
+  const occurrence = source.kind === 'history' && song.historyOccurrenceId
+    ? `listen:${song.historyOccurrenceId}` : song.setVideoId ?? `index:${index}`;
+  return ['collection', source.kind, id, occurrence, song.videoId].map(encodeURIComponent).join('|');
+}
+
 /** Sends canonical occurrence order to Rust; shuffle selects only the initial track here. */
 export function prepareCollectionPlayback(items: SongDto[], selectedIndex: number, source: PlaybackQueueSource,
   shuffle = false, fallbackThumbnail: string | null = null, fallbackArtist = '', random = Math.random): { song: QueueEntryDto; options: PlaySongOptions } {
   const indexed = items.map((song, originalIndex) => ({ song, originalIndex })).filter(({ song }) => song.videoId.trim());
-  const entries = indexed.map(({ song }, index) => entryFor({ ...song,
-    artists: song.artists || fallbackArtist, thumbnail: song.thumbnail || fallbackThumbnail }, index));
+  const entries = indexed.map(({ song, originalIndex }, index) => ({ ...entryFor({ ...song,
+    artists: song.artists || fallbackArtist, thumbnail: song.thumbnail || fallbackThumbnail }, index),
+    entryId: collectionEntryId(source, song, originalIndex) }));
   if (!entries.length) throw new Error('No hay canciones disponibles para reproducir.');
   const selected = indexed.findIndex(entry => entry.originalIndex === selectedIndex);
   const queueIndex = shuffle ? Math.floor(random() * entries.length) : Math.max(0, selected);
@@ -29,7 +37,7 @@ export function prepareCollectionPlayback(items: SongDto[], selectedIndex: numbe
 const emptyQueue = (): QueueStateDto => ({ items: [], currentIndex: null, source: null, revision: 0 });
 export function emptyPlaybackData(): PlaybackStateDto {
   return { isPlaying: false, isLoading: false, isEnded: false, isShuffle: false, isRepeat: false, position: 0, duration: 0, volume: 100,
-    currentTrack: null, error: null, generation: 0, queue: emptyQueue() };
+    exponentialVolume: false, currentTrack: null, error: null, generation: 0, queue: emptyQueue() };
 }
 
 /** Matches the duration parsing previously used by the Windows playback shell. */
@@ -59,7 +67,7 @@ function entryFor(song: PlayerSong, index: number): QueueEntryDto {
   return { entryId: withEntry.entryId || createEntryId(index), videoId: song.videoId, title: song.title,
     artists: song.artists, thumbnail: song.thumbnail, duration: songDuration(song),
     artistId: song.artistId ?? null, albumId: song.albumId ?? null, album: song.album ?? null,
-    artistRuns: song.artistRuns?.map(run => ({ ...run })) ?? [] };
+    artistRuns: song.artistRuns?.map(run => ({ ...run })) ?? [], isUpload: song.isUpload ?? false };
 }
 let localEntrySequence = 0;
 function createEntryId(index: number): string {
@@ -109,7 +117,7 @@ export class PlaybackController {
       // A progress event can be newer than a queue RPC while the queue revision is newer than our list.
       if (next.generation === this.state.generation && next.queue.revision > this.state.queue.revision) {
         const normalized = cloneState(next);
-        this.state = { ...this.state, queue: normalized.queue,
+        this.state = { ...this.state, queue: normalized.queue, canNext: normalized.canNext, sourceLoad: normalized.sourceLoad,
           currentTrack: normalized.currentTrack && normalized.currentTrack.videoId === this.state.currentTrack?.videoId
             ? normalized.currentTrack : this.state.currentTrack };
         this.emit(); return true;
@@ -182,7 +190,7 @@ export class PlaybackController {
     }
     try {
       const state = await this.rpc<PlaybackStateDto>('play_song', {
-        videoId: song.videoId.trim(), title: song.title || null, artists: song.artists || null,
+        videoId: song.videoId.trim(), isUpload: song.isUpload ?? false, title: song.title || null, artists: song.artists || null,
         artistId: song.artistId ?? null, artistRuns: song.artistRuns?.map(run => ({ ...run })) ?? [],
         albumId: song.albumId ?? null, album: song.album ?? null,
         thumbnail: song.thumbnail ?? null, queueItems: entries,
@@ -226,6 +234,33 @@ export class PlaybackController {
   }
   async moveQueueEntry(entryId: string, beforeEntryId: string | null) {
     return this.queueCommand('move_queue_entry', { entryId, beforeEntryId });
+  }
+  async beginProgressiveSource(source: {kind: 'playlist' | 'library'; id: string | null; continuation: string | null}) {
+    return this.queueCommand('begin_queue_source', { ...source, expectedGeneration: this.state.generation });
+  }
+  async retrySource() { return this.queueCommand('retry_queue_source', {}); }
+  async startSourceRadio(items: PlayerSong[], source: PlaybackQueueSource, playlistId: string) {
+    return this.queueCommand('start_source_radio', { items: items.map(entryFor), source, playlistId });
+  }
+  async filterDislikedRecommendations(videoId: string) { return this.queueCommand('filter_disliked_recommendations', { videoId, expectedGeneration: this.state.generation }); }
+  async setMuted(muted: boolean) { return this.queueCommand('set_playback_muted', { muted }); }
+  async setExponentialVolume(enabled: boolean) {
+    const revision = this.issue('volume-mode');
+    const eventRevision = this.eventRevision, stateEventRevision = this.stateEventRevision;
+    this.error = null; this.emit();
+    try {
+      const next = await this.rpc<PlaybackStateDto>('set_exponential_volume', { enabled });
+      if (!this.current('volume-mode', revision)) return;
+      this.acceptResponse(next, eventRevision);
+      if (this.stateEventRevision === stateEventRevision && next.generation === this.state.generation) {
+        // Progress may advance while settings are applied; merge only the authoritative mode.
+        this.state = { ...this.state, exponentialVolume: next.exponentialVolume ?? false };
+        this.error = next.error; this.emit();
+      }
+    } catch (cause) {
+      if (!this.current('volume-mode', revision) || this.stateEventRevision !== stateEventRevision) return;
+      this.error = errorMessage(cause, 'No se pudo cambiar el volumen exponencial.'); this.emit();
+    }
   }
   async retryRadio() { return this.queueCommand('retry_radio', {}); }
 
@@ -285,7 +320,7 @@ export class PlaybackController {
 
   async toggle(): Promise<void> {
     if ((this.state.isEnded || this.state.error || this.error) && this.state.currentTrack) return this.retry();
-    const pause = this.state.isPlaying;
+    const pause = this.state.isPlaying || this.state.isLoading;
     return this.command('toggle', pause ? 'pause_playback' : 'resume_playback', {}, 'Error al cambiar el estado de reproducción.');
   }
 

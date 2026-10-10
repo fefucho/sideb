@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte';
+  import { t } from '$lib/i18n';
   import type { MenuAction, MenuItem } from '$lib/menu/types';
   import MenuIcon from './MenuIcon.svelte';
 
@@ -107,7 +108,7 @@
 </script>
 
 <div class="menu-layer" bind:this={layer} style:left={`${left}px`} style:top={`${top}px`}>
-  <ul class="menu" role="menu" aria-label="Acciones" onkeydown={onKeydown}>
+  <ul class="menu" role="menu" aria-label={$t('windows.menu.actions')} onkeydown={onKeydown}>
     {#each items as item (item.id)}
       {#if item.separator}
         <li class="separator" role="separator"></li>

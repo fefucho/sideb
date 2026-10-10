@@ -1,4 +1,5 @@
 import type { AlbumDetailDto, ArtistDetailDto, BrowseCardDto, HomeItemDto, PlaylistDetailDto, QueueEntryDto, SongDto } from '../types';
+import { normalizeHomeSongCard } from '../home/songMetadata';
 
 export type MenuTarget =
   | { kind: 'song'; song: SongDto; entryId?: string }
@@ -6,6 +7,7 @@ export type MenuTarget =
   | { kind: 'artist'; card: BrowseCardDto; detail?: ArtistDetailDto }
   | { kind: 'playlist'; card: BrowseCardDto; detail?: PlaylistDetailDto };
 export interface MenuOrigin {
+  playbackScope?: 'source';
   view?: string;
   currentId?: string | null;
   playlistId?: string | null;
@@ -20,10 +22,11 @@ export type MenuAction = { type: 'play' | 'shuffle' | 'radio' | 'enqueue-next' |
 export type MenuIconName = 'play' | 'shuffle' | 'radio' | 'queue-next' | 'queue-end' | 'heart' | 'heart-remove' | 'heart-fill' | 'bookmark' | 'bookmark-fill' | 'music-list' | 'list-add' | 'plus' | 'disc' | 'person' | 'share' | 'trash' | 'minus' | 'edit' | 'sort' | 'reorder' | 'history' | 'clock' | 'text' | 'bell' | 'bell-off';
 export interface MenuItem { id: string; label: string; icon?: MenuIconName; disabled?: boolean; checked?: boolean; action?: MenuAction; children?: MenuItem[]; separator?: boolean }
 export interface MenuFacts { loggedIn: boolean; likedIds: Set<string>; playlists: BrowseCardDto[] }
-export interface MenuRequest { x: number; y: number; target: MenuTarget; origin: MenuOrigin; focus: HTMLElement | null }
+export interface MenuRequest { identity?:number; x: number; y: number; target: MenuTarget; origin: MenuOrigin; focus: HTMLElement | null }
 export const MENU_CONTEXT = Symbol('sideb-menu');
 
 export function songFromHome(item: HomeItemDto): SongDto {
+  item = normalizeHomeSongCard(item);
   return { videoId: item.id, title: item.title, artists: item.artists ?? item.subtitle ?? '',
     thumbnail: item.thumbnail, duration: item.duration, album: item.album, albumId: item.albumId,
     artistId: item.artistId, artistRuns: item.artistRuns.map(run => ({ ...run })), isVideo: item.kind === 'video' };
@@ -32,15 +35,16 @@ export function songFromQueue(item: QueueEntryDto | Omit<QueueEntryDto, 'entryId
   return { videoId: item.videoId, title: item.title, artists: item.artists, thumbnail: item.thumbnail,
     duration: item.duration == null ? null : String(Math.floor(item.duration / 60)) + ':' + String(Math.floor(item.duration % 60)).padStart(2, '0'),
     album: item.album ?? null, albumId: item.albumId ?? null, artistId: item.artistId ?? null,
-    artistRuns: item.artistRuns?.map(run => ({ ...run })) ?? [], isVideo: false };
+    artistRuns: item.artistRuns?.map(run => ({ ...run })) ?? [], isVideo: false, isUpload:item.isUpload ?? false };
 }
 export function targetFromCard(card: BrowseCardDto): MenuTarget | null {
+  card = normalizeHomeSongCard(card);
   if (card.kind === 'song' || card.kind === 'video') return { kind: 'song', song: {
-    videoId: card.id, title: card.title, artists: card.artists ?? card.subtitle ?? '', thumbnail: card.thumbnail,
+    ...card, videoId: card.id, title: card.title, artists: card.artists ?? card.subtitle ?? '', thumbnail: card.thumbnail,
     duration: card.duration, album: card.album ?? null, albumId: card.albumId ?? null, artistId: card.artistId ?? null,
     artistRuns: card.artistRuns?.map(run => ({ ...run })) ?? [], isVideo: card.kind === 'video',
   } };
   if (card.kind === 'album' || card.kind === 'artist' || card.kind === 'playlist') return { kind: card.kind, card };
-  if (card.id.startsWith('RD')) return { kind: 'playlist', card };
+  if (card.kind === 'mix' || card.id.startsWith('RD')) return { kind: 'playlist', card };
   return null;
 }

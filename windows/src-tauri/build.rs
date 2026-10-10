@@ -3,6 +3,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 fn main() {
+    // Windows embeds icons as PE resources. The Tauri build script watches the
+    // config, but an icon-only edit must also invalidate Cargo's cached .res.
+    println!("cargo:rerun-if-changed=icons");
     tauri_build::build();
 
     #[cfg(target_os = "windows")]

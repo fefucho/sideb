@@ -18,6 +18,7 @@ export interface HomeSectionPresentation {
 export function homeSections(
   sections: HomeSectionDto[],
   selectedChipParams: string | null,
+  preserveProviderOrder = false,
 ): HomeSectionPresentation[] {
   const sectionOccurrences = new Map<string, number>();
   const prepared = sections.flatMap((section, index) => {
@@ -47,7 +48,7 @@ export function homeSections(
     }];
   });
 
-  if (selectedChipParams !== null) {
+  if (selectedChipParams !== null || preserveProviderOrder) {
     return prepared.map(({ providerIndex: _providerIndex, ...section }) => section);
   }
 
@@ -76,7 +77,7 @@ function sectionStyle(section: HomeSectionDto): HomeSectionPresentation["style"]
   return allSongs && (compactFormat || quickPicks) ? "compactSong" : "largeCard";
 }
 
-function sectionPriority(title: string): number {
+export function sectionPriority(title: string): number {
   const normalized = normalize(title);
   if (isListenAgain(normalized)) return 0;
   if (isForgottenFavorites(normalized)) return 1;

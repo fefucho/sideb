@@ -9,9 +9,269 @@ static SHUFFLE_COUNTER: AtomicU64 = AtomicU64::new(1);
 const PLAYLIST_BATCH_SIZE: usize = 100;
 const PLAYLIST_REFILL_THRESHOLD: usize = 10;
 
+/// Responsive provider subtitles may contain counters in an album/credit slot.
+/// Require a numeric count, so genuine names such as Views, Plays or The 1975 survive.
+pub(crate) fn provider_statistic(value: &str) -> bool {
+    let value = value.trim().to_lowercase();
+    [
+        "plays",
+        "play",
+        "views",
+        "view",
+        "streams",
+        "stream",
+        "listeners",
+        "listener",
+        "subscribers",
+        "subscriber",
+        "reproducciones",
+        "visualizaciones",
+        "vistas",
+        "oyentes",
+        "suscriptores",
+    ]
+    .iter()
+    .any(|unit| {
+        let Some(index) = value.find(unit) else {
+            return false;
+        };
+        if value[index + unit.len()..]
+            .chars()
+            .next()
+            .is_some_and(|ch| !ch.is_whitespace())
+        {
+            return false;
+        }
+        let count = value[..index]
+            .chars()
+            .filter(|ch| !ch.is_whitespace())
+            .collect::<String>();
+        let number = count.trim_end_matches(|ch: char| ch.is_alphabetic());
+        let scale = &count[number.len()..];
+        number.chars().any(|ch| ch.is_ascii_digit())
+            && number
+                .chars()
+                .all(|ch| ch.is_ascii_digit() || matches!(ch, '.' | ','))
+            && matches!(
+                scale,
+                "" | "k"
+                    | "m"
+                    | "b"
+                    | "mil"
+                    | "millon"
+                    | "millón"
+                    | "millones"
+                    | "million"
+                    | "millions"
+                    | "billion"
+                    | "billions"
+            )
+    })
+}
+
+fn provider_duration(value: &str) -> bool {
+    let parts = value.split(':').collect::<Vec<_>>();
+    (2..=3).contains(&parts.len())
+        && parts.iter().enumerate().all(|(index, part)| {
+            !part.is_empty()
+                && part.chars().all(|ch| ch.is_ascii_digit())
+                && (index == 0 || part.len() == 2)
+        })
+}
+
+pub(crate) fn metadata_album(value: &Option<String>, album_id: &Option<String>) -> Option<String> {
+    value
+        .as_ref()
+        .map(|value| value.trim())
+        .filter(|value| !value.is_empty())
+        .filter(|value| {
+            album_id.as_ref().is_some_and(|id| !id.trim().is_empty())
+                || !(provider_statistic(value) || provider_duration(value))
+        })
+        .map(str::to_owned)
+}
+
+pub(crate) fn metadata_credit(value: &str) -> String {
+    value
+        .split(['•', '·'])
+        .map(str::trim)
+        .filter(|part| {
+            !part.is_empty()
+                && !provider_statistic(part)
+                && !provider_duration(part)
+                && !matches!(
+                    part.to_lowercase().as_str(),
+                    "song"
+                        | "canción"
+                        | "cancion"
+                        | "video"
+                        | "vídeo"
+                        | "album"
+                        | "álbum"
+                        | "single"
+                        | "sencillo"
+                        | "ep"
+                        | "playlist"
+                        | "lista"
+                        | "mix"
+                )
+        })
+        .collect::<Vec<_>>()
+        .join(" • ")
+}
+
+pub(crate) fn metadata_artist_runs(runs: &[HomeArtistRunDto]) -> Vec<HomeArtistRunDto> {
+    let descriptor = |value: &str| !value.trim().is_empty() && metadata_credit(value).is_empty();
+    let linked = |run: &HomeArtistRunDto| run.id.as_ref().is_some_and(|id| !id.trim().is_empty());
+    let mut groups = vec![Vec::new()];
+    for (index, run) in runs.iter().enumerate() {
+        if matches!(run.text.trim(), "•" | "·") {
+            groups.push(Vec::new());
+        } else {
+            groups.last_mut().unwrap().push(index);
+        }
+    }
+    let mut rejected = HashSet::new();
+    for group in groups {
+        if !group.iter().any(|&index| linked(&runs[index]))
+            && descriptor(
+                &group
+                    .iter()
+                    .map(|&index| runs[index].text.as_str())
+                    .collect::<String>(),
+            )
+        {
+            rejected.extend(group.iter().copied());
+        }
+        for index in group {
+            if !linked(&runs[index]) && descriptor(&runs[index].text) {
+                rejected.insert(index);
+            }
+        }
+    }
+    let mut retained = runs
+        .iter()
+        .enumerate()
+        .filter(|(index, _)| !rejected.contains(index))
+        .map(|(_, run)| run.clone())
+        .collect::<Vec<_>>();
+    let punctuation = |run: &HomeArtistRunDto| {
+        !linked(run)
+            && run
+                .text
+                .chars()
+                .all(|ch| ch.is_whitespace() || matches!(ch, '•' | '·' | ',' | ';' | '&'))
+    };
+    while retained.first().is_some_and(&punctuation) {
+        retained.remove(0);
+    }
+    while retained.last().is_some_and(&punctuation) {
+        retained.pop();
+    }
+    retained
+}
+
+pub(crate) fn metadata_label_matches(left: &str, right: &str) -> bool {
+    left.trim().to_lowercase() == right.trim().to_lowercase()
+}
+
+pub(crate) fn metadata_credit_with_runs(value: &str, runs: &[HomeArtistRunDto]) -> String {
+    let cleaned = metadata_credit(value);
+    if cleaned == value.trim() && !cleaned.is_empty()
+        || !runs
+            .iter()
+            .any(|run| run.id.as_ref().is_some_and(|id| !id.trim().is_empty()))
+    {
+        return cleaned;
+    }
+    // Linked names are semantic credits even when an artist is named Song/Views.
+    // Unlinked fragments can split a counter across runs, so inspect whole groups.
+    let mut groups = vec![(String::new(), false)];
+    let mut previous_linked = false;
+    for run in runs {
+        let linked = run.id.as_ref().is_some_and(|id| !id.trim().is_empty());
+        for (index, part) in run.text.split(['•', '·']).enumerate() {
+            if index > 0 {
+                groups.push((String::new(), false));
+                previous_linked = false;
+            }
+            let group = groups.last_mut().unwrap();
+            if linked
+                && previous_linked
+                && group.0.ends_with(char::is_alphanumeric)
+                && part.starts_with(char::is_alphanumeric)
+            {
+                group.0.push_str(", ");
+            }
+            group.0.push_str(part);
+            group.1 |= linked && !part.trim().is_empty();
+            previous_linked = linked;
+        }
+    }
+    groups
+        .into_iter()
+        .map(|(text, linked)| {
+            if linked {
+                text.trim().to_owned()
+            } else {
+                metadata_credit(&text)
+            }
+        })
+        .filter(|text| !text.is_empty())
+        .collect::<Vec<_>>()
+        .join(" • ")
+}
+
+/// Persist only public image locations. A signed image cannot be recovered by
+/// removing its credential query, so discard it from disk while retaining RAM.
+pub(crate) fn durable_thumbnail(value: &Option<String>) -> Option<String> {
+    let value = value.as_ref()?;
+    let mut url = reqwest::Url::parse(value).ok()?;
+    if !matches!(url.scheme(), "https" | "http")
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || url
+            .host_str()
+            .is_some_and(|host| host == "googlevideo.com" || host.ends_with(".googlevideo.com"))
+        || url.path().contains("videoplayback")
+        || url.query_pairs().any(|(key, _)| {
+            let key = key.to_ascii_lowercase();
+            matches!(
+                key.as_str(),
+                "expire"
+                    | "expires"
+                    | "sig"
+                    | "lsig"
+                    | "s"
+                    | "key"
+                    | "policy"
+                    | "credential"
+                    | "rs"
+                    | "sqp"
+                    | "apikey"
+                    | "api_key"
+                    | "key-pair-id"
+                    | "jwt"
+                    | "session"
+                    | "sid"
+            ) || key.contains("token")
+                || key.contains("sign")
+                || key.contains("auth")
+                || key.starts_with("x-amz-")
+                || key.starts_with("x-goog-")
+        })
+    {
+        return None;
+    }
+    url.set_fragment(None);
+    Some(url.into())
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct QueueEntryDto {
+    #[serde(default)]
+    pub is_upload: bool,
     pub entry_id: String,
     pub video_id: String,
     pub title: String,
@@ -77,8 +337,9 @@ impl QueueEntryDto {
         album: Option<String>,
         artist_runs: Vec<HomeArtistRunDto>,
     ) -> Self {
-        Self {
-            entry_id: format!("queue-{}", NEXT_ENTRY_ID.fetch_add(1, Ordering::Relaxed)),
+        let mut entry = Self {
+            is_upload: false,
+            entry_id: new_entry_id(),
             video_id,
             title,
             artists,
@@ -88,28 +349,68 @@ impl QueueEntryDto {
             album_id,
             album,
             artist_runs,
-        }
+        };
+        entry.normalize_metadata();
+        entry
+    }
+
+    pub(crate) fn normalize_metadata(&mut self) -> bool {
+        let album = metadata_album(&self.album, &self.album_id);
+        let runs = metadata_artist_runs(&self.artist_runs);
+        let artists = metadata_credit_with_runs(&self.artists, &runs);
+        let changed = album != self.album || artists != self.artists || runs != self.artist_runs;
+        self.album = album;
+        self.artists = artists;
+        self.artist_runs = runs;
+        changed
     }
 
     fn enrich_missing_metadata(&mut self, source: &Self) -> bool {
-        let mut changed = false;
-        if self.artists.trim().is_empty() && !source.artists.trim().is_empty() {
+        let mut source = source.clone();
+        source.normalize_metadata();
+        let mut changed = self.normalize_metadata();
+        if source.is_upload && !self.is_upload {
+            self.is_upload = true;
+            changed = true;
+        }
+        if self.artists.is_empty()
+            && !source.artists.is_empty()
+            && (self.artist_id.is_none() || self.artist_id == source.artist_id)
+        {
             self.artists = source.artists.clone();
             changed = true;
         }
-        if self.artist_id.is_none() && source.artist_id.is_some() {
+        if self.artist_id.is_none()
+            && source.artist_id.is_some()
+            && (self.artists.is_empty() || metadata_label_matches(&self.artists, &source.artists))
+        {
             self.artist_id = source.artist_id.clone();
             changed = true;
         }
-        if self.album_id.is_none() && source.album_id.is_some() {
+        if self.album_id.is_none()
+            && source.album_id.is_some()
+            && self.album.as_ref().is_none_or(|album| {
+                source
+                    .album
+                    .as_ref()
+                    .is_some_and(|label| metadata_label_matches(album, label))
+            })
+        {
             self.album_id = source.album_id.clone();
             changed = true;
         }
-        if self.album.is_none() && source.album.is_some() {
+        if self.album.is_none()
+            && source.album.is_some()
+            && (self.album_id.is_none() || self.album_id == source.album_id)
+        {
             self.album = source.album.clone();
             changed = true;
         }
-        if self.artist_runs.is_empty() && !source.artist_runs.is_empty() {
+        if self.artist_runs.is_empty()
+            && !source.artist_runs.is_empty()
+            && metadata_label_matches(&self.artists, &source.artists)
+            && (self.artist_id.is_none() || self.artist_id == source.artist_id)
+        {
             self.artist_runs = source.artist_runs.clone();
             changed = true;
         }
@@ -166,7 +467,7 @@ pub struct QueueStateDto {
     explicit_placements: HashMap<String, QueuePlacement>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 enum QueuePlacement {
     After(String),
     Before(String),
@@ -240,6 +541,7 @@ impl QueueStateDto {
         self.items = items
             .into_iter()
             .map(|mut item| {
+                item.normalize_metadata();
                 item.entry_id = new_entry_id();
                 item
             })
@@ -480,6 +782,7 @@ impl QueueStateDto {
             .map(|entry| entry.entry_id.clone())
             .collect::<HashSet<_>>();
         for entry in &mut entries {
+            entry.normalize_metadata();
             entry.entry_id = new_unique_entry_id(&mut known_ids);
         }
         let insert_at = if at_next {
@@ -716,7 +1019,10 @@ impl QueueStateDto {
     }
 
     /// Appends unique radio recommendations, leaving explicit queue duplicates intact.
-    pub fn merge_radio(&mut self, recommendations: Vec<QueueEntryDto>) -> Option<String> {
+    pub fn merge_radio(&mut self, mut recommendations: Vec<QueueEntryDto>) -> Option<String> {
+        for entry in &mut recommendations {
+            entry.normalize_metadata();
+        }
         let mut known = self
             .items
             .iter()
@@ -761,6 +1067,145 @@ impl QueueStateDto {
             self.revision += 1;
         }
         cursor
+    }
+}
+
+/// Private durable envelope. These ordering maps never cross the WebView boundary.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct DurableQueue {
+    queue: QueueStateDto,
+    visible_len: usize,
+    source_ranks: HashMap<String, usize>,
+    next_source_rank: usize,
+    explicit_placements: HashMap<String, QueuePlacement>,
+}
+impl QueueStateDto {
+    pub(crate) fn durable(&self) -> DurableQueue {
+        let mut queue = self.clone();
+        for entry in &mut queue.items {
+            entry.thumbnail = durable_thumbnail(&entry.thumbnail);
+        }
+        DurableQueue {
+            queue,
+            visible_len: self.visible_len,
+            source_ranks: self.source_ranks.clone(),
+            next_source_rank: self.next_source_rank,
+            explicit_placements: self.explicit_placements.clone(),
+        }
+    }
+    /// Append provider occurrences without replacing edited prefix or deduplicating songs.
+    pub(crate) fn source_prefix(&self) -> Vec<String> {
+        let mut entries = self
+            .items
+            .iter()
+            .filter_map(|entry| {
+                self.source_ranks
+                    .get(&entry.entry_id)
+                    .map(|rank| (*rank, entry.video_id.clone()))
+            })
+            .collect::<Vec<_>>();
+        entries.sort_by_key(|(rank, _)| *rank);
+        entries.into_iter().map(|(_, id)| id).collect()
+    }
+    pub(crate) fn filter_radio_recommendations(&mut self, video_id: &str) {
+        let current = self.current().map(|entry| entry.entry_id);
+        let remove = self
+            .items
+            .iter()
+            .filter(|entry| {
+                entry.video_id == video_id
+                    && Some(&entry.entry_id) != current.as_ref()
+                    && self.source_ranks.contains_key(&entry.entry_id)
+            })
+            .map(|entry| entry.entry_id.clone())
+            .collect::<Vec<_>>();
+        for id in remove {
+            let _ = self.remove_entry(&id);
+        }
+    }
+    pub(crate) fn append_source(&mut self, items: Vec<QueueEntryDto>, shuffled: bool) {
+        let current = self.current().map(|entry| entry.entry_id);
+        let mut added = Vec::new();
+        for mut entry in items {
+            entry.normalize_metadata();
+            entry.entry_id = new_entry_id();
+            self.source_ranks
+                .insert(entry.entry_id.clone(), self.next_source_rank);
+            self.next_source_rank += 1;
+            added.push(entry);
+        }
+        if shuffled {
+            // Preserve the shuffled prefix and every manual slot. Only new suffix
+            // occurrences are randomized; canonical ranks retain reversibility.
+            let mut seed = SHUFFLE_COUNTER.fetch_add(1, Ordering::Relaxed)
+                ^ SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_nanos() as u64;
+            for index in (1..added.len()).rev() {
+                seed ^= seed << 13;
+                seed ^= seed >> 7;
+                seed ^= seed << 17;
+                added.swap(index, seed as usize % (index + 1));
+            }
+            let insertion = self
+                .items
+                .iter()
+                .enumerate()
+                .skip(self.current_index.map_or(0, |index| index + 1))
+                .find(|(_, entry)| {
+                    matches!(
+                        self.explicit_placements.get(&entry.entry_id),
+                        Some(QueuePlacement::End)
+                    )
+                })
+                .map_or(self.items.len(), |(index, _)| index);
+            self.items.splice(insertion..insertion, added);
+        } else {
+            self.items.extend(added);
+            self.restore_original_order();
+        }
+        if let Some(current) = current {
+            self.current_index = self
+                .items
+                .iter()
+                .position(|entry| entry.entry_id == current);
+        }
+        self.extend_visible_batch();
+        self.revision += 1;
+    }
+}
+impl DurableQueue {
+    pub(crate) fn restore(self) -> Option<QueueStateDto> {
+        let mut queue = self.queue;
+        let ids = queue
+            .items
+            .iter()
+            .map(|entry| entry.entry_id.as_str())
+            .collect::<HashSet<_>>();
+        if ids.len() != queue.items.len()
+            || queue
+                .items
+                .iter()
+                .any(|entry| entry.entry_id.is_empty() || entry.video_id.trim().is_empty())
+            || queue
+                .current_index
+                .is_some_and(|index| index >= queue.items.len())
+        {
+            return None;
+        }
+        queue.visible_len = self
+            .visible_len
+            .max(queue.current_index.map_or(0, |index| index + 1))
+            .min(queue.items.len());
+        queue.source_ranks = self.source_ranks;
+        queue.next_source_rank = self.next_source_rank;
+        queue.explicit_placements = self.explicit_placements;
+        queue.radio = None;
+        for entry in &mut queue.items {
+            entry.normalize_metadata();
+        }
+        Some(queue)
     }
 }
 
@@ -819,7 +1264,14 @@ fn project_queue_entry(
 }
 
 fn new_entry_id() -> String {
-    format!("queue-{}", NEXT_ENTRY_ID.fetch_add(1, Ordering::Relaxed))
+    format!(
+        "queue-{}-{}",
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos(),
+        NEXT_ENTRY_ID.fetch_add(1, Ordering::Relaxed)
+    )
 }
 
 fn new_unique_entry_id(seen: &mut HashSet<String>) -> String {
@@ -837,6 +1289,191 @@ pub(crate) fn next_owner_epoch(epoch: u64) -> u64 {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn responsive_statistics_are_not_album_names_without_a_destination() {
+        for value in [
+            "337M plays",
+            "1.3 B views",
+            "1\u{202f}234 reproducciones",
+            "42 millones visualizaciones",
+            "12 streams today",
+        ] {
+            assert!(super::provider_statistic(value), "{value}");
+            assert_eq!(super::metadata_album(&Some(value.into()), &None), None);
+        }
+        for value in ["Views", "Plays", "1989", "The 1975", "100 Playstations"] {
+            assert!(!super::provider_statistic(value), "{value}");
+            assert_eq!(
+                super::metadata_album(&Some(value.into()), &None).as_deref(),
+                Some(value)
+            );
+        }
+        assert_eq!(
+            super::metadata_album(&Some("100 Plays".into()), &Some("MPRE-real".into())).as_deref(),
+            Some("100 Plays")
+        );
+        assert_eq!(
+            super::metadata_credit("Song • Artist A • Artist B • 337M plays • 3:45"),
+            "Artist A • Artist B"
+        );
+        let linked = |text: &str| HomeArtistRunDto {
+            text: text.into(),
+            id: Some(format!("UC-{text}")),
+        };
+        let plain = |text: &str| HomeArtistRunDto {
+            text: text.into(),
+            id: None,
+        };
+        assert_eq!(
+            super::metadata_credit_with_runs(
+                "Song • Views • 337M plays",
+                &[
+                    linked("Song"),
+                    plain(" • "),
+                    linked("Views"),
+                    plain(" • "),
+                    plain("337M"),
+                    plain(" plays")
+                ]
+            ),
+            "Song • Views"
+        );
+        assert_eq!(
+            super::metadata_credit_with_runs("", &[linked("Artist A"), linked("Artist B")]),
+            "Artist A, Artist B"
+        );
+    }
+
+    #[test]
+    fn radio_replaces_old_metric_album_and_rejects_incoming_counters() {
+        let mut queue = queue();
+        for entry in &mut queue.items {
+            if entry.video_id == "same" {
+                entry.album = Some("337M plays".into());
+                entry.artists = "Song • Artist • 337M plays".into();
+            }
+        }
+        let ids = queue
+            .items
+            .iter()
+            .map(|entry| entry.entry_id.clone())
+            .collect::<Vec<_>>();
+        let mut real = item("same");
+        real.album = Some("Actual Album".into());
+        real.album_id = Some("MPRE-real".into());
+        queue.merge_radio(vec![real]);
+        for entry in queue.items.iter().filter(|entry| entry.video_id == "same") {
+            assert_eq!(entry.album.as_deref(), Some("Actual Album"));
+            assert_eq!(entry.album_id.as_deref(), Some("MPRE-real"));
+            assert_eq!(entry.artists, "Artist");
+        }
+        assert_eq!(
+            queue
+                .items
+                .iter()
+                .map(|entry| entry.entry_id.clone())
+                .collect::<Vec<_>>(),
+            ids
+        );
+        let mut incoming = item("new-counter");
+        incoming.album = Some("7M views".into());
+        incoming.artists = "Video • 7M views".into();
+        queue.merge_radio(vec![incoming]);
+        let added = queue.items.last().unwrap();
+        assert_eq!(added.album, None);
+        assert!(added.artists.is_empty());
+    }
+
+    #[test]
+    fn durable_restore_cleans_legacy_metric_metadata_without_changing_occurrences() {
+        let mut queue = queue();
+        queue.items[0].album = Some("337M plays".into());
+        queue.items[0].artists = "Song • Artist • 337M plays".into();
+        queue.items[0].artist_runs = vec![
+            HomeArtistRunDto {
+                text: "Artist".into(),
+                id: Some("UC-artist".into()),
+            },
+            HomeArtistRunDto {
+                text: " • ".into(),
+                id: None,
+            },
+            HomeArtistRunDto {
+                text: "337M".into(),
+                id: None,
+            },
+            HomeArtistRunDto {
+                text: " plays".into(),
+                id: None,
+            },
+        ];
+        let id = queue.items[0].entry_id.clone();
+        let restored = queue.durable().restore().unwrap();
+        assert_eq!(restored.items[0].entry_id, id);
+        assert_eq!(restored.items[0].album, None);
+        assert_eq!(restored.items[0].artists, "Artist");
+        assert_eq!(restored.items[0].artist_runs.len(), 1);
+        assert_eq!(
+            restored.items[0].artist_runs[0].id.as_deref(),
+            Some("UC-artist")
+        );
+        assert_eq!(restored.current_index, queue.current_index);
+    }
+
+    #[test]
+    fn enrichment_does_not_link_a_different_album_or_artist_label() {
+        let mut existing = QueueEntryDto::with_metadata(
+            "seed".into(),
+            "Title".into(),
+            "Frank Ocean feat. Guest".into(),
+            None,
+            None,
+            None,
+            None,
+            Some("Blonde Deluxe".into()),
+        );
+        let source = QueueEntryDto::with_metadata_and_runs(
+            "seed".into(),
+            "Title".into(),
+            "Frank Ocean".into(),
+            None,
+            None,
+            Some("UC-frank".into()),
+            Some("MPRE-blonde".into()),
+            Some("Blonde".into()),
+            vec![HomeArtistRunDto {
+                text: "Frank Ocean".into(),
+                id: Some("UC-frank".into()),
+            }],
+        );
+        existing.enrich_missing_metadata(&source);
+        assert_eq!(existing.album.as_deref(), Some("Blonde Deluxe"));
+        assert_eq!(existing.album_id, None);
+        assert_eq!(existing.artists, "Frank Ocean feat. Guest");
+        assert_eq!(existing.artist_id, None);
+        assert!(existing.artist_runs.is_empty());
+        existing.album = Some(" blonde ".into());
+        existing.artists = " frank ocean ".into();
+        existing.enrich_missing_metadata(&source);
+        assert_eq!(existing.album_id.as_deref(), Some("MPRE-blonde"));
+        assert_eq!(existing.artist_id.as_deref(), Some("UC-frank"));
+        assert_eq!(existing.artist_runs, source.artist_runs);
+        existing.artist_runs.clear();
+        existing.artist_id = Some("UC-another-artist".into());
+        existing.enrich_missing_metadata(&source);
+        assert_eq!(existing.artist_id.as_deref(), Some("UC-another-artist"));
+        assert!(existing.artist_runs.is_empty());
+        existing.artist_id = Some("UC-frank".into());
+        existing.enrich_missing_metadata(&source);
+        assert_eq!(existing.artist_runs, source.artist_runs);
+        existing.album = None;
+        existing.album_id = Some("MPRE-other".into());
+        existing.enrich_missing_metadata(&source);
+        assert_eq!(existing.album, None);
+        existing.album_id = Some("MPRE-blonde".into());
+        existing.enrich_missing_metadata(&source);
+        assert_eq!(existing.album.as_deref(), Some("Blonde"));
+    }
     use super::*;
 
     fn item(id: &str) -> QueueEntryDto {
@@ -867,6 +1504,172 @@ mod tests {
             .iter()
             .map(|entry| entry.video_id.as_str())
             .collect()
+    }
+
+    #[test]
+    fn durable_artwork_drops_signed_credentials_without_mutating_occurrences_or_ram() {
+        let signed = "https://image.test/cover?%74oken=private-image-token&size=512";
+        let clean = "https://image.test/public?size=512";
+        let mut queue = QueueStateDto::default();
+        queue.replace(
+            vec![
+                QueueEntryDto::new(
+                    "same".into(),
+                    "A".into(),
+                    "Artist".into(),
+                    Some(signed.into()),
+                    None,
+                ),
+                QueueEntryDto::new(
+                    "same".into(),
+                    "B".into(),
+                    "Artist".into(),
+                    Some(clean.into()),
+                    None,
+                ),
+            ],
+            1,
+            QueueSourceDto {
+                kind: "playlist".into(),
+                id: Some("list".into()),
+                title: None,
+            },
+        );
+        let ids = queue
+            .items
+            .iter()
+            .map(|entry| entry.entry_id.clone())
+            .collect::<Vec<_>>();
+        let encoded = serde_json::to_string(&queue.durable()).unwrap();
+        assert!(!encoded.contains("private-image-token"));
+        let restored: DurableQueue = serde_json::from_str(&encoded).unwrap();
+        let restored = restored.restore().unwrap();
+        assert!(restored.items[0].thumbnail.is_none());
+        assert_eq!(restored.items[1].thumbnail.as_deref(), Some(clean));
+        assert_eq!(queue.items[0].thumbnail.as_deref(), Some(signed));
+        assert_eq!(restored.current_index, Some(1));
+        assert_eq!(
+            restored
+                .items
+                .iter()
+                .map(|entry| entry.entry_id.clone())
+                .collect::<Vec<_>>(),
+            ids
+        );
+        for query in [
+            "expire=5",
+            "SIGNATURE=secret",
+            "auth=secret",
+            "key=secret",
+            "x-amz-credential=secret",
+            "rs=secret&sqp=encoded",
+            "api_key=secret",
+        ] {
+            assert!(durable_thumbnail(&Some(format!("https://image.test/a?{query}"))).is_none());
+        }
+        assert!(durable_thumbnail(&Some("https://user:secret@image.test/a".into())).is_none());
+    }
+
+    #[test]
+    fn durable_roundtrip_keeps_duplicates_shuffle_placements_and_uploads_private() {
+        let mut queue = QueueStateDto::default();
+        let mut upload = item("same");
+        upload.is_upload = true;
+        queue.replace(vec![upload, item("same"), item("last")], 0, source());
+        queue.enqueue(vec![item("manual")], true);
+        let canonical = queue
+            .items
+            .iter()
+            .map(|entry| entry.entry_id.clone())
+            .collect::<Vec<_>>();
+        queue.shuffle_after_current_with_seed(77);
+        let active = queue.current().unwrap().entry_id;
+        let persisted = serde_json::to_string(&queue.durable()).unwrap();
+        let restored: DurableQueue = serde_json::from_str(&persisted).unwrap();
+        let mut restored = restored.restore().unwrap();
+        assert_eq!(restored.current().unwrap().entry_id, active);
+        assert!(restored.current().unwrap().is_upload);
+        restored.restore_original_order();
+        assert_eq!(
+            restored
+                .items
+                .iter()
+                .map(|entry| entry.entry_id.clone())
+                .collect::<Vec<_>>(),
+            canonical
+        );
+        let public = serde_json::to_value(restored.snapshot()).unwrap();
+        assert!(public.get("source_ranks").is_none());
+        assert!(public.get("explicit_placements").is_none());
+        assert_eq!(public["items"][0]["isUpload"], true);
+    }
+    #[test]
+    fn progressive_suffix_keeps_edits_duplicates_active_and_reversible_shuffle() {
+        for shuffled in [false, true] {
+            let mut queue = QueueStateDto::default();
+            queue.replace(vec![item("same"), item("same"), item("third")], 0, source());
+            queue.enqueue(vec![item("next")], true);
+            queue.enqueue(vec![item("end")], false);
+            let removed = queue.items[2].entry_id.clone();
+            queue.remove_entry(&removed).unwrap();
+            if shuffled {
+                queue.shuffle_after_current_with_seed(5);
+            }
+            let active = queue.current().unwrap().entry_id;
+            let before = queue
+                .items
+                .iter()
+                .map(|entry| entry.entry_id.clone())
+                .collect::<Vec<_>>();
+            queue.append_source(vec![item("same"), item("fourth")], shuffled);
+            assert_eq!(queue.current().unwrap().entry_id, active);
+            assert!(!queue.items.iter().any(|entry| entry.entry_id == removed));
+            assert_eq!(
+                queue
+                    .items
+                    .iter()
+                    .filter(|entry| entry.video_id == "same")
+                    .count(),
+                2
+            );
+            assert_eq!(
+                queue
+                    .items
+                    .iter()
+                    .filter(|entry| before.contains(&entry.entry_id))
+                    .map(|entry| entry.entry_id.clone())
+                    .collect::<Vec<_>>(),
+                before
+            );
+            queue.restore_original_order();
+            assert_eq!(
+                queue
+                    .items
+                    .iter()
+                    .map(|entry| entry.video_id.as_str())
+                    .collect::<Vec<_>>(),
+                vec!["same", "next", "third", "same", "fourth", "end"]
+            );
+        }
+    }
+    #[test]
+    fn disliked_radio_filter_keeps_manual_occurrences_and_active_entry() {
+        let mut queue = QueueStateDto::default();
+        queue.replace(vec![item("same"), item("same"), item("other")], 0, source());
+        let active = queue.current().unwrap().entry_id;
+        queue.enqueue(vec![item("same")], true);
+        let manual = queue.items[1].entry_id.clone();
+        queue.filter_radio_recommendations("same");
+        assert_eq!(queue.current().unwrap().entry_id, active);
+        assert!(queue.items.iter().any(|entry| entry.entry_id == manual));
+        assert_eq!(
+            queue
+                .items
+                .iter()
+                .filter(|entry| entry.video_id == "same")
+                .count(),
+            2
+        );
     }
 
     #[test]

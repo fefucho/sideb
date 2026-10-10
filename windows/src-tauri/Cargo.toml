@@ -1,6 +1,6 @@
 [package]
 name = "sideb-windows"
-version = "0.1.0"
+version = "1.2.0"
 description = "Side B Windows - Native Music Client"
 authors = ["Side B Team"]
 edition = "2021"
@@ -23,12 +23,15 @@ sideb-core = { path = "../../core/crates/sideb-core", features = ["windows-bridg
 tauri = { version = "2", features = [] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+sha2 = "0.10"
 tokio = { version = "1", features = ["sync", "time"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream"] }
 futures-util = { version = "0.3", default-features = false, features = ["std"] }
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Security_Cryptography"] }
+souvlaki = { version = "0.8.3", default-features = false }
+windows-media = { package = "windows", version = "0.44", features = ["Media", "Win32_Foundation", "Win32_System_WinRT"] }
+windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Security_Cryptography", "Win32_Storage_FileSystem", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration

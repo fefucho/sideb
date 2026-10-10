@@ -16,6 +16,8 @@ export class NavigationHistory<T> {
 
   get canBack() { return this.past.length > 0; }
   get canForward() { return this.future.length > 0; }
+  get backDestination(): T | null { return this.past.at(-1) ?? null; }
+  get forwardDestination(): T | null { return this.future.at(-1) ?? null; }
 
   /** Record the current snapshot before a new destination is shown. */
   visit(current: T): void {

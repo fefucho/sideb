@@ -1,12 +1,44 @@
 # PLAN-001 — Paridad de funciones y diseño Mac → Windows
 
 - Fecha: 2026-10-09 (America/Montevideo).
-- Estado: auditoría terminada; implementación propuesta, sin iniciar.
+- Estado: auditoría de origen conservada; integración Windows ejecutada en [PLAN-003](PLAN-003-macos-integration.md), aceptación física pendiente.
 - Objetivo: llevar Windows al comportamiento y presentación de la app Apple vigente, conservando las capacidades Windows que ya funcionan.
 - Seguimiento: [PARIDAD](../../PARIDAD.md) conserva el estado agregado de cada port. Este archivo descompone esos PAR en pasos de ejecución y aceptación; no es un registro paralelo de fixes.
 - Referencia: árbol de trabajo actual, incluidos los cambios Apple de traducciones de FIX-131. No comparar sólo contra el último commit o una release Windows antigua.
 - Alcance: `windows/` y su integración Tauri. El core común ya ofrece las APIs de catálogo, regiones, historial y Genius necesarias. No modificarlo por necesidades exclusivas Windows.
-- Entrega de esta etapa: análisis y planificación. No se portaron funciones, no se cambió código de la app ni se publicó una release.
+- Entrega de la auditoría original: análisis y planificación. La ejecución posterior, sus fixes, comprobaciones y límites están en [PLAN-003](PLAN-003-macos-integration.md); no se publicó una release.
+
+## Recepción en Windows — 2026-10-09
+
+Recibido desde `origin/main` en `d37c1ee`. La auditoría de origen usó el baseline Windows de 117 pruebas; esta máquina conservaba trabajo posterior sin commit, con 167 pruebas. El checklist sigue siendo una propuesta y se debe contrastar con ese destino integrado antes de abrir cada tarea. No se declaran ausentes funciones ya implementadas ni se marca aceptación nativa sólo por pruebas frontend.
+
+| Tareas que se solapan | Destino local conservado | Evidencia y límite |
+|---|---|---|
+| NAV-07 / BIB-01 | Crear desde Sidebar/Biblioteca/menú con editor común, 5000 caracteres y tres privacidades | [FIX-120-2](../../FIXES.md#fix-120-2); formulario/foco y guardas verificados; mutación con cuenta real pendiente |
+| FS-04 | Portada activa con clic/Enter/Space, overlay negro 22%, Play/Pausa y foco | [FIX-122-2](../../FIXES.md#fix-122-2); fixture y frontend aprobados, validación WebView2/audio pendiente |
+| NAT-02, parte Space | Atajo contextual, sin autorepeat ni captura de edición/controles/diálogos | [FIX-122-2](../../FIXES.md#fix-122-2); los restantes comandos del ítem se mantienen pendientes |
+| DET-10 / BIB-06, parte listas | TrackList compartido y viewport acotado en detalle/cuenta/Historial/cola | [FIX-119-2](../../FIXES.md#fix-119-2), [FIX-121-2](../../FIXES.md#fix-121-2); nueva cabecera/densidad/grids y ensayo nativo requieren revisión propia |
+| INI / CAR, base anterior | Inicio personalizado, fuentes/configuración, cartas contextuales, feed explícito y ventanas de UI | [FIX-113-2](../../FIXES.md#fix-113-2)–[FIX-116-2](../../FIXES.md#fix-116-2); comparar con las mejoras Apple recién recibidas, especialmente suspensión fullscreen e identidad |
+| FS-05 | Windows conserva los controles de cola integrados; Apple acaba de añadir su excepción propia | [FIX-121-2](../../FIXES.md#fix-121-2) frente a [FIX-113 Apple](../../FIXES.md#fix-113); analizar variante, no sustituir acciones durante la sincronización |
+
+**Decisión de producto vigente:** conservar sidebar expandida de 230 px y rail compacto de 60 px. El pedido posterior del 2026-10-10 mueve Atrás/Adelante desde Sidebar a TitleBar y elimina Volver ([FIX-139](../../FIXES.md#fix-139), [PLAN-004](PLAN-004-player-shell-corrections.md)). NAV-01/02/03/05/06 y FS-01/03 contienen propuestas dependientes del shell Apple; no revierten automáticamente esa decisión ni se ejecutan por recibir este documento. El resto del plan se mantiene para trabajo posterior. Las casillas originales permanecen como auditoría de origen hasta evaluar la aceptación completa de cada tarea.
+
+Los FIX Windows concurrentes se distinguen con sufijo `-2`, conservando alias original. PAR-011-2 a PAR-017-2 contienen el seguimiento local; PAR sin sufijo conserva el significado publicado en este plan. [PARIDAD](../../PARIDAD.md) reúne ambos sin perder evidencia.
+
+### Verificación de la integración recibida
+
+Ejecutada en Windows el 2026-10-09 sobre `d37c1ee` más los cambios locales conservados:
+
+| Comprobación | Resultado |
+|---|---|
+| `pnpm check` | 0 errores, 0 advertencias |
+| `pnpm test` | 167/167 aprobadas |
+| `pnpm build` | Frontend aprobado |
+| `windows/scripts/windows.ps1 -Action verify` | Aprobado: frontend, 92 InnerTube, 90 core y 92 core/windows-bridge (7 live ignoradas por variante), 4 player, 50 Tauri |
+| `node --test Scripts/build-version.test.mjs` | 9 aprobadas, 1 caso de empaquetado Mac omitido en Windows; pruebas del runner con ejecutores ficticios, no build Mac |
+| Git/documentos | Diff sin errores de whitespace, FIX/PAR únicos, fuentes locales Windows idénticas al respaldo y `main` alineado con `origin/main` (0/0) |
+
+Advertencias Rust de campos no leídos y LNK4098 presentes; no impidieron verify. Log local ignorado: `windows/.cache/sync-2026-10-09-verify.log`. Caché Cargo existente en D: y PSModulePath aislado durante el proceso. No se generó build standalone ni se verificaron UI WebView2/audio/cuenta/gestos nativos. No se creó un commit ni se hizo push; el trabajo Windows sigue local.
 
 ## Cómo leer y actualizar el checklist
 

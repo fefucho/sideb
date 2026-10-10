@@ -9,7 +9,7 @@ export function createMenuHandlers() {
     function open(event: MouseEvent | KeyboardEvent) {
       const resolvedTarget = typeof target === 'function' ? target() : target;
       if (!service || !resolvedTarget) return;
-      if (event instanceof KeyboardEvent && !(event.shiftKey && (event.key === 'F10' || event.key === 'ContextMenu'))) return;
+      if (event instanceof KeyboardEvent && !(event.key === 'ContextMenu' || event.shiftKey && event.key === 'F10')) return;
       event.preventDefault();
       service.open(event, resolvedTarget, typeof origin === 'function' ? origin() : origin);
     }

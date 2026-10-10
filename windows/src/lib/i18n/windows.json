@@ -1,0 +1,1006 @@
+{
+  "windows.settings.audio": { "es": "Audio", "en": "Audio" },
+  "windows.settings.exponentialVolume": { "es": "Volumen exponencial", "en": "Exponential volume" },
+  "windows.settings.exponentialVolumeHint": { "es": "Más control a volumen bajo para equipos con sonido fuerte. Conserva el volumen máximo.", "en": "More control at low volume on loud systems. Keeps the maximum volume unchanged." },
+  "windows.settings.exponentialVolumeError": { "es": "No se pudo cambiar el volumen exponencial.", "en": "Couldn't change exponential volume." },
+  "windows.genius.annotationColor": { "es": "Color de las anotaciones", "en": "Annotation color" },
+  "windows.genius.colorArtwork": { "es": "Carátula", "en": "Artwork" },
+  "windows.genius.colorContrast": { "es": "Contraste", "en": "Contrast" },
+  "windows.genius.colorNeutral": { "es": "Neutro", "en": "Neutral" },
+  "windows.ui.openQueue": {
+    "es": "Abrir cola",
+    "en": "Open queue"
+  },
+  "windows.ui.openLyrics": {
+    "es": "Abrir letras",
+    "en": "Open lyrics"
+  },
+  "windows.ui.enableShuffle": {
+    "es": "Activar aleatorio",
+    "en": "Enable shuffle"
+  },
+  "windows.ui.disableShuffle": {
+    "es": "Desactivar aleatorio",
+    "en": "Disable shuffle"
+  },
+  "windows.ui.updatingLike": {
+    "es": "Actualizando Me gusta…",
+    "en": "Updating Like…"
+  },
+  "windows.ui.currentSong": {
+    "es": "Canción actual",
+    "en": "Current song"
+  },
+  "windows.ui.loadingAudio": {
+    "es": "Cargando audio…",
+    "en": "Loading audio…"
+  },
+  "windows.ui.volumeControl": {
+    "es": "Control de volumen",
+    "en": "Volume control"
+  },
+  "windows.ui.signInToUseLike": {
+    "es": "Iniciá sesión para usar Me Gusta",
+    "en": "Sign in to use Like"
+  },
+  "windows.ui.like": {
+    "es": "Me Gusta",
+    "en": "Like"
+  },
+  "windows.ui.showVolume": {
+    "es": "Mostrar volumen",
+    "en": "Show volume"
+  },
+  "windows.ui.nextTrack": {
+    "es": "Pista siguiente",
+    "en": "Next track"
+  },
+  "windows.ui.playbackPosition": {
+    "es": "Posición de reproducción",
+    "en": "Playback position"
+  },
+  "windows.ui.removeLike": {
+    "es": "Quitar Me gusta",
+    "en": "Remove Like"
+  },
+  "windows.ui.restartSong": {
+    "es": "Reiniciar canción",
+    "en": "Restart song"
+  },
+  "windows.ui.audioPlayer": {
+    "es": "Reproductor de audio",
+    "en": "Audio player"
+  },
+  "windows.ui.volume": {
+    "es": "Volumen",
+    "en": "Volume"
+  },
+  "windows.ui.searchingForSynchronizedLyrics": {
+    "es": "Buscando letras sincronizadas...",
+    "en": "Searching for synchronized lyrics…"
+  },
+  "windows.ui.searchAgain": {
+    "es": "Buscar de nuevo",
+    "en": "Search again"
+  },
+  "windows.ui.songLyrics": {
+    "es": "Letras de la canción",
+    "en": "Song lyrics"
+  },
+  "windows.ui.noLyricsFoundForThisTrack": {
+    "es": "No se encontraron letras para esta pista",
+    "en": "No lyrics found for this track"
+  },
+  "windows.ui.lyricsText": {
+    "es": "Texto de la letra",
+    "en": "Lyrics text"
+  },
+  "windows.ui.dragToMoveTheSongOrUseTheUpAndDownArrowsWithThisButtonFocused": {
+    "es": "Arrastrá para mover la canción, o usá las flechas arriba y abajo con este botón enfocado.",
+    "en": "Drag to move the song, or use the up and down arrows with this button focused."
+  },
+  "windows.ui.noTracksInTheQueue": {
+    "es": "No hay pistas en la cola",
+    "en": "No tracks in the queue"
+  },
+  "windows.ui.dislikeAndRemoveFromQueue": {
+    "es": "No me gusta y quitar de la cola",
+    "en": "Dislike and remove from queue"
+  },
+  "windows.ui.couldnTMoveTheSongTryAgain": {
+    "es": "No se pudo mover la canción. Volvé a intentar.",
+    "en": "Couldn’t move the song. Try again."
+  },
+  "windows.ui.queuedTracks": {
+    "es": "Pistas en cola",
+    "en": "Queued tracks"
+  },
+  "windows.ui.preparingRadio": {
+    "es": "Preparando radio…",
+    "en": "Preparing radio…"
+  },
+  "windows.ui.dragToReorderOnKeyboard": {
+    "es": "Arrastrar para reordenar (↑/↓ con el teclado)",
+    "en": "Drag to reorder (↑/↓ on keyboard)"
+  },
+  "windows.ui.loadingRecommendations": {
+    "es": "Cargando recomendaciones",
+    "en": "Loading recommendations"
+  },
+  "windows.ui.getNewRecommendationsForThisTrack": {
+    "es": "Obtener nuevas recomendaciones para esta pista",
+    "en": "Get new recommendations for this track"
+  },
+  "windows.ui.selectASongToSeeRecommendations": {
+    "es": "Seleccioná una canción para ver recomendaciones",
+    "en": "Select a song to see recommendations"
+  },
+  "windows.ui.openingSignInCancel": {
+    "es": "Abriendo acceso… · Cancelar",
+    "en": "Opening sign in… · Cancel"
+  },
+  "windows.ui.openAccountOptions": {
+    "es": "Abrir opciones de cuenta",
+    "en": "Open account options"
+  },
+  "windows.ui.sideBSidebar": {
+    "es": "Barra lateral de Side B",
+    "en": "Side B sidebar"
+  },
+  "windows.ui.cancelSignIn": {
+    "es": "Cancelar inicio de sesión",
+    "en": "Cancel sign in"
+  },
+  "windows.ui.collapseSidebar": {
+    "es": "Contraer barra lateral",
+    "en": "Collapse sidebar"
+  },
+  "windows.ui.expandSidebar": {
+    "es": "Expandir barra lateral",
+    "en": "Expand sidebar"
+  },
+  "windows.ui.sidebarAndNavigationControls": {
+    "es": "Controles de barra lateral y navegación",
+    "en": "Sidebar and navigation controls"
+  },
+  "windows.ui.createPlaylist": {
+    "es": "Crear playlist",
+    "en": "Create playlist"
+  },
+  "windows.ui.signInToSeeYourSavedMusic": {
+    "es": "Inicia sesión para ver tu música guardada",
+    "en": "Sign in to see your saved music"
+  },
+  "windows.ui.savedMusic": {
+    "es": "Música guardada",
+    "en": "Saved music"
+  },
+  "windows.ui.couldnTSignInRetry": {
+    "es": "No se pudo iniciar sesión · Reintentar",
+    "en": "Couldn’t sign in · Retry"
+  },
+  "windows.ui.noPlaylistsYet": {
+    "es": "No tienes playlists",
+    "en": "No playlists yet"
+  },
+  "windows.ui.noSavedAlbumsYet": {
+    "es": "No tienes álbumes guardados",
+    "en": "No saved albums yet"
+  },
+  "windows.ui.playlists": {
+    "es": "Playlists",
+    "en": "Playlists"
+  },
+  "windows.ui.signedIn": {
+    "es": "Sesión iniciada",
+    "en": "Signed in"
+  },
+  "windows.ui.collectionType": {
+    "es": "Tipo de colección",
+    "en": "Collection type"
+  },
+  "windows.ui.yourAccount": {
+    "es": "Tu cuenta",
+    "en": "Your account"
+  },
+  "windows.ui.sideBTitleBar": {
+    "es": "Barra de título de Side B",
+    "en": "Side B title bar"
+  },
+  "windows.ui.windowControls": {
+    "es": "Controles de ventana",
+    "en": "Window controls"
+  },
+  "windows.ui.doubleClickToMaximize": {
+    "es": "Doble clic para maximizar",
+    "en": "Double click to maximize"
+  },
+  "windows.ui.doubleClickToRestore": {
+    "es": "Doble clic para restaurar",
+    "en": "Double click to restore"
+  },
+  "windows.ui.windowControlsRequireTheDesktopApp": {
+    "es": "Los controles de ventana requieren la aplicación de escritorio.",
+    "en": "Window controls require the desktop app."
+  },
+  "windows.ui.maximize": {
+    "es": "Maximizar",
+    "en": "Maximize"
+  },
+  "windows.ui.maximizeWindow": {
+    "es": "Maximizar ventana",
+    "en": "Maximize window"
+  },
+  "windows.ui.minimize": {
+    "es": "Minimizar",
+    "en": "Minimize"
+  },
+  "windows.ui.restore": {
+    "es": "Restaurar",
+    "en": "Restore"
+  },
+  "windows.ui.restoreWindow": {
+    "es": "Restaurar ventana",
+    "en": "Restore window"
+  },
+  "windows.ui.couldnTEnableWindowControls": {
+    "es": "No se pudieron activar los controles de ventana.",
+    "en": "Couldn’t enable window controls."
+  },
+  "windows.ui.couldnTUpdateTheWindowState": {
+    "es": "No se pudo actualizar el estado de la ventana.",
+    "en": "Couldn’t update the window state."
+  },
+  "windows.ui.couldnTCompleteTheWindowAction": {
+    "es": "No se pudo completar el control de ventana.",
+    "en": "Couldn’t complete the window action."
+  },
+  "windows.ui.closeDialog": {
+    "es": "Cerrar diálogo",
+    "en": "Close dialog"
+  },
+  "windows.ui.checkingForNewVersionsOnGitHubReleases": {
+    "es": "Comprobando nuevas versiones en GitHub Releases…",
+    "en": "Checking for new versions on GitHub Releases…"
+  },
+  "windows.ui.downloadingSideB": {
+    "es": "Descargando Side B…",
+    "en": "Downloading Side B…"
+  },
+  "windows.ui.installed": {
+    "es": "Instalada:",
+    "en": "Installed:"
+  },
+  "windows.ui.new": {
+    "es": "Nueva:",
+    "en": "New:"
+  },
+  "windows.ui.theAppWillRestartAutomaticallyInAFewSeconds": {
+    "es": "La aplicación se reiniciará automáticamente en unos segundos.",
+    "en": "The app will restart automatically in a few seconds."
+  },
+  "windows.ui.later": {
+    "es": "Más tarde",
+    "en": "Later"
+  },
+  "windows.ui.couldnTUpdate": {
+    "es": "No se pudo actualizar",
+    "en": "Couldn’t update"
+  },
+  "windows.ui.preparingTheWindowsUpdateInstaller": {
+    "es": "Preparando instalador de actualización para Windows…",
+    "en": "Preparing the Windows update installer…"
+  },
+  "windows.ui.sideBIsUpToDateWithTheLatestImprovements": {
+    "es": "Side B está totalmente actualizado con las últimas mejoras.",
+    "en": "Side B is up to date with the latest improvements."
+  },
+  "windows.ui.updateAvailable": {
+    "es": "Actualización disponible",
+    "en": "Update available"
+  },
+  "windows.ui.checkingForUpdates": {
+    "es": "Comprobando actualizaciones…",
+    "en": "Checking for updates…"
+  },
+  "windows.ui.sideBIsUpToDate": {
+    "es": "Side B está actualizado",
+    "en": "Side B is up to date"
+  },
+  "windows.ui.updateError": {
+    "es": "Error de actualización",
+    "en": "Update error"
+  },
+  "windows.ui.softwareUpdate": {
+    "es": "Actualización de software",
+    "en": "Software update"
+  },
+  "windows.ui.aNewVersionOfSideBIsReadyToInstall": {
+    "es": "Hay una nueva versión de Side B lista para instalar.",
+    "en": "A new version of Side B is ready to install."
+  },
+  "windows.ui.lookingForRecentVersionsOnGitHubReleases": {
+    "es": "Buscando versiones recientes en GitHub Releases…",
+    "en": "Looking for recent versions on GitHub Releases…"
+  },
+  "windows.ui.theLatestVersionIsInstalledOnYourComputer": {
+    "es": "Tienes la versión más reciente instalada en tu equipo.",
+    "en": "The latest version is installed on your computer."
+  },
+  "windows.ui.downloadingTheWindowsPackageDirectlyFromGitHubReleases": {
+    "es": "Descargando paquete optimizado para Windows directamente de GitHub Releases.",
+    "en": "Downloading the Windows package directly from GitHub Releases."
+  },
+  "windows.ui.sideBWillCloseAndRestartAutomaticallyWithTheNewVersion": {
+    "es": "Side B se cerrará y reiniciará automáticamente con la nueva versión.",
+    "en": "Side B will close and restart automatically with the new version."
+  },
+  "windows.ui.couldnTCompleteTheUpdateOperation": {
+    "es": "No se pudo completar la operación de actualización.",
+    "en": "Couldn’t complete the update operation."
+  },
+  "windows.queue.radio": {
+    "es": "Radio de %@",
+    "en": "Radio for %@"
+  },
+  "windows.queue.thisSong": {
+    "es": "esta canción",
+    "en": "this song"
+  },
+  "windows.queue.moved": {
+    "es": "Se movió %@ en la cola.",
+    "en": "Moved %@ in the queue."
+  },
+  "windows.queue.move": {
+    "es": "Mover %@ en la cola",
+    "en": "Move %@ in the queue"
+  },
+  "windows.queue.like": {
+    "es": "Marcar %@ como Me gusta",
+    "en": "Like %@"
+  },
+  "windows.queue.unlike": {
+    "es": "Quitar Me gusta de %@",
+    "en": "Remove Like from %@"
+  },
+  "windows.queue.dislike": {
+    "es": "No me gusta y quitar %@ de la cola",
+    "en": "Dislike and remove %@ from queue"
+  },
+  "windows.player.elapsed": {
+    "es": "Tiempo transcurrido %@",
+    "en": "Elapsed time %@"
+  },
+  "windows.player.duration": {
+    "es": "Duración %@",
+    "en": "Duration %@"
+  },
+  "windows.player.volumeValue": {
+    "es": "Volumen: %@%%",
+    "en": "Volume: %@%%"
+  },
+  "windows.lyrics.provider": {
+    "es": "Fuente: %@",
+    "en": "Source: %@"
+  },
+  "windows.sidebar.loading": {
+    "es": "Cargando %@…",
+    "en": "Loading %@…"
+  },
+  "windows.update.version": {
+    "es": "Versión %@",
+    "en": "Version %@"
+  },
+  "windows.ui.homeSettings": {
+    "es": "Configuración de Inicio",
+    "en": "Home settings"
+  },
+  "windows.ui.refreshHome": {
+    "es": "Actualizar Inicio",
+    "en": "Refresh Home"
+  },
+  "windows.ui.refreshAndConfigureHome": {
+    "es": "Actualizar y configurar Inicio",
+    "en": "Refresh and configure Home"
+  },
+  "windows.ui.configureSources": {
+    "es": "Configurar fuentes",
+    "en": "Configure sources"
+  },
+  "windows.ui.homeFilters": {
+    "es": "Filtros de Inicio",
+    "en": "Home filters"
+  },
+  "windows.ui.noFeaturedCollectionsOfThisTypeAreAvailableYet": {
+    "es": "No hay destacados de este tipo por ahora.",
+    "en": "No featured collections of this type are available yet."
+  },
+  "windows.ui.previousSpeedDialPage": {
+    "es": "Página anterior de Speed Dial",
+    "en": "Previous Speed Dial page"
+  },
+  "windows.ui.nextSpeedDialPage": {
+    "es": "Página siguiente de Speed Dial",
+    "en": "Next Speed Dial page"
+  },
+  "windows.ui.speedDialPages": {
+    "es": "Páginas de Speed Dial",
+    "en": "Speed Dial pages"
+  },
+  "windows.ui.previousFeaturedPage": {
+    "es": "Página anterior de destacados",
+    "en": "Previous featured page"
+  },
+  "windows.ui.nextFeaturedPage": {
+    "es": "Página siguiente de destacados",
+    "en": "Next featured page"
+  },
+  "windows.ui.featuredPages": {
+    "es": "Páginas de destacados",
+    "en": "Featured pages"
+  },
+  "windows.ui.noRecommendationsVisibleForThisFilterAndSettings": {
+    "es": "Sin recomendaciones visibles para este filtro y configuración.",
+    "en": "No recommendations visible for this filter and settings."
+  },
+  "windows.ui.sourcePaused": {
+    "es": "Fuente pausada",
+    "en": "Source paused"
+  },
+  "windows.ui.playingFromThisSource": {
+    "es": "Sonando desde esta fuente",
+    "en": "Playing from this source"
+  },
+  "windows.ui.refreshingAlbum": {
+    "es": "Actualizando álbum…",
+    "en": "Refreshing album…"
+  },
+  "windows.ui.loadingAlbum": {
+    "es": "Cargando álbum",
+    "en": "Loading album"
+  },
+  "windows.ui.thisAlbumHasNoSongsAvailableYet": {
+    "es": "Este álbum todavía no tiene canciones disponibles.",
+    "en": "This album has no songs available yet."
+  },
+  "windows.ui.noSongsMatchYourSearch": {
+    "es": "No hay canciones que coincidan con la búsqueda.",
+    "en": "No songs match your search."
+  },
+  "windows.ui.goBackOrTryLoadingItAgain": {
+    "es": "Vuelve atrás o intenta cargarla de nuevo.",
+    "en": "Go back or try loading it again."
+  },
+  "windows.ui.albumUnavailable": {
+    "es": "Álbum no disponible",
+    "en": "Album unavailable"
+  },
+  "windows.ui.refreshing": {
+    "es": "Actualizando…",
+    "en": "Refreshing…"
+  },
+  "windows.ui.loadingArtist": {
+    "es": "Cargando artista…",
+    "en": "Loading artist…"
+  },
+  "windows.ui.starting": {
+    "es": "Iniciando…",
+    "en": "Starting…"
+  },
+  "windows.ui.readFullBiography": {
+    "es": "Leer biografía completa",
+    "en": "Read full biography"
+  },
+  "windows.ui.noArtistDataAvailable": {
+    "es": "No hay datos del artista",
+    "en": "No artist data available"
+  },
+  "windows.ui.couldnTUpdateTheSubscription": {
+    "es": "No se pudo actualizar la suscripción.",
+    "en": "Couldn’t update the subscription."
+  },
+  "windows.ui.couldnTStartTheMix": {
+    "es": "No se pudo iniciar el mix.",
+    "en": "Couldn’t start the mix."
+  },
+  "windows.ui.loadingCatalog": {
+    "es": "Cargando catálogo…",
+    "en": "Loading catalog…"
+  },
+  "windows.ui.readFullDescription": {
+    "es": "Leer descripción completa",
+    "en": "Read full description"
+  },
+  "windows.ui.loadingSongs": {
+    "es": "Cargando canciones…",
+    "en": "Loading songs…"
+  },
+  "windows.ui.retryLoadingMoreSongs": {
+    "es": "Reintentar carga de más canciones",
+    "en": "Retry loading more songs"
+  },
+  "windows.ui.closeDescription": {
+    "es": "Cerrar descripción",
+    "en": "Close description"
+  },
+  "windows.ui.description": {
+    "es": "DESCRIPCIÓN",
+    "en": "DESCRIPTION"
+  },
+  "windows.ui.signInToSave": {
+    "es": "Inicia sesión para guardar",
+    "en": "Sign in to save"
+  },
+  "windows.ui.deleting": {
+    "es": "Eliminando…",
+    "en": "Deleting…"
+  },
+  "windows.ui.refreshingPlaylist": {
+    "es": "Actualizando playlist…",
+    "en": "Refreshing playlist…"
+  },
+  "windows.ui.loadingPlaylist": {
+    "es": "Cargando playlist",
+    "en": "Loading playlist"
+  },
+  "windows.ui.loadTheFullCollectionToSortOrMoveSongs": {
+    "es": "Cargar catálogo completo para ordenar o mover",
+    "en": "Load the full collection to sort or move songs"
+  },
+  "windows.ui.completingCollection": {
+    "es": "Completando catálogo…",
+    "en": "Completing collection…"
+  },
+  "windows.ui.thisPlaylistHasNoSongsAvailableYet": {
+    "es": "Esta playlist todavía no tiene canciones disponibles.",
+    "en": "This playlist has no songs available yet."
+  },
+  "windows.ui.signInToOpenThisPlaylist": {
+    "es": "Iniciá sesión para abrir esta playlist",
+    "en": "Sign in to open this playlist"
+  },
+  "windows.ui.couldnTLoadThePlaylist": {
+    "es": "No se pudo cargar la playlist",
+    "en": "Couldn’t load the playlist"
+  },
+  "windows.ui.playlistUnavailable": {
+    "es": "Playlist no disponible",
+    "en": "Playlist unavailable"
+  },
+  "windows.ui.closeEditor": {
+    "es": "Cerrar editor",
+    "en": "Close editor"
+  },
+  "windows.ui.creating": {
+    "es": "Creando…",
+    "en": "Creating…"
+  },
+  "windows.ui.saveChanges": {
+    "es": "Guardar cambios",
+    "en": "Save changes"
+  },
+  "windows.ui.theNameMustContainBetween1And150Characters": {
+    "es": "El nombre debe tener entre 1 y 150 caracteres.",
+    "en": "The name must contain between 1 and 150 characters."
+  },
+  "windows.ui.chooseAValidPrivacyOption": {
+    "es": "Elegí una privacidad válida.",
+    "en": "Choose a valid privacy option."
+  },
+  "windows.ui.theDescriptionCannotExceed5000Characters": {
+    "es": "La descripción no puede superar los 5000 caracteres.",
+    "en": "The description cannot exceed 5000 characters."
+  },
+  "windows.ui.name": {
+    "es": "Nombre",
+    "en": "Name"
+  },
+  "windows.ui.privacy": {
+    "es": "Privacidad",
+    "en": "Privacy"
+  },
+  "windows.ui.songOrder": {
+    "es": "Orden de canciones",
+    "en": "Song order"
+  },
+  "windows.ui.refreshHistory": {
+    "es": "Actualizar historial",
+    "en": "Refresh history"
+  },
+  "windows.ui.loadingHistory": {
+    "es": "Cargando historial…",
+    "en": "Loading history…"
+  },
+  "windows.ui.signInToSeeYourHistory": {
+    "es": "Iniciá sesión para ver tu historial",
+    "en": "Sign in to see your history"
+  },
+  "windows.ui.librarySections": {
+    "es": "Secciones de la biblioteca",
+    "en": "Library sections"
+  },
+  "windows.ui.songArtist": {
+    "es": "Canción / Artista",
+    "en": "Song / Artist"
+  },
+  "windows.ui.removeFromPlaylist": {
+    "es": "Quitar de la playlist",
+    "en": "Remove from playlist"
+  },
+  "windows.menu.newPlaylist": {
+    "es": "Nueva playlist…",
+    "en": "New playlist…"
+  },
+  "windows.menu.addToPlaylist": {
+    "es": "Agregar a playlist",
+    "en": "Add to playlist"
+  },
+  "windows.menu.goToPlaylist": {
+    "es": "Ir a la playlist",
+    "en": "Go to playlist"
+  },
+  "windows.menu.editDetails": {
+    "es": "Editar detalles…",
+    "en": "Edit details…"
+  },
+  "windows.menu.deletePlaylist": {
+    "es": "Eliminar playlist…",
+    "en": "Delete playlist…"
+  },
+  "windows.menu.addToQueue": {
+    "es": "Agregar a la cola",
+    "en": "Add to queue"
+  },
+  "windows.menu.goToArtist": {
+    "es": "Ir al artista",
+    "en": "Go to artist"
+  },
+  "windows.menu.removeFromThisPlaylist": {
+    "es": "Quitar de esta playlist",
+    "en": "Remove from this playlist"
+  },
+  "windows.menu.copyLink": {
+    "es": "Copiar enlace",
+    "en": "Copy link"
+  },
+  "windows.menu.startRadio": {
+    "es": "Iniciar radio",
+    "en": "Start radio"
+  },
+  "windows.menu.sortBy": {
+    "es": "Ordenar por",
+    "en": "Sort by"
+  },
+  "windows.menu.saveToLibrary": {
+    "es": "Guardar en biblioteca",
+    "en": "Save to library"
+  },
+  "windows.menu.removeFromLibrary": {
+    "es": "Quitar de la biblioteca",
+    "en": "Remove from library"
+  },
+  "windows.settings.showCategory": {
+    "es": "Mostrar %@",
+    "en": "Show %@"
+  },
+  "windows.queue.partial": {
+    "es": "%@ canciones cargadas; quedan más por cargar",
+    "en": "%@ songs loaded; more remain to load"
+  },
+  "windows.fullscreen.title": {
+    "es": "Reproducción · Side B",
+    "en": "Now playing · Side B"
+  },
+  "windows.fullscreen.region": {
+    "es": "Pantalla completa de reproducción",
+    "en": "Now playing full screen"
+  },
+  "windows.fullscreen.artwork": {
+    "es": "Portada de %@",
+    "en": "Artwork for %@"
+  },
+  "windows.fullscreen.panel": {
+    "es": "Panel de reproducción",
+    "en": "Playback panel"
+  },
+  "windows.track.moveUp": {
+    "es": "Mover %@ hacia arriba",
+    "en": "Move %@ up"
+  },
+  "windows.track.moveDown": {
+    "es": "Mover %@ hacia abajo",
+    "en": "Move %@ down"
+  },
+  "windows.track.remove": {
+    "es": "Quitar %@ de la playlist",
+    "en": "Remove %@ from playlist"
+  },
+  "windows.track.like": {
+    "es": "Me gusta: %@",
+    "en": "Like: %@"
+  },
+  "windows.playlist.moreOptions": {
+    "es": "Más opciones de la playlist",
+    "en": "More playlist options"
+  },
+  "windows.playlist.deleteTitle": {
+    "es": "¿Eliminar playlist?",
+    "en": "Delete playlist?"
+  },
+  "windows.playlist.deleteBody": {
+    "es": "Se eliminará “%@”. Esta acción no se puede deshacer.",
+    "en": "“%@” will be deleted. This action cannot be undone."
+  },
+  "windows.collection.partialCount": {
+    "es": "%@+ canciones",
+    "en": "%@+ songs"
+  },
+  "windows.error.update": {
+    "es": "No se pudo actualizar: %@",
+    "en": "Couldn’t refresh: %@"
+  },
+  "windows.ui.saving": {
+    "es": "Guardando…",
+    "en": "Saving…"
+  },
+  "windows.ui.reconnecting": {
+    "es": "Reconectando...",
+    "en": "Reconnecting…"
+  },
+  "windows.ui.reconnect": {
+    "es": "Reconectar",
+    "en": "Reconnect"
+  },
+  "windows.ui.retrying": {
+    "es": "Reintentando...",
+    "en": "Retrying…"
+  },
+  "windows.ui.dismissError": {
+    "es": "Cerrar error",
+    "en": "Dismiss error"
+  },
+  "windows.ui.dismissNotice": {
+    "es": "Cerrar aviso",
+    "en": "Dismiss notice"
+  },
+  "windows.ui.closePlayer": {
+    "es": "Cerrar reproductor",
+    "en": "Close player"
+  },
+  "windows.ui.catalog": {
+    "es": "Catálogo",
+    "en": "Catalog"
+  },
+  "windows.ui.couldnTOpenSignIn": {
+    "es": "No se pudo abrir el acceso.",
+    "en": "Couldn’t open sign in."
+  },
+  "windows.ui.couldnTCancelSignIn": {
+    "es": "No se pudo cancelar el acceso.",
+    "en": "Couldn’t cancel sign in."
+  },
+  "windows.ui.couldnTClearTheSession": {
+    "es": "No se pudo limpiar la sesión.",
+    "en": "Couldn’t clear the session."
+  },
+  "windows.ui.couldnTCheckTheBackendStatus": {
+    "es": "Error al comprobar el estado del backend.",
+    "en": "Couldn’t check the backend status."
+  },
+  "windows.ui.couldnTReconnectToTheEngine": {
+    "es": "No se pudo reconectar con el motor.",
+    "en": "Couldn’t reconnect to the engine."
+  },
+  "windows.ui.signInToSaveTheAlbum": {
+    "es": "Inicia sesión para guardar el álbum.",
+    "en": "Sign in to save the album."
+  },
+  "windows.ui.signInToSubscribe": {
+    "es": "Inicia sesión para suscribirte.",
+    "en": "Sign in to subscribe."
+  },
+  "windows.ui.thisSongIsNoLongerAvailable": {
+    "es": "Esta canción ya no está disponible.",
+    "en": "This song is no longer available."
+  },
+  "windows.ui.signInToSaveThisCollection": {
+    "es": "Iniciá sesión para guardar esta colección.",
+    "en": "Sign in to save this collection."
+  },
+  "windows.ui.thisCollectionHasNoLibraryAction": {
+    "es": "Esta colección no ofrece una acción de biblioteca.",
+    "en": "This collection has no library action."
+  },
+  "windows.ui.couldnTCompleteTheAction": {
+    "es": "No se pudo completar la acción.",
+    "en": "Couldn’t complete the action."
+  },
+  "windows.ui.couldnTRemoveTheSong": {
+    "es": "No se pudo quitar la canción.",
+    "en": "Couldn’t remove the song."
+  },
+  "windows.error.moreSongs": {
+    "es": "No se pudieron cargar más canciones.",
+    "en": "Couldn’t load more songs."
+  },
+  "windows.error.collection": {
+    "es": "No se pudo cargar tu colección.",
+    "en": "Couldn’t load your collection."
+  },
+  "windows.error.likesRepeatedPage": {
+    "es": "No se pudo completar Tus Me Gusta: el proveedor repitió una página.",
+    "en": "Couldn’t complete Liked Songs: the provider repeated a page."
+  },
+  "windows.error.likes": {
+    "es": "No se pudieron cargar tus Me Gusta.",
+    "en": "Couldn’t load Liked Songs."
+  },
+  "windows.error.playlist": {
+    "es": "No se pudo cargar la playlist.",
+    "en": "Couldn’t load the playlist."
+  },
+  "windows.error.saveChange": {
+    "es": "No se pudo guardar el cambio.",
+    "en": "Couldn’t save the change."
+  },
+  "windows.error.createPlaylistSignIn": {
+    "es": "Iniciá sesión para crear una playlist.",
+    "en": "Sign in to create a playlist."
+  },
+  "windows.error.editPlaylistSignIn": {
+    "es": "Iniciá sesión para modificar esta playlist.",
+    "en": "Sign in to edit this playlist."
+  },
+  "windows.error.playlistPending": {
+    "es": "Ya hay un cambio en curso para esta playlist.",
+    "en": "A change is already in progress for this playlist."
+  },
+  "windows.error.savePlaylist": {
+    "es": "No se pudo guardar el cambio de la playlist.",
+    "en": "Couldn’t save the playlist change."
+  },
+  "windows.error.playLikesSignIn": {
+    "es": "Iniciá sesión para reproducir Tus Me Gusta.",
+    "en": "Sign in to play Liked Songs."
+  },
+  "windows.error.playlistRepeatedPage": {
+    "es": "No se pudo completar la playlist: el proveedor repitió una página.",
+    "en": "Couldn’t complete the playlist: the provider repeated a page."
+  },
+  "windows.error.completePlaylist": {
+    "es": "No se pudo completar la playlist.",
+    "en": "Couldn’t complete the playlist."
+  },
+  "windows.error.playlistOccurrence": {
+    "es": "No se pudo identificar esta canción dentro de la playlist.",
+    "en": "Couldn’t identify this song within the playlist."
+  },
+  "windows.error.home": {
+    "es": "No se pudo cargar la página de inicio.",
+    "en": "Couldn’t load Home."
+  },
+  "windows.error.moreRecommendations": {
+    "es": "No se pudieron cargar más recomendaciones.",
+    "en": "Couldn’t load more recommendations."
+  },
+  "windows.error.noPlayableSongs": {
+    "es": "No hay canciones disponibles para reproducir.",
+    "en": "There are no songs available to play."
+  },
+  "windows.error.startSong": {
+    "es": "No se pudo iniciar la reproducción de la canción.",
+    "en": "Couldn’t start playing the song."
+  },
+  "windows.error.nextTrack": {
+    "es": "No se pudo avanzar la cola.",
+    "en": "Couldn’t advance the queue."
+  },
+  "windows.error.previousTrack": {
+    "es": "No se pudo retroceder en la cola.",
+    "en": "Couldn’t go back in the queue."
+  },
+  "windows.error.shuffle": {
+    "es": "No se pudo cambiar el modo aleatorio.",
+    "en": "Couldn’t change shuffle mode."
+  },
+  "windows.error.repeat": {
+    "es": "No se pudo cambiar la repetición.",
+    "en": "Couldn’t change repeat mode."
+  },
+  "windows.error.togglePlayback": {
+    "es": "Error al cambiar el estado de reproducción.",
+    "en": "Couldn’t change playback state."
+  },
+  "windows.error.seek": {
+    "es": "Error al cambiar la posición de reproducción.",
+    "en": "Couldn’t change playback position."
+  },
+  "windows.error.volume": {
+    "es": "Error al cambiar el volumen.",
+    "en": "Couldn’t change the volume."
+  },
+  "windows.error.album": {
+    "es": "Error al cargar el detalle del álbum.",
+    "en": "Couldn’t load album details."
+  },
+  "windows.error.artist": {
+    "es": "No se pudo cargar el artista.",
+    "en": "Couldn’t load the artist."
+  },
+  "windows.error.section": {
+    "es": "No se pudo cargar la sección.",
+    "en": "Couldn’t load the section."
+  },
+  "windows.error.catalog": {
+    "es": "Error al consultar el catálogo.",
+    "en": "Couldn’t query the catalog."
+  },
+  "windows.error.updaterAction": {
+    "es": "Error en el actualizador (%@): %@",
+    "en": "Updater error (%@): %@"
+  },
+  "windows.ui.loadMoreSongs": {
+    "es": "Cargar más canciones",
+    "en": "Load more songs"
+  },
+  "windows.menu.actions": {
+    "es": "Acciones",
+    "en": "Actions"
+  },
+  "windows.error.homePreferencesRead": {
+    "es": "No se pudieron leer las preferencias de Inicio. Se usan las predeterminadas.",
+    "en": "Couldn’t read Home preferences. Default preferences will be used."
+  },
+  "windows.error.homePreferencesAccount": {
+    "es": "No se pudieron habilitar las preferencias por cuenta.",
+    "en": "Couldn’t enable preferences for this account."
+  },
+  "windows.error.homePreferencesSave": {
+    "es": "No se pudieron guardar las preferencias de Inicio.",
+    "en": "Couldn’t save Home preferences."
+  },
+  "windows.error.featuredKindSave": {
+    "es": "No se pudo guardar el tipo de destacados.",
+    "en": "Couldn’t save the featured collection type."
+  },
+  "windows.error.window": {
+    "es": "No se pudo cambiar la ventana.",
+    "en": "Couldn’t change the window."
+  },
+  "windows.error.startRadio": {
+    "es": "No se pudo iniciar la radio.",
+    "en": "Couldn’t start radio."
+  },
+  "windows.error.playPlaylist": {
+    "es": "No se pudo reproducir esta playlist.",
+    "en": "Couldn’t play this playlist."
+  },
+  "windows.error.playSource": {
+    "es": "No se pudo reproducir esta fuente.",
+    "en": "Couldn’t play this source."
+  },
+  "windows.menu.linkCopied": {
+    "es": "Enlace copiado",
+    "en": "Link copied"
+  },
+  "windows.error.enqueue": {
+    "es": "No se pudo agregar a la cola.",
+    "en": "Couldn’t add to queue."
+  },
+  "windows.error.retryRadio": {
+    "es": "No se pudo reintentar la radio.",
+    "en": "Couldn’t retry radio."
+  },
+  "windows.error.openLink": {
+    "es": "No se pudo abrir el enlace.",
+    "en": "Couldn’t open the link."
+  },
+  "windows.ui.moveUpAlt": {
+    "es": "Mover hacia arriba (Alt+↑)",
+    "en": "Move up (Alt+↑)"
+  },
+  "windows.ui.moveDownAlt": {
+    "es": "Mover hacia abajo (Alt+↓)",
+    "en": "Move down (Alt+↓)"
+  }
+}

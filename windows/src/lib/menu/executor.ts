@@ -1,13 +1,16 @@
 import type { AlbumDetailDto, ArtistDetailDto, PlaylistDetailDto, SongDto } from '../types';
 import type { MenuAction, MenuOrigin, MenuTarget } from './types';
+import { albumTrackWithCredit } from '../detail/metadata';
 
 export interface MenuExecutorPorts {
   rpc: <T>(command: string, args?: Record<string, unknown>) => Promise<T>;
-  // Captured when the action starts; async bulk loads cannot override later navigation/play/account intent.
-  begin: (playIntent: boolean) => () => boolean;
-  resolvePlaylist: (id: string, valid: () => boolean) => Promise<SongDto[]>;
+  // Source cards survive navigation; later playback/account intent still invalidates every load.
+  begin: (playIntent: boolean, origin?: MenuOrigin) => () => boolean;
+  resolvePlaylist: (id: string, valid: () => boolean, origin?: MenuOrigin) => Promise<SongDto[]>;
   play: (songs: SongDto[], source: { kind: string; id: string; title: string }, shuffle: boolean, artwork: string | null) => Promise<void>;
   radio: (song: SongDto) => Promise<void>;
+  sourceRadio?: (songs:SongDto[],source:{kind:string;id:string;title:string},playlistId:string)=>Promise<void>;
+  playPlaylist?: (playlist:PlaylistDetailDto,valid:()=>boolean)=>Promise<void>;
   enqueue: (songs: SongDto[], position: 'next' | 'end') => Promise<void>;
   removeQueue: (entryId: string) => Promise<void>;
   like: (song: SongDto) => Promise<void>;
@@ -28,7 +31,7 @@ export class MenuExecutor {
   constructor(private ports: MenuExecutorPorts) {}
   async execute(action: MenuAction, target: MenuTarget, origin: MenuOrigin) {
     const p = this.ports;
-    const valid = p.begin(['play', 'shuffle', 'radio'].includes(action.type));
+    const valid = p.begin(['play', 'shuffle', 'radio'].includes(action.type), origin);
     const id = target.kind === 'song' ? target.song.videoId : target.card.id;
     if (action.type === 'share') {
       const canonical = id.replace(/^VL/, '');
@@ -59,6 +62,24 @@ export class MenuExecutor {
       if (action.type === 'remove-playlist' && origin.playlistId) { await p.removePlaylistSong(origin.playlistId, target.song); return; }
       if (action.type === 'remove-queue' && target.entryId) { await p.removeQueue(target.entryId); return; }
     }
+    if(action.type==='radio' && target.kind!=='song' && p.sourceRadio) {
+      let endpoint=id.replace(/^VL/,'');
+      let title=target.card.title;
+      if(target.kind==='album') {
+        const album=target.detail??await p.rpc<AlbumDetailDto>('get_album',{browseId:id});
+        if(!valid())return; endpoint=(album.playlistId??album.browseId).replace(/^VL/,'');title=album.title;
+      } else if(target.kind==='artist') {
+        const artist=target.detail??await p.rpc<ArtistDetailDto>('get_artist',{browseId:id});
+        if(!valid())return;endpoint=artist.radioPlaylistId??`RDAMVM${id}`;title=artist.name;
+      }
+      if(!endpoint.startsWith('RD'))endpoint=`RDAMPL${endpoint}`;
+      const songs=await p.rpc<SongDto[]>('get_artist_radio',{playlistId:endpoint});
+      if(valid()){if(!songs.length)throw new Error('No hay canciones disponibles para esta radio.');await p.sourceRadio(songs,{kind:target.kind,id,title},endpoint);}return;
+    }
+    if(action.type==='play' && target.kind==='playlist' && !id.replace(/^VL/,'').startsWith('RD') && p.playPlaylist) {
+      const playlist=target.detail??await p.rpc<PlaylistDetailDto>('get_playlist',{playlistId:id});
+      if(valid())await p.playPlaylist(playlist,valid);return;
+    }
     let tracks: SongDto[] = [];
     let title = target.kind === 'song' ? target.song.title : target.card.title;
     let artwork = target.kind === 'song' ? target.song.thumbnail : target.card.thumbnail;
@@ -66,14 +87,14 @@ export class MenuExecutor {
     if (target.kind === 'album') {
       const album = target.detail ?? await p.rpc<AlbumDetailDto>('get_album', { browseId: id });
       if (!valid()) return;
-      tracks = album.items.map(song => ({ ...song, artists: song.artists || album.artist || '', thumbnail: song.thumbnail || album.thumbnail,
-        albumId: song.albumId || album.browseId, album: song.album || album.title, artistId: song.artistId || album.artistId }));
+      tracks = album.items.map(song => ({ ...albumTrackWithCredit(song,album), thumbnail: song.thumbnail || album.thumbnail,
+        albumId: song.albumId || album.browseId, album: song.album || album.title }));
       title = album.title; artwork = album.thumbnail;
     }
     if (target.kind === 'playlist') {
       tracks = id.replace(/^VL/, '').startsWith('RD')
         ? await p.rpc<SongDto[]>('get_artist_radio', { playlistId: id.replace(/^VL/, '') })
-        : await p.resolvePlaylist(id, valid);
+        : await p.resolvePlaylist(id, valid, origin);
     }
     if (target.kind === 'artist' && action.type === 'radio') {
       const artist = target.detail ?? await p.rpc<ArtistDetailDto>('get_artist', { browseId: id });

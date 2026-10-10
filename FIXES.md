@@ -4,13 +4,343 @@ Memoria de cambios de Side B para investigar problemas y regresiones. Buscar aqu
 
 Tags de ámbito: `[Apple]`, `[Windows]`, `[Compartido]`. Core y herramientas comunes usan Compartido, detallando el componente. El tag indica dónde se hizo el cambio; no demuestra que ambas plataformas hayan sido verificadas. Estados, fechas, componentes y relaciones se conservan dentro de cada entrada.
 
-Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-132**. Se conservaron los FIX/FEAT históricos. Dos números antiguos repetidos se distinguen como `FIX-027-2` y `FIX-028-2`, anotando el ID original; al citar FIX-027/028 comprobar título y entrada exacta.
+Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-153**. Se conservaron los FIX/FEAT históricos. Dos números antiguos repetidos se distinguen como `FIX-027-2` y `FIX-028-2`, anotando el ID original; al citar FIX-027/028 comprobar título y entrada exacta.
 
 ## Cambios recientes
 
+<a id="fix-152"></a>
+
+### [FIX-152] [Compartido] - Joint feature-parity beta packaging and version alignment
+
+- Date: 2026-10-10 (America/Montevideo).
+- Component / status: GitHub release pipeline and platform version manifests; implemented and locally checked, native CI builds/publication pending.
+- Problem / cause: the release workflow only packaged macOS using an older runner and published stable immediately; Windows still declared 0.1.0 independently of version.env. It could not deliver a coordinated 1.2.0 beta with both clients.
+- Change / reason: align both clients to 1.2.0/public build13; tag v1.2.0-beta.1 with English feature-parity notes. Prepare a draft, run the existing numbered verification/build protocol on xcode-27 and Windows2022, verify exact revision/version/artifact hashes, package Mac arm64 and Windows x64 installer/portable runtime, then publish both together as prerelease without replacing Latest1.1.8. NSIS bundles the verified EXE without rebuilding/patching it. Failed builds preserve diagnostics and leave the release unpublished.
+- Files: .github/workflows/release.yml, Scripts/release-config.mjs and regression tests, version.env, Windows package/Tauri/Cargo manifests and lock, release-notes/1.2.0-beta.1.md, plans/RELEASE-1.2.0-beta.1.md and index.
+- Related fixes: packages the authorized FIX-132–151 integrations; follows the published FIX-131/1.1.8 release. FIX-151 validates the previously delivered Windows PE icon; existing build0012 is not relabeled after the version bump. No protected core source changes.
+- Verification: node --test Scripts/release-config.test.mjs passed6/6, including CRLF checkouts, mismatched versions/tags/revisions, incomplete/corrupted runtime and stale-build rejection. Beta preflight passed. Official actionlint1.7.12 passed with xcode-27 registered as the newly documented runner label; no shellcheck/pyflakes installed. CLI help confirms Tauri bundle supports --ci --no-binary-patching. Source diffcheck passed. Windows build0012 previously passed646 tests; no new local release build is claimed.
+- Limits: Mac native compilation and12 recent Swift regressions await GitHub; installation, real accounts/audio and physical UI acceptance remain separate. Windows volume/annotation color options remain platform-specific, explicitly stated in release notes. A feature-parity title does not close pending physical-validation rows.
+- Parity / plan: [PAR-026](PARIDAD.md), [joint beta plan](plans/RELEASE-1.2.0-beta.1.md); both package jobs are required for publication.
+
+<a id="fix-151"></a>
+
+### [FIX-151] [Windows] - Invalidar recurso PE al cambiar los iconos
+
+- Fecha: 2026-10-10 (America/Montevideo).
+- Componente / estado: build Tauri/Cargo y recurso de icono Windows; fix implementado y verificado en build-0012 release; presentación del Shell físico pendiente.
+- Problema y causa comprobada: FIX-146 redondeó correctamente PNG/ICO, pero EXE build-0010 aún contiene seis recursos RT_ICON cuadrados16/24/32/48/64/256; todas las esquinasalpha255 y payloads distintos del ICO vigente. build.rs delegaba a tauri_build y observaba config/capabilities/DLLs, sin dependencia de icons; Cargo retenía el .res. Registro release build-script y tauri-build2.7.0 contrastados, sin atribuirlo a caché del Explorer.
+- Cambio y motivo: build.rs declara cargo:rerun-if-changed=icons antes de tauri_build::build. Cambios/inclusiones en assets fuerzan regeneración del recurso PE; no altera máscara/diseño, limpieza de cachés ni builds anteriores. Cambiar el build-script invalida también el .res retenido ahora.
+- Archivos: `windows/src-tauri/build.rs`; diagnóstico local ignorado `.cache/logo-rounding-baseline/audit-embedded.py`, recursos decodificados y JSON.
+- Antecedentes: corrige entrega empaquetada pendiente de FIX-146; sus comprobaciones23 representaciones eran de assets, no de recursos del EXE. Sin cambios de fuente en Apple/core.
+- Verificación: extracción Win32 de RT_GROUP_ICON/RT_ICON en build-0010 y comparación byte a byte con ICO actual: seis versiones antiguas cuadradas confirmadas; redondeado fuente revisado visualmente. Build-0012 por runner numerado exit0/BUILD.json compiled:280frontend+366nativas=646 aprobadas, cero fallos/14live ignoradas, check0/0 y frontend compilado; release7m00. SourceChangedDuringBuild=false y cuatro SHA256 verificados. Extracción del EXE nuevo: seis RT_ICON coinciden byte a byte con ICO vigente, esquinasalpha0/centro255 en16/24/32/48/64/256. Las seis versiones de build-0010 coinciden byte a byte con ICO anterior a FIX-146; causa de caché confirmada, no inferida del Explorer. Diff del build-script y diffcheck revisados.
+- Límites: build-0011 interrumpida por el integrador antes de empaquetar al descubrir el problema; carpeta/log/BUILD.json failed conservados con causa explícita, lock quitado tras confirmar procesos detenidos. No se entrega como compilada. La presentación de Explorer/taskbar puede depender de caché del SO; comprobar recurso evita confundirla con contenido del EXE. Sin app/cuenta/audio real/commit/push.
+- Paridad / plan: [PAR-025](PARIDAD.md), [PLAN-008 Windows](windows/plans/PLAN-008-fullscreen-color-logo-type.md). Exclusivo del empaquetado PE/Cargo Windows; Mac aplica su máscara de icono y no consume .res, no requiere este arreglo.
+
+
+- Build: `builds/windows/build-0012/sideb-windows.exe`, libmpv/Vulkan/licencia conservados juntos; app no abierta. Captura del recurso real `.cache/logo-rounding-baseline/embedded-build-0012.png` y auditoría JSON ignoradas. Incluye FIX-147/149/150 y corrección de empaquetado151.
+
+<a id="fix-150"></a>
+
+### [FIX-150] [Compartido] - Saludo grande sin subtítulo y actualizado por hora local
+
+- Fecha: 2026-10-10 (America/Montevideo).
+- Componente / estado: cabecera de Inicio, integración SwiftUI y Svelte; mejora solicitada implementada, Windows comprobado en frontend/fixture, ejecución Mac pendiente. Core sin cambios.
+- Problema y causa: el subtítulo «Tu próximo lado B empieza acá» ocupaba una segunda línea sin aportar información. Ambas apps ya elegían saludo con hora local, pero Apple calculaba Date sólo al reevaluar la vista; Windows retenía la hora hasta el siguiente tick al salir de fullscreen. La franja previa trataba la madrugada como mañana.
+- Cambio y motivo: se retira todo subtítulo de cabecera y se pasa saludo 27→40 pt/px; Windows30px en contenido<600 y ellipsis/title para nombres largos, Apple reducción hasta70%. Avatar44 y acciones conservados. Contenido de cabecera52 de alto, manteniendo fila nativa88/alturas112–158 y espacio anterior Windows. Franjas iguales: mañana06–11:59, tarde12–19:59, noche20–05:59. Usa zona local del SO, sin red/permisos. Apple Calendar.autoupdatingCurrent con tarea cada60s cancelada al quedar inactivo/cubierto, sólo muta al cambiar hora. Windows reloj sólo cuando interactivo/visible, cleanup completo y reconciliación inmediata por foco/visibilidad/revelación. Traducción/cuenta conservadas; avisos de fuentes siguen en contenido/configuración.
+- Archivos: `apple/Sources/SideB/Views/Home/HomeView.swift`, nuevo `Models/HomeGreeting.swift`, `apple/Tests/SideBTests/HomeGreetingTests.swift`; `windows/src/lib/components/home/HomeView.svelte`, nuevo `windows/src/lib/home/greeting.ts`, `windows/scripts/home-greeting.test.mjs`.
+- Antecedentes: presentación nueva sobre FIX-098/FIX-113-2; preserva suspensión y geometría FIX-122/123. No se atribuye una regresión histórica sin evidencia.
+- Verificación: pnpm check0 errores/0 advertencias; pnpm test280/280 (dos regresiones nuevas: límites06/12/20/medianoche y mismo instante con Montevideo/Madrid/Tokio, cambio de zona); pnpm build frontend exit0. Fixture real HomeView en navegador1000/500: saludo40/30, contenido52, sin subtítulo/solapamiento/overflow; nombre largo/acceso title, cuenta vacía, configuración e idioma ES/EN. Hora simulada06/15/20/00, saludo retenido bajo fullscreen y actualizado al revelar. Captura `.cache/home-greeting-review/after-1000.png` y logs locales ignorados. Diffcheck limpio; actualización de header/featured AppKit contrastada con updateNativeScrollView/updateHeader/updateFeatured(force:true).
+- Límites: dos pruebas Swift de franjas/zona preparadas sin ejecutar: no existe Swift/macOS en este host. Aceptación física Mac/WebView2 pendiente; fixture no certifica rendering nativo ni comportamiento de suspensión del SO. No nueva build standalone, audio/cuenta real/commit/push.
+- Paridad / plan: [PAR-003](PARIDAD.md), [PLAN-003 común](plans/PLAN-003-home-greeting.md). Implementación en ambos destinos, sin cerrar paridad nativa sólo por pruebas frontend.
+
+
+- Build posterior solicitada2026-10-10: `builds/windows/build-0012/sideb-windows.exe` release compiled; incluye este cambio Windows,646 pruebas aprobadas/cero fallos/14live omitidas/check0/0, fuentes estables y cuatro hashes correctos. Icono PE redondeado comprobado en FIX-151. Sin abrir app/audio/cuenta reales; no acredita ejecución Apple.
+
+<a id="fix-148"></a>
+
+### [FIX-148] [Apple] - Álbum canónico al reproducir Acceso rápido
+
+- Fecha: 2026-10-10 (America/Montevideo).
+- Componente / estado: conversiones Home/Browse y metadata de reproducción; implementado y revisado estáticamente, pruebas Swift/aceptación nativa pendientes.
+- Problema y causa: SongItemRecord(fromHomeItem/fromCard) tomaba item.album o segunda parte del subtítulo como álbum; el dato «337M plays» no vacío impedía enriquecimiento de radio. displayAlbum podía recuperarlo del campo artists. albumId válido sólo garantiza destino, no etiqueta.
+- Cambio y motivo: HomeSongMetadata interpreta descriptores/contadores/duración, conserva destino y créditos; colaboradores separados de delimitador histórico artista/álbum, runs de estadísticas fragmentados limpiados sin perder artistas enlazados. Fallback legítimo artista•álbum conservado. getAlbum independiente del stream y radio verifica browseId/video miembro y obtiene título canónico, incluso100Plays. Radio conserva destino pero no injerta contadores; sólo copia metadata coherente de mismo video/destino. Guards de token reproducción/cuenta/cola/ocurrencia/video/destino y coalescing token+álbum con identidad propia; respuesta antigua no borra solicitud nueva. Actualiza únicamente ocurrencia seleccionada y Now Playing, preservando flags/runs/library/setVideoId/duración, orden y audio.
+- Archivos: `apple/Sources/SideB/Models/HomeSongMetadata.swift`, `ViewModels/PlayerViewModel.swift`, `Services/Player/QueueManager.swift`, `Views/Home/HomeFeedCollectionView.swift`, nuevo `apple/Tests/SideBTests/HomeSongMetadataTests.swift`.
+- Fixes relacionados: implementa destino Apple pendiente de FIX-138/PAR-022; mismo contrato de FIX-149 Windows, sin modificar parser compartido.
+- Verificación: diff/check estático sin errores; firmas mock y constructores contrastados con bindings vigentes. Agente verificó13 fixtures del patrón extraído en Python (no ejecuta Swift). Diez regresiones Swift preparadas: contadores conID, colaboradores/runs fragmentados, títulos legítimos, destinos/pertenencia, duplicados, fallo, cambio de cuenta/cola/token, ambos órdenes radio/álbum y estabilidad AVPlayerItem. Esperas de tareas reales/condiciones acotadas, sin yields fijos. Integrador señaló y agente corrigió fallback de colaboradores, radio estadística que podía bloquear álbum y limpieza de solicitudes canceladas.
+- Límites: Swift/macOS no disponibles en este host; no se afirma compilación/ejecución Swift, AppKit ni audio. getAlbum vacío/fallo/sin pertenencia conserva destino y deja nombre ausente; cuenta real fuera de alcance. Sin build/commit/push.
+- Paridad / plan: [PAR-022](PARIDAD.md), [PLAN-002 común](plans/PLAN-002-quick-access-album-metadata.md); FIX-149 implementa regla equivalente Windows; core intacto.
+
+<a id="fix-149"></a>
+
+### [FIX-149] [Windows] - Nombre de álbum verificado para Acceso rápido con destino conocido
+
+- Fecha: 2026-10-10 (America/Montevideo).
+- Componente / estado: Home y enriquecimiento Tauri; implementado y pruebas pertinentes aprobadas; aceptación con cuenta real pendiente.
+- Problema y causa: FIX-138 eliminaba estadísticas sólo sin albumId. El caso con enlace válido conservaba views en album y bloqueaba merge; radio no garantiza metadata del seed. La corrección necesita nombre canónico sin confundir ID con etiqueta.
+- Cambio y motivo: normalizador Home elimina contador/duración incluso conID y conserva destino; español «millones de vistas» reconocido. Lookup getAlbum tras toda carga exitosa y cada finalización de radio (incluido error), sin bloqueo de audio ni consultas en eventos de progreso. Verifica browseId exacto y canción miembro; aplica título sólo a current+entryId seleccionado, sin alterar orden/generación/posición/pausa ni recargar stream. Guardas auth/observed_auth_generation/generation/epoch/revision/occurrence/video/albumId/etiqueta; revalidación de revisión tras append/reordenado sólo si identidad y etiqueta siguen iguales, sin consulta adicional. Cola genérica conserva nombres canónicos100Plays; no cambia su heurística global.
+- Archivos: `windows/src/lib/home/songMetadata.ts`, `windows/src-tauri/src/commands/playback.rs`, `windows/scripts/home-song-metadata.test.mjs`.
+- Fixes relacionados: corrige excepción de FIX-138; mismo contrato de FIX-148 Apple, conserva autoridad/ocurrencias de FIX-134.
+- Verificación: frontend completo `pnpm test`278/278; focal Home/personalización/controller70/70 incluida en total; pnpm check0/0 y pnpm build frontend exit0. Último head `cargo test --locked --manifest-path src-tauri/Cargo.toml --lib commands::playback::dismissal_tests -- --nocapture`:15/15, cero fallos/ignoradas y73 filtradas. Ocho regresiones nativas nuevas: título legítimo, membership/destino, fallo radio, radio antes de carga, identidad/tardías/cuenta, rebase y legacy. MSVC2022/libmpv/cacheD existentes; warnings históricos LNK4098/deadcode. Diff contra baseline local revisado, formato limitado a bloques añadidos y diffcheck limpio. Integrador detectó hook condicionado por radio que omitía lookup si radio llegaba antes de cargar stream: eliminado y comprobado en último head.
+- Límites: no harness AppHandle/cuenta/audio reales; el orden radio/carga se prueba en estado y se contrasta con hook incondicional de código. Proveedor falla/retorna vacío/no confirma pertenencia: deja nombre ausente en vez de inventarlo. Hasta dos consultas finitas load/radio, ninguna por progreso. No nueva build numerada/EXE ni commit/push.
+- Paridad / plan: [PAR-022](PARIDAD.md), [PLAN-002 común](plans/PLAN-002-quick-access-album-metadata.md); FIX-148 Apple requiere Swift/Mac para ejecutar sus regresiones; core intacto.
+
+
+- Build posterior solicitada2026-10-10: `builds/windows/build-0012/sideb-windows.exe` release compiled; incluye este cambio Windows,646 pruebas aprobadas/cero fallos/14live omitidas/check0/0, fuentes estables y cuatro hashes correctos. Icono PE redondeado comprobado en FIX-151. Sin abrir app/audio/cuenta reales; no acredita ejecución Apple.
+
+<a id="fix-147"></a>
+
+### [FIX-147] [Windows] - Información Genius ocupa todo el reverso de la carátula
+
+- Fecha: 2026-10-10 (America/Montevideo).
+- Componente / estado: TrackInformation; implementado y verificado en fixture; aceptación WebView2 pendiente.
+- Problema y causa: reverso768px conserva max-width640 del modo de información independiente, dejando128px vacíos a derecha y scroll596px. El límite no corresponde al reverso cuadrado Apple.
+- Cambio y motivo: sólo `.track-information.card` elimina max-width; contenedor y scroll admiten min-width0 para texto/URLs largos. Modo independiente640, tamaños/padding/acciones/flip preservados.
+- Archivos: `windows/src/lib/components/fullscreen/TrackInformation.svelte` (tres reglas CSS).
+- Fixes relacionados: completa reverso incorporado en FIX-137; FIX-146 trata fondo/créditos, sin atribuirle origen de este límite.
+- Verificación: pnpm check0/0; Genius focal24/24; diff contra baseline local limitado a tres reglas. Fixture300×300/500×500/768×768/768×400/300×500/280×280: sin overflow externo vertical/horizontal, scroll al final y footer accesible, cierre/Letras por Enter y enlace externo correcto; loading/empty, modo no-card640 y tipo reducido conservados. Después768: article768/scroller724/client709/gutter15, banda derecha0. Capturas/medidas ignoradas `windows/.cache/info-review/`; tab/server cerrados.
+- Límites: fixture sintética, no WebView2 real ni Mac ejecutado; sin build nueva/commit/push.
+- Paridad: PAR-015/PAR-016-2; Apple `informationView(size:)` ya usa dimensión de arte, consultada sin modificaciones por este ajuste.
+
+
+- Build posterior solicitada2026-10-10: `builds/windows/build-0012/sideb-windows.exe` release compiled; incluye este cambio Windows,646 pruebas aprobadas/cero fallos/14live omitidas/check0/0, fuentes estables y cuatro hashes correctos. Icono PE redondeado comprobado en FIX-151. Sin abrir app/audio/cuenta reales; no acredita ejecución Apple.
+
+<a id="fix-146"></a>
+
+### [FIX-146] [Windows] - Fondo fullscreen, créditos y logo alineados con macOS
+
+- Fecha: 2026-10-10 (America/Montevideo).
+- Componente / estado: presentación fullscreen, ArtistCredits y assets de icono; implementado/check y fixture aprobados; build-0010 release compilada; aceptación física pendiente.
+- Problema y causa: Windows combinaba brightness(.55) con gradiente negro70–83% y tinte frío; arte retenido9.35–16.5% frente a28% Apple. El tamaño de título/subtítulo ya interpolaba correctamente21→28/14.5→17.5 según carátula300→500, pero artista500 frente a600 Apple y álbum/separador heredaban sus métricas y tono; interlineado global1.5 y bloque centrado diferían del nativo. Iconos Windows cuadrados: macOS aplica máscara en el sistema, assets Apple fuente también cuadrados.
+- Cambio y motivo: backdrop independiente300px, aspectFill, escala1.4, blur75, negro72%; canvas de ventana completa permanece estable al contraer sidebar, recorte contenido Windows conservado. Carga/fallo muestra fondo oscuro sin foto vieja, guardas por intento y original de respaldo, URLs firmadas intactas. Crédito artista600/blanco78%, álbum subtítulo−.5/500/blanco60%, punto13/400/blanco40%; line-height normal y bloque alineado arriba, medidas reservadas68/16 intactas. Tokens optativos preservan otros consumidores. Logo con máscara alpha continua superellipse n=5/antialias8x; RGB/diseño/resoluciones preservados, sin añadir margen.
+- Archivos: `FullscreenNowPlaying.svelte`, nuevos `FullscreenBackdrop.svelte`/`backdrop.ts`, `ArtistCredits.svelte`, `scripts/fullscreen-backdrop.test.mjs`; nueve assets `windows/static/{logo,favicon}.png` y `windows/src-tauri/icons/{icon.png,32x32.png,64x64.png,128x128.png,128x128@2x.png,icon.ico,icon.icns}`.
+- Antecedentes: completa paridad de presentación de FIX-132/FIX-137 y consulta FIX-091 Apple; mantiene acciones/cola de FIX-144/FIX-145. No atribuye defecto del logo a un fix previo.
+- Verificación: pnpm check0 errores/0 advertencias; cuatro tests fondo y seis cola10/10, más ocho artwork del agente. Fixture1280×720: carátula409.125/título24.8194/artista16.1369/álbum15.6369; artista600/álbum500/separador400, colores esperados. Canvas1280 con sidebar230 y60; al contraer arte455.984375/título26.4595 coincide fórmula. Ventana850×700 arte307/título21.245/artista14.605/álbum14.105, sin overflow. Bloque68, alineación superior/interlineado normal comprobados. 23 representaciones iconos mantienen RGB y tamaño; ICO16/24/32/48/64/256, ICNS10 representaciones; esquinasalpha0/centro255/bordesAA simétricos. Diff revisado, Apple/core intactos. Evidencia local ignorada `.cache/fix146-review/fullscreen.png` y `.cache/logo-rounding-baseline/before-after.png`; tabs/server cerrados.
+- Límites: fixture sintética sin cuenta/audio/WebView2 ni Mac físico. Parámetros y escala coinciden, Gaussian CSS/SwiftUI y Segoe/SF conservan diferencias de render; máscara macOS no versionada impide certificar contorno exacto. Icono en Shell/caché pendiente. SF Pro no incluida: licencia Apple no autoriza distribución Windows; familia sistema Segoe UI conservada. Otros tamaños auditados: sincronizadas25.2/Genius20/16 coinciden; barra compacta13 vs13.5 y pestañas estrechas12 vs13 son adaptaciones existentes, sin alterar ese ámbito en este fix.
+- Paridad: PAR-025; Apple/core sólo lectura. No cerrar igualdad perceptual sin prueba del destino.
+- Plan / build: [PLAN-008](windows/plans/PLAN-008-fullscreen-color-logo-type.md); `builds/windows/build-0010/sideb-windows.exe`. Protocolo exit0: 277 frontend+358 nativas=635 aprobadas, cero fallos/14live ignoradas, check0/0; release6m19. BUILD.json compiled/sourceChangedDuringBuild=false y cuatro hashes SHA256 correctos. EXE/DLL/licencia conservados juntos; no abrir app/cuenta/audio reales ni commit/push.
+
+
+- Feedback de build2026-10-10: [FIX-151](#fix-151) confirma que build-0010 conservó el recurso PE cuadrado por caché de Cargo; la auditoría23 representaciones de esta entrada sólo validó assets fuente. Corrección de dependencia y recurso redondeado verificados en build-0012 por FIX-151, sin borrar la evidencia original.
+
+<a id="fix-145"></a>
+
+
+### [FIX-145] [Windows] - Cola sin puntos redundantes y controles espaciados sobre ejes comunes
+
+- Fecha: 2026-10-10 (America/Montevideo).
+- Componente / estado: QueuePanel; implementado, check y fixture aprobados; build-0009 release compilada, aceptación WebView2 pendiente.
+- Problema y causa: reporte en build-0008 confirma una decisión de integración incorrecta de FIX-142: puntos redundantes junto a clic derecho. Votos de 24 px y asa de 44 con margen 5 generaban distancias distintas entre centros; duración alineada a derecha no coincidía con asa centrada. La revisión anterior confirmó ausencia de solapamiento, pero no había exigido ejes ópticos comunes; esta corrección los verifica explícitamente.
+- Cambio y motivo: eliminar botón/import/estilos de puntos, mantener menú por clic derecho y agregar Shift+F10/ContextMenu desde el botón de fila para conservar acceso de teclado. Dislike → Like → duración/asa ocupan posiciones constantes; cajas 28×30 con separación 8 (centros cada36). Duración y asa comparten centro X/Y; tiempo de ancho intrínseco y una línea. SVG del asa 16×14 usa coordenadas de ese tamaño, sin el margen interior anterior de viewBox24; corazón centra su dibujo. Sin modificar algoritmos de reordenado, callbacks de votos, runtime, audio ni identidad de ocurrencias.
+- Archivos: `windows/src/lib/components/fullscreen/QueuePanel.svelte`, `windows/scripts/queue-presentation.test.mjs`; actualiza expectativas de render existentes para retirar puntos.
+- Antecedentes: corrige la presentación y decisión de conservar menú explícito de FIX-142; Apple NativeQueueTrackCellView ya omite puntos y comparte eje vertical de controles. Espaciado uniforme solicitado prevalece sobre las separaciones distintas del layout Apple. FIX-113 Apple sigue referencia de excepción de cola, sin nuevas modificaciones de origen.
+- Verificación: seis pruebas de render aprobadas; pnpm check0 errores/0 advertencias. Fixture real Svelte, 1000 ocurrencias: ventanas1280×720/850×700, panel492,484375/306,875; centros X Dislike1129,21875/Like1165,21875/mover1201,21875, mismo Y155; duración X1201,21875/Y155. Separaciones36/36 también en estrecho, sin overflow horizontal. Clic derecho, Shift+F10, Like y movimiento con flecha invocan callbacks con mismo entryId. Diff contra baseline local revisado; server y tabs temporales cerrados. Captura ignorada `windows/.cache/fix145-baseline/review.png`.
+- Límites: fixture ficticia, sin comprobación WebView2/entrada física/AppKit nueva; screenshot del usuario es evidencia del defecto nativo anterior. No se certifica apariencia nativa final por una medición de navegador.
+- Paridad: PAR-009 / PAR-016-2 / PAR-017-2; Apple/core intactos. Apple ya carece de puntos y alinea controles/duración; separación36 es adaptación Windows solicitada, no port pendiente a Apple.
+- Plan / build: [PLAN-006](windows/plans/PLAN-006-queue-presentation.md); `builds/windows/build-0009/sideb-windows.exe`, protocolo exit0 el2026-10-10 15:09: 273frontend+358nativas=631 aprobadas, cero fallos/14live ignoradas, check0/0. BUILD.json compiled/sourceChangedDuringBuild=false y cuatro SHA256 correctos. EXE/DLL/licencia juntos, anteriores conservadas; sin abrir EXE/cuenta/audio reales, commit o push.
+
+
+Cierre FIX-142/143/144, PLAN-006/007, 2026-10-10 14:42 (America/Montevideo): [build-0008](builds/windows/build-0008/BUILD.json) release: protocolo exit 0, 273 frontend + 358 nativas = 631 aprobadas, cero fallos, 14 live ignoradas; check 0/0. BUILD.json compiled, sourceChangedDuringBuild=false y cuatro SHA256 comprobados. EXE/DLL/licencia conservados juntos; sin abrir EXE ni validar cuenta/audio reales. Fuentes Apple/core intactas; sólo documentación de cierre actualizada después de compilar.
+
+<a id="fix-142"></a>
+
+### [FIX-142] [Windows] - Orden de controles y presentación compacta de cola
+
+- Fecha: 2026-10-10 (America/Montevideo).
+- Componente / estado: QueuePanel y variantes de portada/actividad; implementado, verificado con render y fixture. Aceptación WebView2 pendiente.
+- Problema y causa: el grupo derecho mostraba duración/grip antes de votos y menú, distinto del grupo Dislike → Like → duración de Apple. Portada compartida agregaba overlay y actividad compartida mostraba barras, frente a la variante específica de cola Apple. Contraste de código documentado en PLAN-006; no se atribuye regresión a FIX-121-2 sin evidencia.
+- Cambio y motivo: DOM y foco menú → Dislike → Like → duración/grip; conserva acceso explícito al menú Windows. Fila 46/paso 48, portada 36, anclas de índice/portada/texto y fondo inset; votos compactos blancos, símbolos 12 y grip 16×14 con hitboxes existentes. Portada interactiva sin overlay y altavoz opt-in sólo en cola, defaults intactos en otras listas. Cabecera contextual/vacío compactos conservan errores, cargas parciales y Reintentar.
+- Archivos: `windows/src/lib/components/fullscreen/QueuePanel.svelte`, `windows/src/lib/components/common/{TrackArtwork,TrackActivity}.svelte`, `windows/scripts/queue-presentation.test.mjs`.
+- Antecedentes: FIX-113 Apple y FIX-057 como origen de presentación; completa FIX-121-2 Windows sin cambiar algoritmos de cola, audio, revisiones o resolución por entryId.
+- Verificación: seis pruebas de render real Svelte aprobadas, incluyendo duplicados/guest/estados disabled/errores/vacío/defaults. Check 0/0. Diff contra baseline confirma script de cola idéntico salvo título contextual. Fixture con 1000 ocurrencias en 1280×720, 850×700 y 1440×900, sidebar 230/60; filas montadas acotadas (18–19). Medidos paneles 306,875/369,5625/492,484375/600 y fila 46. Menú/votos/asa no se solapan; portada x+50/texto x+98. Selección, movimiento con flecha, menú, Like, Dislike, foco y retry disparan sus callbacks exactos, sin audio.
+- Límites: datos ficticios, navegador con dimensiones CSS registradas; sin cuenta real/WebView2/Narrator/DPI físico ni captura nueva de macOS. La matriz física completa de PLAN-006 sigue pendiente; no se certifican sus medidas por referencia al código.
+- Paridad: PAR-009 / PAR-016-2 / PAR-017-2, actualizados con evidencia del destino; Apple/core intactos.
+- Plan: [PLAN-006](windows/plans/PLAN-006-queue-presentation.md). Build: [build-0008](builds/windows/build-0008/BUILD.json) release: protocolo exit 0, 273 frontend + 358 nativas = 631 aprobadas, cero fallos, 14 live ignoradas; check 0/0. BUILD.json compiled, sourceChangedDuringBuild=false y cuatro SHA256 comprobados. EXE/DLL/licencia conservados juntos; sin abrir EXE ni validar cuenta/audio reales.
+
+<a id="fix-143"></a>
+
+### [FIX-143] [Windows] - Volumen exponencial opcional en configuración de Inicio
+
+- Fecha: 2026-10-10 (America/Montevideo).
+- Tipo / componente / estado: mejora solicitada; preferencias/audio Windows; implementada y comprobada automáticamente, escucha física pendiente.
+- Problema y causa: se necesita más rango de volumen bajo en equipos de salida fuerte. Player ya aplica una curva perceptual de 60 dB a enteros; remapear el porcentaje antes del redondeo produciría un tramo muerto. Se conserva esa curva del core y se añade atenuación en integración Windows.
+- Cambio y motivo: checkbox Audio al principio de configuración de Inicio, ES/EN y OFF por defecto. Ganancia adicional −30×(1−v/100) dB con v positivo (amplitud exponencial); conserva porcentaje, silencio, máximo y normalización previa del stream. Estado nativo por cuenta/invitado, default false para registros antiguos y dirty flag incluye modo. Cambio, mute y carga leen preferencias actuales bajo playback lock; guardan ganancia RAM sólo tras carga válida. Rollback de ganancia/volumen ante fallo, también al fallar loadfile.
+- Revisión: corregidos respuesta descartada por progreso durante RPC (merge sólo del bit, cede ante full-state/generation nuevo), ganancia aplicada antes de carga fallida y checkbox DOM que mostraba valor rechazado (restaura valor confirmado antes del callback). Sin estado optimista de audio.
+- Archivos: `windows/src-tauri/src/{volume,playback_runtime,dto,lib}.rs`, `commands/playback.rs`, `windows/src/lib/{types.ts,player/controller.ts,i18n/windows.json}`, componentes `home/{HomeSettings,HomeView}.svelte`, `windows/src/routes/+page.svelte`, `windows/scripts/playback-controller.test.mjs`.
+- Antecedentes: FIX-134 para persistencia Windows, FIX-063 Apple para restauración y FIX-121-2/FIX-059 para controles. No redefine la semántica preexistente de loudness_db ni modifica core.
+- Verificación: 80 tests Tauri/lib aprobados, incluidos dos de curva y persistencia/migración/aislamiento ampliadas. 37 pruebas focales frontend (controller/cola/i18n) aprobadas; check 0/0. Fixture HomeSettings real comprueba ubicación, disabled durante solicitud, aceptación y rechazo con valor confirmado. Revisión cruzada sin otros errores materiales.
+- Límites: no se escuchó salida real ni se verificó percepción en PCs de volumen fuerte. Rollback es de mejor esfuerzo si el motor también rechaza restauración. Sin cuenta/audio reales.
+- Paridad: [PAR-024](PARIDAD.md), opción adicional ausente en Apple, evaluación del destino pendiente. Apple/core intactos.
+- Plan: [PLAN-007](windows/plans/PLAN-007-exponential-volume.md). Build: [build-0008](builds/windows/build-0008/BUILD.json) release: protocolo exit 0, 273 frontend + 358 nativas = 631 aprobadas, cero fallos, 14 live ignoradas; check 0/0. BUILD.json compiled, sourceChangedDuringBuild=false y cuatro SHA256 comprobados. EXE/DLL/licencia conservados juntos; sin abrir EXE ni validar cuenta/audio reales.
+
+<a id="fix-144"></a>
+
+### [FIX-144] [Windows] - Corazón e información alineados en fullscreen
+
+- Fecha: 2026-10-10 (America/Montevideo).
+- Componente / estado: FullscreenNowPlaying; implementado y medido en navegador, aceptación WebView2 pendiente.
+- Problema y causa: corazón e información parecían pequeños y desnivelados. Hitbox 30 y viewBox con márgenes ópticos diferentes desplazaban el corazón aproximadamente 1,49 px respecto del círculo. Contraste con FullscreenSceneLayout.action Apple (hitbox 36, símbolo 20–22 según ancho de portada).
+- Cambio y motivo: ambos hitboxes 36×36, padding 0 y símbolos 20–22 derivados del ancho de arte 300–500; viewBox recorta márgenes ópticos y centra ambos glifos. Conserva callbacks, animación de reverso, foco y teclado/menú existentes.
+- Archivos: `windows/src/lib/components/fullscreen/FullscreenNowPlaying.svelte`.
+- Antecedentes: completa presentación de información/acciones FIX-137; referencia Apple vigente, sin adjudicar regresión histórica.
+- Verificación: check 0/0 y 24 pruebas focales Genius/gestos aprobadas. Fixture 1280×720: hitbox 36×36; SVG 21,546875, diferencia vertical del contenido 0,0022 px (antes 1,488 px), anchuras ópticas 18,965/19,084. Like y apertura/cierre de reverso comprobados con callbacks aislados; revisión de diff confirma contratos conservados.
+- Límites: sin render AppKit nuevo, entrada física, Narrator ni WebView2; símbolos SVG equivalentes, no SF Symbols nativos.
+- Paridad: PAR-016-2; destino implementado con aceptación física pendiente. Apple/core intactos.
+- Plan: cierre integrado con PLAN-006/PLAN-007; build-0008 release y comprobaciones integradas según cierre anterior.
+
+Cierre FIX-140/141, [PLAN-005](windows/plans/PLAN-005-genius-text.md), 2026-10-10 12:44: protocolo Windows exit 0; check 0/0, frontend 264 + nativas 356 = **620 pruebas aprobadas**, cero fallos y 14 live ignoradas. Release `builds/windows/build-0007/sideb-windows.exe`, BUILD.json compiled/fuentes estables y cuatro SHA256 comprobados; anteriores conservadas. Aceptación visual WebView2/Genius real pendiente, sin abrir EXE ni cuenta/audio reales. Apple/core intactos. [PLAN-006](windows/plans/PLAN-006-queue-presentation.md) entregó inicialmente sólo análisis de presentación/orden de controles de cola; implementación autorizada después y registrada en FIX-142.
+
+<a id="fix-140"></a>
+
+### [FIX-140] [Windows] - Letras Genius con flujo continuo y color de anotación por carátula
+
+- Fecha: 2026-10-10 (America/Montevideo).
+- Componente / estado: GeniusPanel, anclaje de anotaciones y color; implementado, cierre integrado en PLAN-005.
+- Problema y causa: líneas largas se centraban dentro de bloques rectangulares de resaltado. El fragmento se renderizaba como button: su caja atómica no fragmenta junto al resto del párrafo aunque use display:inline y su texto conserva alineación centrada del control. FIX-137 ajustó fuente/popup pero no había corregido esa geometría; el reporte visual confirmó el defecto restante.
+- Solución y motivo: spans inline con rol button/foco y Enter/Space explícitos, sin repeats, scroll ni playback. Texto alineado a izquierda y resaltado clonado por renglón, preservando rangos/IDs repetidos, espacios marginales como nodos sin pintar y contenido interpolado seguro. Popup anclado a fragmento capturado antes del await; teclado usa primer fragmento visible y movimiento cancela apertura pendiente. Referencia Apple vigente: GeniusPanelView.swift draw/highlightRects/setLyrics, fuentes20/16 y opacidades .16/.28/.48.
+- Experimento autorizado: opciones Genius ofrecen Carátula (predeterminado), Contraste y Neutro. Muestreo32×32 del arte ya seleccionado, matiz complementario para contraste y luminancia limitada para leer texto blanco; neutro usa blanco. Fallback gris sin arte/CORS y descarte de muestras obsoletas. El modo se aplica al panel abierto; no se añade preferencia persistente. No se cambia color de la tarjeta emergente ni audio/cola.
+- Archivos: `windows/src/lib/components/fullscreen/{GeniusPanel,GeniusAnnotation,FullscreenNowPlaying}.svelte`, `windows/src/lib/genius/highlight.ts`, `windows/src/lib/i18n/windows.json`, `windows/scripts/genius-{highlight,popover}.test.mjs`.
+- Fixes relacionados: completa FIX-137 y toma FIX-073 Apple como antecedente; conserva cancelación/retry y texto seguro de FIX-135/137.
+- Verificación: 14 pruebas focales de color, contraste de texto, whitespace, anclaje/teclado/cancelación aprobadas; fixture de navegador compara panel560 y ventana420, tres/cuatro fragmentos alineados x20, anotaciones parciales, colores reales muestreados, Space/Escape/cierre exterior. Resultados integrados/build en [PLAN-005](windows/plans/PLAN-005-genius-text.md).
+- Límites: fixture sintética, sin Genius real/Narrator/entrada física ni WebView2 nativo. El rectángulo inline puede incluir espacios interiores de línea; no se reemplazó la tipografía del sistema por glyphs AppKit. La propuesta de color espera preferencia visual del usuario.
+- Revisión cruzada: corregido contraste insuficiente de selección neutra blanca .48; normal/hover conservan blanco y activo toma acento legible de portada/fallback. Regresión cubre todos los modos con texto #f4f4f5 y carátula ausente.
+- Paridad: PAR-015/016-2 para flujo equivalente; [PAR-023](PARIDAD.md) para evaluar color experimental en Apple. Apple/core sólo consultados, sin editar.
+
+<a id="fix-141"></a>
+
+### [FIX-141] [Windows] - Retirar menú Side B superior por pedido
+
+- Fecha: 2026-10-10 (America/Montevideo).
+- Componente / estado: TitleBar y composición raíz; implementado, cierre integrado en PLAN-005.
+- Problema y causa: el acceso Side B agregado en FIX-139 duplicaba acciones disponibles y el usuario pidió quitarlo. No se trata de un fallo del historial o del drag de ventana.
+- Cambio y motivo: se retiran botón/props/CSS, componente AppCommands sin callers, estado/dispatcher/render exclusivos y guards commandsOpen. Se conservan Atrás/Adelante, drag-region, controles nativos y handleWindowKeydown. Los accesos existentes permanecen en Sidebar/Biblioteca/player/fullscreen y sus atajos; no se añade un menú alternativo.
+- Archivos: `windows/src/lib/components/shell/TitleBar.svelte`, `windows/src/routes/+page.svelte`; retirado `windows/src/lib/components/shell/AppCommands.svelte`.
+- Fixes relacionados: reemplaza únicamente la decisión de menú superior de FIX-139 por pedido posterior, conserva ubicación de historial y fixes de ambiente. Dispatcher eliminado tenía caller exclusivo en ese componente, comprobado por búsqueda.
+- Verificación: subagente check0/0 y 18 pruebas focales de navegación/Space/F11 aprobadas; fixture TitleBar confirma ausencia del botón y conserva controles. Suite y build en [PLAN-005](windows/plans/PLAN-005-genius-text.md).
+- Límites: sin ensayo de controles nativos de ventana en fixture. No se retiró el menú de opciones de Genius, necesario para coincidencia/reintentos/colores.
+- Paridad: PAR-019 registra adaptación Windows; no aplica retiro a menú nativo macOS (pedido específico sobre botón Windows), Apple/core intactos.
+
 Los FIX-120–129 se incluyen en la [release estable 1.1.7](plans/RELEASE-1.1.7.md), publicada el 2026-10-06 con build-0062 (versión pública 1.1.7/build 11), 532 pruebas aprobadas y paquete/descarga verificados. Los límites de cada comprobación física y los antecedentes se conservan en sus entradas.
 
-FIX-131 se publica en la [release estable 1.1.8](plans/RELEASE-1.1.8.md), 2026-10-09, build-0068 (versión pública 1.1.8/build 12), con 562 pruebas, recursos ES/EN, firma, paquete y descarga/hash remoto verificados. El código incluye además la auditoría Windows de 113 tareas; su implementación permanece pendiente.
+FIX-131 se publica en la [release estable 1.1.8](plans/RELEASE-1.1.8.md), 2026-10-09, build-0068 (versión pública 1.1.8/build 12), con 562 pruebas, recursos ES/EN, firma, paquete y descarga/hash remoto verificados. El código incluye además la auditoría Windows de 113 tareas; su implementación permanecía pendiente en esa entrega; la ejecución local posterior se registra en FIX-132 a FIX-136.
+
+Cierre Windows posterior a build-0005: FIX-137…139, [PLAN-004](windows/plans/PLAN-004-player-shell-corrections.md). Protocolo standalone aprobado el 2026-10-10 11:49: check 0/0, 258 pruebas frontend +356 nativas =614 aprobadas, cero fallos, 14 live ignoradas. Build release `builds/windows/build-0006/sideb-windows.exe`, `BUILD.json` compiled/fuentes estables y cuatro SHA256 comprobados. Aceptación física WebView2/servicios/audio pendiente; build-0005 conservada, Apple/core intactos.
+
+<a id="fix-137"></a>
+
+### [FIX-137] [Windows] - Genius dentro de Letras e información al reverso de la carátula
+
+- Fecha: 2026-10-10 (America/Montevideo).
+- Componente / estado: fullscreen, Genius y barra del reproductor; implementado, verificación final en PLAN-004.
+- Problema y causa: Genius tenía una pestaña superior adicional, letras sobredimensionadas y un acceso de texto bajo la portada; la información no ocupaba el reverso cuadrado de Apple. Las anotaciones no identificaban visualmente la línea y necesitaban cierre exterior.
+- Cambio y motivo: tres pestañas Cola/Letras/Relacionado; el botón inferior abre Genius dentro de Letras. Icono info.circle junto al corazón, reverso cuadrado con giro horizontal y opacidad de 0.48 s ease-in-out, sin desplazar título/créditos; estilos y tipografía comparados con FullscreenNowPlayingView.swift y GeniusPanelView.swift vigentes. Reduce Motion, caras inert/aria-hidden y retorno de foco. Anotación en portal al body para evitar el containing block del transform fullscreen, flecha anclada al rectángulo de la línea clicada, ajuste al viewport/scroll/resize y cierre exterior/Escape. Cancela apertura pendiente si cambia canción o se hace clic fuera. Menú por clic derecho y ContextMenu/Shift+F10 conservado.
+- Controller: intentos de resolución/letras/anotaciones quedan registrados por identidad aunque retornen vacío o fallen; evita repetir HTTP por cada publicación de progreso. Los botones de reintento/refresh reinician explícitamente el intento apropiado, conservando páginas y descartando respuestas tardías.
+- Archivos: `windows/src/lib/components/fullscreen/{FullscreenNowPlaying,GeniusPanel,GeniusAnnotation,TrackInformation}.svelte`, `windows/src/lib/genius/{controller,popover}.ts`, `windows/scripts/genius{,-popover}.test.mjs`, `windows/src/lib/components/player/PlayerBar.svelte`, `windows/src/lib/components/shell/AppCommands.svelte`, `windows/src/routes/+page.svelte`.
+- Fixes relacionados: corrige presentación incorporada en FIX-135; conserva contratos y estados de su controller. Referencia Apple: rotación/animación líneas 135–146, reverso 197–294 e info.circle 426 de FullscreenNowPlayingView; fuentes 16/20 y popover trailing en GeniusPanelView.
+- Verificación: 22 regresiones focales aprobadas (14 controller y 8 popover); check 0 errores/0 advertencias. Fixture de navegador: tres pestañas, fuente 20 px, reverso cuadrado, transición .48 s y foco al cerrar; flecha junto a línea y clic exterior cierran el diálogo. Resultado integrado/build en [PLAN-004](windows/plans/PLAN-004-player-shell-corrections.md).
+- Límites: fixture aislado, sin servicios Genius reales, Narrator, selección/copia física ni validación de animación en WebView2. No se certifica igualdad física por una declaración CSS.
+- Paridad: PAR-015/019 y PAR-016-2; Apple de referencia sin editar, aceptación física Windows pendiente.
+
+<a id="fix-138"></a>
+
+### [FIX-138] [Windows] - Separar contadores del álbum y los créditos de canciones de Inicio
+
+- Fecha: 2026-10-10 (America/Montevideo).
+- Componente / estado: metadata Home/menús/cola/reproducción durable; implementado, revisión y verificación final en PLAN-004.
+- Problema y causa: subtítulos responsive incluyen artista y contador; el segundo grupo podía llegar como album («337M plays»). Un valor no vacío impedía completar el álbum real. Cola antigua y artistRuns podían conservar la misma contaminación. El parser compartido usa grupos posicionales; se corrige en la integración Windows y se registra evaluación Apple/core separada.
+- Cambio y motivo: normalización semántica para canciones/video al proyectar Home, Speed Dial, cartas, menú y reproducción; descarta expresiones completas de estadísticas/duración, conserva nombres legítimos e IDs/tokens/flags. Álbum conocido enlazado se conserva incluso si se llama «100 Plays»; un subtítulo no se convierte en álbum sin enlace. La cola nativa sanea entradas nuevas, merge y restauración, y el enriquecimiento del video actual permite completar metadata canónica sin recargar audio ni cambiar ocurrencia/generación. Las parejas etiqueta/destino deben conservar coherencia al enriquecer. No se inventa un álbum cuando el proveedor no lo ofrece.
+- Archivos: `windows/src/lib/home/songMetadata.ts`, `home/featured.ts`, `components/home/{CompactSongCard,HomeCard}.svelte`, `menu/types.ts`, `src/routes/+page.svelte`, `windows/src-tauri/src/{queue,dto,playback_runtime}.rs`, `commands/playback.rs`; pruebas song/home/menu y regresiones Rust.
+- Fixes relacionados: completa manejo de metadata de FIX-132/134/135; no hay evidencia que atribuya el origen del parser a esos fixes. Conserva duplicados y autoridad de cola de FIX-087/134.
+- Verificación: fixtures de contadores ES/EN, runs fragmentados, colaboradores, nombres Views/Plays/1989/The 1975, álbum enlazado y restauración; resultado integrado/build en [PLAN-004](windows/plans/PLAN-004-player-shell-corrections.md).
+- Límites: no se ensayó Inicio/radio con cuenta real. Si el proveedor no devuelve álbum canónico, queda ausente; el contador nunca se usa como reemplazo. Audio audible no comprobado.
+- Paridad: [PAR-022](PARIDAD.md), evaluación de origen Apple/core pendiente; ambos sólo consultados, sin cambios compartidos.
+
+<a id="fix-139"></a>
+
+### [FIX-139] [Windows] - Navegación fuera de Sidebar y ambiente continuo en detalles
+
+- Fecha: 2026-10-10 (America/Montevideo).
+- Componente / estado: TitleBar/Sidebar, detalles y HomeAmbient; implementado, verificación final en PLAN-004.
+- Problema y causa: Atrás/Adelante ocupaban Sidebar compacta, Volver duplicaba historial, y los puntos superiores quedaban bajo la zona draggable de TitleBar (z120 frente a z200), sin recibir clic. AlbumDetailView pintaba fondo opaco sobre el ambiente dejando visible sólo la franja superior. La altura ambiente fija no seguía la cabecera real y las medidas imperativas podían borrarse al actualizar el atributo style durante la animación.
+- Cambio y motivo: flechas en TitleBar por encima del contenido, al lado derecho antes de controles de ventana; se conserva historial y se retira Volver de álbum/playlist/artista/catálogo. Menú de aplicación accesible mediante Side B en la propia barra. Álbum transparente como playlist; ambiente medido por cabecera/scroll con ResizeObserver, extensión de 140 px y suspensión bajo fullscreen/fuera de viewport. Medidas reactivas conservadas durante animación. Buscar/Ordenar siguen en la misma toolbar de acciones de FIX-132, con wrap sólo cuando falta ancho.
+- Archivos: `windows/src/lib/components/shell/TitleBar.svelte`, `sidebar/Sidebar.svelte`, `detail/{AlbumDetailView,PlaylistDetailView,ArtistDetailView,CatalogView}.svelte`, `home/HomeAmbient.svelte`, `windows/src/lib/home/ambient.ts`, `windows/src/routes/+page.svelte`, pruebas home-personalization.
+- Fixes relacionados: reemplaza por pedido actual la ubicación Sidebar decidida en FIX-118-2; completa capas/ambiente de FIX-132 y acceso a comandos de FIX-135. No cambia ventana nativa ni las acciones de reproducción.
+- Verificación: cinco casos geométricos de cabecera/scroll aprobados; fixture de navegador con TitleBar y AlbumDetailView reales comprueba transparencia, ambiente visible en cabecera, cero Volver, Atrás funcional y apertura del menú Side B. Resultado integrado/build en [PLAN-004](windows/plans/PLAN-004-player-shell-corrections.md).
+- Límites: la fixture usa sidebar ficticia; no certifica controles nativos Tauri, DPI, gestos físicos ni consumo. Composición final WebView2 requiere aceptación visual.
+- Paridad: PAR-011/013-2/016-2; ambiente toma contrato Apple. Colocación de historial y menú TitleBar son adaptación Windows solicitada, sin modificar Apple.
+
+<a id="fix-136"></a>
+
+### [FIX-136] [Windows] - Aislar la caché del core en el runner nativo
+
+- Fecha: 2026-10-10 (America/Montevideo).
+- Componente / estado: verificación y build Windows; implementado, resultado completo en PLAN-003.
+- Problema y causa: `verify` con `CARGO_TARGET_DIR` común completó core pero falló en Tauri con E0277 de Serialize en registros Genius que sí derivaban Serialize. Los workspaces core/Tauri resuelven features distintas; el crate core emite un `libsideb_core.rlib` sin hash que una suite sobrescribía mientras el fingerprint de la otra seguía fresco. Se comprobó que no era una ausencia de Serialize en Genius.
+- Cambio y motivo: `Invoke-Cargo` deriva una subcaché `core-verify` para el workspace core cuando hay target externo; Tauri conserva el target original. Restaura entorno y directorio en `finally`, incluso al fallar. Sin target explícito, cada workspace sigue usando su target predeterminado separado.
+- Archivos: `windows/scripts/windows.ps1`, `windows/scripts/windows-runner.test.mjs`.
+- Fixes relacionados: investigación descubierta al verificar FIX-134/135, sin atribuir a esos cambios la creación del problema de caché. No modifica código de core ni artefactos numerados anteriores.
+- Verificación: prueba PowerShell real con cargo simulado cubre éxito/fallo, argumentos, rutas con espacios y variable ausente. Runner final exit 0: 583 pruebas aprobadas (234 frontend y 349 nativas), 14 live ignoradas; hash de `libsideb_core.rlib` raíz idéntico antes/después. Protocolo standalone repitió verify y conservó build-0005 release con BUILD.json compiled, fuentes estables y cuatro hashes comprobados. Totales, advertencias y ruta exacta en [PLAN-003](windows/plans/PLAN-003-macos-integration.md#build-conservada).
+- Límites: test simulado verifica aislamiento/restauración, no reemplaza compilación real.
+- Paridad: No aplica al runner Mac: esta reparación está en el orquestador PowerShell Windows y separa sus dos workspaces locales. Apple/core sin editar.
+
+<a id="fix-132"></a>
+
+### [FIX-132] [Windows] - Integrar detalles, feed retenido y ocurrencias de Biblioteca e Historial
+
+- Fecha: 2026-10-10 (America/Montevideo).
+- Componente / estado: Inicio, detalles, listas, biblioteca e historial; implementado, aceptación física pendiente.
+- Problema y causa: el destino conservaba la base local anterior al nuevo plan Apple. Faltaban cabecera común/filtro local, suspensión completa de Inicio oculto, snapshots por chip y protección de varias respuestas de catálogos. La revisión encontró además reproducción por índice obsoleto al completar una playlist, restauración de Likeados anterior a un unlike, identidad de historial inestable y columnas de tabla repartidas por igual. El usuario señaló que buscador/orden generaban una franja vacía bajo las acciones.
+- Cambio y motivo: cabecera compartida con acciones, Ordenar y Buscar canciones en la misma fila cuando hay ancho; adaptación a segunda fila al reducirlo. Tabla de detalle 58 px/arte 44/Play 32/acciones 28, columnas explícitas, filtro normalizado y orden de fuente completa por ocurrencia. Drag sólo con catálogo completo y orden propio. Continuación conserva botón accesible. Feed: cuatro snapshots RAM, caché durable validada sin cursores/tokens, rollback al último chip aceptado, retención de página/scroll y entradas congeladas bajo fullscreen. Fondo se suspende fuera de presentación y sigue cabecera de colección. Biblioteca precarga acotada y mantiene orden por tipo; catálogos usan épocas por ID. Historial conserva identidad por escucha y mezcla sólo eventos aceptados durante la solicitud en curso. Tipo Single/EP/Álbum por metadata original y créditos con fallback exacto, sin adjudicar invitados. Artwork común pide variante acotada al tamaño/DPI y reintenta fuente exacta, sin reescribir externas/firmadas; nodo/URL de intento rechazan errores tardíos. Fullscreen adapta tipografía al arte y la barra compacta reduce separaciones sin quitar acciones.
+- Archivos: `windows/src/lib/components/detail/`, `common/TrackList.svelte`, `home/HomeView.svelte`, `home/HomeAmbient.svelte`, `library/`, `account/controller.ts`, `home/controller.ts`, `home/collectionMetadata.ts`, `detail/`, `navigation/history.ts`, `src/routes/+page.svelte`; pruebas de proyección, créditos, feed e integración.
+- Fixes relacionados: amplía FIX-113-2/114-2/119-2/120-2/121-2; porta comportamientos de FIX-114–119 y FIX-122/123 Apple. No se atribuye una regresión de origen a esos antecedentes.
+- Verificación: suite frontend final 234/234 y Svelte 0 errores/0 advertencias; fixture de navegador con playlist de 1000 elementos, 22–23 filas montadas, columnas y alineación de controles comprobadas en ventana amplia y angosta. El fixture no se entrega como ruta de producto. Resultado final/build-0005 en PLAN-003.
+- Límites: WebView2, arrastre/foco/Narrator, consumo y cuenta reales pendientes. El proveedor no expone un ID durable de escucha que permita demostrar que un evento local ya figura en una respuesta remota simultánea: se conserva el evento local; posible duplicado transitorio hasta refrescar. La caché de presentación no certifica funcionamiento offline de servicios.
+- Paridad: PAR-003/004/006/011/017/018 y PAR-011-2/012-2/013-2; Apple sólo consultado. La nueva alineación responde al pedido Windows y queda por contrastar visualmente en Apple.
+- Plan: [PLAN-003](windows/plans/PLAN-003-macos-integration.md).
+
+<a id="fix-133"></a>
+
+### [FIX-133] [Windows] - Explorar regional, mejores resultados y arbitraje de gestos
+
+- Fecha: 2026-10-10 (America/Montevideo).
+- Componente / estado: Explorar, búsqueda y navegación; implementado / ensayo físico pendiente.
+- Problema y causa: el browse genérico no transportaba el contrato regional ni las rutas de Explorar; `top_songs` se perdía en DTOs Windows y no existía arbitraje de historial frente a carruseles.
+- Cambio y motivo: bridge de detección/Charts, rutas Descubrir/Lanzamientos/Rankings/Géneros/Momentos, 16 géneros y ocho momentos con queries originales, Global independiente de fallo regional, países confirmados, TTL diez minutos y LRU acotada por región/fuente. Catálogos virtualizados conservan acciones/metadatos. Búsqueda y preview/Spotlight transportan SongDto completo y hasta tres relacionadas. Navegación aplica ownership local y cancelación; Alt+wheel horizontal ofrece entrada explícita, touch/pen usa contacto real en superficie de descenso con seguimiento visual y Reduce Motion.
+- Archivos: `commands/explore.rs`, `dto.rs`, `lib.rs`, `lib/explore/`, `components/explore/`, `common/VirtualCatalog.svelte`, `search/`, `navigation/gestures.ts`, `components/fullscreen/FullscreenNowPlaying.svelte`, `src/routes/+page.svelte`; pruebas Explore/Search/gestos.
+- Fixes relacionados: FIX-120/121 Apple y FIX-125–129; amplía cartas de FIX-113-2 y preserva shell de FIX-118-2.
+- Verificación: pruebas de respuestas tardías, aislamiento regional, expiración/LRU, snapshots, ownership/cancelación y metadata dentro de suite integrada; fixture de 5000 álbumes con 16 cartas montadas en ventana angosta. No es medición de FPS.
+- Límites: WebView2 no expone las fases AppKit de trackpad; Alt+wheel es una adaptación explícita, no paridad física demostrada. Gestos reales Precision/touch/pen, DPI y rankings con conexión real pendientes.
+- Paridad: PAR-009/012/013/018 y PAR-014-2. Apple sin editar; APIs core reutilizadas.
+- Plan: [PLAN-003](windows/plans/PLAN-003-macos-integration.md).
+
+<a id="fix-134"></a>
+
+### [FIX-134] [Windows] - Persistir reproducción y extender fuentes con cola nativa autoritativa
+
+- Fecha: 2026-10-10 (America/Montevideo).
+- Componente / estado: runtime Rust, cola, historial, SMTC y playback frontend; implementado / validación nativa en PLAN-003.
+- Problema y causa: cola/volumen sólo RAM; el inicio normal esperaba catálogo completo; Next no retenía intención al borde. Faltaban registro de escucha y controles multimedia. Radio de colección se reducía a primera pista y se perdía `isUpload`.
+- Cambio y motivo: store versionado por identidad guest/cuenta, escritura atómica serializada y flush al cambiar/cerrar. Restaura pausado y resuelve stream fresco; no persiste cookies, streams ni continuaciones; elimina miniaturas con URLs firmadas/sensibles del envelope durable conservando metadata en RAM. Inicio con prefijo aceptado, extensión por generaciones y sufijos conservando ocurrencias/anclas/shuffle/ediciones manuales; reintento revalida prefijo completo y rechaza reorder remoto/loops. Next pendiente y coalescing de saltos; pausa cancela intenciones. La barra consume canNext del runtime para playlists/radios extensibles y permite pausa durante resolución de audio. La fusión de un RPC de cola tras progreso conserva sus capacidades sin rebobinar posición. Historial por intento y umbral, guardas de cuenta/generación al enviar y publicar. SMTC a cola Rust con artwork local acotado y rechazo de trabajos obsoletos. Resolución de stream revalida auth_generation tras adquirir auth_operation y antes de publicar; cambio de sesión invalida selección pendiente no cargada. Radio conserva endpoint/origen; Dislike filtra recomendaciones con generación esperada; subidas conservan indicador hasta resolver audio.
+- Archivos: `windows/src-tauri/src/playback_runtime.rs`, `media_controls.rs`, `queue.rs`, `commands/playback.rs`, `dto.rs`, `lib.rs`, Cargo; `lib/player/controller.ts`, `recommendations.ts`, `menu/executor.ts`, `types.ts`, `src/routes/+page.svelte`; pruebas runtime/cola/integración.
+- Fixes relacionados: FIX-087, FIX-097 y FIX-112 Apple; conserva entryId, generaciones y autoridad de cola de Windows. Completa el port descrito en PAR-010.
+- Verificación: pruebas de serialización, restauración/cuenta, prefijos duplicados, edits, EOF/Next, coalescing y eventos tardíos; totales finales del runner y build registrados en PLAN-003.
+- Límites: audio audible, reconexión de cuenta, uploads reales, orden remoto, reinicio real y SMTC/teclas físicas pendientes. Una cuenta necesita login ready para recuperar su identidad; no se añadió un mapa offline de cookies a identidad. No se persiste posición exacta del stream.
+- Paridad: PAR-001/010/016/017/020/021. SMTC es implementación exclusiva Windows del comportamiento común; no requiere MPRemoteCommandCenter en Windows ni cambios Apple/core.
+- Plan: [PLAN-003](windows/plans/PLAN-003-macos-integration.md).
+
+<a id="fix-135"></a>
+
+### [FIX-135] [Windows] - Genius, idioma ES/EN y comandos de aplicación integrados
+
+- Fecha: 2026-10-10 (America/Montevideo).
+- Componente / estado: Genius, localización, fullscreen, menú y updater; implementado / servicios reales pendientes.
+- Problema y causa: Genius estaba deshabilitado sin bridge ni estado Windows; interfaz con literales sin selector global. Invitado no tenía check manual de updates y las notas se presentaban como texto sin estructura.
+- Cambio y motivo: nueve comandos Genius y métricas agregadas, controller con caché/identidad/cancelación lógica, búsqueda/elección/reporte, letras con spans, anotaciones paginadas y reintento de la página fallida conservando anteriores; información al reverso y preferencias. Carga auxiliar espera selección aceptada, excluyendo intentos de audio aún pendientes o fallidos. Localización por instalación, español por defecto, 688 claves de origen y catálogo propio, resolución al presentar y cambio en vivo sin reconstruir navegación/cola ni traducir metadata externa. Menú con comandos reutilizados, foco/teclado y Tus Me gusta en sidebar por clic derecho/tecla Menú/Shift+F10, protección LM/sesión; update para invitado, Markdown seguro y apertura externa HTTP(S) validada. Updater rechaza ZIP como instalador ejecutable.
+- Archivos: `commands/genius.rs`, `commands/system.rs`, `commands/updater.rs`, `lib.rs`, `lib/genius/`, `lib/i18n/`, `components/fullscreen/`, `shell/AppCommands.svelte`, `update/`, `updater/markdown.ts`, `src/routes/+page.svelte`, superficies traducidas y pruebas.
+- Fixes relacionados: porta FIX-131 Apple; amplía fullscreen/Space de FIX-122-2 y updater Windows existente. No cambia versión pública ni publica release.
+- Verificación: sync de 688 claves, claves/literales propios, estados Genius obsoletos/elección/reporte/errores/paginación, notas seguras y comandos dentro de suite integrada; cambio ES/EN comprobado con metadata de fixture conservada. Totales/build en PLAN-003.
+- Límites: Genius real, copia/selección, Narrator, cuenta real, instalación/actualización y reducción física de movimiento pendientes. Cancelación de HTTP es lógica por tokens, no interrupción del gate compartido.
+- Paridad: PAR-014/015/019 y PAR-016-2. Recursos Apple se sincronizan por script, sin editar Apple/core.
+- Plan: [PLAN-003](windows/plans/PLAN-003-macos-integration.md).
 
 <a id="fix-131"></a>
 
@@ -366,6 +696,172 @@ FIX-131 se publica en la [release estable 1.1.8](plans/RELEASE-1.1.8.md), 2026-1
 - Límites: vista real, teclado completo y arrastre físico pendientes. Sin cambios de core/Windows/bindings/versión pública; no commit/push/publicación.
 - Antecedentes / paridad: excepción de cola solicitada al contrato común [FIX-111](#fix-111), conserva [FIX-112](#fix-112) y ocurrencias/anclas de [FIX-097](#fix-097). [PAR-009](PARIDAD.md) distingue la cola especial. Windows `QueuePanel.svelte` ya tiene Like/Dislike, créditos compactos y grip al hover/foco; revisar diferencias en el destino, sin ejecución ni cambios Windows.
 - Plan / build: [PLAN-009](apple/plans/PLAN-009-common-media-cards.md); `builds/macos/build-0033/Side B.app`, BUILD.json/build.log; release arm64, SDK 27.0 / mínimo macOS 15, firma ad hoc verificada. BUILD.json `compiled`, `sourceChangedDuringBuild: false`; documentación de cierre actualizada después de compilar, código sin cambios posteriores.
+
+## Integración de registros Windows — 2026-10-09
+
+Los registros Windows locales FIX-113 a FIX-122 coincidían numéricamente con entradas Apple publicadas mientras este árbol seguía sin commit. Se conservan como FIX-113-2 a FIX-122-2, con alias anterior explícito y referencias locales ajustadas. No se renumeran las entradas publicadas; el siguiente número global continúa en FIX-132.
+
+Sincronización con `origin/main` (`d37c1ee`) completada: fuentes Windows conservadas byte por byte, historial previo retenido localmente y respaldo externo. Verify Windows aprobado (167 frontend, 92 InnerTube, 90 core/92 bridge, 4 player y 50 Tauri; 7 live ignoradas por variante core). Check sin errores/advertencias y frontend build aprobados; [recepción, alcance y límites](windows/plans/PLAN-001-feature-parity.md#recepción-en-windows--2026-10-09). Sin EXE nuevo, commit ni push.
+
+<a id="fix-122-2"></a>
+
+### [FIX-122-2] [Windows] - Space contextual y Play/Pausa sobre portada fullscreen
+
+- Alias local anterior: FIX-122; sufijo `-2` añadido al sincronizar el 2026-10-09 para distinguirlo del FIX-122 Apple publicado desde la otra máquina. Conserva su contenido y verificación original.
+
+- Fecha: 2026-10-05 (America/Montevideo).
+- Componente / estado: atajo global y arte fullscreen; implementado, pruebas frontend/browser aprobadas; runtime/audio Windows pendientes.
+- Problema / causa: AUDIT-002 UI-018/019 identifica ausencia del equivalente global de Space y la portada fullscreen no tenía activación/overlay. Apple artworkFront usa filtro de primer plano independiente del backdrop: negro 22%, icono blanco 92%, transición de 180 ms y tamaño max(28,14% del arte).
+- Cambio / motivo: playback-shortcut decide ownership de Space: sin modificadores/composición ni consumo previo, con pista, fuera de edición/controles/enlaces/roles nativos/regiones de letras/arrastre. Consume repeats sin alternar repetidamente. Root ya bloquea diálogos/menús abiertos. Fullscreen usa botón de portada que alterna la reproducción autoritativa, filtro negro 22%, icono Play/Pausa blanco 92% y sombra, animación de 180 ms, radio de 8 px y tamaño equivalente; muestra también con foco visible, respeta Reduce Motion y bloquea mientras carga. No modifica el backdrop global ni cola/seek/generaciones.
+- Archivos: nuevos `windows/src/lib/player/playback-shortcut.ts`, `windows/scripts/playback-shortcut.test.mjs`; `windows/src/routes/+page.svelte`, `windows/src/lib/components/fullscreen/FullscreenNowPlaying.svelte`.
+- Verificación: cuatro regresiones de Space (página/lista, repeats, escritura/controles, modificadores/IME/consumo previo/sin pista); incluidas en 167 frontend aprobadas. Navegador: Space en input no produce acción, fondo produce una, Space del botón portada una sola más; enlaces cola no producen reproducción. Estilos medidos negro0.22/blanco0.92/0.18s/tamaño14%, icono/filtro visibles y cambio de etiqueta Pausar/Reproducir. Check: 0 errores / 0 advertencias y build frontend aprobados. Referencia Apple sólo lectura, hashes intactos; no audio audible ni timing nativo verificado.
+- Paridad / antecedentes: PAR-016-2 en curso; completa Space/overlay, Genius, barra compacta y tipografía adaptable siguen pendientes y no se afirman portados. FIX-117-2/AUDIT-002, FIX-113-2 / FIX-114-2 / FIX-116-2. Conserva exclusiones PAR-007 / PAR-008; plan PLAN-002. Sin EXE standalone/commit/push.
+
+<a id="fix-121-2"></a>
+
+### [FIX-121-2] [Windows] - Cola con créditos independientes, controles comunes y ventana de filas
+
+- Alias local anterior: FIX-121; sufijo `-2` añadido al sincronizar el 2026-10-09 para distinguirlo del FIX-121 Apple publicado desde la otra máquina. Conserva su contenido y verificación original.
+
+- Fecha: 2026-10-05 (America/Montevideo).
+- Componente / estado: QueuePanel y conexión fullscreen; implementado/verificación frontend y browser, validación nativa pendiente.
+- Problema / causa: AUDIT-002 UI-017 y PAR-012-2 / PAR-016-2: créditos incluidos en selección sin callbacks de navegación, fila propia/espacio fijo de acciones, DOM completo para cola larga. La UI diverge de lista compacta Apple aunque el runtime conserva su cola autoritativa.
+- Cambio / motivo: botón de selección hermano de controles/enlaces evita botones anidados; artista/álbum reciben IDs/callbacks, navegación no activa canción. TrackArtwork de 36 px/TrackActivity comunes con listas; fila de 46 px / paso de 48 px, duración de 44 px y actividad neutral6.5%/borde9%. Controles ocupan sólo ancho necesario; asa al hover/foco sustituye duración. Resolución de activación por entryId actual, Play activo alterna pausa, bloqueo/spinner durante carga; like/dislike/menú/errores/radio/arrastre/teclado existentes conservados. Ventana con helper compartido y overscan de 8 filas, filas enfocada/arrastrada retenidas por entryId, contenedor de altura total y Tab a través de ventanas; scroll/resize con RAF acotado. No se crea estado de cola optimista ni otro reproductor.
+- Archivos: `windows/src/lib/components/fullscreen/QueuePanel.svelte`, `FullscreenNowPlaying.svelte`, `windows/src/routes/+page.svelte`; consume common/{TrackArtwork,TrackActivity,trackList} de FIX-119-2.
+- Verificación: suite de 167 pruebas/check: 0 errores y 0 advertencias/build frontend aprobados. Fixture de 1000 entradas:22 filas iniciales,23 al final con foco entry-1 retenido, altura de 48000 px; Tab desde control final de ocurrencia retenida lleva a entry-2 con ventana de 22 filas. Clic artista+álbum conserva contador de reproducción y sólo una ocurrencia activa. No se midieron FPS/consumo ni arrastre nativo; callbacks de fixture no ejecutan comandos de cuenta/audio. Captura `windows/.cache/ui-fix-2026-10-05/fullscreen-cola.png` ignorada.
+- Paridad / antecedentes: PAR-012-2 implementado/validación nativa pendiente, PAR-016-2 permanece en curso por funciones fuera de esta tanda. Apple referencia NativeTrackTableView fila compacta; conserva controles Like/Dislike Windows por mantener acciones. FIX-087 / FIX-113-2 / FIX-114-2 / FIX-116-2 / FIX-117-2; PLAN-002. Core/Apple intactos, sin EXE/commit/push.
+
+<a id="fix-120-2"></a>
+
+### [FIX-120-2] [Windows] - Playlist con metadata completa, continuación y editor único
+
+- Alias local anterior: FIX-120; sufijo `-2` añadido al sincronizar el 2026-10-09 para distinguirlo del FIX-120 Apple publicado desde la otra máquina. Conserva su contenido y verificación original.
+
+- Fecha: 2026-10-05 (America/Montevideo).
+- Componente / estado: PlaylistDetail/Biblioteca/editor/entrada Sidebar/raíz; implementado con pruebas frontend y fixtures, sesión nativa pendiente.
+- Problema / causa: AUDIT-002 UI-008/016: contador oculto con subtitle, selector inline diferente del menú Apple, continuación sólo manual y creación Biblioteca privada/descripción de 500 caracteres frente al editor existente de 5000 caracteres/tres privacidades. Sidebar no tenía + y creación de raíz requería canción.
+- Cambio / motivo: contador visible junto a subtitle, título de 2 líneas / arte con radio de 8 px, selector extra retirado manteniendo seis órdenes de MenuPolicy. ContinuationLoader aproxima umbral nativo de 15 filas con margen de 780 px, una tentativa automática por contexto/cursor actual sin busy/error, reintento explícito al fallar y controller existente conserva tokens/generaciones. Biblioteca/Sidebar/menú de canción abren PlaylistEditorDialog común, 5000 caracteres y PRIVATE/UNLISTED/PUBLIC; canción inicial opcional. Raíz conserva ID ya creado si falla agregar canción para reintentar sin duplicar creación, y revisión de cuenta/diálogo evita cierre o escritura tardía sobre una creación nueva. Creación vacía abre detalle de la playlist. Editor bloquea submit pendiente y acota Tab al propio diálogo.
+- Archivos: `detail/{PlaylistDetailView,PlaylistEditorDialog,ContinuationLoader}.svelte`, `library/LibraryView.svelte`, nuevo `library/continuation.ts`, `scripts/library-continuation.test.mjs`, `sidebar/Sidebar.svelte`, `routes/+page.svelte`.
+- Verificación: cinco regresiones de gate/near-bottom/contexto/busy/error/cursor, suite de 167 pruebas/check: 0 errores y 0 advertencias/build frontend aprobados. Fixture: subtitle y 2 canciones simultáneos, ningún thead/select de orden, una continuación automática. Desde + de Sidebar: editor común guarda PUBLIC con nombre/descripción ficticios y devuelve foco al disparador. Mutaciones reales y error de proveedor no ejecutados; pruebas existentes de cuenta/playlist preservadas.
+- Paridad / antecedentes: PAR-015-2 implementado/validación nativa pendiente; PAR-013-2 en curso porque cabeceras generales/artista/disponibilidad no están portadas por este fix. PAR-010 (play antes de catálogo completo) sigue pendiente; no se confunde con paginación de UI ni se cambia Cargar más de Inicio. FIX-087 / FIX-113-2 / FIX-114-2 / FIX-117-2, referencia Apple PlaylistDetail/Library/PlaylistEditorSheet; PLAN-002. Sin core/Apple/EXE/commit/push.
+
+<a id="fix-119-2"></a>
+
+### [FIX-119-2] [Windows] - Lista común sin cabecera y filas acotadas por viewport
+
+- Alias local anterior: FIX-119; sufijo `-2` añadido al sincronizar el 2026-10-09 para distinguirlo del FIX-119 Apple publicado desde la otra máquina. Conserva su contenido y verificación original.
+
+- Fecha: 2026-10-05 (America/Montevideo).
+- Componente / estado: tablas de detalle/cuenta e Historial, controles usados también en cola; implementado/validación nativa pendiente.
+- Problema / causa: captura de usuario y AUDIT-002 UI-001–007/011: Windows duplica tablas, encabezados siempre visibles, mínimo horizontal y reserva de 200 px de acciones, Play en índice y todo el catálogo montado. NativeTrackTableView Apple oculta cabecera y comparte más gestos/composición/reciclaje.
+- Cambio / motivo: wrappers TrackTable/AccountTrackTable conservan props/callbacks y usan TrackList común. Sin franja thead ni minwidth/scrollhorizontal; conserva semántica de tabla, rowcount/rowindex e información de álbum. Acción de miniatura de 40 px / radio de 2 px, control de 28 px / filtro de 58%; índice+barras separados, actividad neutral/hover redondeados; acciones calculadas por disponibilidad(36/60/84/108) y reveladas al hover/foco. Selección Ctrl/Meta/Shift no reproduce, espacios/título/arte activan una vez, links/menús independientes; teclado/arrastre/mutaciones por setVideoId conservados. Ventana desde 161 filas, paso de 52 px / overscan de 8 filas, pins y ancla por clave de ocurrencia rederivada tras reordenar, DOM keyed estable, Tab/flechas/Home/End entre ventanas. Un owner de listeners y pausa de barras fuera viewport/inactividad/ReduceMotion. Historial normaliza Hoy/Ayer/días/meses y numera por sección preservando indexOffset global.
+- Archivos: nuevos common/{TrackList,TrackArtwork,TrackActivity}.svelte y common/trackList.ts, `detail/TrackTable.svelte`, `library/{AccountTrackTable,HistoryView}.svelte`, `scripts/track-list.test.mjs`.
+- Verificación: cinco regresiones de ventana/altura/pins tras reorder/selección duplicados/fechas, suite de 167 pruebas/check: 0 errores y 0 advertencias/build frontend aprobados. Fixture de 1000 filas:20 al inicio/21 al final, altura de 52000 px, cero encabezados/overflow; End enfoca999. DuplicadoB activo único; artist/menu/Ctrl selección no reproducen; Alt+↓ y quitar invocan una acción cada uno. No se midieron FPS ni arrastre/lector de pantalla WebView2; estados/control propietario conservados como adaptación Windows.
+- Paridad / antecedentes: PAR-012-2 implementado/validación nativa pendiente (cola completa viewport en FIX-121-2), sin cerrar por browser. PAR-009 conserva actividad/acciones, PAR-017-2 aún tiene variantes/tokens pendientes. FIX-087 / FIX-113-2 / FIX-114-2 / FIX-116-2 / FIX-117-2; Apple sólo referencia, core sin cambios. PLAN-002, sin EXE/commit/push.
+
+<a id="fix-118-2"></a>
+
+### [FIX-118-2] [Windows] - Inicio sin barras horizontales y shell/sidebar con controles alineados
+
+- Alias local anterior: FIX-118; sufijo `-2` añadido al sincronizar el 2026-10-09 para distinguirlo del FIX-118 Apple publicado desde la otra máquina. Conserva su contenido y verificación original.
+
+- Fecha: 2026-10-05 (America/Montevideo).
+- Componente / estado: HomeView/HomeShelf, TitleBar/Sidebar e integración; implementado y revisado en navegador, gestos Tauri pendientes.
+- Problema / causa: barras horizontales visibles en chips/estantes; FIX-115-2 redujo drag a 16 px mientras caption de 32 px y movió Atrás/Adelante a Inicio, ubicación rechazada ahora por usuario. Toggle en slot de 60 px / control de 32×30 px generaba márgenes desiguales; sidebar compacta conservaba separador con padding de 10 px / margen de 18 px. Controles de Inicio tenían fondos/iconos tipográficos separados.
+- Cambio / motivo: chips/estantes ocultan barras con scrollbar-width:none y WebKit display:none conservando overflow/gestos/foco. Caption y bandas transparentes de arrastre usan 32 px comunes, también vacío superior de sidebar con botones independientes; teclado de maximizar y comandos nativos conservados. Toggle/Atrás/Adelante viven en Sidebar para todas las pantallas: cuadrados de 40 px con margen de 10 px, compacta apila/centra y línea separadora tiene espacio simétrico; labels accesibles de colección permanecen al ocultar texto. Actualizar/Configuración comparten cápsula acrílica de 74×40 px con dos acciones SVG centradas, estados/teclado conservados. Cabecera Inicio reserva 40 px arriba para evitar colisión con drag de 32 px al estrechar. Sidebar permanente de 60/230 px y backdrop/fullscreen existentes no se portan desde Mac.
+- Archivos: `shell/TitleBar.svelte`, `sidebar/Sidebar.svelte`, `home/{HomeView,HomeShelf}.svelte`, `routes/+page.svelte`; PLAN-002/índice y seguimiento.
+- Verificación: navegador de 1443×884 y 840×760: caption/drag/botones de 32 px; toolbar de 40×40 px / margen de 10 px; SVG centrado dx/dy0; compacto ancho de 60 px y centrado; distancia al centro de separador simétrica. Scroll chip avanza 342 px con scrollbar none y estantes ocultan scrollbar conservando ancho desplazable. Configuración/Escape devuelve foco. Header de 840 px revisado para evitar cápsula a 31 px sobre caption de 32 px; corregido a 43 px. Captura ignorada `windows/.cache/ui-fix-2026-10-05/inicio-sidebar.png`. Suite de 167 pruebas/check: 0 errores y 0 advertencias/build frontend aprobados; ventana nativa/drag/minimizar/cerrar no se ejercitan en fixture sin Tauri. Revisión independiente Luna del shell; integración por root y tres agentes Sol con ownership separado.
+- Paridad / antecedentes: adaptación exclusiva Windows solicitada para shell/Sidebar; Apple sólo referencia de geometría/acciones, no cambio destino. PAR-003 / PAR-009 conservan validación nativa pendiente y PAR-007 / PAR-008 siguen excluidos; PAR-017-2 en curso. Reemplaza ubicación de navegación/drag de 16 px de FIX-115-2 por corrección solicitada, conserva ambiente/cartas FIX-113-2 a FIX-116-2. FIX-117-2/AUDIT-002; PLAN-002. Sin EXE/commit/push.
+
+<a id="fix-117-2"></a>
+
+### [FIX-117-2] [Windows] - Auditoría de composición, componentes y funciones de UI frente a macOS
+
+- Alias local anterior: FIX-117; sufijo `-2` añadido al sincronizar el 2026-10-09 para distinguirlo del FIX-117 Apple publicado desde la otra máquina. Conserva su contenido y verificación original.
+
+- Fecha: 2026-10-05 (America/Montevideo).
+- Tipo / estado: auditoría/documentación solicitada; informe terminado, diferencias de implementación pendientes. No es un fix de UI implementado ni una declaración de paridad resuelta.
+- Componente: listas/detalles/Biblioteca/Historial, búsqueda/Spotlight, creación de playlists, cartas/arte/iconos, navegación/estados/modales y reproductor/fullscreen/letras.
+- Problema / causa comprobada: la captura muestra una cabecera de tabla Windows que Apple omite (`headerView = nil`). El contraste encuentra dos tablas Windows y una fila de cola con contratos distintos de columnas/Play/metadata/edición/viewport, frente a más reutilización de NativeTrackTableView Apple. Hero de búsqueda aún evita controles comunes; editor reducido de Biblioteca diverge del editor de creación desde canción; faltan + de Sidebar, Genius y equivalente de Space global por código. Radios/tipografía/variantes siguen dispersos. No se atribuye una regresión a FIX-113-2 a FIX-116-2 ni a antecedentes sin evidencia; compartir controles/contexto no había demostrado igualdad completa de presentación.
+- Cambio / motivo: [AUDIT-002](windows/plans/AUDIT-002-ui-parity.md) documenta mapa de responsabilidades, 30 puntos con archivos/líneas, prioridades, hechos vs riesgos y contratos/orden sugeridos. Registra seguimiento PAR-012-2 a PAR-017-2 sin implementar ni cerrar hallazgos. Conserva adaptaciones autorizadas de sidebar/TopNav/fullscreen, E negra y mejoras Windows de recuperación de letras/navegación; diferencia de Álbum es la cabecera visible, no ausencia de metadata Apple.
+- Archivos: nuevo `windows/plans/AUDIT-002-ui-parity.md`; índice `windows/plans/README.md`, PARIDAD y este registro. No se modifica código Windows/Apple/core ni trabajo previo del árbol.
+- Verificación: revisión estática de vistas principales, componentes comunes, consumidores y controllers/view models de ambas plataformas; inventario 42 Svelte/47 archivos Views Swift, sin afirmar lectura exhaustiva de cada línea. Referencias locales/anchors nuevos comprobados y diff sin errores de whitespace. No se repiten las suites/builds de FIX-114-2 a FIX-116-2 porque la entrega sólo cambia documentación.
+- Límites: igualdad visual a ancho/DPI equivalentes, WebView2/foco/lector de pantalla, cuentas/audio/latencia y recursos no verificados. Virtualización por código no demuestra FPS; columnas fijas no demuestran overflow reproducido. Disponibilidad de FE/radio de artista necesita fixture/runtime antes de corregir. Sin build/commit/push.
+- Paridad / antecedentes: [PAR-012-2 a PAR-017-2](PARIDAD.md) nuevos; PAR-010 / PAR-011-2 siguen pendientes, PAR-007 / PAR-008 excluidos. PAR-003 / PAR-009 conservan implementación y límites previos, aclarando variantes todavía diferentes. Amplía [FIX-114-2](#fix-114-2)/AUDIT-001 y evaluación documental [FIX-110](#fix-110); toma FIX-087 a FIX-098 a FIX-112 como referencias y contrasta el estado local de [FIX-113-2](#fix-113-2), [FIX-115-2](#fix-115-2) y [FIX-116-2](#fix-116-2). Apple sólo consultado como origen; ninguna comprobación nativa nueva ni paridad cerrada.
+
+<a id="fix-116-2"></a>
+
+### [FIX-116-2] [Windows] - Marca E común y puntos de menú centrados
+
+- Alias local anterior: FIX-116; sufijo `-2` añadido al sincronizar el 2026-10-09 para distinguirlo del FIX-116 Apple publicado desde la otra máquina. Conserva su contenido y verificación original.
+
+- Fecha: 2026-10-05 (America/Montevideo).
+- Componente: indicador de contenido explícito y disparadores de menú de cartas, búsqueda, detalles, tablas y reproductor.
+- Problema / causa: las capturas del usuario muestran el botón de puntos desplazado y una E alta y estrecha junto a JACKBOYS 2. MediaCard usaba un span inline-block con padding y altura de línea heredada del título featured (30 px); búsqueda tenía otra marca independiente. Los menús mezclaban glifos tipográficos y SVG duplicados, con padding predeterminado o reglas de distinta especificidad; la línea de base de la fuente no coincide con el centro geométrico del botón. Contraste con FIX-113-2 / FIX-115-2 y badge Apple fijo de 14×14; no se atribuye a otros antecedentes sin evidencia.
+- Cambio / motivo: ExplicitBadge único de 14×14 px, negro con E clara vectorial, radio de 3 px, borde sutil y nombre accesible. No hereda altura de línea ni tamaño tipográfico. MediaCard separa título y badge en una fila flex centrada, permitiendo truncar títulos largos sin ocultar ni estirar la marca; el hero de búsqueda reutiliza el mismo componente. MoreIcon único de 16×16 px con tres círculos simétricos sustituye diez duplicaciones. Disparadores usan grid, padding cero y conservan dimensiones de clic/foco, callbacks, menús/contexto y reproducción; DetailHeader corrige la especificidad que dejaba padding horizontal en Más opciones. No cambia cola, acciones ni contratos.
+- Archivos: nuevos `windows/src/lib/components/common/{ExplicitBadge,MoreIcon}.svelte`; `common/{MediaCard,MediaArtwork}.svelte`, `search/SearchView.svelte`, `detail/{TrackTable,ArtistDetailView,DetailHeader,PlaylistDetailView}.svelte`, `library/AccountTrackTable.svelte`, `player/PlayerBar.svelte`, `fullscreen/{FullscreenNowPlaying,QueuePanel}.svelte`; [PLAN-001](windows/plans/PLAN-001-personalized-home.md), PARIDAD y este registro.
+- Pruebas: 153 pruebas frontend aprobadas; `pnpm check` final con 0 errores/0 advertencias, `pnpm build` frontend aprobado y diff sin errores de whitespace. Fixture local sin cuenta: cartas featured/tile/vertical/compact, título largo, textos de 12/13/14/19/25/40 px, detalle y ambas tablas. Diez badges miden 14×14 y fondo rgb(0,0,0); SVG y título comparten centro sin desplazamiento. Siete menús visibles con blancos 28×28/32×32/36×34 e icono 16×16 tienen desviación de centro cero; el menú de artwork compacto permanece oculto por diseño. Anchos 1280/840 sin overflow de la fila título/badge. Seis gestos de menú (clic/Enter/Shift+F10/clic derecho) producen seis aperturas y cero reproducción; Play separado produce una acción. Consola sin warnings/errores. Captura y fixture ignorados: `windows/.cache/ui-review-2026-10-05/controles-centrados.png` y `controls-fixture.svelte`; ruta de prueba retirada del producto.
+- Límites: no se generó nueva build standalone. Build-0004 corresponde a FIX-115-2 y no incorpora este cambio. Aspecto/foco nativos WebView2 y reproducción audible pendientes; compilar frontend y medir en navegador no los demuestra. No se modifican Apple ni core. Apple ya fija su badge en 14×14 y usa ellipsis nativo; el fondo negro/E clara es la presentación solicitada para Windows, no un cambio de lógica del origen. [PAR-003 / PAR-009](PARIDAD.md) incorporan esta evaluación y conservan validación nativa pendiente.
+- Antecedentes: completa los controles comunes de [FIX-113-2](#fix-113-2) y el layout featured de [FIX-115-2](#fix-115-2); conserva las acciones auditadas en [FIX-114-2](#fix-114-2). Sin commit/push.
+
+<a id="fix-115-2"></a>
+
+### [FIX-115-2] [Windows] - Inicio sin franja superior, créditos visibles y fondo suave como referencia Apple
+
+- Alias local anterior: FIX-115; sufijo `-2` añadido al sincronizar el 2026-10-09 para distinguirlo del FIX-115 Apple publicado desde la otra máquina. Conserva su contenido y verificación original.
+
+- Fecha: 2026-10-05 (America/Montevideo).
+- Componente: shell/TitleBar de Inicio, Speed Dial, cartas destacadas, paginadores y ambiente.
+- Problema / causas comprobadas: la prueba del usuario en build-0003 muestra una franja negra arriba. TitleBar ya era transparente, pero HomeAmbient empezaba a 40 px y content-column reservaba esa altura. MediaCard ocultaba todos los créditos de tile por CSS; horizontal centraba verticalmente el texto y no mostraba la etiqueta del tipo. Los caracteres ‹/› usaban línea de base tipográfica distinta de los puntos. El fondo Windows usaba radiales elípticos y una máscara de ruido aproximada, con formas más marcadas que HomeAmbientSmoke/HomeAmbientSurface Apple. Se contrastó FIX-113-2 / FIX-114-2 con las cinco capturas y el código vigente Apple; no se atribuye a otros fixes históricos.
+- Cambio / motivo: Inicio empieza arriba y el ambiente llega al borde superior. TitleBar superpuesta/transparente conserva Minimizar/Maximizar/Cerrar, toggle de sidebar y banda de arrastre de 16 px; Atrás/Adelante pasan al grupo Actualizar/Configuración. La cabecera reserva localmente distancia vertical para no colisionar con controles nativos; otras vistas/fullscreen conservan su composición. Speed Dial muestra artista a partir de 110 px como Apple, con gradiente inferior, tipografía 12/10 y créditos independientes; omite álbum adicional en esa línea. Variante featured de MediaCard alinea arriba etiqueta/título/artista/resumen, medidas/jerarquía Apple y esquinas de 5 px, sin cambiar las cartas horizontales ordinarias. Álbumes/Playlists usan cabecera simple. Paginador usa SVG centrados y puntos con blancos de 14×28 px, misma línea media y centrado del grupo.
+- Fondo: porta ruido/fractal/domain-warp/hash UInt64 y densidad de la máscara Apple a worker independiente; una promesa compartida conserva la textura por módulo. Blur de 5 px aplicado una sola vez a bitmap 384×256; capas animadas sin filtros. Radios circulares según máximo de ventana, mismos stops/centros/opacidades/ciclos de Apple, dos capas 1.5/1.75 con gradientes de opacidad y sombreado negro progresivo. Conserva sampler/paleta, límites de solicitudes/caché/sesión, reloj ≤30 y pausa por foco/ocultamiento/Reduce Motion. No se afirma consumo ni identidad por píxel SwiftUI/WebView2.
+- Archivos: `windows/src/lib/components/{common/MediaCard,home/HomeView,home/HomeAmbient,shell/TitleBar}.svelte`, `windows/src/lib/home/smoke.worker.ts`, `windows/src/routes/+page.svelte`, `windows/scripts/home-smoke.test.mjs`, PLAN-001/matriz y PARIDAD.
+- Revisión visual separada: fixture sin cuenta con metadata asíncrona mediante controller real y RPC ficticio: Rodeo/Travis Scott/2015/16 canciones/1 h 15 min y Mr. Morale/Kendrick Lamar/2022/19 canciones/1 h 18 min. Bordes de texto y portada coinciden; fondo y cabecera top=0. Anchos 1100/1440/2400, sidebar expandida/compacta: sin overflow horizontal; seis cartas en ancho amplio. Centros horizontales de paginadores/grupo coinciden y dispersión vertical=0. Controles de cabecera/ventana alcanzables por hit test; clic de artista ejecuta una sola acción, sin reproducción; abrir Configuración/Escape devuelve foco al engranaje. Máscara worker cargada; sin errores/warnings de consola capturados. TitleBar informa ausencia de Tauri en status sólo del fixture: no se ejercitaron comandos nativos. Captura final 1280×720 y fixture ignorados en `windows/.cache/ui-review-2026-10-05/`, ruta temporal retirada.
+- Verificación automática: prueba focal nueva aprobada: worker transfiere máscara no vacía/translúcida, bordes desvanecidos y densidad que cae hacia abajo. Runner `node Scripts/build-version.mjs windows` aprobado: 153 pruebas frontend, `pnpm check` con 0 errores/0 advertencias y `pnpm build` aprobado; 90 InnerTube, 90 core y 92 core/windows-bridge (7 live ignoradas por variante), 4 player y 50 Tauri. Advertencias de campos no leídos/LNK4098 y mensajes informativos del enlazador presentes; no impidieron verify/build. Diff/whitespace revisados; no se modificaron fuentes Apple/core/Rust.
+- Límites / otra plataforma: requiere confirmación visual del usuario en nueva build WebView2; cuenta real, audio audible, gestos nativos/ventana y consumo no verificados. Apple ya muestra créditos y composición tomada como referencia; no se modifica origen. Integración TitleBar es específica Windows/Tauri y conserva la decisión de sidebar permanente, sin trasladar TopNav ni transición fullscreen Mac. [PAR-003 / PAR-009](PARIDAD.md) incorporan la evidencia; no se cierran por una captura de navegador. PAR-007 / PAR-008 siguen excluidos y PAR-010 / PAR-011-2 pendientes.
+- Build: `C:\Users\Stefa\Escritorio\SIDE B CODIGO PADREEEE\Side-B-main\builds\windows\build-0004\sideb-windows.exe`, Release x64; BUILD.json compiled/sourceChangedDuringBuild false, verify/build passed. EXE/libmpv/Vulkan/licencia conservados juntos y cuatro SHA-256 comprobados contra manifiesto; builds previas intactas. Se reutilizó caché Cargo D: y junction ignorada de FIX-114-2, con PSModulePath aislado sólo durante el proceso. No se abrió la app; cierre de documentación posterior a compilar, sin cambios posteriores de código.
+- Antecedentes / plan: corrige presentación de [FIX-113-2](#fix-113-2)/[FIX-114-2](#fix-114-2), usando [FIX-098](#fix-098)/[FIX-099](#fix-099)/[FIX-100](#fix-100), [FIX-108](#fix-108)/[FIX-109](#fix-109) y [FIX-111](#fix-111) como referencia. [PLAN-001](windows/plans/PLAN-001-personalized-home.md). Sin commit/push/publicación.
+
+<a id="fix-114-2"></a>
+
+### [FIX-114-2] [Windows] - Auditoría funcional y corrección de diferencias de Inicio/cartas frente a macOS
+
+- Alias local anterior: FIX-114; sufijo `-2` añadido al sincronizar el 2026-10-09 para distinguirlo del FIX-114 Apple publicado desde la otra máquina. Conserva su contenido y verificación original.
+
+- Fecha: 2026-10-04 (America/Montevideo).
+- Componente / estado: proyección/configuración/metadata/ambiente, páginas, cartas/filas y resolución contextual de colecciones; corrección solicitada tras FIX-113-2, implementada y comprobada automáticamente/en navegador con fixtures. Validación nativa pendiente.
+- Problema / causa: FIX-113-2 trasladó los bloques de UI con comparaciones parciales. El contraste función por función detectó prioridades de Speed Dial incompletas/videos, retiro de otras clases con mismo ID, preferencias parciales completadas indebidamente, geometría aproximada y pérdida de ancla al resize, reset por categorías, metadata incompleta/caché compartida entre tipos, prefetch que seguía tras recibir fuentes y sampler distinto. La carga de carta se cancelaba al navegar tanto en el shell como en el catálogo, y Pausa de fila evitaba selección/devolución de foco. Diferencias comprobadas en la implementación local de FIX-113-2, sin atribuir regresiones históricas Apple/core.
+- Solución / motivo: portar reglas vigentes Apple de selección/identidad/migración/geometría; mantener ancla real por índice/ID y reset sólo por sesión/chip/tipo/fuentes. Limpiar artista/creador y enlaces reales, distinguir catálogo parcial/completo, no sumar duraciones inválidas; detalles crudos, LRU seis por tipo y fallback actual. Prefetch termina al recibir fuentes nombradas; historial sólo se pide cuando corresponde. Portar filtros/familias/peso/paleta/fallback/contraluz y portadas distintas; renderer adaptado a Windows.
+- Reproducción / foco: scope de carta recorre raíz → MenuExecutor → AccountController; carga sobrevive navegación y rechaza cuenta/otro intento/generation nativa. Mix y playlist canónicos, mismo pendiente sin duplicación, indicadores obsoletos retirados. Menús ordinarios conservan guardas de navegación. Pausa pasa por activación del padre; mouse devuelve foco a tabla, teclado lo mantiene; rojo sólo en botón de colección. Cola nativa/entryId siguen autoritativos.
+- Archivos: `windows/src/lib/home/{settings,presentation,featured,pages,collectionMetadata,metadata,controller,ambient}.ts`, HomeView/HomeSettings/HomeAmbient, MediaArtwork/MediaCard/RowPlay, `player/media.ts`, `menu/{types,executor}.ts`, `account/controller.ts`, ArtistDetailView/CatalogView, raíz `+page.svelte`, pruebas home-personalization/menu-executor/account-playlist-actions, plan/índice/matriz, PARIDAD/PORTEO-INICIO.
+- Verificación automática: `pnpm test` — 152 aprobadas, 18 adicionales frente a FIX-113-2; casos de referencia Apple trasladados y races retenidas de carga/navegación/cuenta/reproducción/ocurrencias. `pnpm check` — 0 errores/0 advertencias. `pnpm build` — frontend aprobado sin ruta temporal. Diff/whitespace revisados. Suites Swift no ejecutadas en Windows; sin cambios Rust/Tauri/Apple/core ni contratos nativos.
+- Revisión de navegador separada: fixture sin cuenta, contenido 1200 → 2200 → 1200 conserva ancla Álbum 5/6; ocultar categoría retira estante y conserva página/destacados. Fila duplicada B activa sólo su ocurrencia; botón activo pausa una vez y enfoca tabla; Ctrl selecciona A sin reproducir; Space conserva foco del control. Sin errores de consola observados. Captura/fixture locales ignorados en `windows/.cache/ui-review-2026-10-04/`, captura `auditoria-inicio.png`; ruta temporal retirada antes del build. El fixture requirió completar el tipo de cola antes de verificarlo; check final del producto aprobado.
+- Límites: WebView2, cuenta/persistencia real, audio audible, arrastre/trackpad/foco exhaustivos y consumo pendientes. DOM no expone momentum AppKit; textura/movimiento/render Windows no se declaran idénticos por píxel. Dos IPC de metadata totales frente a dos por modelo Apple. Fingerprint completo/protección de tokens durante toda la carga son defensas Windows conservadas; preferencias no se sincronizan entre plataformas.
+- Antecedentes / paridad: corrige/completa [FIX-113-2](#fix-113-2), tomando FIX-098 a FIX-109 a FIX-111 a FIX-112 como referencia y preservando FIX-087. [PAR-003 / PAR-005 / PAR-006 / PAR-009](PARIDAD.md) incorporan evidencia y siguen implementados / validación nativa pendiente; PAR-004 conserva evidencia anterior sin nueva medición. PAR-010 sigue pendiente; nuevo PAR-011-2 registra snapshots/hidratación persistente Apple ausentes en Windows, diferencia previa sin port en este fix. PAR-007 / PAR-008 siguen excluidos por decisión del usuario. Apple ya contiene las reglas portadas; origen/core intactos.
+- Plan / artefacto: [PLAN-001](windows/plans/PLAN-001-personalized-home.md), [matriz por función](windows/plans/AUDIT-001-home-parity.md). Frontend: `C:\Users\Stefa\Escritorio\SIDE B CODIGO PADREEEE\Side-B-main\windows\build`; no EXE standalone numerado, sin commit/push/publicación.
+
+Compilación posterior de FIX-114-2 solicitada por el usuario: `node Scripts/build-version.mjs windows` conservó `builds/windows/build-0003/sideb-windows.exe`, Release x64, `BUILD.json` con `status: compiled` y `sourceChangedDuringBuild: false`. Verify/build aprobados: 152 pruebas frontend, check sin errores/advertencias, 90 InnerTube, 90 core (7 live ignoradas), 92 core/windows-bridge (7 live ignoradas), 4 player y 50 Tauri. EXE/libmpv/Vulkan/licencia presentes y sus cuatro SHA-256 comprobados. No se abrió la app ni se validó cuenta/audio audible; paridad manual pendiente. Intentos build-0001 (módulos PowerShell mezclados) y build-0002 (espacio insuficiente C:) conservados. Se aisló PSModulePath sólo en el proceso; caché Cargo en `D:\SideB-build-cache\side-b-main-windows`, con junction ignorada `windows/src-tauri/target`; caché anterior/builds intactos. Sin cambios de código/version.env; documentación de build agregada después de compilar. Sin commit/push/publicación.
+
+<a id="fix-113-2"></a>
+
+### [FIX-113-2] [Windows] - Inicio configurable, cartas contextuales y feed explícito con viewport acotado
+
+- Alias local anterior: FIX-113; sufijo `-2` añadido al sincronizar el 2026-10-09 para distinguirlo del FIX-113 Apple publicado desde la otra máquina. Conserva su contenido y verificación original.
+
+- Fecha: 2026-10-04 (America/Montevideo).
+- Componente: Inicio/ambiente/configuración, cartas compartidas de la UI Windows, tablas/historial y controllers de feed/player.
+- Tipo / estado: mejora solicitada; implementada y comprobada automáticamente y en navegador con datos ficticios. Validación nativa Windows pendiente.
+- Problema / causa: Windows conservaba Inicio genérico, carga automática por sentinel y cartas distintas por superficie. No exponía la selección de fuentes/categorías/cuenta de Apple ni el contexto de radio/colección; las filas reproducían sólo desde título/índice y la identidad de video no distingue ocurrencias duplicadas. Es una diferencia de implementación comprobada frente a FIX-098 a FIX-112, sin atribuir una regresión histórica.
+- Inicio/configuración: saludo según hora y cuenta, avatar disponible, Speed Dial hasta 27 canciones en tres páginas y destacados hasta seis páginas de 2/4/6 colecciones. Prioridad estricta por fuente, dedupe canónico, orden Side B/YouTube/personalizado y categorías independientes de aportes a destacados. Overlay derecho de 292 px con fuentes separadas por Álbumes/Playlists, orden por botones/arrastre, filtro sin tildes, cierre contextual/Escape y reintento de biblioteca. Preferencias validadas/migradas en localStorage con SHA-256 de identidad de cuenta; tipo de destacados global. No se persisten credenciales ni feed. Metadata sólo de página visible: máximo dos solicitudes, LRU seis, sin continuación completa para enriquecer y descarte de resultados obsoletos.
+- Ambiente: hasta cuatro portadas muestreadas a 32 px, extracción de paleta en worker, acentos separados/fallback neutro y caché por sesión. Máscara de textura compartida generada una vez; capas de humo/radiales con transform, reloj rAF limitado a 30 actualizaciones/s, pausa por ventana oculta/inactiva y Reduce Motion. Base grafito y sin blur por frame. No se afirma equivalencia visual exacta del renderer Apple ni consumo medido.
+- Cartas/filas: MediaCard/MediaArtwork/RowPlay comparten Play/Pausa, menú, créditos independientes y barras de origen. Radio se identifica por fuente real, mantiene origen tras avanzar y pausa sin reconstruir cola; colecciones por tipo/ID canónico, sin inferir actividad desde álbum de pista de radio. Clic en espacio libre mediante botón hermano evita doble acción; hover/foco real revela controles, selección no los mantiene. Un clic en filas reproduce/pausa preservando Ctrl/Meta/Shift; IDs de ocurrencia combinan fuente y setVideoId/posición, conservados al shuffle de la cola nativa. Cola actual alterna pausa; menús, likes, guardado, playlist/cola y reordenamiento mantienen sus ejecutores existentes. No se crea otra cola UI.
+- Feed/viewport: botón Cargar más, hasta tres continuaciones por clic mientras no cambia la proyección visible, aviso/fin/error/reintento y token conservado al fallar. Fingerprint completo evita perder cambios interiores de estante. Preload inicial acotado a fuentes Home activas. VirtualStack monta estantes del viewport/overscan y HomeShelf sólo columnas cercanas, conservando offsets y acciones; sin pools/rebind de FIX-101. El controller publica datos crudos/cursor para categorías además de comparar proyección; no agrega una revisión visible separada.
+- Archivos: `windows/src/lib/home/{settings,featured,metadata,ambient,ambient.worker,controller,presentation}.ts`, `player/{media,controller}.ts`, `components/common/{MediaArtwork,MediaCard,RowPlay,VirtualStack}.svelte`, HomeView/HomeSettings/HomeAmbient/HomeShelf/HomeCard/CompactSongCard, vistas Biblioteca/Historial/búsqueda/QuickResults/detalles/catálogos/RecommendedPanel, `windows/src/routes/+page.svelte`, `windows/scripts/home-personalization.test.mjs`, plan/índice, PARIDAD y guía.
+- Verificación automática: `pnpm check` — 0 errores/0 advertencias; `pnpm test` — 134 aprobadas, 17 nuevas (selección/fuentes/capacidad/categorías/migración/cuentas, radio/ocurrencias/shuffle, continuaciones ocultas/repetidas/error, concurrencia/LRU/metadatos y paleta); `pnpm build` — frontend aprobado, worker incluido. Diff/whitespace y exclusión de fuentes Apple/core/runtime revisados. Sin nuevas pruebas Rust porque no cambian sus fuentes/contratos.
+- Revisión visual separada: navegador a 800/1440/2400 px con datos ficticios: panel superpuesto sin reducir Inicio, paginadores/resize anclado, Space sin audio, Escape, filtro sin tildes/orden por botones, origen de radio tras avanzar, menú y Play sin doble acción, multiselección de duplicados. Fixture de 5000 categorías: 2–4 estantes y 18–41 cartas montadas en posiciones verificadas; valida DOM acotado, no FPS. Ruta temporal retirada del producto; captura/fixture locales en `windows/.cache/ui-review-2026-10-04/`. Arranque de raíz en navegador muestra UI, pero las APIs/eventos Tauri fallan por ausencia del runtime; no es validación IPC.
+- Límites: WebView2, cuenta/persistencia reales, audio audible, foco exhaustivo, arrastre y consumo pendientes; no hubo sesión autenticada ni medición de FPS. No se generó un EXE standalone ni se modificó versión pública. PAR-010 (reproducir antes de completar catálogo) sigue pendiente: esta UI conserva la resolución canónica completa existente.
+- Antecedentes / paridad: traslada comportamientos de [FIX-096](#fix-096), [FIX-098](#fix-098)–[FIX-109](#fix-109), [FIX-111](#fix-111)/visibilidad de [FIX-112](#fix-112); preserva el contrato Windows de [FIX-087](#fix-087). [FIX-110](#fix-110) aporta la auditoría, sin atribuirle cambios runtime. [PAR-002 / PAR-003 / PAR-004 / PAR-005 / PAR-006 / PAR-009](PARIDAD.md) pasan a implementado / validación nativa pendiente. Por decisión del usuario, PAR-007 / PAR-008 quedan fuera: sidebar expandida/compacta, TitleBar y composición fullscreen Windows se conservan. Apple ya tiene estos comportamientos; no se modifican Apple ni core.
+- Plan / artefacto: [PLAN-001 Windows](windows/plans/PLAN-001-personalized-home.md). Frontend: `C:\Users\Stefa\Escritorio\SIDE B CODIGO PADREEEE\Side-B-main\windows\build` (no app standalone numerada). Sin commit/push/publicación.
 
 <a id="fix-112"></a>
 

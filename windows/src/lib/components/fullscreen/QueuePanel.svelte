@@ -1,13 +1,22 @@
 <script lang="ts">
+  import { t, language, count, resolveMessage, type AppMessage  } from '$lib/i18n';
+  import { onMount, tick } from 'svelte';
+  import TrackArtwork from '$lib/components/common/TrackArtwork.svelte';
+  import TrackActivity from '$lib/components/common/TrackActivity.svelte';
+  import { visibleTrackRange, trackSegments } from '$lib/components/common/trackList';
   import type { PlaybackStateDto, QueueEntryDto } from '$lib/types';
   import ArtistCredits from '$lib/components/ArtistCredits.svelte';
 
   interface Props {
     playback: PlaybackStateDto;
     onSelectQueue: (index: number) => void;
+    onTogglePlayback?: () => void;
+    onOpenArtist?: (id: string, title: string) => void;
+    onOpenAlbum?: (id: string) => void;
     onMoveQueue: (entryId: string, beforeEntryId: string | null) => void | Promise<void>;
     onQueueContextMenu?: (event: MouseEvent, entry: QueueEntryDto) => void;
     onRetryRadio?: () => void;
+    onRetrySource?: () => void;
     loggedIn?: boolean;
     likedIds?: Set<string>;
     pendingIds?: Set<string>;
@@ -15,18 +24,98 @@
     onToggleLike?: (entry: QueueEntryDto) => void;
     onDislike?: (entry: QueueEntryDto) => void;
   }
-  let { playback, onSelectQueue, onMoveQueue, onQueueContextMenu, onRetryRadio, loggedIn = false,
+  let { playback, onSelectQueue, onTogglePlayback, onOpenArtist, onOpenAlbum, onMoveQueue, onQueueContextMenu, onRetryRadio, onRetrySource, loggedIn = false,
     likedIds = new Set<string>(), pendingIds = new Set<string>(), likesLoading = false, onToggleLike, onDislike }: Props = $props();
   let draggingId = $state<string | null>(null);
   let dropId = $state<string | null>(null);
   let dropAfter = $state(false);
   let movePending = $state(false);
   let moveError = $state<string | null>(null);
-  let announcement = $state('');
+  let announcement = $state<AppMessage | null>(null);
   let queueList = $state<HTMLDivElement>();
+  let awake = $state(false);
+  let scrollTop = $state(0);
+  let viewportHeight = $state(480);
+  let focusedEntryId = $state<string | null>(null);
+  const rowPitch = 48;
+  const visibleEntries = $derived.by(() => {
+    const items = playback.queue.items;
+    const range = visibleTrackRange(items.length, scrollTop, viewportHeight, rowPitch);
+    const pinned = [focusedEntryId, draggingId].map(id => id ? items.findIndex(entry => entry.entryId === id) : -1);
+    return trackSegments(items.length, range, pinned).flatMap(([start, end]) =>
+      items.slice(start, end).map((entry, offset) => ({ entry, index: start + offset })));
+  });
+  function observeViewport(node: HTMLDivElement) {
+    let frame = 0;
+    const sync = () => { scrollTop = node.scrollTop; viewportHeight = node.clientHeight; };
+    const schedule = () => { if (!frame) frame = requestAnimationFrame(() => { frame = 0; sync(); }); };
+    const observer = new ResizeObserver(schedule);
+    observer.observe(node);
+    node.addEventListener('scroll', schedule, { passive: true });
+    // Keyboard events originate from native buttons; the group itself is not focusable.
+    node.addEventListener('keydown', handleTab);
+    sync();
+    return { destroy() { observer.disconnect(); node.removeEventListener('scroll', schedule); node.removeEventListener('keydown', handleTab); if (frame) cancelAnimationFrame(frame); } };
+  }
+  function entryIdOf(target: EventTarget | null) {
+    return target instanceof Element ? target.closest<HTMLElement>('[data-entry-id]')?.dataset.entryId ?? null : null;
+  }
+  async function handleTab(event: KeyboardEvent) {
+    if (event.key !== 'Tab' || event.altKey || event.ctrlKey || event.metaKey || !(event.target instanceof HTMLButtonElement)) return;
+    const row = event.target.closest<HTMLElement>('[data-entry-id]');
+    if (!row || !queueList) return;
+    const controls = Array.from(row.querySelectorAll<HTMLButtonElement>('button:not(:disabled)'));
+    const atBoundary = event.target === (event.shiftKey ? controls[0] : controls.at(-1));
+    if (!atBoundary) return;
+    const index = playback.queue.items.findIndex(entry => entry.entryId === row.dataset.entryId);
+    const nextIndex = index + (event.shiftKey ? -1 : 1);
+    const nextEntry = playback.queue.items[nextIndex];
+    if (!nextEntry) return;
+    event.preventDefault();
+    const rowTop = nextIndex * rowPitch;
+    if (rowTop < queueList.scrollTop) queueList.scrollTop = rowTop;
+    else if (rowTop + rowPitch > queueList.scrollTop + queueList.clientHeight) queueList.scrollTop = rowTop + rowPitch - queueList.clientHeight;
+    scrollTop = queueList.scrollTop;
+    await tick();
+    const nextRow = Array.from(queueList.querySelectorAll<HTMLElement>('[data-entry-id]')).find(node => node.dataset.entryId === nextEntry.entryId);
+    const nextControls = Array.from(nextRow?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') ?? []);
+    (event.shiftKey ? nextControls.at(-1) : nextControls[0])?.focus();
+  }
+  onMount(() => {
+    const sync = () => { awake = !document.hidden && document.hasFocus(); };
+    sync();
+    document.addEventListener('visibilitychange', sync);
+    window.addEventListener('focus', sync);
+    window.addEventListener('blur', sync);
+    return () => {
+      document.removeEventListener('visibilitychange', sync);
+      window.removeEventListener('focus', sync);
+      window.removeEventListener('blur', sync);
+    };
+  });
+
+  function activateEntry(entry: QueueEntryDto) {
+    if (draggingId) return;
+    // Resolve the occurrence at activation time, including after an authoritative reorder.
+    const index = playback.queue.items.findIndex(item => item.entryId === entry.entryId);
+    if (index < 0) return;
+    if (index === playback.queue.currentIndex && onTogglePlayback) {
+      if (!playback.isLoading) onTogglePlayback();
+    } else {
+      onSelectQueue(index);
+    }
+  }
+  function openArtist(entry: QueueEntryDto, id: string) {
+    const title = entry.artistRuns?.find(run => run.id === id)?.text || entry.artists;
+    onOpenArtist?.(id, title);
+  }
   const queueTitle = $derived(playback.queue.source?.kind === 'radio'
-    ? `Radio de ${playback.queue.source.title || playback.currentTrack?.title || 'esta canción'}`
-    : playback.queue.source?.title || 'Cola de reproducción');
+    ? $t('windows.queue.radio', [playback.queue.source.title || playback.currentTrack?.title || $t('windows.queue.thisSong')])
+    : playback.queue.source?.title
+      ? playback.queue.source.kind === 'album' ? $t('queue.albumContext', [playback.queue.source.title])
+        : playback.queue.source.kind === 'playlist' ? $t('queue.playlistContext', [playback.queue.source.title])
+        : playback.queue.source.title
+      : $t('queue.title'));
 
   function formatDuration(seconds: number | null) {
     if (seconds === null || !Number.isFinite(seconds) || seconds <= 0) return '';
@@ -41,6 +130,14 @@
     if (!onQueueContextMenu) return;
     event.preventDefault();
     onQueueContextMenu(event, entry);
+  }
+  function contextMenuFromKeyboard(event: KeyboardEvent, entry: QueueEntryDto) {
+    if (!onQueueContextMenu || !(event.key === 'ContextMenu' || (event.key === 'F10' && event.shiftKey))) return;
+    event.preventDefault(); event.stopPropagation();
+    const anchor = (event.target as HTMLElement).getBoundingClientRect();
+    handleContextMenu(new MouseEvent('contextmenu', {
+      cancelable: true, button: 2, clientX: anchor.left + anchor.width / 2, clientY: anchor.bottom,
+    }), entry);
   }
   function startDrag(event: DragEvent, entry: QueueEntryDto) {
     if (movePending || !event.dataTransfer) { event.preventDefault(); return; }
@@ -75,9 +172,9 @@
     const title = playback.queue.items[index].title;
     try {
       await onMoveQueue(entryId, beforeEntryId);
-      announcement = `Se movió ${title} en la cola.`;
+      announcement = { key: 'windows.queue.moved', args: [title] };
     } catch (error) {
-      moveError = error instanceof Error ? error.message : 'No se pudo mover la canción. Volvé a intentar.';
+      moveError = error instanceof Error ? error.message : $t('windows.ui.couldnTMoveTheSongTryAgain');
     } finally { movePending = false; }
   }
   function dropOnRow(event: DragEvent, entry: QueueEntryDto) {
@@ -94,14 +191,14 @@
     void move(source, before);
   }
   function overList(event: DragEvent) {
-    if (!draggingId || event.target !== event.currentTarget) return;
+    if (!draggingId || (event.target !== event.currentTarget && !(event.target instanceof Element && event.target.classList.contains('queue-canvas')))) return;
     event.preventDefault();
     dropId = null;
     dropAfter = true;
     if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
   }
   function dropAtEnd(event: DragEvent) {
-    if (!draggingId || event.target !== event.currentTarget) return;
+    if (!draggingId || (event.target !== event.currentTarget && !(event.target instanceof Element && event.target.classList.contains('queue-canvas')))) return;
     event.preventDefault();
     const source = draggingId;
     resetDrag();
@@ -124,106 +221,129 @@
 <svelte:window onkeydown={(event) => { if (event.key === 'Escape') resetDrag(); }} />
 
 <div class="queue-content" data-queue-dragging={draggingId !== null}>
+  {#if playback.queue.items.length || playback.sourceLoad?.loading || playback.sourceLoad?.error || playback.sourceLoad?.hasMore || playback.queue.radio?.loading || playback.queue.radio?.error || moveError}
   <header class="queue-heading">
-    <div class="queue-context"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16" /></svg><span>{queueTitle}</span><span class="separator" aria-hidden="true">·</span><span class="count">{playback.queue.items.length} canciones</span></div>
-    {#if playback.queue.radio?.loading}<span class="radio-state" role="status"><span class="spinner" aria-hidden="true"></span>Preparando radio…</span>
-    {:else if playback.queue.radio?.error}<div class="radio-error" role="alert"><span>{playback.queue.radio.error}</span>{#if playback.queue.radio.canRetry && onRetryRadio}<button type="button" onclick={onRetryRadio}>Reintentar</button>{/if}</div>{/if}
-    {#if moveError}<div class="radio-error" role="alert">{moveError}</div>{/if}
+    {#if playback.queue.items.length}
+    <div class="queue-context">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        {#if playback.queue.source?.kind === 'radio'}<circle cx="12" cy="12" r="2" /><path d="M7 7a7 7 0 0 0 0 10M17 7a7 7 0 0 1 0 10M4 4a11 11 0 0 0 0 16M20 4a11 11 0 0 1 0 16" />
+        {:else if playback.queue.source?.kind === 'album'}<circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="3" />
+        {:else if playback.queue.source?.kind === 'playlist'}<path d="M3 5h10M3 10h10M3 15h6M17 5v13" /><ellipse cx="14" cy="18" rx="3" ry="2" />
+        {:else}<path d="M8 6h12M8 12h12M8 18h12" /><path d="M3 6h.01M3 12h.01M3 18h.01" stroke-width="3" />{/if}
+      </svg>
+      <span class="context-title">{queueTitle}</span><span class="separator" aria-hidden="true">•</span><span class="count">{count('common.songCount', playback.queue.items.length, $language)}</span>
+      {#if playback.sourceLoad?.loading || playback.queue.radio?.loading}<span class="context-loading">
+        {#if playback.sourceLoad?.loading}<span class="radio-state" role="status"><span class="spinner" aria-hidden="true"></span>{$t('detail.collection.preparingSongs')}</span>{/if}
+        {#if playback.queue.radio?.loading}<span class="radio-state" role="status"><span class="spinner" aria-hidden="true"></span>{$t('windows.ui.preparingRadio')}</span>{/if}
+      </span>{/if}
+    </div>
+    {:else}
+      {#if playback.sourceLoad?.loading}<span class="radio-state" role="status"><span class="spinner" aria-hidden="true"></span>{$t('detail.collection.preparingSongs')}</span>{/if}
+      {#if playback.queue.radio?.loading}<span class="radio-state" role="status"><span class="spinner" aria-hidden="true"></span>{$t('windows.ui.preparingRadio')}</span>{/if}
+    {/if}
+    {#if !playback.sourceLoad?.loading && playback.sourceLoad?.error}<div class="radio-error" role="alert"><span>{resolveMessage(playback.sourceLoad.error, $language)}</span>{#if playback.sourceLoad.canRetry && onRetrySource}<button type="button" onclick={onRetrySource}>{$t('common.retry')}</button>{/if}</div>{/if}
+    {#if playback.sourceLoad?.hasMore}<span class="radio-state">{$t('windows.queue.partial', [playback.sourceLoad.loadedCount])}</span>{/if}
+    {#if !playback.queue.radio?.loading && playback.queue.radio?.error}<div class="radio-error" role="alert"><span>{resolveMessage(playback.queue.radio.error, $language)}</span>{#if playback.queue.radio.canRetry && onRetryRadio}<button type="button" onclick={onRetryRadio}>{$t('sidebar.retry')}</button>{/if}</div>{/if}
+    {#if moveError}<div class="radio-error" role="alert">{resolveMessage(moveError, $language)}</div>{/if}
   </header>
-  <span class="sr-only" aria-live="polite">{announcement}</span>
-  <span id="queue-reorder-help" class="sr-only">Arrastrá para mover la canción, o usá las flechas arriba y abajo con este botón enfocado.</span>
+  {/if}
+  <span class="sr-only" aria-live="polite">{resolveMessage(announcement, $language)}</span>
+  <span id="queue-reorder-help" class="sr-only">{$t('windows.ui.dragToMoveTheSongOrUseTheUpAndDownArrowsWithThisButtonFocused')}</span>
   {#if playback.queue.items.length}
-    <div class="queue-list" class:drop-end={draggingId && dropId === null && dropAfter} bind:this={queueList} role="group" aria-label="Pistas en cola" ondragover={overList} ondrop={dropAtEnd} ondragleave={(event) => { if (!queueList?.contains(event.relatedTarget as Node | null)) { dropId = null; dropAfter = false; } }}>
-      {#each playback.queue.items as entry, index (entry.entryId)}
-        <div class="queue-row" role="group" aria-label={`Opciones de ${entry.title}`} class:current={index === playback.queue.currentIndex} class:dragging={draggingId === entry.entryId} class:drop-before={draggingId && dropId === entry.entryId && !dropAfter} class:drop-after={draggingId && dropId === entry.entryId && dropAfter} class:has-menu={!!onQueueContextMenu} oncontextmenu={(event) => handleContextMenu(event, entry)} ondragover={(event) => overRow(event, entry)} ondrop={(event) => dropOnRow(event, entry)}>
-          <button type="button" class="queue-select" aria-current={index === playback.queue.currentIndex ? 'true' : undefined} aria-label={`Reproducir ${entry.title}`} onclick={() => { if (!draggingId) onSelectQueue(index); }}>
-            <span class="queue-index">{#if index === playback.queue.currentIndex}<svg viewBox="0 0 24 24" aria-label={playback.isPlaying ? 'Sonando' : 'Pausado'} fill="currentColor"><path d="M3 9v6h4l5 5V4L7 9zm12.5 3a4 4 0 0 0-2-3.46v6.92a4 4 0 0 0 2-3.46" /></svg>{:else}{index + 1}{/if}</span>
-            <span class="queue-art">{#if entry.thumbnail}<img src={entry.thumbnail} alt="" loading="lazy" draggable="false" />{:else}<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M10 5v12.1a4 4 0 1 1-2-3.46V3l12-2v14.1a4 4 0 1 1-2-3.46V4.4z" /></svg>{/if}</span>
-            <span class="queue-meta"><span class="queue-title">{entry.title}</span><ArtistCredits artistRuns={entry.artistRuns} artists={entry.artists} album={entry.album} /></span>
-            <span class="queue-duration">{formatDuration(entry.duration)}</span>
-          </button>
-          <button type="button" class="reorder-handle" aria-label={`Mover ${entry.title} en la cola`} aria-describedby="queue-reorder-help" title="Arrastrar para reordenar (↑/↓ con el teclado)" disabled={movePending} draggable={!movePending} ondragstart={(event) => startDrag(event, entry)} ondragend={resetDrag} onkeydown={(event) => reorderWithKeyboard(event, entry)} onclick={(event) => event.stopPropagation()}>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" /></svg>
-          </button>
+    <div class="queue-list" class:drop-end={draggingId && dropId === null && dropAfter} bind:this={queueList} use:observeViewport onfocusin={(event) => focusedEntryId = entryIdOf(event.target)} onfocusout={(event) => focusedEntryId = entryIdOf(event.relatedTarget)} role="group" aria-label={$t('windows.ui.queuedTracks')} ondragover={overList} ondrop={dropAtEnd} ondragleave={(event) => { if (!queueList?.contains(event.relatedTarget as Node | null)) { dropId = null; dropAfter = false; } }}>
+      <div class="queue-canvas" style={`height:${playback.queue.items.length * rowPitch}px`}>
+      {#each visibleEntries as { entry, index } (entry.entryId)}
+        {@const current = index === playback.queue.currentIndex}
+        <div class="queue-row track-row" data-entry-id={entry.entryId} style={`top:${index * rowPitch}px`} role="group" aria-label={$t('common.moreOptionsFor', [entry.title])} class:current={index === playback.queue.currentIndex} class:dragging={draggingId === entry.entryId} class:drop-before={draggingId && dropId === entry.entryId && !dropAfter} class:drop-after={draggingId && dropId === entry.entryId && dropAfter} oncontextmenu={(event) => handleContextMenu(event, entry)} ondragover={(event) => overRow(event, entry)} ondrop={(event) => dropOnRow(event, entry)}>
+          <button type="button" class="queue-select" aria-current={current ? 'true' : undefined} aria-label={`${current && playback.isPlaying ? $t('player.pause') : $t('player.play')} ${entry.title}`} disabled={current && playback.isLoading} onkeydown={(event) => contextMenuFromKeyboard(event, entry)} onclick={() => activateEntry(entry)}></button>
+          <span class="queue-index" aria-hidden="true"><TrackActivity active={current} playing={playback.isPlaying} number={index + 1} {awake} presentation="queue" /></span>
+          <span class="queue-art"><TrackArtwork title={entry.title} thumbnail={entry.thumbnail} active={current} playing={playback.isPlaying} pending={current && playback.isLoading} size={36} showPlayOverlay={false} onPlay={() => activateEntry(entry)} /></span>
+          <span class="queue-meta"><span class="queue-title">{entry.title}</span><ArtistCredits artistRuns={entry.artistRuns} artists={entry.artists} artistId={entry.artistId} album={entry.album} albumId={entry.albumId} onOpenArtist={onOpenArtist ? (id) => openArtist(entry, id) : undefined} {onOpenAlbum} /></span>
+          <span class="queue-actions">
+          {#if onDislike}
+            <button type="button" class="queue-action dislike-action" aria-label={$t('windows.queue.dislike', [entry.title])} title={$t('windows.ui.dislikeAndRemoveFromQueue')} disabled={movePending || playback.isLoading} onclick={(event) => { event.stopPropagation(); onDislike?.(entry); }} onpointerdown={(event) => event.stopPropagation()}>
+              <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4H3v10h4M7 13l4 7a2 2 0 0 0 3-2l-1-4h5a3 3 0 0 0 3-3l-2-5a3 3 0 0 0-3-2H7Z" /></svg>
+            </button>
+          {/if}
           {#if loggedIn && onToggleLike}
             {@const liked = likedIds.has(entry.videoId)}
             {@const likePending = (likesLoading && !liked) || pendingIds.has(entry.videoId)}
-            <button type="button" class="queue-action like-action" class:liked aria-pressed={liked} aria-label={liked ? `Quitar Me gusta de ${entry.title}` : `Marcar ${entry.title} como Me gusta`} title={likePending ? "Actualizando Me gusta…" : liked ? "Quitar Me gusta" : "Me gusta"} disabled={likePending} onclick={(event) => { event.stopPropagation(); onToggleLike?.(entry); }} onpointerdown={(event) => event.stopPropagation()}>
-              <svg viewBox="0 0 24 24" aria-hidden="true" fill={liked ? "currentColor" : "none"} stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.8 8.7c0 4.2-6.4 9.1-8.8 11-2.4-1.9-8.8-6.8-8.8-11a4.9 4.9 0 0 1 8.8-3.1 4.9 4.9 0 0 1 8.8 3.1Z" /></svg>
+            <button type="button" class="queue-action like-action" class:liked aria-pressed={liked} aria-label={liked ? $t('windows.queue.unlike', [entry.title]) : $t('windows.queue.like', [entry.title])} title={likePending ? $t('windows.ui.updatingLike') : liked ? $t('windows.ui.removeLike') : $t('detail.track.like')} disabled={likePending} onclick={(event) => { event.stopPropagation(); onToggleLike?.(entry); }} onpointerdown={(event) => event.stopPropagation()}>
+              <svg viewBox="2 1.68 20 20" aria-hidden="true" fill={liked ? "currentColor" : "none"} stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20.8 8.7c0 4.2-6.4 9.1-8.8 11-2.4-1.9-8.8-6.8-8.8-11a4.9 4.9 0 0 1 8.8-3.1 4.9 4.9 0 0 1 8.8 3.1Z" /></svg>
             </button>
           {/if}
-          {#if onDislike}
-            <button type="button" class="queue-action dislike-action" aria-label={`No me gusta y quitar ${entry.title} de la cola`} title="No me gusta y quitar de la cola" disabled={movePending || playback.isLoading} onclick={(event) => { event.stopPropagation(); onDislike?.(entry); }} onpointerdown={(event) => event.stopPropagation()}>
-              <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 10V4H4a2 2 0 0 0-2 2v4a2 2 0 0 0 2 2h3m0-2 3-7a2 2 0 0 1 2-1h5a2 2 0 0 1 2 2l-1 6h2a2 2 0 0 1 2 2l-2 8a2 2 0 0 1-2 2h-7l-6-5v-7Z" /></svg>
-            </button>
-          {/if}
-          {#if onQueueContextMenu}<button type="button" class="row-menu" aria-label={`Más opciones para ${entry.title}`} title="Más opciones" onclick={(event) => onQueueContextMenu?.(event, entry)}><svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg></button>{/if}
+          </span>
+          <span class="queue-timing"><span class="queue-duration">{formatDuration(entry.duration)}</span>
+          <button type="button" class="reorder-handle" aria-label={$t('windows.queue.move', [entry.title])} aria-describedby="queue-reorder-help" title={$t('windows.ui.dragToReorderOnKeyboard')} disabled={movePending} draggable={!movePending} ondragstart={(event) => startDrag(event, entry)} ondragend={resetDrag} onkeydown={(event) => reorderWithKeyboard(event, entry)} onclick={(event) => event.stopPropagation()}>
+            <svg viewBox="0 0 16 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M1 3h14M1 7h14M1 11h14" /></svg>
+          </button>
+          </span>
         </div>
       {/each}
+      </div>
     </div>
   {:else}
-    <div class="empty-panel"><svg class="empty-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16" /></svg><p>No hay pistas en la cola</p></div>
+    <div class="empty-panel"><svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M3 5h10M3 10h10M3 15h6M18 5v13" /><ellipse cx="15" cy="18" rx="3" ry="2" /></svg><p>{$t('windows.ui.noTracksInTheQueue')}</p></div>
   {/if}
 </div>
 
 <style>
   .queue-content { display: flex; width: 100%; min-width: 0; min-height: 0; flex: 1; flex-direction: column; overflow: hidden; }
   .queue-heading { display: flex; flex: none; min-width: 0; flex-direction: column; gap: 8px; padding: 2px 8px 8px; }
-  .queue-context { display: flex; min-width: 0; align-items: center; gap: 8px; color: rgb(255 255 255 / 90%); font-size: 12px; font-weight: 650; }
-  .queue-context svg { flex: 0 0 14px; width: 14px; height: 14px; }
-  .queue-context > span:nth-child(2) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .count { flex: none; color: rgb(255 255 255 / 53%); font-size: 11px; font-weight: 500; white-space: nowrap; }
+  .queue-context { display: flex; min-width: 0; align-items: center; flex-wrap: wrap; gap: 4px 8px; color: rgb(255 255 255 / 90%); font-size: 12px; font-weight: 600; }
+  .queue-context > svg { flex: 0 0 11px; width: 11px; height: 11px; }
+  .context-title { min-width: 0; flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .separator { flex: none; color: rgb(255 255 255 / 30%); font-size: 10px; font-weight: 400; }
+  .count { flex: none; color: rgb(255 255 255 / 50%); font-size: 11px; font-weight: 500; white-space: nowrap; }
+  .context-loading { display: flex; flex-wrap: wrap; gap: 4px 8px; margin-left: auto; }
+  .context-loading .radio-state { gap: 4px; font-size: 10px; color: rgb(255 255 255 / 60%); }
   .radio-state, .radio-error { display: flex; align-items: center; gap: 8px; color: rgb(255 255 255 / 67%); font-size: 11px; }
   .radio-error { color: #ffb7bb; }
   .radio-error button { flex: none; padding: 3px 8px; border: 1px solid rgb(255 255 255 / 15%); border-radius: 999px; color: #fff; background: rgb(255 255 255 / 8%); font: inherit; cursor: pointer; }
   .spinner { width: 12px; height: 12px; border: 2px solid rgb(255 255 255 / 24%); border-top-color: #d06c70; border-radius: 50%; animation: spin .8s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
   .queue-list { min-width: 0; min-height: 0; flex: 1; overflow-y: auto; overscroll-behavior: contain; scrollbar-color: rgb(255 255 255 / 28%) transparent; scrollbar-width: thin; }
-  .queue-row { position: relative; display: flex; min-width: 0; align-items: center; gap: 6px; margin-bottom: 2px; padding: 0 4px; border-radius: 8px; }
-  .queue-row:hover, .queue-row.current { background: rgb(255 255 255 / 7%); }
+  .queue-canvas { position: relative; min-height: 100%; }
+  .queue-row { position: absolute; left: 0; right: 0; display: grid; grid-template-columns: 24px 46px minmax(0, 1fr) 64px 36px; box-sizing: border-box; min-width: 0; height: 46px; align-items: center; margin: 0; padding: 0 18px 0 16px; border-radius: 6px; }
+  .queue-select::before { position: absolute; inset: 1px 10px; border: .5px solid transparent; border-radius: 6px; content: ''; pointer-events: none; }
+  .queue-row:hover .queue-select::before { background: rgb(255 255 255 / 4.5%); }
+  .queue-row.current .queue-select::before { border-color: rgb(255 255 255 / 9%); background: rgb(255 255 255 / 6.5%); }
   .queue-row.dragging { opacity: .5; }
-  .queue-row.drop-before::before, .queue-row.drop-after::after { position: absolute; z-index: 1; left: 4px; right: 4px; height: 2px; background: #d06c70; content: ''; pointer-events: none; }
+  .queue-row.drop-before::before, .queue-row.drop-after::after { position: absolute; z-index: 3; left: 4px; right: 4px; height: 2px; background: #d06c70; content: ''; pointer-events: none; }
   .queue-row.drop-before::before { top: 0; }
   .queue-row.drop-after::after { bottom: 0; }
   .queue-list.drop-end { box-shadow: inset 0 -2px #d06c70; }
-  .queue-select { box-sizing: border-box; display: flex; min-width: 0; flex: 1; height: 46px; align-items: center; gap: 6px; padding: 3px 122px 3px 2px; border: 0; border-radius: 7px; color: inherit; background: transparent; font: inherit; text-align: left; cursor: pointer; }
-  .queue-art { display: grid; flex: 0 0 36px; margin-right: 9px; place-items: center; width: 36px; height: 36px; overflow: hidden; border-radius: 6px; color: rgb(255 255 255 / 58%); background: rgb(255 255 255 / 10%); }
-  .queue-art img { width: 100%; height: 100%; object-fit: cover; }
-  .queue-art svg { width: 19px; height: 19px; }
-  .queue-meta { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 3px; }
-  .queue-title { display: block; min-width: 0; overflow: hidden; padding: 0; border: 0; color: rgb(255 255 255 / 92%); background: transparent; font: inherit; font-size: 13px; font-weight: 500; line-height: 16px; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
+  /* The activation target is a sibling below controls, never a parent of credit buttons. */
+  .queue-select { position: absolute; inset: 0; z-index: 0; display: block; width: 100%; height: 100%; padding: 0; border: 0; border-radius: inherit; color: inherit; background: transparent; cursor: pointer; }
+  .queue-select:disabled { cursor: wait; }
+  .queue-index { display: grid; place-items: center; pointer-events: none; }
+  .queue-art { position: relative; z-index: 1; display: block; width: 36px; height: 36px; margin-left: 10px; }
+  .queue-meta { position: relative; z-index: 1; display: flex; min-width: 0; margin: 0 12px; flex-direction: column; gap: 3px; pointer-events: none; }
+  .queue-title { display: block; min-width: 0; overflow: hidden; color: rgb(255 255 255 / 92%); font-size: 13px; font-weight: 500; line-height: 16px; text-overflow: ellipsis; white-space: nowrap; }
   .current .queue-title { font-weight: 650; }
   .queue-meta :global(.artist-credits) { color: rgb(255 255 255 / 60%); font-size: 11.5px; line-height: 14px; }
-  .queue-index { display: grid; flex: 0 0 22px; place-items: center; color: rgb(255 255 255 / 55%); font-size: 11.5px; }
-  .queue-index svg { width: 12px; height: 12px; color: white; }
-  .queue-duration { position: absolute; right: 6px; }
-  .has-menu .queue-duration { right: 42px; }
-  .queue-duration { flex: 0 0 36px; color: rgb(255 255 255 / 45%); font-size: 11.5px; font-variant-numeric: tabular-nums; text-align: right; }
+  .queue-meta :global(.credit-link) { pointer-events: auto; }
+  .queue-duration { width: max-content; min-width: 28px; color: rgb(255 255 255 / 45%); font-size: 11.5px; font-variant-numeric: tabular-nums; text-align: center; white-space: nowrap; pointer-events: none; }
+  .queue-timing { position: relative; z-index: 1; display: grid; grid-template-columns: minmax(0, 1fr); place-items: center; width: 28px; height: 30px; margin-left: 8px; pointer-events: none; }
+  .queue-actions { position: relative; z-index: 1; display: grid; grid-template-columns: repeat(2, 28px); gap: 8px; align-items: center; }
+  .dislike-action { grid-column: 1; }
+  .like-action { grid-column: 2; }
+  .reorder-handle { position: absolute; inset: 0; z-index: 1; display: grid; place-items: center; width: 28px; height: 30px; padding: 0; border: 0; border-radius: 6px; color: rgb(255 255 255 / 45%); background: transparent; cursor: grab; opacity: 0; pointer-events: none; }
   .queue-row:hover .queue-duration, .queue-row:focus-within .queue-duration { visibility: hidden; }
-  .reorder-handle { position: absolute; top: 8px; right: 6px; display: grid; place-items: center; width: 36px; height: 30px; padding: 6px; border: 0; border-radius: 6px; color: rgb(255 255 255 / 45%); background: transparent; cursor: grab; opacity: 0; }
-  .has-menu .reorder-handle { right: 42px; }
-  .queue-row:hover .reorder-handle, .queue-row:focus-within .reorder-handle { opacity: 1; }
-  .reorder-handle svg { width: 18px; height: 16px; }
+  .queue-row:hover .reorder-handle, .queue-row:focus-within .reorder-handle { opacity: 1; pointer-events: auto; }
+  .reorder-handle svg { width: 16px; height: 14px; }
   .reorder-handle:hover { color: #fff; }
   .reorder-handle:active { cursor: grabbing; }
-  .reorder-handle:disabled { cursor: wait; opacity: .4; }
-  .queue-action { position: absolute; top: 8px; display: grid; place-items: center; width: 30px; height: 30px; padding: 6px; border: 0; border-radius: 6px; color: rgb(255 255 255 / 68%); background: transparent; cursor: pointer; opacity: 0; pointer-events: none; }
-  .queue-action svg { width: 17px; height: 17px; }
-  .like-action { right: 50px; }
-  .has-menu .like-action { right: 86px; }
-  .dislike-action { right: 86px; }
-  .has-menu .dislike-action { right: 122px; }
+  .reorder-handle:disabled { cursor: wait; }
+  .queue-action { display: grid; place-items: center; width: 28px; height: 30px; padding: 0; border: 0; border-radius: 6px; color: rgb(255 255 255 / 65%); background: transparent; cursor: pointer; opacity: 0; pointer-events: none; }
+  .queue-action svg { width: 12px; height: 12px; }
   .queue-row:hover .queue-action, .queue-row:focus-within .queue-action { opacity: 1; pointer-events: auto; }
   .queue-action:hover { color: #fff; background: rgb(255 255 255 / 10%); }
-  .queue-action.liked { color: #d06c70; opacity: 1; pointer-events: auto; }
-  .queue-row:hover .dislike-action:disabled, .queue-row:focus-within .dislike-action:disabled { opacity: .45; }
-  .queue-action:disabled { cursor: wait; }
-  .row-menu { display: grid; flex: 0 0 30px; place-items: center; width: 30px; height: 30px; border: 0; border-radius: 6px; color: rgb(255 255 255 / 60%); background: transparent; cursor: pointer; }
-  .row-menu svg { width: 16px; height: 16px; }
-  .row-menu:hover { color: #fff; background: rgb(255 255 255 / 10%); }
+  .queue-action.liked { color: #fff; opacity: 1; pointer-events: auto; }
+  .queue-action:disabled { cursor: wait; opacity: .45; }
   .empty-panel { display: flex; min-width: 0; min-height: 0; flex: 1; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 20px; color: rgb(255 255 255 / 55%); text-align: center; }
-  .empty-panel p { max-width: 32ch; margin: 0; font-size: 14px; }
-  .empty-icon { width: 36px; height: 36px; color: rgb(255 255 255 / 28%); }
+  .empty-panel p { max-width: 32ch; margin: 0; font-size: 14px; font-weight: 500; }
+  .empty-icon { width: 38px; height: 38px; color: rgb(255 255 255 / 25%); }
   .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   button:focus-visible { outline: 2px solid #d06c70; outline-offset: 3px; }
   @media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }

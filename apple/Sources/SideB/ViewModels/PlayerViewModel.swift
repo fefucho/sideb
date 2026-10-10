@@ -126,7 +126,9 @@ public final class PlayerViewModel {
     // MARK: - Control de Concurrencia y Sincronización
     private var resolveStreamTask: Task<Void, Never>?
     private var lyricsTask: Task<Void, Never>?
-    private var radioTask: Task<Void, Never>?
+    private(set) var radioTask: Task<Void, Never>?
+    private(set) var albumMetadataTask: Task<Void, Never>?
+    private var albumMetadataRequest: (identity: UUID, token: UUID, albumID: String)?
     private var automixTask: Task<Void, Never>?
     private var collectionRadioTask: Task<Void, Never>?
     private var playlistPlaybackTask: Task<Void, Never>?
@@ -221,6 +223,8 @@ public final class PlayerViewModel {
         resolveStreamTask?.cancel()
         lyricsTask?.cancel()
         recommendedTask?.cancel()
+        albumMetadataTask?.cancel()
+        albumMetadataRequest = nil
         genius.reset()
         cancelInFlightRadioTasks()
         currentPlaybackToken = UUID()
@@ -749,6 +753,8 @@ public final class PlayerViewModel {
         resolveStreamTask?.cancel()
         lyricsTask?.cancel()
         recommendedTask?.cancel()
+        albumMetadataTask?.cancel()
+        albumMetadataRequest = nil
 
         // 2. Generar token de correlación exclusivo
         let token = UUID()
@@ -788,6 +794,8 @@ public final class PlayerViewModel {
             self.isLoadingStream = false
             return
         }
+
+        hydrateCurrentAlbumMetadata()
 
         // 5. Iniciar resolución de stream con token de correlación
         resolveStreamTask = Task {
@@ -1093,6 +1101,8 @@ public final class PlayerViewModel {
     /// Limpia datos privados y rechaza respuestas de la sesión anterior.
     public func clearAccountState() {
         accountGeneration = UUID()
+        albumMetadataTask?.cancel()
+        albumMetadataRequest = nil
         likedHydrationTask?.cancel()
         playlistCatalog.invalidateAll()
         PlaylistDetailViewModel.recentlyLikedTracks.removeAll()
@@ -1106,6 +1116,44 @@ public final class PlayerViewModel {
     }
 
     // MARK: - Carga de Letras y Pistas de Radio
+    /// The album link may be trustworthy while Home's positional label is not.
+    /// Resolve its canonical title independently of the audio stream or radio page.
+    private func hydrateCurrentAlbumMetadata() {
+        guard let core = rustCore, let track = currentTrack,
+              HomeSongMetadata.clean(track.album) == nil,
+              let albumID = HomeSongMetadata.clean(track.albumId) else { return }
+        let playbackToken = currentPlaybackToken
+        guard albumMetadataRequest?.token != playbackToken || albumMetadataRequest?.albumID != albumID else { return }
+        let requestIdentity = UUID()
+        albumMetadataRequest = (requestIdentity, playbackToken, albumID)
+        let generation = accountGeneration
+        let queueToken = queueManager.queueToken
+        let occurrenceID = queueManager.currentOccurrenceID
+        albumMetadataTask = Task {
+            defer {
+                if self.albumMetadataRequest?.identity == requestIdentity {
+                    self.albumMetadataRequest = nil
+                }
+            }
+            do {
+                let album = try await core.getAlbum(browseId: albumID)
+                guard !Task.isCancelled, self.currentPlaybackToken == playbackToken,
+                      self.accountGeneration == generation, self.queueManager.queueToken == queueToken,
+                      self.queueManager.currentOccurrenceID == occurrenceID,
+                      let current = self.currentTrack, current.videoId == track.videoId,
+                      HomeSongMetadata.clean(current.albumId) == albumID else { return }
+                let enriched = PlaybackAlbumMetadata.merging(current, album: album)
+                guard enriched != current else { return }
+                self.currentTrack = enriched
+                self.queueManager.updateCurrentMetadata(enriched, occurrenceID: occurrenceID, queueToken: queueToken)
+                self.updateNowPlayingInfo()
+            } catch {
+                // Missing/error metadata keeps the known destination and an absent name.
+                // It must never fail playback or fall back to a view count.
+            }
+        }
+    }
+
     public func loadLyrics(for track: SongItemRecord, token: UUID? = nil) {
         guard let core = rustCore else { return }
         self.isLoadingLyrics = true
@@ -1153,6 +1201,9 @@ public final class PlayerViewModel {
         self.currentRadioToken = token
         let targetQueueToken = queueManager.queueToken
         let targetVideoId = track.videoId
+        let targetPlaybackToken = currentPlaybackToken
+        let targetAccountGeneration = accountGeneration
+        let targetOccurrenceID = queueManager.currentOccurrenceID
 
         queueManager.isLoadingRadio = true
 
@@ -1166,6 +1217,8 @@ public final class PlayerViewModel {
                 let radioResult = try await core.getRadio(videoId: targetVideoId)
                 guard !Task.isCancelled,
                       self.currentRadioToken == token,
+                      self.currentPlaybackToken == targetPlaybackToken,
+                      self.accountGeneration == targetAccountGeneration,
                       self.queueManager.queueToken == targetQueueToken,
                       self.currentTrack?.videoId == targetVideoId else {
                     return
@@ -1181,27 +1234,26 @@ public final class PlayerViewModel {
                     self.resumeAfterQueueExtension()
 
                     // Completar álbum y enlaces ausentes con los metadatos de la misma pista en la radio.
-                    if let cur = self.currentTrack, cur.videoId == targetVideoId,
+                    if self.currentPlaybackToken == targetPlaybackToken,
+                       self.queueManager.currentOccurrenceID == targetOccurrenceID,
+                       let cur = self.currentTrack, cur.videoId == targetVideoId,
                        cur.album == nil || cur.artistRuns.isEmpty {
                         if let match = radioResult.items.first(where: { $0.videoId == targetVideoId }) {
-                            self.currentTrack = SongItemRecord(
-                                videoId: cur.videoId,
-                                title: cur.title,
-                                artists: cur.artists,
-                                album: cur.album ?? match.album,
-                                duration: cur.duration,
-                                thumbnail: cur.thumbnail,
-                                artistId: cur.artistId ?? match.artistId,
-                                albumId: cur.albumId ?? match.albumId,
-                                setVideoId: cur.setVideoId,
-                                isVideo: cur.isVideo,
-                                isUpload: cur.isUpload,
-                                library: cur.library,
-                                artistRuns: cur.artistRuns.isEmpty ? match.artistRuns : cur.artistRuns
-                            )
-                            if let albId = self.currentTrack?.albumId {
+                            var enriched = PlaybackAlbumMetadata.merging(cur, radio: match)
+                            if cur.artists.trimmingCharacters(in: .whitespacesAndNewlines)
+                                .caseInsensitiveCompare(match.artists.trimmingCharacters(in: .whitespacesAndNewlines)) == .orderedSame {
+                                enriched.artistId = cur.artistId ?? match.artistId
+                                enriched.artistRuns = cur.artistRuns.isEmpty ? match.artistRuns : cur.artistRuns
+                            }
+                            if enriched != cur {
+                                self.currentTrack = enriched
+                                self.queueManager.updateCurrentMetadata(enriched, occurrenceID: targetOccurrenceID, queueToken: targetQueueToken)
+                                self.updateNowPlayingInfo()
+                            }
+                            if let albId = enriched.albumId {
                                 self.currentAlbumBrowseId = albId
                             }
+                            self.hydrateCurrentAlbumMetadata()
                         }
                     }
                 }
@@ -1629,7 +1681,7 @@ extension SongItemRecord {
             let parts = artists.components(separatedBy: " • ")
             if parts.count >= 2 {
                 let candidate = parts[1].trimmingCharacters(in: .whitespaces)
-                return candidate.isEmpty ? nil : candidate
+                return candidate.isEmpty || HomeSongMetadata.isStatistic(candidate) || HomeSongMetadata.isDuration(candidate) ? nil : candidate
             }
         }
         return nil
@@ -1637,16 +1689,8 @@ extension SongItemRecord {
 
     /// Construye un SongItemRecord a partir de un HomeItemRecord desglosando artista y álbum si vienen concatenados
     public init(fromHomeItem item: HomeItemRecord) {
-        var artistName = item.artists ?? item.subtitle ?? ""
-        var albumName: String? = item.album
-        if albumName == nil, let sub = item.subtitle, sub.contains(" • ") {
-            let parts = sub.components(separatedBy: " • ")
-            if parts.count >= 2 {
-                artistName = parts[0].trimmingCharacters(in: .whitespaces)
-                let candidate = parts[1].trimmingCharacters(in: .whitespaces)
-                albumName = candidate.isEmpty ? nil : candidate
-            }
-        }
+        let artistName = HomeSongMetadata.artist(from: item)
+        let albumName = HomeSongMetadata.album(from: item)
         self.init(
             videoId: item.id,
             title: item.title,
@@ -1657,23 +1701,17 @@ extension SongItemRecord {
             artistId: item.artistId,
             albumId: item.albumId,
             setVideoId: nil,
-            isVideo: false, isUpload: false, library: nil,
-            artistRuns: item.artistRuns
+            isVideo: item.kind == "video", isUpload: false, library: nil,
+            artistRuns: HomeSongMetadata.artistRuns(from: item)
         )
     }
 
     /// Construye un SongItemRecord a partir de un BrowseCardRecord desglosando artista y álbum si vienen concatenados
     public init(fromCard card: BrowseCardRecord, fallbackArtist: String? = nil, knownArtistId: String? = nil) {
-        var artistName = card.subtitle ?? fallbackArtist ?? ""
-        var albumName: String? = nil
-        if let sub = card.subtitle, sub.contains(" • ") {
-            let parts = sub.components(separatedBy: " • ")
-            if parts.count >= 2 {
-                artistName = parts[0].trimmingCharacters(in: .whitespaces)
-                let candidate = parts[1].trimmingCharacters(in: .whitespaces)
-                albumName = candidate.isEmpty ? nil : candidate
-            }
-        }
+        let artistName = HomeSongMetadata.artist(subtitle: card.subtitle, fallback: fallbackArtist)
+        // BrowseCard has no semantic album field/destination: a positional subtitle
+        // cannot establish either. Radio metadata may complete them after selection.
+        let albumName: String? = nil
         self.init(
             videoId: card.id,
             title: card.title,

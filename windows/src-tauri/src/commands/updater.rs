@@ -150,13 +150,7 @@ pub fn select_best_windows_asset(assets: &[GitHubAsset]) -> Option<String> {
             return Some(asset.browser_download_url.clone());
         }
     }
-    // 3. Paquete comprimido .zip para Windows
-    for asset in assets {
-        let name_lower = asset.name.to_lowercase();
-        if name_lower.ends_with(".zip") && (name_lower.contains("win") || name_lower.contains("x64")) {
-            return Some(asset.browser_download_url.clone());
-        }
-    }
+    // The download/launch path handles EXE installers only.
     None
 }
 
@@ -409,6 +403,11 @@ mod tests {
         assert!(!is_version_newer("0.1.0", "0.2.0"));
     }
 
+    #[test]
+    fn zip_is_not_mislabelled_as_executable_installer() {
+        let assets=vec![GitHubAsset{name:"SideB-Windows-x64.zip".into(),browser_download_url:"https://example.com/windows.zip".into()}];
+        assert_eq!(select_best_windows_asset(&assets),None);
+    }
     #[test]
     fn test_select_best_windows_asset() {
         let assets = vec![

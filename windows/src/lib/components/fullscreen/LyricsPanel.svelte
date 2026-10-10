@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t , language, resolveMessage } from '$lib/i18n';
   import { onDestroy, tick } from 'svelte';
   import PlayerIcon from '../player/PlayerIcon.svelte';
   import { activeLyricIndex, lyricSeekSeconds, type LyricsState } from '$lib/player/lyrics';
@@ -70,15 +71,15 @@
   });
 </script>
 
-<section class="lyrics-panel" aria-label="Letras de la canción">
+<section class="lyrics-panel" aria-label={$t('windows.ui.songLyrics')}>
   {#if lyricState.status === 'loading'}
-    <div class="message" role="status"><span class="spinner" aria-hidden="true"></span><p>Buscando letras sincronizadas...</p></div>
+    <div class="message" role="status"><span class="spinner" aria-hidden="true"></span><p>{$t('windows.ui.searchingForSynchronizedLyrics')}</p></div>
   {:else if lyricState.status === 'error'}
-    <div class="message" role="status"><PlayerIcon name="lyrics" size={36} /><p>{lyricState.error}</p><button type="button" class="retry" onclick={onRetry}>Reintentar</button></div>
+    <div class="message" role="status"><PlayerIcon name="lyrics" size={36} /><p>{resolveMessage(lyricState.error, $language)}</p><button type="button" class="retry" onclick={onRetry}>{$t('sidebar.retry')}</button></div>
   {:else if lyricState.status === 'ready' && lyricState.lyrics}
     <!-- A scrollable named region must accept focus for keyboard reading of plain lyrics. -->
     <!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
-    <div class="lyrics-scroll" bind:this={container} tabindex="0" role="region" aria-label="Texto de la letra"
+    <div class="lyrics-scroll" bind:this={container} tabindex="0" role="region" aria-label={$t('windows.ui.lyricsText')}
       onwheel={pauseFollowing} ontouchstart={pauseFollowing} onkeydown={onScrollKey} onpointerdown={onPointerDown}>
       <div class="lines">
         {#each lyricState.lyrics.lines as line, index}
@@ -87,22 +88,22 @@
           {@const opacity = activeIndex === null ? 0.82 : active ? 1 : Math.abs(index - activeIndex) === 1 ? 0.60 : 0.36}
           {#if seconds !== null}
             <button type="button" class="line" class:active data-line={index} style={`--line-opacity: ${opacity}`}
-              aria-current={active ? 'true' : undefined} title="Ir a esta línea" onclick={() => seekLine(seconds)}>{line.text || '•••'}</button>
+              aria-current={active ? 'true' : undefined} title={$t('fullscreen.goToLyricLine')} onclick={() => seekLine(seconds)}>{line.text || '•••'}</button>
           {:else}
             <p class="line" class:active data-line={index} style={`--line-opacity: ${opacity}`}>{line.text || '•••'}</p>
           {/if}
         {/each}
-        {#if lyricState.lyrics.provider}<p class="provider">Fuente: {lyricState.lyrics.provider}</p>{/if}
+        {#if lyricState.lyrics.provider}<p class="provider">{$t('windows.lyrics.provider', [lyricState.lyrics.provider])}</p>{/if}
       </div>
     </div>
     {#if activeIndex !== null && !following}
-      <button type="button" class="follow" onclick={resumeFollowing} title="Reactivar el seguimiento de letras">
-        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="m3 10 18-7-7 18-3-8-8-3Z" /></svg>Volver a la letra actual
+      <button type="button" class="follow" onclick={resumeFollowing} title={$t('fullscreen.resumeLyricsTracking')}>
+        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="m3 10 18-7-7 18-3-8-8-3Z" /></svg>{$t('fullscreen.returnToCurrentLyric')}
       </button>
     {/if}
   {:else}
-    <div class="message"><PlayerIcon name="lyrics" size={36} /><p>No hay letras disponibles</p><small>No se encontraron letras para esta pista</small>
-      {#if lyricState.status === 'empty'}<button type="button" class="retry" onclick={onRetry}>Buscar de nuevo</button>{/if}
+    <div class="message"><PlayerIcon name="lyrics" size={36} /><p>{$t('fullscreen.noLyrics')}</p><small>{$t('windows.ui.noLyricsFoundForThisTrack')}</small>
+      {#if lyricState.status === 'empty'}<button type="button" class="retry" onclick={onRetry}>{$t('windows.ui.searchAgain')}</button>{/if}
     </div>
   {/if}
 </section>

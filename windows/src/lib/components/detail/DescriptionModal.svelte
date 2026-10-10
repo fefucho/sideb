@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from '$lib/i18n';
   import { onMount, tick } from "svelte";
 
   interface Props { title: string; description: string; onClose: () => void }
@@ -26,7 +27,7 @@
 
 <div class="scrim" role="presentation" onclick={(event) => { if (event.target === event.currentTarget) onClose(); }}>
   <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="description-title">
-    <header><div><p>DESCRIPCIÓN</p><h2 id="description-title">{title}</h2></div><button bind:this={closeButton} type="button" aria-label="Cerrar descripción" onclick={onClose}>×</button></header>
+    <header><div><p>{$t('windows.ui.description')}</p><h2 id="description-title">{title}</h2></div><button bind:this={closeButton} type="button" aria-label={$t('windows.ui.closeDescription')} onclick={onClose}>×</button></header>
     <div class="body">{description}</div>
   </div>
 </div>

@@ -69,6 +69,10 @@
   .artist-separator { flex: none; white-space: pre; }
   .album-separator { flex: none; color: currentColor; font-size: 1.05em; font-weight: 650; }
   .credit-link { padding: 0; border: 0; background: transparent; font: inherit; text-align: left; cursor: pointer; }
+  /* Optional presentation tokens keep other callers unchanged. */
+  .artist-name { font-weight: var(--credit-artist-weight, inherit); }
+  .album-name { font-size: var(--credit-album-size, inherit); font-weight: var(--credit-album-weight, inherit); color: var(--credit-album-color, inherit); }
+  .album-separator { font-size: var(--credit-separator-size, 1.05em); font-weight: var(--credit-separator-weight, 650); color: var(--credit-separator-color, currentColor); }
   .credit-link:hover { color: #fff; }
   .credit-link:focus-visible { outline: 2px solid var(--sideb-highlight, #d06c70); outline-offset: 2px; border-radius: 2px; }
 </style>

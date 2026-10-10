@@ -84,6 +84,23 @@ test('resolve playlist returns no partial queue when session changes between pag
   assert.deepEqual(await resolving, []);
   assert.equal(data.loggedIn, false);
 });
+test('source-card catalogs survive detail navigation while account/playback changes and ordinary loads still cancel', async () => {
+  for (const scenario of ['source-navigation', 'ordinary-navigation', 'source-account', 'source-playback']) {
+    const page = deferred(), started = deferred(); let valid = true;
+    const account = new AccountController(async command => {
+      if (command === 'get_playlist') return playlist([song('same', 'first')], 'next');
+      started.resolve(); return page.promise;
+    }, () => {});
+    account.reset(true);
+    const resolving = account.resolvePlaylistTracks('VLp', () => valid, scenario !== 'ordinary-navigation');
+    await started.promise;
+    account.invalidatePlaylist();
+    if (scenario === 'source-account') account.reset(false);
+    if (scenario === 'source-playback') valid = false;
+    page.resolve({ items: [song('same', 'second')], continuation: null });
+    assert.deepEqual((await resolving).map(item => item.setVideoId), scenario === 'source-navigation' ? ['first', 'second'] : [], scenario);
+  }
+});
 
 test('playlist mutations send occurrence identity, guard repeat submission and surface failures', async () => {
   const mutation = deferred(); const calls = []; let data;

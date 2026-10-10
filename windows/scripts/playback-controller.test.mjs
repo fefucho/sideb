@@ -19,6 +19,52 @@ function state(generation, options = {}) {
 const song = (videoId) => ({ videoId, title: videoId, artists: 'Artist', thumbnail: null, duration: '3:21' });
 async function settle() { await new Promise((resolve) => setTimeout(resolve, 0)); }
 
+test('exponential volume is native state and keeps slider percent and mute commands unchanged', async () => {
+  let native = state(1, { volume: 13, exponentialVolume: false });
+  const calls = [];
+  const player = new PlaybackController(async (command, args) => {
+    calls.push({command,args});
+    if(command==='set_exponential_volume') native={...native,exponentialVolume:args.enabled};
+    if(command==='set_playback_volume') native={...native,volume:args.volume};
+    return structuredClone(native);
+  },async()=>()=>{},()=>{});
+  await player.connect(); await player.setExponentialVolume(true);
+  assert.equal(player.snapshot.state.exponentialVolume,true);assert.equal(player.snapshot.state.volume,13);
+  await player.setVolume(7);assert.equal(calls.at(-1).args.volume,7);
+  assert.equal(player.snapshot.state.exponentialVolume,true);
+  await player.setMuted(true);assert.equal(calls.at(-1).command,'set_playback_muted');assert.deepEqual(calls.at(-1).args,{muted:true});
+});
+
+test('failed exponential volume retains accepted mode and can be retried', async () => {
+  let failed=true;
+  const player=new PlaybackController(async(command)=>{
+    if(command==='set_exponential_volume'&&failed)throw new Error('No se pudo cambiar el volumen exponencial.');
+    return state(1,{volume:9,exponentialVolume:command==='set_exponential_volume'});
+  },async()=>()=>{},()=>{});
+  await player.connect();await player.setExponentialVolume(true);
+  assert.equal(player.snapshot.state.exponentialVolume,false);assert.equal(player.snapshot.state.volume,9);
+  assert.match(player.snapshot.error,/volumen exponencial/);
+  failed=false;await player.setExponentialVolume(true);
+  assert.equal(player.snapshot.state.exponentialVolume,true);assert.equal(player.snapshot.error,null);
+});
+
+test('exponential mode response preserves newer progress and yields to a newer native state', async()=>{
+  const listeners=new Map(), response=deferred();
+  const player=new PlaybackController(async command=>command==='get_playback_state'?state(4,{position:8}):response.promise,
+    async(event,callback)=>{listeners.set(event,callback);return()=>{};},()=>{});
+  await player.connect();const changing=player.setExponentialVolume(true);
+  listeners.get('playback-progress')({payload:{generation:4,position:12,duration:200}});
+  response.resolve(state(4,{position:8,exponentialVolume:true}));await changing;
+  assert.equal(player.snapshot.state.position,12);assert.equal(player.snapshot.state.exponentialVolume,true);
+  const later=deferred();const otherListeners=new Map();
+  const other=new PlaybackController(async command=>command==='get_playback_state'?state(4):later.promise,
+    async(event,callback)=>{otherListeners.set(event,callback);return()=>{};},()=>{});
+  await other.connect();const stale=other.setExponentialVolume(true);
+  otherListeners.get('playback-state-changed')({payload:state(5,{exponentialVolume:false})});
+  later.resolve(state(4,{exponentialVolume:true}));await stale;
+  assert.equal(other.snapshot.state.generation,5);assert.equal(other.snapshot.state.exponentialVolume,false);
+});
+
 test('initial shuffle chooses from the full catalog without destroying canonical order', async () => {
   const songs = Array.from({ length: 2000 }, (_, index) => song(`song-${index}`));
   const original = structuredClone(songs);
@@ -376,7 +422,7 @@ test('repeat RPC merges its mode bit after progress without rewinding the playba
   assert.equal(published.state.isPlaying, true);
 });
 
-test('shuffle response applies a newer queue while keeping progress received during the RPC', async () => {
+test('shuffle response applies a newer queue and its capabilities while keeping progress received during the RPC', async () => {
   const listeners = new Map();
   const response = deferred();
   let published;
@@ -393,11 +439,14 @@ test('shuffle response applies a newer queue while keeping progress received dur
   await settle();
   listeners.get('playback-progress')({ payload: { generation: 8, position: 54, duration: 201 } });
   response.resolve(state(8, { isPlaying: false, isShuffle: true, position: 50, duration: 201,
+    canNext: true, sourceLoad: {loading:false,error:null,canRetry:false,hasMore:true,loadedCount:2},
     queue: { revision: 5, items: after, currentIndex: 1 } }));
   await pending;
   assert.equal(published.state.isShuffle, true);
   assert.deepEqual(published.state.queue.items.map(item => item.entryId), ['a', 'c']);
   assert.equal(published.state.queue.currentIndex, 1);
+  assert.equal(published.state.canNext, true);
+  assert.equal(published.state.sourceLoad.hasMore, true);
   assert.equal(published.state.position, 54);
   assert.equal(published.state.isPlaying, true);
 });

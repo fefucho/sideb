@@ -1,4 +1,5 @@
 <script lang="ts">
+  import {t} from '$lib/i18n';
   import { onMount, tick } from 'svelte';
   import type { BrowseCardDto, SongDto } from '$lib/types';
   import type { SearchPreviewData } from '$lib/search/preview';
@@ -69,13 +70,13 @@
   <div class="spotlight" class:has-query={hasQuery} bind:this={dialog} role="dialog" aria-modal="true" aria-label="Búsqueda rápida" tabindex="-1">
     <form class="search-header" onsubmit={(event) => { event.preventDefault(); commit(); }}>
       <svg class="search-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7.5"/><path d="m16.5 16.5 4 4"/></svg>
-      <input bind:this={input} value={preview.query} oninput={(event) => onQueryChange(event.currentTarget.value)} disabled={!backendReady} placeholder="Buscar canciones, álbumes, artistas, playlists..." aria-label="Buscar canciones, álbumes, artistas y playlists" autocomplete="off" />
+      <input bind:this={input} value={preview.query} oninput={(event) => onQueryChange(event.currentTarget.value)} disabled={!backendReady} placeholder={$t('search.spotlight.placeholder')} aria-label="Buscar canciones, álbumes, artistas y playlists" autocomplete="off" />
       {#if preview.isLoading}<span class="spinner" aria-label="Buscando"></span>{:else if preview.query}<button type="button" class="clear" aria-label="Limpiar búsqueda" onclick={() => { onQueryChange(''); input?.focus(); }}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 7 10 10M17 7 7 17"/></svg></button>{/if}
       <span class="esc">ESC</span>
     </form>
     <div class="divider"></div>
     <div class="results-scroll" aria-live="polite">
-      {#if !hasQuery}<div class="empty"><svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="13" cy="13" r="8"/><path d="m19 19 7 7M12 9v8m-4-4h8"/></svg><span>Busca artistas, canciones, álbumes y más</span><small>Escribe para ver resultados rápidos</small></div>
+      {#if !hasQuery}<div class="empty"><svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="13" cy="13" r="8"/><path d="m19 19 7 7M12 9v8m-4-4h8"/></svg><span>{$t('search.spotlight.prompt_title')}</span><small>{$t('search.spotlight.prompt_description')}</small></div>
       {:else}<QuickResults preview={preview} variant="spotlight" onSelectCard={selectCard} onPlaySong={playSong} />{/if}
     </div>
     {#if hasQuery}<div class="divider footer-divider"></div><button type="button" class="commit" disabled={!backendReady} onclick={commit}>

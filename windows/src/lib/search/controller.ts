@@ -11,6 +11,7 @@ export interface SearchData {
   songs: SongDto[];
   albums: AlbumCardDto[];
   top: BrowseCardDto[];
+  topSongs: SongDto[];
   artists: BrowseCardDto[];
   playlists: BrowseCardDto[];
   videos: SongDto[];
@@ -27,7 +28,7 @@ export interface SearchData {
 }
 
 export function emptySearchData(): SearchData {
-  return { query: '', mode: 'all', lastSearchedQuery: '', songs: [], albums: [], top: [], artists: [], playlists: [], videos: [],
+  return { query: '', mode: 'all', lastSearchedQuery: '', songs: [], albums: [], top: [], topSongs: [], artists: [], playlists: [], videos: [],
     mixedResults: null, isLoading: false, error: null, partialErrors: {}, hasSearched: false, hasSearchedSongs: false, hasSearchedAlbums: false,
     hasSearchedArtists: false, hasSearchedPlaylists: false, hasSearchedVideos: false };
 }
@@ -57,9 +58,9 @@ export class SearchController {
   constructor(private rpc: SearchRpc, private publish: (data: SearchData) => void) {}
 
   private emit() {
-    this.publish({ ...this.data, songs: [...this.data.songs], albums: [...this.data.albums], top: [...this.data.top],
+    this.publish({ ...this.data, songs: [...this.data.songs], albums: [...this.data.albums], top: [...this.data.top], topSongs: [...this.data.topSongs],
       artists: [...this.data.artists], playlists: [...this.data.playlists], videos: [...this.data.videos], partialErrors: { ...this.data.partialErrors },
-      mixedResults: this.mixedResults ? { ...this.mixedResults, top: [...this.mixedResults.top], songs: [...this.mixedResults.songs],
+      mixedResults: this.mixedResults ? { ...this.mixedResults, top: [...this.mixedResults.top], topSongs: [...(this.mixedResults.topSongs ?? [])], songs: [...this.mixedResults.songs],
         albums: [...this.mixedResults.albums], artists: [...this.mixedResults.artists], playlists: [...this.mixedResults.playlists] } : null });
   }
 
@@ -98,6 +99,7 @@ export class SearchController {
     this.data = { ...this.data, mode, isLoading: false };
     if (mode === 'all' && this.mixedResults) {
       this.data.top = [...this.mixedResults.top];
+      this.data.topSongs = [...(this.mixedResults.topSongs ?? [])];
       this.data.albums = this.mixedResults.albums.map(albumCard);
       this.data.artists = [...this.mixedResults.artists];
       this.data.playlists = [...this.mixedResults.playlists];
@@ -136,9 +138,9 @@ export class SearchController {
   restore(snapshot: SearchData) {
     ++this.revision;
     this.data = { ...emptySearchData(), ...snapshot, isLoading: false, partialErrors: { ...snapshot.partialErrors },
-      songs: [...snapshot.songs], albums: [...snapshot.albums], top: [...snapshot.top], artists: [...snapshot.artists],
+      songs: [...snapshot.songs], albums: [...snapshot.albums], top: [...snapshot.top], topSongs: [...(snapshot.topSongs ?? [])], artists: [...snapshot.artists],
       playlists: [...snapshot.playlists], videos: [...snapshot.videos] };
-    this.mixedResults = snapshot.mixedResults ? { ...snapshot.mixedResults, top: [...snapshot.mixedResults.top], songs: [...snapshot.mixedResults.songs],
+    this.mixedResults = snapshot.mixedResults ? { ...snapshot.mixedResults, top: [...snapshot.mixedResults.top], topSongs: [...(snapshot.mixedResults.topSongs ?? [])], songs: [...snapshot.mixedResults.songs],
       albums: [...snapshot.mixedResults.albums], artists: [...snapshot.mixedResults.artists], playlists: [...snapshot.mixedResults.playlists] } : null;
     this.filteredSongs = [...snapshot.songs];
     this.filteredVideos = [...snapshot.videos];
@@ -167,6 +169,7 @@ export class SearchController {
       this.filteredSongs = [...cached.songs];
       this.filteredVideos = [...cached.videos];
       this.data.top = [...cached.mixed.top];
+      this.data.topSongs = [...(cached.mixed.topSongs ?? [])];
       this.data.songs = [...cached.songs];
       this.data.albums = cached.mixed.albums.map(albumCard);
       this.data.artists = [...cached.mixed.artists];
@@ -207,6 +210,7 @@ export class SearchController {
     if (global) {
       this.mixedResults = global;
       this.data.top = global.top;
+      this.data.topSongs = [...(global.topSongs ?? [])];
       this.data.songs = global.songs;
       this.data.albums = global.albums.map(albumCard);
       this.data.artists = global.artists;

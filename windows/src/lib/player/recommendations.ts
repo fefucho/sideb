@@ -80,6 +80,11 @@ export class RecommendationsController {
     }
   }
 
+  removeSong(videoId:string) {
+    if(!this.state.data)return;
+    for(const field of ['artistSongs','albumSongs','similarSongs'] as const)this.state.data[field]=this.state.data[field].filter(song=>song.videoId!==videoId);
+    this.emit();
+  }
   load(forceRefresh = false): Promise<void> {
     if (!this.track?.videoId.trim()) return Promise.resolve();
     const key = identity(this.track);

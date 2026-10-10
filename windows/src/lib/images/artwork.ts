@@ -86,3 +86,24 @@ export function nextArtworkUrl(candidates: readonly string[], failedUrls: readon
   const failed = new Set(failedUrls);
   return candidates.find(url => !failed.has(url)) ?? null;
 }
+
+/** Cards request a bounded physical-pixel variant, then retry the exact provider URL.
+ * Query-bearing/signed and external URLs remain byte-for-byte unchanged.
+ * Fullscreen uses its existing original/max-quality candidate policy independently.
+ */
+export function cardArtworkCandidates(value: string | null | undefined, cssSize: number, pixelRatio = 1): string[] {
+  if (!value) return [];
+  const url = parseKnownImageURL(value);
+  if (!url || url.search || url.hash || !isGoogleArtworkHost(url.hostname)) return [value];
+  const size = Math.max(32, Math.min(1200, Math.ceil((Number.isFinite(cssSize) ? cssSize : 160)
+    * (Number.isFinite(pixelRatio) ? Math.max(1, pixelRatio) : 1) / 32) * 32));
+  return [...new Set([fallbackArtworkUrl(value, size), value].filter((candidate): candidate is string => Boolean(candidate)))];
+}
+
+export interface ArtworkFailures { key: string; urls: string[] }
+/** A recycled image cannot reject the replacement, or an attempt already superseded by fallback. */
+export function rejectArtworkAttempt(failures: ArtworkFailures, key: string, candidates: readonly string[], attemptKey: string, url: string): ArtworkFailures {
+  const previous = failures.key === key ? failures.urls : [];
+  if (attemptKey !== key || nextArtworkUrl(candidates, previous) !== url) return failures;
+  return { key, urls: [...previous, url] };
+}

@@ -1,12 +1,15 @@
 <script lang="ts">
+  import { t , language, resolveMessage } from '$lib/i18n';
+  import ReleaseNotes from './ReleaseNotes.svelte';
   import { onMount, tick } from 'svelte';
   import type { UpdaterController, UpdaterSnapshot } from '$lib/updater/controller';
 
   interface Props {
     controller: UpdaterController;
+    onOpenExternal?: (url: string) => void;
   }
 
-  let { controller }: Props = $props();
+  let { controller, onOpenExternal }: Props = $props();
 
   let snapshot = $state<UpdaterSnapshot>({
     state: { type: 'idle' },
@@ -113,47 +116,47 @@
         <div class="header-text">
           <h2 id="updater-title">
             {#if snapshot.state.type === 'available'}
-              Actualización disponible
+              {$t('windows.ui.updateAvailable')}
             {:else if snapshot.state.type === 'checking'}
-              Comprobando actualizaciones…
+              {$t('windows.ui.checkingForUpdates')}
             {:else if snapshot.state.type === 'upToDate'}
-              Side B está actualizado
+              {$t('windows.ui.sideBIsUpToDate')}
             {:else if snapshot.state.type === 'downloading'}
-              Descargando actualización…
+              {$t('update.downloading')}
             {:else if snapshot.state.type === 'installing'}
-              Instalando actualización…
+              {$t('update.installing')}
             {:else if snapshot.state.type === 'failed'}
-              Error de actualización
+              {$t('windows.ui.updateError')}
             {:else}
-              Actualización de software
+              {$t('windows.ui.softwareUpdate')}
             {/if}
           </h2>
 
           <p class="subtitle">
             {#if snapshot.state.type === 'available'}
-              Hay una nueva versión de Side B lista para instalar.
+              {$t('windows.ui.aNewVersionOfSideBIsReadyToInstall')}
             {:else if snapshot.state.type === 'checking'}
-              Buscando versiones recientes en GitHub Releases…
+              {$t('windows.ui.lookingForRecentVersionsOnGitHubReleases')}
             {:else if snapshot.state.type === 'upToDate'}
-              Tienes la versión más reciente instalada en tu equipo.
+              {$t('windows.ui.theLatestVersionIsInstalledOnYourComputer')}
             {:else if snapshot.state.type === 'downloading'}
-              Descargando paquete optimizado para Windows directamente de GitHub Releases.
+              {$t('windows.ui.downloadingTheWindowsPackageDirectlyFromGitHubReleases')}
             {:else if snapshot.state.type === 'installing'}
-              Side B se cerrará y reiniciará automáticamente con la nueva versión.
+              {$t('windows.ui.sideBWillCloseAndRestartAutomaticallyWithTheNewVersion')}
             {:else if snapshot.state.type === 'failed'}
-              No se pudo completar la operación de actualización.
+              {$t('windows.ui.couldnTCompleteTheUpdateOperation')}
             {/if}
           </p>
 
           {#if snapshot.state.type === 'available'}
             <div class="version-badges">
               <span class="badge current">
-                <span class="badge-label">Instalada:</span>
+                <span class="badge-label">{$t('windows.ui.installed')}</span>
                 <strong>{snapshot.currentVersion}</strong>
               </span>
               <span class="arrow">→</span>
               <span class="badge new">
-                <span class="badge-label">Nueva:</span>
+                <span class="badge-label">{$t('windows.ui.new')}</span>
                 <strong>{snapshot.state.info.version}</strong>
               </span>
             </div>
@@ -165,7 +168,7 @@
             bind:this={closeButton}
             type="button"
             class="close-btn"
-            aria-label="Cerrar diálogo"
+            aria-label={$t('windows.ui.closeDialog')}
             onclick={handleCloseClick}
           >
             ×
@@ -178,7 +181,7 @@
         {#if snapshot.state.type === 'checking'}
           <div class="status-box center">
             <div class="spinner"></div>
-            <p>Comprobando nuevas versiones en GitHub Releases…</p>
+            <p>{$t('windows.ui.checkingForNewVersionsOnGitHubReleases')}</p>
           </div>
 
         {:else if snapshot.state.type === 'upToDate'}
@@ -187,8 +190,8 @@
               <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
               <polyline points="22 4 12 14.01 9 11.01"></polyline>
             </svg>
-            <p class="highlight-text">Versión {snapshot.state.version}</p>
-            <p class="detail-text">Side B está totalmente actualizado con las últimas mejoras.</p>
+            <p class="highlight-text">{$t('windows.update.version', [snapshot.state.version])}</p>
+            <p class="detail-text">{$t('windows.ui.sideBIsUpToDateWithTheLatestImprovements')}</p>
           </div>
 
         {:else if snapshot.state.type === 'available'}
@@ -197,36 +200,36 @@
               <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
               </svg>
-              <span>Novedades y correcciones (Fix Report):</span>
+              <span>{$t('update.release_notes_heading')}</span>
             </div>
             <div class="fix-report-scroll">
-              <pre>{snapshot.state.info.releaseNotes}</pre>
+              <ReleaseNotes text={snapshot.state.info.releaseNotes} {onOpenExternal} />
             </div>
           </div>
 
         {:else if snapshot.state.type === 'downloading'}
           <div class="download-section">
             <div class="download-header">
-              <span>Descargando Side B…</span>
+              <span>{$t('windows.ui.downloadingSideB')}</span>
               <span class="percentage">{Math.round(snapshot.state.progress * 100)}%</span>
             </div>
             <div class="progress-bar">
               <div class="progress-fill" style="width: {snapshot.state.progress * 100}%"></div>
             </div>
-            <p class="download-hint">Preparando instalador de actualización para Windows…</p>
+            <p class="download-hint">{$t('windows.ui.preparingTheWindowsUpdateInstaller')}</p>
           </div>
 
         {:else if snapshot.state.type === 'installing'}
           <div class="status-box center">
             <div class="spinner"></div>
-            <p class="highlight-text">Instalando actualización…</p>
-            <p class="detail-text">La aplicación se reiniciará automáticamente en unos segundos.</p>
+            <p class="highlight-text">{$t('update.installing')}</p>
+            <p class="detail-text">{$t('windows.ui.theAppWillRestartAutomaticallyInAFewSeconds')}</p>
           </div>
 
         {:else if snapshot.state.type === 'failed'}
           <div class="status-box center error-box">
-            <p class="error-title">No se pudo actualizar</p>
-            <p class="error-message">{snapshot.state.message}</p>
+            <p class="error-title">{$t('windows.ui.couldnTUpdate')}</p>
+            <p class="error-message">{resolveMessage(snapshot.state.message, $language)}</p>
           </div>
         {/if}
       </div>
@@ -235,20 +238,20 @@
       <div class="footer">
         {#if snapshot.state.type === 'available'}
           <button type="button" class="btn btn-ghost" onclick={handleSkipClick}>
-            Omitir esta versión
+            {$t('update.skip_version')}
           </button>
           <div class="spacer"></div>
           <button type="button" class="btn btn-secondary" onclick={handleCloseClick}>
-            Más tarde
+            {$t('windows.ui.later')}
           </button>
           <button type="button" class="btn btn-primary" onclick={handleUpdateClick}>
-            Actualizar ahora
+            {$t('update.update_now')}
           </button>
 
         {:else if snapshot.state.type === 'upToDate' || snapshot.state.type === 'failed'}
           <div class="spacer"></div>
           <button type="button" class="btn btn-primary" onclick={handleCloseClick}>
-            Aceptar
+            {$t('menu.accept')}
           </button>
         {/if}
       </div>
@@ -408,7 +411,7 @@
     border-radius: 10px;
   }
 
-  .fix-report-scroll pre {
+  .fix-report-scroll :global(pre) {
     margin: 0;
     font-family: inherit;
     font-size: 13px;

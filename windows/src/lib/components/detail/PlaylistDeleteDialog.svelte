@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t , language, resolveMessage } from '$lib/i18n';
   import { onMount, tick } from 'svelte';
   import type { AccountPlaylistDto as PlaylistDetailDto } from '$lib/account/types';
 
@@ -36,10 +37,10 @@
 <div class="scrim" role="presentation" onclick={(event) => { if (event.target === event.currentTarget && !pending) onClose(); }}>
   <div class="dialog" data-playlist-delete role="alertdialog" aria-modal="true" aria-labelledby="delete-title" aria-describedby="delete-description" aria-busy={pending}>
     <div class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M10 11v6m4-6v6M5 7l1 14h12l1-14M9 7V4h6v3" /></svg></div>
-    <h2 id="delete-title">¿Eliminar playlist?</h2>
-    <p id="delete-description">Se eliminará “{playlist.title}”. Esta acción no se puede deshacer.</p>
-    {#if error}<p class="error" role="alert">{error}</p>{/if}
-    <footer><button bind:this={cancelButton} class="cancel" type="button" disabled={pending} onclick={onClose}>Cancelar</button><button class="delete" type="button" disabled={pending} onclick={confirmDelete}>{pending ? 'Eliminando…' : 'Eliminar playlist'}</button></footer>
+    <h2 id="delete-title">{$t('windows.playlist.deleteTitle')}</h2>
+    <p id="delete-description">{$t('windows.playlist.deleteBody', [playlist.title])}</p>
+    {#if error}<p class="error" role="alert">{resolveMessage(error, $language)}</p>{/if}
+    <footer><button bind:this={cancelButton} class="cancel" type="button" disabled={pending} onclick={onClose}>{$t('update.cancel')}</button><button class="delete" type="button" disabled={pending} onclick={confirmDelete}>{pending ? $t('windows.ui.deleting') : $t('detail.playlist.delete')}</button></footer>
   </div>
 </div>
 

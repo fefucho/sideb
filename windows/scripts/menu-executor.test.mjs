@@ -3,7 +3,10 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import ts from 'typescript';
 const source = await readFile(new URL('../src/lib/menu/executor.ts', import.meta.url), 'utf8');
-const output = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText;
+const metadataSource=await readFile(new URL("../src/lib/detail/metadata.ts",import.meta.url),"utf8");
+const metadataJS=ts.transpileModule(metadataSource,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText;
+const metadataURL=`data:text/javascript;base64,${Buffer.from(metadataJS).toString("base64")}`;
+const output = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText.replace("'../detail/metadata'",JSON.stringify(metadataURL));
 const { MenuExecutor } = await import(`data:text/javascript;base64,${Buffer.from(output).toString('base64')}`);
 const playlist = { kind: 'playlist', card: { id: 'PL', title: 'Playlist', thumbnail: null } };
 test('bulk menu action delegates full playlist resolution and preserves occurrences', async () => {
@@ -34,6 +37,30 @@ test('late collection load does not supersede a later playback or navigation int
   const pending = executor.execute({ type: 'play' }, playlist, {});
   valid = false; resolve([{ videoId: 'old' }]); await pending;
   assert.equal(plays, 0);
+});
+test('source-card playback forwards its scope through the deferred collection load', async () => {
+  let navigation = 0, playIntent = 0, release, plays = 0;
+  const observed = [];
+  const executor = new MenuExecutor({
+    begin: (play, origin) => {
+      observed.push({ play, origin });
+      const capturedNavigation = navigation, capturedIntent = playIntent;
+      return () => capturedIntent === playIntent && (origin.playbackScope === 'source' || capturedNavigation === navigation);
+    },
+    resolvePlaylist: (_id, _valid, resolutionOrigin) => {
+      assert.equal(resolutionOrigin, origin);
+      return new Promise(resolve => release = resolve);
+    },
+    play: async () => plays++
+  });
+  const origin = { playbackScope: 'source' };
+  const first = executor.execute({ type: 'play' }, playlist, origin);
+  navigation++; release([{ videoId: 'first' }]); await first;
+  assert.equal(plays, 1);
+  assert.deepEqual(observed[0], { play: true, origin });
+  const second = executor.execute({ type: 'play' }, playlist, origin);
+  playIntent++; release([{ videoId: 'obsolete' }]); await second;
+  assert.equal(plays, 1);
 });
 test('radio action uses core-resolved artist endpoint, then a song radio seed', async () => {
   const calls = []; let seed;

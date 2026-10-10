@@ -1107,6 +1107,9 @@ final class HomeItemView: NSView {
     }
 
     static func cleanArtistName(from record: HomeItemRecord) -> String {
+        if record.kind == "song" || record.kind == "video" {
+            return HomeSongMetadata.artist(from: record)
+        }
         if let artists = record.artists, !artists.isEmpty {
             return artists
         }
@@ -1125,6 +1128,9 @@ final class HomeItemView: NSView {
     }
 
     static func cleanAlbumName(from record: HomeItemRecord) -> String? {
+        if record.kind == "song" || record.kind == "video" {
+            return HomeSongMetadata.album(from: record)
+        }
         if record.kind == "album" || record.kind == "artist" {
             return nil
         }

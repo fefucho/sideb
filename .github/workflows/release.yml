@@ -1,57 +1,240 @@
 name: Release Side B
 
-'on':
+on:
   push:
-    tags:
-      - 'v*'
-  workflow_dispatch: {}
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Release tag matching version.env
+        required: true
+        default: v1.2.0-beta.1
+        type: string
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: release-${{ github.event.inputs.release_tag || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name }}
+  SIDEB_LIVE_TESTS: '0'
+  SIDEB_LIVE_CIPHER: '0'
+  SIDEB_LIVE_ACCOUNT: '0'
 
 jobs:
-  build-and-release:
-    name: Compilar y Publicar macOS App
-    runs-on: macos-15
+  prepare:
+    name: Validate version and prepare draft
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      tag: ${{ steps.config.outputs.tag }}
+      version: ${{ steps.config.outputs.version }}
+      prerelease: ${{ steps.config.outputs.prerelease }}
+      notes: ${{ steps.config.outputs.notes }}
     steps:
-      - name: Checkout del repositorio
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Test release checks
+        run: node --test Scripts/release-config.test.mjs
+      - name: Validate release configuration
+        id: config
+        run: node Scripts/release-config.mjs preflight
+      - name: Create or resume a draft for this exact revision
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ steps.config.outputs.version }}
+          PRERELEASE: ${{ steps.config.outputs.prerelease }}
+          NOTES: ${{ steps.config.outputs.notes }}
+        run: |
+          title="Side B $VERSION — macOS & Windows Feature Parity"
+          flags=()
+          if [ "$PRERELEASE" = true ]; then
+            title="Side B $VERSION Beta — macOS & Windows Feature Parity"
+            flags+=(--prerelease)
+          fi
+          if is_draft=$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft 2>/dev/null); then
+            test "$is_draft" = true || { echo 'Refusing to replace a published release'; exit 1; }
+            test "$(gh api "repos/$GH_REPO/commits/$RELEASE_TAG" --jq .sha)" = "$GITHUB_SHA" || { echo 'Tag points to a different revision'; exit 1; }
+          else
+            gh release create "$RELEASE_TAG" --target "$GITHUB_SHA" --title "$title" --notes-file "$NOTES" --draft --latest=false "${flags[@]}"
+          fi
 
-      - name: Instalar toolchain de Rust
-        uses: dtolnay/rust-toolchain@stable
+  macos:
+    name: Build and package macOS arm64
+    needs: prepare
+    runs-on: xcode-27
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-apple-darwin
-
-      - name: Cache de dependencias de Cargo
-        uses: actions/cache@v4
+      - uses: actions/cache@v4
         with:
           path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
+            ~/.cargo/registry/
+            ~/.cargo/git/
             core/target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('core/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-
-
-      - name: Compilar SideBCore.xcframework
+          key: release-macos-${{ hashFiles('core/Cargo.lock') }}
+      - name: Verify, regenerate bindings and build numbered release
+        run: node Scripts/build-version.mjs macos
+      - name: Verify build revision, version and hashes
+        run: node Scripts/release-config.mjs build macos
+      - name: Package the verified app
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
         run: |
-          cd apple
-          chmod +x build_xcframework.sh
-          ./build_xcframework.sh
-
-      - name: Compilar y empaquetar Side B.app
-        run: |
-          cd apple
-          swift build -c release --product SideB
-          chmod +x ../Scripts/package_release.sh
-          ../Scripts/package_release.sh "${{ github.ref_name }}"
-
-      - name: Publicar GitHub Release
-        uses: softprops/action-gh-release@v2
+          app="$RELEASE_BUILD_DIR/Side B.app"
+          test "$(plutil -extract CFBundleShortVersionString raw "$app/Contents/Info.plist")" = "$VERSION"
+          test "$(lipo -archs "$app/Contents/MacOS/Side B")" = arm64
+          codesign --verify --deep --strict "$app"
+          ditto -c -k --keepParent "$app" "$RELEASE_BUILD_DIR/SideB-macOS.zip"
+          cd "$RELEASE_BUILD_DIR"
+          shasum -a 256 SideB-macOS.zip > SideB-macOS-SHA256.txt
+      - uses: actions/upload-artifact@v4
         with:
-          files: "apple/SideB-macOS.zip"
-          generate_release_notes: true
-          draft: false
-          prerelease: false
+          name: release-macos
+          if-no-files-found: error
+          path: |
+            builds/macos/build-*/SideB-macOS.zip
+            builds/macos/build-*/SideB-macOS-SHA256.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: release-diagnostics-macos
+          path: |
+            builds/macos/build-*/BUILD.json
+            builds/macos/build-*/build.log
+
+  windows:
+    name: Build and package Windows x64
+    needs: prepare
+    runs-on: windows-2022
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.6.0
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/
+            ~/.cargo/git/
+            core/target/
+            windows/src-tauri/target/
+            windows/.cache/mpv/
+          key: release-windows-${{ hashFiles('core/Cargo.lock', 'windows/src-tauri/Cargo.lock', 'windows/pnpm-lock.yaml', 'windows/scripts/windows.ps1') }}
+      - name: Bootstrap pinned runtimes
+        shell: pwsh
+        run: ./windows/scripts/windows.ps1 bootstrap
+      - name: Verify and build numbered release
+        shell: pwsh
+        run: node Scripts/build-version.mjs windows
+      - name: Verify build revision, version and hashes
+        shell: pwsh
+        run: node Scripts/release-config.mjs build windows
+      - name: Bundle the verified executable without rebuilding or patching it
+        working-directory: windows
+        shell: pwsh
+        run: |
+          pnpm exec tauri bundle --bundles nsis --ci --no-binary-patching
+          if ($LASTEXITCODE -ne 0) { throw 'NSIS packaging failed' }
+      - name: Package installer and portable runtime
+        shell: pwsh
+        run: |
+          $buildDir = $env:RELEASE_BUILD_DIR
+          $manifest = Get-Content -LiteralPath "$buildDir/BUILD.json" -Raw | ConvertFrom-Json
+          $target = 'windows/src-tauri/target/release'
+          $exeHash = (Get-FileHash -LiteralPath "$target/sideb-windows.exe" -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($exeHash -ne $manifest.artifactSHA256.'sideb-windows.exe') { throw 'Installer input differs from verified executable' }
+          $installers = @(Get-ChildItem -LiteralPath "$target/bundle/nsis" -Filter '*setup.exe')
+          if ($installers.Count -ne 1) { throw 'Expected exactly one NSIS installer' }
+          Copy-Item -LiteralPath $installers[0].FullName -Destination "$buildDir/SideB-Windows-x64-setup.exe"
+          $runtime = @('sideb-windows.exe', 'libmpv-2.dll', 'vulkan-1.dll', 'VulkanRT-License.txt') | ForEach-Object { Join-Path $buildDir $_ }
+          Compress-Archive -LiteralPath $runtime -DestinationPath "$buildDir/SideB-Windows-x64.zip"
+          $lines = @('SideB-Windows-x64-setup.exe', 'SideB-Windows-x64.zip') | ForEach-Object {
+            $hash = (Get-FileHash -LiteralPath (Join-Path $buildDir $_) -Algorithm SHA256).Hash.ToLowerInvariant()
+            "$hash  $_"
+          }
+          [IO.File]::WriteAllText("$buildDir/SideB-Windows-x64-SHA256.txt", ($lines -join "`n") + "`n")
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-windows
+          if-no-files-found: error
+          path: |
+            builds/windows/build-*/SideB-Windows-x64-setup.exe
+            builds/windows/build-*/SideB-Windows-x64.zip
+            builds/windows/build-*/SideB-Windows-x64-SHA256.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: release-diagnostics-windows
+          path: |
+            builds/windows/build-*/BUILD.json
+            builds/windows/build-*/build.log
+
+  publish:
+    name: Publish both verified packages together
+    needs: [prepare, macos, windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-macos
+          path: release-assets
+          merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-windows
+          path: release-assets
+          merge-multiple: true
+      - name: Verify checksums and required downloads
+        working-directory: release-assets
+        run: |
+          test -s SideB-macOS.zip
+          test -s SideB-Windows-x64-setup.exe
+          test -s SideB-Windows-x64.zip
+          sha256sum -c SideB-macOS-SHA256.txt
+          sha256sum -c SideB-Windows-x64-SHA256.txt
+      - name: Upload both platforms and publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PRERELEASE: ${{ needs.prepare.outputs.prerelease }}
+        run: |
+          test "$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft)" = true
+          test "$(gh api "repos/$GH_REPO/commits/$RELEASE_TAG" --jq .sha)" = "$GITHUB_SHA"
+          gh release upload "$RELEASE_TAG" release-assets/* --clobber
+          if [ "$PRERELEASE" = true ]; then
+            gh release edit "$RELEASE_TAG" --draft=false --prerelease --latest=false
+          else
+            gh release edit "$RELEASE_TAG" --draft=false --prerelease=false --latest
+          fi

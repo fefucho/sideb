@@ -1,7 +1,7 @@
 import type { MenuAction, MenuFacts, MenuIconName, MenuItem, MenuOrigin, MenuTarget } from './types';
 
 /** Mirrors macOS MenuPolicy: availability is based on known capabilities, not guesses about ownership. */
-export function menuItems(target: MenuTarget, origin: MenuOrigin, facts: MenuFacts): MenuItem[] {
+export function menuItems(target: MenuTarget, origin: MenuOrigin, facts: MenuFacts, localize: (ownText: string) => string = value => value): MenuItem[] {
   const result: MenuItem[] = [];
   const iconFor = (id: MenuAction['type']): MenuIconName => {
     switch (id) {
@@ -26,7 +26,7 @@ export function menuItems(target: MenuTarget, origin: MenuOrigin, facts: MenuFac
     }
     return 'music-list';
   };
-  const add = (id: MenuAction['type'], label: string, disabled = false, checked?: boolean) => result.push({ id, label, icon: iconFor(id), disabled, checked, action: { type: id } as MenuAction });
+  const add = (id: MenuAction['type'], label: string, disabled = false, checked?: boolean) => result.push({ id, label: localize(label), icon: iconFor(id), disabled, checked, action: { type: id } as MenuAction });
   const group = () => { if (result.length && !result.at(-1)?.separator) result.push({ id: `separator-${result.length}`, label: '', separator: true }); };
   const auth = !facts.loggedIn;
   if (target.kind === 'song') {
@@ -41,8 +41,8 @@ export function menuItems(target: MenuTarget, origin: MenuOrigin, facts: MenuFac
     if (token) add('save-song', song.library?.inLibrary ? 'Quitar de la biblioteca' : 'Guardar en biblioteca', auth);
     const children: MenuItem[] = facts.playlists.filter(card => !card.id.replace(/^VL/, '').startsWith('RD') && card.id.replace(/^VL/, '') !== 'LM')
       .map(card => ({ id: `add-${card.id}`, label: card.title, icon: 'music-list' as const, action: { type: 'add-to-playlist', playlistId: card.id } }));
-    children.push({ id: 'new-playlist', label: 'Nueva playlist…', icon: 'plus', action: { type: 'new-playlist' } });
-    result.push({ id: 'add-playlist', label: 'Agregar a playlist', icon: 'list-add', disabled: auth, children }); group();
+    children.push({ id: 'new-playlist', label: localize('Nueva playlist…'), icon: 'plus', action: { type: 'new-playlist' } });
+    result.push({ id: 'add-playlist', label: localize('Agregar a playlist'), icon: 'list-add', disabled: auth, children }); group();
     if (song.albumId && !(origin.view === 'album_detail' && origin.currentId === song.albumId)) add('open-album', 'Ir al álbum');
     if (song.artistId && !(origin.view === 'artist_detail' && origin.currentId === song.artistId)) add('open-artist', 'Ir al artista');
     add('share', 'Copiar enlace');
@@ -77,9 +77,9 @@ export function menuItems(target: MenuTarget, origin: MenuOrigin, facts: MenuFac
   if (target.kind === 'playlist' && target.detail?.owned && id !== 'LM' && !dynamic) {
     group(); add('edit-playlist', 'Editar detalles…', auth);
     if (target.detail.sortEditable) {
-      result.push({ id: 'sort-playlist', label: 'Ordenar por', icon: 'sort', disabled: auth, children: [
+      result.push({ id: 'sort-playlist', label: localize('Ordenar por'), icon: 'sort', disabled: auth, children: [
         ['default', 'Orden manual', 'reorder'], ['newest', 'Más recientes', 'history'], ['oldest', 'Más antiguas', 'clock'], ['title', 'Título', 'text'], ['artist', 'Artista', 'person'], ['album', 'Álbum', 'disc'],
-      ].map(([sort, label, icon]) => ({ id: `sort-${sort}`, label, icon: icon as MenuIconName, checked: (target.detail?.sort ?? 'default') === sort, action: { type: 'sort-playlist', sort } })) });
+      ].map(([sort, label, icon]) => ({ id: `sort-${sort}`, label: localize(label), icon: icon as MenuIconName, checked: (target.detail?.sort ?? 'default') === sort, action: { type: 'sort-playlist', sort } })) });
     }
     add('delete-playlist', 'Eliminar playlist…', auth);
   }

@@ -5,6 +5,8 @@ export interface LibraryToggleDto {
 }
 
 export interface SongDto {
+  /** UI occurrence identity for a listen; never a provider mutation token. */
+  historyOccurrenceId?: string;
   videoId: string;
   title: string;
   artists: string;
@@ -13,6 +15,7 @@ export interface SongDto {
   duration: string | null;
   thumbnail: string | null;
   isVideo: boolean;
+  isUpload?: boolean;
   artistId: string | null;
   albumId: string | null;
   setVideoId?: string | null;
@@ -77,9 +80,10 @@ export interface HomePageDto {
 }
 
 export interface HomeArtistRunDto { text: string; id: string | null }
-export interface BrowseCardDto { kind: string; id: string; title: string; subtitle: string | null; thumbnail: string | null; duration: string | null; artistRuns?: HomeArtistRunDto[]; artists?: string | null; artistId?: string | null; album?: string | null; albumId?: string | null; isVideo?: boolean; explicit?: boolean }
+export interface BrowseCardDto { setVideoId?:string|null;library?:LibraryToggleDto|null;isUpload?:boolean;kind: string; id: string; title: string; subtitle: string | null; thumbnail: string | null; duration: string | null; artistRuns?: HomeArtistRunDto[]; artists?: string | null; artistId?: string | null; album?: string | null; albumId?: string | null; isVideo?: boolean; explicit?: boolean }
 export interface SearchResultsDto {
   top: BrowseCardDto[];
+  topSongs: SongDto[];
   songs: SongDto[];
   albums: BrowseCardDto[];
   artists: BrowseCardDto[];
@@ -116,6 +120,8 @@ export interface AuthStatusDto {
   state: "guest" | "authorizing" | "ready" | "error";
   name: string | null;
   email: string | null;
+  handle?: string | null;
+  channelId?: string | null;
   thumbnail: string | null;
   message: string | null;
 }
@@ -126,6 +132,7 @@ export interface CommandError {
 }
 
 export interface PlaybackTrackDto {
+  isUpload?: boolean;
   videoId: string;
   title: string;
   artists: string;
@@ -138,6 +145,8 @@ export interface PlaybackTrackDto {
 }
 
 export interface PlaybackStateDto {
+  canNext?: boolean;
+  sourceLoad?: {loading:boolean;error:string|null;canRetry:boolean;hasMore:boolean;loadedCount:number}|null;
   isPlaying: boolean;
   isLoading: boolean;
   isEnded: boolean;
@@ -146,6 +155,7 @@ export interface PlaybackStateDto {
   position: number;
   duration: number;
   volume: number;
+  exponentialVolume?: boolean;
   currentTrack: PlaybackTrackDto | null;
   error: string | null;
   generation: number;
@@ -153,6 +163,7 @@ export interface PlaybackStateDto {
 }
 
 export interface QueueEntryDto {
+  isUpload?: boolean;
   entryId: string;
   videoId: string;
   title: string;

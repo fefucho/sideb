@@ -1,9 +1,11 @@
 <script lang="ts">
+  import { t , language, resolveMessage } from '$lib/i18n';
+  import MoreIcon from '$lib/components/common/MoreIcon.svelte';
   import { tick } from "svelte";
   import PlayerIcon from "./PlayerIcon.svelte";
   import type { PlaybackStateDto } from "$lib/types";
   import ArtistCredits from "$lib/components/ArtistCredits.svelte";
-  type Panel = "queue" | "lyrics" | "related";
+  type Panel = "queue" | "lyrics" | "genius" | "related";
 
   interface Props {
     playback: PlaybackStateDto;
@@ -13,6 +15,7 @@
     onNext: () => void;
     onSeek: (seconds: number) => void;
     onVolumeChange: (volume: number) => void;
+    onSetMuted?: (muted: boolean) => void;
     onSetShuffle: (enabled: boolean) => Promise<void>;
     onSetRepeat: (enabled: boolean) => Promise<void>;
     fullscreenOpen: boolean;
@@ -23,13 +26,14 @@
     onToggleLike?: () => void;
     likeError?: string | null;
     selectedPanel?: Panel;
+    lyricsMode?: 'synced' | 'genius';
     onSelectPanel?: (panel: Panel) => void;
     onOpenArtist?: (id: string) => void;
     onOpenAlbum?: (id: string) => void;
     onOpenMenu?: (event: MouseEvent) => void;
   }
 
-  let { playback, onTogglePlayback, onRetryPlayback, onPrevious, onNext, onSeek, onVolumeChange, onSetShuffle, onSetRepeat, fullscreenOpen, onToggleFullscreen, loggedIn = false, liked = false, likePending = false, onToggleLike, likeError = null, selectedPanel, onSelectPanel, onOpenArtist, onOpenAlbum, onOpenMenu }: Props = $props();
+  let { playback, onTogglePlayback, onRetryPlayback, onPrevious, onNext, onSeek, onVolumeChange, onSetMuted, onSetShuffle, onSetRepeat, fullscreenOpen, onToggleFullscreen, loggedIn = false, liked = false, likePending = false, onToggleLike, likeError = null, selectedPanel, lyricsMode = 'synced', onSelectPanel, onOpenArtist, onOpenAlbum, onOpenMenu }: Props = $props();
   let seekDraft = $state<{ generation: number; value: number } | null>(null);
   let failedArtworkUrl = $state<string | null>(null);
   let volumeOpen = $state(false);
@@ -76,6 +80,7 @@
     if (!volumeDragging && !(event.relatedTarget instanceof Node && volumeRoot?.contains(event.relatedTarget))) closeVolume();
   }
   function toggleMute() {
+    if (onSetMuted) { onSetMuted(volume > 0); return; }
     if (volume > 0) { lastAudibleVolume = volume; onVolumeChange(0); }
     else onVolumeChange(lastAudibleVolume);
   }
@@ -94,14 +99,15 @@
   const position = $derived(clamp(seekDraft?.generation === playback.generation ? seekDraft.value : playback.position, 0, duration));
   const volume = $derived(clamp(playback.volume, 0, 100));
   const hasTrack = $derived(playback.currentTrack !== null);
+  const canNext = $derived(playback.canNext ?? (playback.queue.currentIndex !== null && (playback.isRepeat || playback.sourceLoad?.hasMore === true || playback.queue.currentIndex + 1 < playback.queue.items.length)));
   const playLabel = $derived(
     playback.error
-      ? "Reintentar reproducción"
+      ? $t('player.retryPlayback')
       : playback.isEnded
-        ? "Reiniciar canción"
-        : playback.isPlaying
-          ? "Pausar"
-          : "Reproducir"
+        ? $t('windows.ui.restartSong')
+        : playback.isLoading || playback.isPlaying
+          ? $t('player.pause')
+          : $t('player.play')
   );
 
   function finitePositive(value: number): number {
@@ -136,9 +142,9 @@
 
 <svelte:window onpointerdown={dismissVolume} onpointerup={finishVolumeDrag} onpointercancel={finishVolumeDrag} onkeydown={handleVolumeKeydown} onblur={() => { volumeDragging = false; closeVolume(); }} />
 
-<footer class="player-bar" aria-label="Reproductor de audio">
+<footer class="player-bar" aria-label={$t('windows.ui.audioPlayer')}>
   <div class="progress">
-    <span class="time" aria-label={`Tiempo transcurrido ${formatTime(position)}`}>
+    <span class="time" aria-label={$t('windows.player.elapsed', [formatTime(position)])}>
       {formatTime(position)}
     </span>
     <input
@@ -152,24 +158,24 @@
       disabled={!hasTrack || playback.isLoading || duration === 0}
       oninput={handleSeekInput}
       onchange={handleSeekChange}
-      aria-label="Posición de reproducción"
+      aria-label={$t('windows.ui.playbackPosition')}
     />
-    <span class="time time-end" aria-label={`Duración ${formatTime(duration)}`}>
+    <span class="time time-end" aria-label={$t('windows.player.duration', [formatTime(duration)])}>
       {formatTime(duration)}
     </span>
   </div>
 
   <div class="main-row">
     <div class="transport">
-      <button type="button" class="mode-toggle" class:mode-active={playback.isShuffle} disabled={shufflePending} aria-pressed={playback.isShuffle} aria-label={playback.isShuffle ? "Desactivar aleatorio" : "Activar aleatorio"} title={playback.isShuffle ? "Desactivar aleatorio" : "Activar aleatorio"} onclick={setShuffle}><PlayerIcon name="shuffle" size={17} /></button>
-      <button type="button" class="skip" onclick={onPrevious} disabled={!hasTrack} aria-label="Pista anterior" title="Pista anterior">
+      <button type="button" class="mode-toggle" class:mode-active={playback.isShuffle} disabled={shufflePending} aria-pressed={playback.isShuffle} aria-label={playback.isShuffle ? $t('windows.ui.disableShuffle') : $t('windows.ui.enableShuffle')} title={playback.isShuffle ? $t('windows.ui.disableShuffle') : $t('windows.ui.enableShuffle')} onclick={setShuffle}><PlayerIcon name="shuffle" size={17} /></button>
+      <button type="button" class="skip" onclick={onPrevious} disabled={!hasTrack} aria-label={$t('menu.previous_track')} title={$t('menu.previous_track')}>
         <PlayerIcon name="backward" size={20} />
       </button>
       <button
         type="button"
         class="play-toggle"
         class:errored={!!playback.error}
-        disabled={!hasTrack || playback.isLoading}
+        disabled={!hasTrack}
         onclick={playback.error ? onRetryPlayback : onTogglePlayback}
         aria-label={playLabel}
         title={playLabel}
@@ -184,13 +190,13 @@
           <svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><path d="M6 3.5a1 1 0 0 1 1.51-.86l13 8.5a1 1 0 0 1 0 1.72l-13 8.5A1 1 0 0 1 6 20.5z" /></svg>
         {/if}
       </button>
-      <button type="button" class="skip" onclick={onNext} disabled={!hasTrack || playback.queue.currentIndex === null || (!playback.isRepeat && playback.queue.currentIndex + 1 >= playback.queue.items.length)} aria-label="Pista siguiente" title="Pista siguiente">
+      <button type="button" class="skip" onclick={onNext} disabled={!hasTrack || !canNext} aria-label={$t('windows.ui.nextTrack')} title={$t('windows.ui.nextTrack')}>
         <PlayerIcon name="forward" size={20} />
       </button>
-      <button type="button" class="mode-toggle" class:mode-active={playback.isRepeat} disabled={repeatPending} aria-pressed={playback.isRepeat} aria-label={playback.isRepeat ? "Desactivar repetición" : "Repetir tema"} title={playback.isRepeat ? "Desactivar repetición" : "Repetir tema"} onclick={setRepeat}><PlayerIcon name="repeat" size={17} /></button>
+      <button type="button" class="mode-toggle" class:mode-active={playback.isRepeat} disabled={repeatPending} aria-pressed={playback.isRepeat} aria-label={playback.isRepeat ? $t('player.repeat.disable') : $t('player.repeat.enable')} title={playback.isRepeat ? $t('player.repeat.disable') : $t('player.repeat.enable')} onclick={setRepeat}><PlayerIcon name="repeat" size={17} /></button>
     </div>
 
-    <div class="track" role="group" aria-label="Canción actual" oncontextmenu={(event) => { if (onOpenMenu && hasTrack) { event.preventDefault(); onOpenMenu(event); } }}>
+    <div class="track" role="group" aria-label={$t('windows.ui.currentSong')} oncontextmenu={(event) => { if (onOpenMenu && hasTrack) { event.preventDefault(); onOpenMenu(event); } }}>
       <div class="artwork">
         {#if playback.currentTrack?.thumbnail && failedArtworkUrl !== playback.currentTrack.thumbnail}
           <img src={playback.currentTrack.thumbnail} alt="" onerror={() => failedArtworkUrl = playback.currentTrack?.thumbnail ?? null} />
@@ -200,30 +206,30 @@
       </div>
       <div class="metadata">
         <div class="title-line">
-        <span class="title" title={playback.currentTrack?.title ?? "Sin reproducción"}>
-          {playback.currentTrack?.title ?? "Sin reproducción"}
+        <span class="title" title={playback.currentTrack?.title ?? $t('player.noPlayback')}>
+          {playback.currentTrack?.title ?? $t('player.noPlayback')}
         </span>
-        <button class="like-toggle" type="button" class:liked disabled={!loggedIn || !hasTrack || !onToggleLike || likePending || playback.isLoading} onclick={onToggleLike} aria-pressed={liked} aria-label={liked ? "Quitar de Me Gusta" : "Me Gusta"} title={!loggedIn ? "Iniciá sesión para usar Me Gusta" : likeError ?? (likePending ? "Actualizando Me Gusta…" : liked ? "Quitar de Me Gusta" : "Me Gusta")}>
+        <button class="like-toggle" type="button" class:liked disabled={!loggedIn || !hasTrack || !onToggleLike || likePending || playback.isLoading} onclick={onToggleLike} aria-pressed={liked} aria-label={liked ? $t('windows.ui.removeLike') : $t('windows.ui.like')} title={!loggedIn ? $t('windows.ui.signInToUseLike') : likeError ?? (likePending ? $t('windows.ui.updatingLike') : liked ? $t('windows.ui.removeLike') : $t('windows.ui.like'))}>
           {#if likePending}<span class="like-spinner" aria-hidden="true"></span>{:else}<svg viewBox="0 0 24 24" aria-hidden="true" fill={liked ? "currentColor" : "none"} stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.8 8.7c0 4.2-6.4 9.1-8.8 11-2.4-1.9-8.8-6.8-8.8-11a4.9 4.9 0 0 1 8.8-3.1 4.9 4.9 0 0 1 8.8 3.1Z" /></svg>{/if}
         </button>
         </div>
         {#if playback.error}
-          <span class="status error" role="status" title={playback.error}>{playback.error}</span>
+          <span class="status error" role="status" title={resolveMessage(playback.error, $language)}>{resolveMessage(playback.error, $language)}</span>
         {:else if playback.isLoading}
-          <span class="status" role="status">Cargando audio…</span>
+          <span class="status" role="status">{$t('windows.ui.loadingAudio')}</span>
         {:else}
           <div class="artist-line">
             {#if playback.currentTrack}
               <ArtistCredits artistRuns={playback.currentTrack.artistRuns} artists={playback.currentTrack.artists} artistId={playback.currentTrack.artistId} {onOpenArtist} album={playback.currentTrack.album} albumId={playback.currentTrack.albumId} {onOpenAlbum} />
-            {:else}<span class="artist">Seleccioná una canción</span>{/if}
+            {:else}<span class="artist">{$t('player.selectTrack')}</span>{/if}
           </div>
         {/if}
         {#if likeError}
-          <span class="status like-error" role="alert" title={likeError}>{likeError}</span>
+          <span class="status like-error" role="alert" title={resolveMessage(likeError, $language)}>{resolveMessage(likeError, $language)}</span>
         {/if}
       </div>
-        <button class="more-toggle" type="button" disabled={!onOpenMenu || !hasTrack} aria-label="Más opciones de la canción" title="Más opciones" onclick={onOpenMenu}>
-          <svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg>
+        <button class="more-toggle" type="button" disabled={!onOpenMenu || !hasTrack} aria-label={$t('detail.track.moreOptionsForSong')} title={$t('menu.more_options')} onclick={onOpenMenu}>
+          <MoreIcon />
         </button>
     </div>
 
@@ -231,20 +237,20 @@
     <div class="end-controls">
       <div class="panel-shortcuts" class:obscured={volumeOpen} inert={volumeOpen}>
       {#if onSelectPanel}
-        <button type="button" class="panel-shortcut" class:panel-active={fullscreenOpen && selectedPanel === "lyrics"} aria-label="Abrir letras" title="Letras" aria-pressed={fullscreenOpen && selectedPanel === "lyrics"} onclick={() => onSelectPanel?.("lyrics")}>
+        <button type="button" class="panel-shortcut" class:panel-active={fullscreenOpen && selectedPanel === "lyrics" && lyricsMode === 'synced'} aria-label={$t('windows.ui.openLyrics')} title={$t('menu.lyrics')} aria-pressed={fullscreenOpen && selectedPanel === "lyrics" && lyricsMode === 'synced'} onclick={() => onSelectPanel?.("lyrics")}>
           <PlayerIcon name="lyrics" />
         </button>
-        <button type="button" class="panel-shortcut" disabled aria-label="Genius no disponible todavía" title="Letras y anotaciones de Genius: todavía no disponibles en Windows"><PlayerIcon name="annotations" /></button>
-        <button type="button" class="panel-shortcut" class:panel-active={fullscreenOpen && selectedPanel === "queue"} aria-label="Abrir cola" title="Cola de reproducción" aria-pressed={fullscreenOpen && selectedPanel === "queue"} onclick={() => onSelectPanel?.("queue")}>
+        <button type="button" class="panel-shortcut" class:panel-active={fullscreenOpen && selectedPanel === 'lyrics' && lyricsMode === 'genius'} disabled={!hasTrack} aria-label={$t('genius.lyricsAndAnnotations')} title={$t('genius.lyricsAndAnnotations')} aria-pressed={fullscreenOpen && selectedPanel === 'lyrics' && lyricsMode === 'genius'} onclick={() => onSelectPanel?.('genius')}><PlayerIcon name="annotations" /></button>
+        <button type="button" class="panel-shortcut" class:panel-active={fullscreenOpen && selectedPanel === "queue"} aria-label={$t('windows.ui.openQueue')} title={$t('queue.title')} aria-pressed={fullscreenOpen && selectedPanel === "queue"} onclick={() => onSelectPanel?.("queue")}>
           <PlayerIcon name="queue" />
         </button>
       {/if}
       </div>
-      <div class="volume" class:open={volumeOpen} bind:this={volumeRoot} role="group" aria-label="Volumen" onpointerenter={() => volumeHovered = true} onpointerleave={leaveVolume} onfocusout={handleVolumeFocusOut}>
-        <button bind:this={volumeButton} type="button" class="volume-toggle" aria-label="Mostrar volumen" title={`Volumen: ${Math.round(volume)}%`} aria-expanded={volumeOpen} aria-controls="player-volume" aria-hidden={volumeOpen} tabindex={volumeOpen ? -1 : 0} onclick={toggleVolume}>
+      <div class="volume" class:open={volumeOpen} bind:this={volumeRoot} role="group" aria-label={$t('windows.ui.volume')} onpointerenter={() => volumeHovered = true} onpointerleave={leaveVolume} onfocusout={handleVolumeFocusOut}>
+        <button bind:this={volumeButton} type="button" class="volume-toggle" aria-label={$t('windows.ui.showVolume')} title={$t('windows.player.volumeValue', [Math.round(volume)])} aria-expanded={volumeOpen} aria-controls="player-volume" aria-hidden={volumeOpen} tabindex={volumeOpen ? -1 : 0} onclick={toggleVolume}>
           <svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><path d="M3 9v6h4l5 5V4L7 9zm12.5 3a4 4 0 0 0-2-3.46v6.92a4 4 0 0 0 2-3.46" /></svg>
         </button>
-        <div id="player-volume" class="volume-popover" data-volume-popover={volumeOpen ? '' : undefined} inert={!volumeOpen} aria-hidden={!volumeOpen} role="group" aria-label="Control de volumen">
+        <div id="player-volume" class="volume-popover" data-volume-popover={volumeOpen ? '' : undefined} inert={!volumeOpen} aria-hidden={!volumeOpen} role="group" aria-label={$t('windows.ui.volumeControl')}>
         <input bind:this={volumeSlider}
           type="range"
           min="0"
@@ -254,10 +260,10 @@
           style={`--fill:${volume}%`}
           oninput={handleVolumeInput}
           onpointerdown={() => volumeDragging = true}
-          aria-label="Volumen"
+          aria-label={$t('windows.ui.volume')}
           aria-valuetext={`${Math.round(volume)}%`}
         />
-        <button type="button" class="volume-mute" aria-label={volume > 0 ? 'Silenciar' : 'Activar sonido'} title={`${volume > 0 ? 'Silenciar' : 'Activar sonido'} · ${Math.round(volume)}%`} onclick={toggleMute}>
+        <button type="button" class="volume-mute" aria-label={volume > 0 ? $t('player.mute') : $t('player.unmute')} title={`${volume > 0 ? $t('player.mute') : $t('player.unmute')} · ${Math.round(volume)}%`} onclick={toggleMute}>
           <svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><path d="M3 9v6h4l5 5V4L7 9" />
             {#if volume === 0}<path d="m16 9 5 6m0-6-5 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
             {:else}<path d="M15.5 12a4 4 0 0 0-2-3.46v6.92a4 4 0 0 0 2-3.46" />{/if}
@@ -268,8 +274,8 @@
       <button
         type="button"
         class="fullscreen-toggle"
-        aria-label={fullscreenOpen ? "Cerrar pantalla completa" : "Abrir pantalla completa"}
-        title={fullscreenOpen ? "Cerrar pantalla completa" : "Abrir pantalla completa"}
+        aria-label={fullscreenOpen ? $t('player.closeFullscreen') : $t('player.openFullscreen')}
+        title={fullscreenOpen ? $t('player.closeFullscreen') : $t('player.openFullscreen')}
         aria-expanded={fullscreenOpen}
         aria-controls="fullscreen-now-playing"
         onclick={onToggleFullscreen}
@@ -284,6 +290,7 @@
 
 <style>
   .player-bar {
+    container-type: inline-size;
     position: relative;
     box-sizing: border-box;
     width: min(100%, 820px);
@@ -460,7 +467,7 @@
   .panel-shortcuts.obscured { opacity: 0; pointer-events: none; }
   .panel-shortcut, .more-toggle { display: grid; flex: 0 0 32px; place-items: center; width: 32px; height: 32px; padding: 0; border: 0; border-radius: 7px; color: rgb(255 255 255 / 65%); background: transparent; cursor: pointer; }
   .more-toggle { width: 28px; height: 28px; flex-basis: 28px; }
-  .more-toggle svg { width: 16px; height: 16px; }
+
   .panel-shortcut:disabled, .more-toggle:disabled { color: rgb(255 255 255 / 40%); cursor: default; }
   .panel-shortcut:hover:not(:disabled), .more-toggle:hover:not(:disabled) { color: #fff; background: rgb(255 255 255 / 10%); }
   .panel-shortcut.panel-active { color: #d06c70; }
@@ -497,5 +504,14 @@
 
   @media (forced-colors: active) {
     .player-bar, .volume-popover { background: Canvas; border-color: CanvasText; color: CanvasText; backdrop-filter: none; -webkit-backdrop-filter: none; }
+  }
+
+  @container (max-width: 760px) {
+    .main-row { left:14px;right:14px;grid-template-columns:168px minmax(0,1fr) 0 176px;gap:6px; }
+    .transport { gap:4px; }.track { gap:8px;padding-left:8px; }
+    .artwork { width:40px;height:40px;flex-basis:40px; }
+    .end-controls,.panel-shortcuts { gap:2px; }
+    .panel-shortcut { width:28px;flex-basis:28px; }
+    .title-line {gap:3px;}.more-toggle {width:24px;flex-basis:24px;}
   }
 </style>

@@ -5,7 +5,7 @@ import ts from 'typescript';
 
 const source = await readFile(new URL('../src/lib/images/artwork.ts', import.meta.url), 'utf8');
 const output = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText;
-const { maxQualityArtworkUrl, originalArtworkUrl, fallbackArtworkUrl, artworkCandidates, nextArtworkUrl } = await import(`data:text/javascript;base64,${Buffer.from(output).toString('base64')}`);
+const { maxQualityArtworkUrl, originalArtworkUrl, fallbackArtworkUrl, artworkCandidates, nextArtworkUrl, cardArtworkCandidates, rejectArtworkAttempt } = await import(`data:text/javascript;base64,${Buffer.from(output).toString('base64')}`);
 
 test('uses 1200px variants for known Google artwork suffixes and preserves query tokens', () => {
   assert.equal(maxQualityArtworkUrl('https://lh3.googleusercontent.com/abc=w544-h544?authuser=2&token=keep'),
@@ -58,4 +58,29 @@ test('does not rewrite external, signed, or unsupported image URL formats', () =
   const unsupportedGoogle = 'https://lh3.googleusercontent.com/abc?token=keep';
   assert.equal(maxQualityArtworkUrl(unsupportedGoogle), unsupportedGoogle);
   assert.equal(originalArtworkUrl(unsupportedGoogle), null);
+});
+
+test('card variants follow actual size and DPI while retaining the provider fallback and flags',()=>{
+  const source='https://lh3.googleusercontent.com/card=w1080-h608-l90-rj';
+  assert.deepEqual(cardArtworkCandidates(source,44,2),['https://lh3.googleusercontent.com/card=w96-h96-l90-rj',source]);
+  assert.equal(cardArtworkCandidates(source,216,1.5)[0],'https://lh3.googleusercontent.com/card=w352-h352-l90-rj');
+  assert.equal(cardArtworkCandidates(source,5000,4)[0],'https://lh3.googleusercontent.com/card=w1200-h1200-l90-rj');
+  assert.deepEqual(cardArtworkCandidates(null,160),[]);
+});
+
+test('card sizing never rewrites query-bearing, signed, external or unsupported URLs',()=>{
+  for(const source of ['https://lh3.googleusercontent.com/card=w544-h544?sig=secret','https://lh3.googleusercontent.com/card=w544-h544?token=secret','https://images.example.test/card=w544-h544','https://i.ytimg.com/vi/abc/hqdefault.jpg','https://lh3.googleusercontent.com/unsupported'])
+    assert.deepEqual(cardArtworkCandidates(source,44,2),[source]);
+});
+
+test('card failure retries the exact source once, rejects late recycled callbacks and exhausts cleanly',()=>{
+  const source='https://lh3.googleusercontent.com/card=w544-h544';
+  const candidates=cardArtworkCandidates(source,44,2),key=JSON.stringify(candidates);
+  let failures={key,urls:[]};
+  const before=failures;failures=rejectArtworkAttempt(failures,key,candidates,'old-track',candidates[0]);assert.equal(failures,before);
+  failures=rejectArtworkAttempt(failures,key,candidates,key,candidates[0]);assert.equal(nextArtworkUrl(candidates,failures.urls),source);
+  const fallback=failures;failures=rejectArtworkAttempt(failures,key,candidates,key,candidates[0]);assert.equal(failures,fallback,'superseded attempt cannot consume fallback');
+  failures=rejectArtworkAttempt(failures,key,candidates,key,source);assert.equal(nextArtworkUrl(candidates,failures.urls),null);
+  const next=['https://lh3.googleusercontent.com/next=w96-h96'];const nextKey=JSON.stringify(next);
+  const old=failures;assert.equal(rejectArtworkAttempt(failures,nextKey,next,key,source),old,'old callback cannot reject a recycled replacement');
 });

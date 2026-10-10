@@ -13,8 +13,11 @@ struct HomeView: View {
     var router: NavigationRouter?
     var onNavigate: ((PageDestination) -> Void)?
     @State private var observedFeaturedCapacity = 2
+    @State private var greetingHour = HomeGreeting.localHour()
+    @Environment(\.scenePhase) private var scenePhase
 
     private var isObscured: Bool { playerViewModel.isFullscreenPresented }
+    private var greetingClockIsActive: Bool { !isObscured && scenePhase == .active }
 
     var body: some View {
         let _ = L10n.revision
@@ -25,6 +28,15 @@ struct HomeView: View {
             feed.frame(width: viewport.size.width, height: viewport.size.height)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .task(id: greetingClockIsActive) {
+            guard greetingClockIsActive else { return }
+            while !Task.isCancelled {
+                let hour = HomeGreeting.localHour()
+                if greetingHour != hour { greetingHour = hour }
+                do { try await Task.sleep(for: .seconds(60)) }
+                catch { return }
+            }
+        }
         .task(id: sessionRevision) {
             guard sessionRevision > 0, homeViewModel.sections.isEmpty,
                   let core = playerViewModel.rustCore else { return }
@@ -160,26 +172,21 @@ struct HomeView: View {
                 .clipShape(Circle())
                 .accessibilityHidden(true)
             }
-            VStack(alignment: .leading, spacing: 3) {
-                Text(greeting)
-                    .font(.system(size: 27, weight: .bold))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.75)
-                    .accessibilityAddTraits(.isHeader)
-                Text(homeViewModel.allFeaturedSourcesDisabled ? L10n.text("app.home.sourcesDisabled") : L10n.text("app.home.emptySubtitle"))
-                    .font(.system(size: 13))
-                    .foregroundStyle(.secondary)
-            }
+            Text(greeting)
+                .font(.system(size: 40, weight: .bold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+                .accessibilityAddTraits(.isHeader)
             Spacer()
         }
+        .frame(height: 52)
         .padding(.horizontal, 28)
         .padding(.top, 24)
         .padding(.bottom, 12)
     }
 
     private var greeting: String {
-        let hour = Calendar.current.component(.hour, from: Date())
-        let salutation = hour < 12 ? L10n.text("app.home.morning") : hour < 20 ? L10n.text("app.home.afternoon") : L10n.text("app.home.evening")
+        let salutation = L10n.text(HomeGreeting.messageKey(hour: greetingHour))
         let name = accountName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         return name.isEmpty ? salutation : L10n.text("app.home.greetingName", args: [salutation, name])
     }

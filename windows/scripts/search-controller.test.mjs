@@ -13,6 +13,19 @@ function deferred() { let resolve, reject; const promise = new Promise((a, b) =>
 function controller(rpc) { let data; const search = new SearchController(rpc, next => data = next); return { search, get data() { return data; } }; }
 const tick = () => new Promise(resolve => setTimeout(resolve, 0));
 
+test('top songs survive publication, mode cache and navigation snapshot with original library metadata', async () => {
+  const original={...song('related'),setVideoId:'occurrence',library:{addToken:'fixture-token'},artistRuns:[{text:'Guest',browseId:'guest'}]};
+  const ctx=controller(async command=>command==='search_all'?{...result('top'),topSongs:[original]}:[]);
+  await ctx.search.execute('top');
+  assert.equal(ctx.data.topSongs[0],original);
+  const snapshot=ctx.data;
+  ctx.search.setQuery('other');ctx.search.restore(snapshot);
+  assert.equal(ctx.data.topSongs[0].setVideoId,'occurrence');
+  assert.equal(ctx.data.mixedResults.topSongs[0].library.addToken,'fixture-token');
+  ctx.search.setQuery('top');await ctx.search.execute('top');
+  assert.equal(ctx.data.topSongs[0].artistRuns[0].browseId,'guest');
+});
+
 test('submit records history once and keeps independent section failures partial', async () => {
   const calls = []; const ctx = controller(async (command, args) => {
     calls.push({ command, args });

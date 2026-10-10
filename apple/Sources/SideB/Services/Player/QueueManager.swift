@@ -141,6 +141,14 @@ public final class QueueManager {
         return queue[currentIndex]
     }
 
+    /// Refresh only the selected occurrence; duplicate videos, order and source identity stay intact.
+    func updateCurrentMetadata(_ track: SongItemRecord, occurrenceID: String?, queueToken: UUID) {
+        guard self.queueToken == queueToken, let occurrenceID,
+              currentOccurrenceID == occurrenceID, queue.indices.contains(currentIndex),
+              queue[currentIndex].videoId == track.videoId else { return }
+        if queue[currentIndex] != track { queue[currentIndex] = track }
+    }
+
     public var upNextTracks: [SongItemRecord] {
         guard currentIndex + 1 < queue.count else { return [] }
         return Array(queue[(currentIndex + 1)...])

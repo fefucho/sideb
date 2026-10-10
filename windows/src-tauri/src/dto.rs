@@ -6,6 +6,10 @@ pub struct AuthStatusDto {
     pub state: String,
     pub name: Option<String>,
     pub email: Option<String>,
+    #[serde(default)]
+    pub handle: Option<String>,
+    #[serde(default)]
+    pub channel_id: Option<String>,
     pub thumbnail: Option<String>,
     pub message: Option<String>,
 }
@@ -16,6 +20,8 @@ impl AuthStatusDto {
             state: "guest".into(),
             name: None,
             email: None,
+            handle: None,
+            channel_id: None,
             thumbnail: None,
             message: None,
         }
@@ -31,6 +37,8 @@ impl AuthStatusDto {
             state: "ready".into(),
             name: info.name,
             email: info.email,
+            handle: info.handle,
+            channel_id: info.channel_id,
             thumbnail: info.thumbnail,
             message: None,
         }
@@ -47,6 +55,8 @@ impl AuthStatusDto {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PlaybackTrackDto {
+    #[serde(default)]
+    pub is_upload: bool,
     pub video_id: String,
     pub title: String,
     pub artists: String,
@@ -67,20 +77,44 @@ impl PlaybackTrackDto {
         if self.video_id != entry.video_id {
             return;
         }
-        if self.artists.trim().is_empty() && !entry.artists.trim().is_empty() {
-            self.artists = entry.artists.clone();
+        // Older durable queues can carry a responsive play count as an album.
+        // Clear it before copying a real destination from the enriched queue.
+        self.album = crate::queue::metadata_album(&self.album, &self.album_id);
+        self.artist_runs = crate::queue::metadata_artist_runs(&self.artist_runs);
+        let entry_runs = crate::queue::metadata_artist_runs(&entry.artist_runs);
+        self.artists = crate::queue::metadata_credit_with_runs(&self.artists, &self.artist_runs);
+        let entry_artists = crate::queue::metadata_credit_with_runs(&entry.artists, &entry_runs);
+        let entry_album = crate::queue::metadata_album(&entry.album, &entry.album_id);
+        self.is_upload |= entry.is_upload;
+        if self.artists.is_empty()
+            && !entry_artists.is_empty()
+            && (self.artist_id.is_none() || self.artist_id == entry.artist_id)
+        {
+            self.artists = entry_artists.clone();
         }
-        if self.artist_id.is_none() {
+        if self.artist_id.is_none()
+            && (self.artists.is_empty()
+                || crate::queue::metadata_label_matches(&self.artists, &entry_artists))
+        {
             self.artist_id = entry.artist_id.clone();
         }
-        if self.album_id.is_none() {
+        if self.album_id.is_none()
+            && self.album.as_ref().is_none_or(|album| {
+                entry_album
+                    .as_ref()
+                    .is_some_and(|label| crate::queue::metadata_label_matches(album, label))
+            })
+        {
             self.album_id = entry.album_id.clone();
         }
-        if self.album.is_none() {
-            self.album = entry.album.clone();
+        if self.album.is_none() && (self.album_id.is_none() || self.album_id == entry.album_id) {
+            self.album = entry_album;
         }
-        if self.artist_runs.is_empty() {
-            self.artist_runs = entry.artist_runs.clone();
+        if self.artist_runs.is_empty()
+            && crate::queue::metadata_label_matches(&self.artists, &entry_artists)
+            && (self.artist_id.is_none() || self.artist_id == entry.artist_id)
+        {
+            self.artist_runs = entry_runs;
         }
     }
 }
@@ -91,8 +125,95 @@ mod playback_track_tests {
     use crate::queue::QueueEntryDto;
 
     #[test]
+    fn current_track_enrichment_keeps_unrelated_labels_unlinked() {
+        let mut track = PlaybackTrackDto {
+            is_upload: false,
+            video_id: "seed".into(),
+            title: "Title".into(),
+            artists: "Frank Ocean feat. Guest".into(),
+            thumbnail: None,
+            duration: None,
+            artist_id: None,
+            album_id: None,
+            album: Some("Blonde Deluxe".into()),
+            artist_runs: vec![],
+        };
+        let entry = QueueEntryDto::with_metadata_and_runs(
+            "seed".into(),
+            "Title".into(),
+            "Frank Ocean".into(),
+            None,
+            None,
+            Some("UC-frank".into()),
+            Some("MPRE-blonde".into()),
+            Some("Blonde".into()),
+            vec![HomeArtistRunDto {
+                text: "Frank Ocean".into(),
+                id: Some("UC-frank".into()),
+            }],
+        );
+        track.enrich_missing_metadata(&entry);
+        assert_eq!(track.album.as_deref(), Some("Blonde Deluxe"));
+        assert_eq!(track.album_id, None);
+        assert_eq!(track.artists, "Frank Ocean feat. Guest");
+        assert_eq!(track.artist_id, None);
+        assert!(track.artist_runs.is_empty());
+        track.album = Some(" blonde ".into());
+        track.artists = " FRANK OCEAN ".into();
+        track.enrich_missing_metadata(&entry);
+        assert_eq!(track.album_id.as_deref(), Some("MPRE-blonde"));
+        assert_eq!(track.artist_id.as_deref(), Some("UC-frank"));
+        assert_eq!(track.artist_runs, entry.artist_runs);
+        track.artist_runs.clear();
+        track.artist_id = Some("UC-another-artist".into());
+        track.enrich_missing_metadata(&entry);
+        assert_eq!(track.artist_id.as_deref(), Some("UC-another-artist"));
+        assert!(track.artist_runs.is_empty());
+        track.artist_id = Some("UC-frank".into());
+        track.enrich_missing_metadata(&entry);
+        assert_eq!(track.artist_runs, entry.artist_runs);
+    }
+
+    #[test]
+    fn radio_metadata_rejects_counter_then_accepts_real_album_for_legacy_track() {
+        let mut track = PlaybackTrackDto {
+            is_upload: false,
+            video_id: "seed".into(),
+            title: "Title".into(),
+            artists: "Song • Artist • 337M plays".into(),
+            thumbnail: None,
+            duration: Some(123.0),
+            artist_id: None,
+            album_id: None,
+            album: Some("337M plays".into()),
+            artist_runs: vec![],
+        };
+        let mut entry = QueueEntryDto::new(
+            "seed".into(),
+            "Other".into(),
+            "Video • 4M views".into(),
+            None,
+            None,
+        );
+        // Simulate a provider/old serialized DTO bypassing the constructor.
+        entry.album = Some("4M views".into());
+        track.enrich_missing_metadata(&entry);
+        assert_eq!(track.album, None);
+        assert_eq!(track.artists, "Artist");
+        entry.album = Some("Actual Album".into());
+        entry.album_id = Some("MPRE-real".into());
+        track.enrich_missing_metadata(&entry);
+        assert_eq!(track.album.as_deref(), Some("Actual Album"));
+        assert_eq!(track.album_id.as_deref(), Some("MPRE-real"));
+        assert_eq!(track.duration, Some(123.0));
+        assert_eq!(track.title, "Title");
+        assert_eq!(track.artists, "Artist");
+    }
+
+    #[test]
     fn radio_metadata_enrichment_preserves_audio_identity_and_existing_credits() {
         let mut track = PlaybackTrackDto {
+            is_upload: false,
             video_id: "seed-video".into(),
             title: "Seed title".into(),
             artists: "Seed artist".into(),
@@ -126,13 +247,14 @@ mod playback_track_tests {
         assert_eq!(track.artists, "Seed artist");
         assert_eq!(track.album.as_deref(), Some("Album"));
         assert_eq!(track.album_id.as_deref(), Some("MPRE-album"));
-        assert_eq!(track.artist_id.as_deref(), Some("UC-artist"));
-        assert_eq!(track.artist_runs.len(), 1);
+        assert_eq!(track.artist_id, None);
+        assert!(track.artist_runs.is_empty());
     }
 
     #[test]
     fn radio_metadata_enrichment_ignores_a_different_current_song() {
         let mut track = PlaybackTrackDto {
+            is_upload: false,
             video_id: "currently-playing".into(),
             title: "Title".into(),
             artists: "Artist".into(),
@@ -165,6 +287,10 @@ mod playback_track_tests {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PlaybackStateDto {
+    #[serde(default)]
+    pub can_next: bool,
+    #[serde(default)]
+    pub source_load: Option<PlaybackSourceLoadDto>,
     pub is_playing: bool,
     pub is_loading: bool,
     pub is_ended: bool,
@@ -175,10 +301,22 @@ pub struct PlaybackStateDto {
     pub position: f64,
     pub duration: f64,
     pub volume: f64,
+    #[serde(default)]
+    pub exponential_volume: bool,
     pub current_track: Option<PlaybackTrackDto>,
     pub error: Option<String>,
     pub generation: u64,
     pub queue: QueueStateDto,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlaybackSourceLoadDto {
+    pub loaded_count: usize,
+    pub loading: bool,
+    pub error: Option<String>,
+    pub can_retry: bool,
+    pub has_more: bool,
 }
 
 #[cfg(test)]
@@ -206,6 +344,8 @@ pub struct PlaybackProgressDto {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SongDto {
+    #[serde(default)]
+    pub is_upload: bool,
     pub video_id: String,
     pub title: String,
     pub artists: String,
@@ -232,6 +372,7 @@ pub struct LibraryToggleDto {
 impl From<sideb_core::SongItemRecord> for SongDto {
     fn from(r: sideb_core::SongItemRecord) -> Self {
         Self {
+            is_upload: r.is_upload,
             video_id: r.video_id,
             title: r.title,
             artists: r.artists,

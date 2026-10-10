@@ -1,5 +1,8 @@
 <script lang="ts">
+  import { t , language, resolveMessage } from '$lib/i18n';
   import type { HistoryGroupDto, AccountSongDto } from '$lib/account/types';
+  import { normalizeHistoryDate } from '../common/trackList';
+  import VirtualStack from '../common/VirtualStack.svelte';
   import AccountTrackTable from './AccountTrackTable.svelte';
   interface Props {
     loggedIn: boolean; groups: HistoryGroupDto[]; loading: boolean; error: string | null;
@@ -13,23 +16,25 @@
   const allTracks = $derived(groups.flatMap(group => group.items));
 </script>
 <section class="history" aria-busy={loading}>
-  <header><div><div class="eyebrow">COLECCIÓN</div><h1>Historial</h1><p>Tus reproducciones recientes ordenadas por día</p></div>
-    {#if loggedIn}<button type="button" onclick={onRefresh} disabled={loading} aria-label="Actualizar historial">↻</button>{/if}
+  <header><div><div class="eyebrow">{$t('detail.kind.collection')}</div><h1>{$t('sidebar.history')}</h1><p>{$t('history.subtitle')}</p></div>
+    {#if loggedIn}<button type="button" onclick={onRefresh} disabled={loading} aria-label={$t('windows.ui.refreshHistory')}>↻</button>{/if}
   </header>
   <div class="divider"></div>
-  {#if !loggedIn}<div class="state"><h2>Iniciá sesión para ver tu historial</h2><button type="button" onclick={onLogin}>Iniciar sesión</button></div>
-  {:else if loading && !allTracks.length}<div class="state" role="status">Cargando historial…</div>
-  {:else if error && !allTracks.length}<div class="state" role="alert"><h2>No se pudo cargar el historial</h2><p>{error}</p><button type="button" onclick={onRefresh}>Reintentar</button></div>
-  {:else if !allTracks.length}<div class="state"><h2>No hay reproducciones recientes</h2></div>
+  {#if !loggedIn}<div class="state"><h2>{$t('windows.ui.signInToSeeYourHistory')}</h2><button type="button" onclick={onLogin}>{$t('account.sign_in')}</button></div>
+  {:else if loading && !allTracks.length}<div class="state" role="status">{$t('windows.ui.loadingHistory')}</div>
+  {:else if error && !allTracks.length}<div class="state" role="alert"><h2>{$t('history.error.load')}</h2><p>{resolveMessage(error, $language)}</p><button type="button" onclick={onRefresh}>{$t('sidebar.retry')}</button></div>
+  {:else if !allTracks.length}<div class="state"><h2>{$t('history.empty')}</h2></div>
   {:else}
-    {#if error}<p class="error" role="alert">{error}</p>{/if}
-    {#each groups as group, groupIndex (group.title + ':' + groupIndex)}
-      {@const offset = groups.slice(0, groupIndex).reduce((sum, item) => sum + item.items.length, 0)}
-      <section aria-label={group.title}><h2 class="group-heading">{group.title}</h2>
-        <AccountTrackTable items={group.items} {currentTrackId} {isPlaying} {likedIds} {pendingIds} numbered={false}
+    {#if error}<p class="error" role="alert">{resolveMessage(error, $language)}</p>{/if}
+    <VirtualStack items={groups.map((group,index)=>({...group,index,offset:groups.slice(0,index).reduce((sum,g)=>sum+g.items.length,0)}))} key={group=>`${group.title}:${group.index}`} height={group=>group.items.length*52+48}>
+      {#snippet children(group)}
+      {@const offset = group.offset}
+      <section aria-label={normalizeHistoryDate(group.title)}><h2 class="group-heading">{normalizeHistoryDate(group.title)}</h2>
+        <AccountTrackTable items={group.items} source={{kind:"history",id:"history"}} indexOffset={offset} {currentTrackId} {isPlaying} {likedIds} {pendingIds} numbered
           onPlay={(index) => onPlay(allTracks, offset + index)} {onToggleLike} {onToggleSaved} {onOpenArtist} {onOpenAlbum} />
       </section>
-    {/each}
+      {/snippet}
+    </VirtualStack>
   {/if}
 </section>
 <style>

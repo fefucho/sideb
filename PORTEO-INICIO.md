@@ -1,17 +1,19 @@
 # Guía de porteo Mac → Windows: barra superior e Inicio personalizado
 
-Especificación consolidada para trasladar a Windows (`windows/`, Svelte + Tauri) lo construido en macOS (`apple/`, SwiftUI + AppKit). Resume contratos, reglas, constantes y textos que hoy están repartidos en los planes y en `FIXES.md`. Si algo difiere de aquellos, manda el código Apple citado. Estado y seguimiento: [PARIDAD.md](PARIDAD.md) (PAR-001 a PAR-010; auditoría FIX-110, cartas comunes FIX-111 y correcciones FIX-112).
+Especificación consolidada para trasladar a Windows (`windows/`, Svelte + Tauri) lo construido en macOS (`apple/`, SwiftUI + AppKit). Resume contratos, reglas, constantes y textos que hoy están repartidos en los planes y en `FIXES.md`. Si algo difiere de aquellos, manda el código Apple citado. Estado y seguimiento: [PARIDAD.md](PARIDAD.md) (PAR-001 a PAR-010 y PAR-011-2; auditoría FIX-110, cartas comunes FIX-111, correcciones FIX-112 y destino FIX-113-2 / FIX-114-2).
 
-> Convención: «Apple» = referencia ya implementada. «Windows» = qué falta o qué adaptar. Rutas de Apple relativas a `apple/Sources/SideB/`.
+> Convención: «Apple» = referencia implementada. Rutas Apple relativas a `apple/Sources/SideB/`. **Adaptación vigente Windows — FIX-113-2:** Inicio, configuración, cartas y feed implementados; validación nativa pendiente. El usuario decidió conservar sidebar expandida/compacta y excluir el selector superior y la transición fullscreen/sidebar Mac. §1 describe la referencia Apple, no un mandato de este pedido. PAR-010 (inicio antes de completar catálogo) queda pendiente. Estado y evidencia: [PLAN-001 Windows](windows/plans/PLAN-001-personalized-home.md).
 
 Actualización de alcance 2026-10-09: el [checklist integral Windows](windows/plans/PLAN-001-feature-parity.md) cubre también detalles, Explorar, Genius, traducciones, reproducción e integración del sistema; [PARIDAD](PARIDAD.md) conserva su estado. Explorar está habilitado en Apple desde FIX-120; la auditoría de hoy no ejecutó runtime nativo Windows.
 
 ## 0. Qué se porta y qué no
 
+Auditoría funcional posterior: [FIX-114-2](FIXES.md#fix-114-2), [matriz por función](windows/plans/AUDIT-001-home-parity.md). Corrige selección/prioridades, geometría/páginas, migración/categorías, metadata/sampler/prefetch y el recorrido de reproducción al navegar. 152 pruebas Windows aprobadas, check/build frontend aprobados; WebView2/cuenta/audio/consumo pendientes. PAR-010 permanece pendiente y [PAR-011-2](PARIDAD.md) registra snapshots/hidratación persistente de Apple ausentes en Windows. La paridad de estos cuatro bloques no implica igualdad de todo HomeViewModel ni del renderer nativo.
+
 | Se porta (comportamiento) | No se porta (específico de macOS) |
 |---|---|
 | Reglas de selección de destacados, fuentes, categorías, persistencia, textos | `NSSegmentedControl`, `NSGlassEffectView`, toolbar nativa, conversión de coordenadas de ventana (FIX-090, 095, 102, 103, 107 en lo AppKit) |
-| Geometría lógica, continuidad del fondo de fullscreen y movimiento coherente con sidebar | Implementación de zIndex/transacciones y transición SwiftUI (FIX-091 a 095); reproducir el resultado con CSS/Tauri |
+| Geometría de Inicio/configuración; fullscreen/sidebar Mac sólo como referencia fuera del pedido FIX-113-2 | Implementación de zIndex/transacciones y transición SwiftUI (FIX-091 a 095) |
 | Fondo de portadas con humo animado | `TimelineView`, `ImageRenderer` (usar CSS/canvas) |
 
 Los datos iniciales no requieren cambios en core Rust ni contratos UniFFI: todo usa `HomeSectionRecord`, `HomeItemRecord`, `BrowseCardRecord` y `HistoryGroupRecord` existentes. Auditar que el adaptador Tauri/DTO y los tipos TypeScript expongan lo necesario; si un campo del contrato existente falta en el DTO, ampliar adaptador y consumidor juntos, sin inventarlo ni modificar el core por una necesidad de UI.
@@ -41,12 +43,12 @@ Fuentes: `Views/Components/TopNavigationView.swift`, `WindowNavigationToolbarVie
 
 ### Fullscreen y sidebar: resultado visible (PAR-008)
 
-Fuentes: `SideBApp.swift`, `Views/Fullscreen/FullscreenBackdrop.swift`, `FullscreenNowPlayingView.swift`, `Views/Fullscreen/FullscreenSceneLayout.swift` · FIX-091–095 · PLAN-003. La referencia final es FIX-095; los intentos 091–094 y sus fallos quedan como antecedentes, no implementaciones a reproducir.
+Fuentes: `SideBApp.swift`, `Views/Fullscreen/FullscreenBackdrop.swift`, `FullscreenNowPlayingView.swift`, `Views/Fullscreen/FullscreenSceneLayout.swift` · FIX-091 a FIX-095 · PLAN-003. La referencia final es FIX-095; los intentos 091–094 y sus fallos quedan como antecedentes, no implementaciones a reproducir.
 
 - Backdrop fijo cubre toda la ventana, también detrás de la sidebar. Entrar/salir de fullscreen atenúa el mismo plano en todo el ancho; la página debajo no agrega un segundo oscurecimiento sólo en la columna de contenido.
 - Foreground de reproducción separado del backdrop; sidebar/player/buscador quedan por encima. Al alternar sidebar, portada, metadata y paneles usan la misma geometría continua, sin saltos de tipografía ni recortes. Player y buscador mantienen reserva/centrado coherentes.
 - Navegación inferior no intercepta input en fullscreen; los controles visibles conservan foco, acciones y accesibilidad. No reconstruir todas las páginas ocultas para lograr el fade.
-- Windows actual: `FullscreenNowPlaying.svelte` tiene `inset: 0 0 0 var(--sidebar-width)` y su backdrop está dentro; `+page.svelte` monta fullscreen condicionalmente. El fondo aún no abarca la sidebar. Adaptar composición/transiciones CSS/Tauri y conservar botones de ventana/región de arrastre; no copiar APIs, zIndex numéricos ni hosts AppKit.
+- Windows actual: `FullscreenNowPlaying.svelte` tiene `inset: 0 0 0 var(--sidebar-width)` y su backdrop está dentro; `+page.svelte` monta fullscreen condicionalmente. El fondo no abarca la sidebar. El usuario decidió conservar este shell en FIX-113-2; no se porta esta transición ni se declara resuelta PAR-008. Mantener botones/región de arrastre Windows.
 
 ## 2. Panel «Configuración de Inicio»
 
@@ -141,14 +143,14 @@ Cadena: **datos crudos → clasificar categorías → candidatos por fuentes act
 
 **Metadata de tarjetas** (créditos, resumen, duración): solo para la página visible; máximo **2 solicitudes simultáneas** por modelo, incluso con páginas superpuestas; caché LRU de 6; playlists consultan solo su primera página; el catálogo completo se pide **solo al reproducir/aleatorio**. Cancelación y generación protegen las respuestas. Sin año ni totales inventados.
 
-### Continuaciones, caché y errores (PAR-005 / FIX-104–106)
+### Continuaciones, caché y errores (PAR-005 / FIX-104 a FIX-106)
 
 - Conservar registros crudos, snapshots por filtro y un coordinador/cursor. Ocultar u ordenar sólo cambia la proyección, sin borrar candidatos ni resetear continuaciones.
 - «Cargar más» explícito: exclusión de carga simultánea; hasta tres peticiones por clic atravesando páginas repetidas, vacías o sólo con estantes ocultos. Parar en cambio visible, fin o ciclo de tokens. Deduplicar por firma de sección y descartar respuestas de otra generación/filtro/cuenta.
 - Actualizar la revisión sólo si cambian canciones/colecciones/estantes visibles, no por nuevos datos ocultos o procedencia de candidatos. Conservar el token válido ante error; liberar loading al terminar/cancelar y permitir reintento inmediato.
 - Pie: «No hay más recomendaciones por ahora.»; «Esta tanda no trajo recomendaciones visibles nuevas. Podés cargar la siguiente.»; error «No se pudieron cargar más recomendaciones. Volvé a intentarlo.» Mantener botón si queda token y pie visible sobre el player.
 - Precarga inicial de familias nombradas activas: máximo tres continuaciones y presupuesto de 12 s; no buscar una fuente desactivada ni garantizar seis páginas. Si sólo están activas fuentes suplementarias/«Otros», no perseguir familias nombradas.
-- Windows ya tiene generaciones/tokens, `moreError` y `finally`, pero `HomeView.svelte` conserva un IntersectionObserver automático. No confundirlo con el botón explícito de Apple ni declarar trasladado el avance por páginas ocultas sin su prueba.
+- Windows FIX-113-2 reemplaza el sentinel automático por botón explícito, hasta tres continuaciones por clic, firma de proyección visible, fin/aviso/error/reintento. Pruebas de páginas ocultas/repetidas y error aprobadas; el controller publica también datos crudos/cursor para categorías, sin introducir una segunda revisión del feed. Validación con cuenta real pendiente.
 
 ## 5. Interfaz de Inicio: Speed Dial y destacados
 
@@ -185,7 +187,8 @@ Fuentes: `Models/MediaPlaybackIdentity.swift`, `Views/Common/MediaArtworkControl
 - Playlist/Biblioteca/Likeados con pistas ya disponibles (FIX-112 / PAR-010): reproducción normal inicia la ocurrencia elegida antes de esperar todas las continuaciones; completar la fuente en segundo plano sin cambiar audio/actual/IDs/anclas, incluso al avanzar o pausar. Conservar token para reintento si falla; rechazar otras cuentas/colas/solicitudes/contextos. Aleatorio inicial espera toda la fuente.
 - Álbum/playlist/Biblioteca/Historial reproduce la lista desde la ocurrencia elegida; cola activa la ocurrencia existente, incluidos duplicados. No identificar una ocurrencia únicamente por videoId. Historial pasa por el player para invalidar cargas previas.
 - **Cola especial (FIX-113):** presentación propia como build-0029: título y subtítulo conjunto artista • álbum, Like/Dislike dedicados, Like marcado visible; hover/foco revela acciones y reemplaza duración por grip. Sin Play flotante ni `…` de cartas comunes; conservar menú por clic derecho, selección y reordenamiento por ocurrencia. Windows QueuePanel ya presenta Like/Dislike y grip al hover/foco; verificar destino sin copiar AppKit.
-- Aplicar estas reglas a Inicio, destacados, Biblioteca, Buscar/Spotlight, artista/catálogos y recomendaciones fullscreen con componentes propios de Windows; conservar continuaciones, shuffle reversible y player autoritativo. La implementación Apple tiene pruebas automáticas; apariencia/audio/consumo en sesión real y port Windows siguen pendientes.
+- Aplicar estas reglas a Inicio, destacados, Biblioteca, Buscar/Spotlight, artista/catálogos y recomendaciones fullscreen con componentes propios de Windows; conservar continuaciones, shuffle reversible y player autoritativo. Apple tiene pruebas automáticas; Windows FIX-113-2 implementa estos controles/contextos (PAR-009) y conserva su cola nativa. El inicio temprano de playlists (PAR-010) no se porta en este pedido. Apariencia/audio/consumo de sesión real pendientes.
+- Actualización al recibir macOS el 2026-10-09: la excepción de cola Apple de FIX-113 es nueva respecto de la referencia usada por el destino Windows FIX-121-2. Comparar esa variante en la siguiente etapa; esta sincronización conserva las acciones Windows existentes.
 
 ## 6. Fondo de portadas con humo animado
 
@@ -201,20 +204,20 @@ Fuentes: `Views/Home/HomeAmbientBackground.swift`, `HomeAmbientSurface.swift`, `
 
 ## 7. Equivalentes en Windows
 
-| Apple | Windows (punto de partida) |
+| Apple | Windows vigente — FIX-113-2 |
 |---|---|
-| `TopNavigationView`, `WindowNavigationToolbarView`, `HistoryToolbarView` | `windows/src/lib/components/shell/TitleBar.svelte` + `windows/src/routes/+page.svelte`; selector/grupo nuevos conservando controles Tauri |
-| `FullscreenBackdrop`, shell/scene layout | `FullscreenNowPlaying.svelte` + `+page.svelte`; separar fondo a toda ventana de foreground/columna |
-| `HomeView.swift`, `HomeFeaturedView.swift` | `windows/src/lib/components/home/HomeView.svelte` (cabecera y estantes genéricos) |
-| `HomeFeedTableView/CollectionView` | `HomeShelf.svelte` (usa `each` para todos los items) |
-| cartas / controles comunes | `HomeCard.svelte`, `SearchResultCard.svelte`, `QuickResults.svelte`, `detail/TrackTable.svelte`, `library/AccountTrackTable.svelte`, `fullscreen/RecommendedPanel.svelte`; adaptar PAR-009 |
-| `HomeViewModel` + settings | `HomeController` (ya tiene `moreError`, `finally`, generaciones y tokens) |
-| `HomeSettingsPanel` | panel nuevo superpuesto en el shell |
-| `HomeAmbient*` | componente de fondo nuevo |
+| `TopNavigationView`, `WindowNavigationToolbarView`, `HistoryToolbarView` | `windows/src/lib/components/shell/TitleBar.svelte` + `windows/src/routes/+page.svelte`; sidebar/TitleBar existentes conservados; selector Mac excluido por decisión del usuario |
+| `FullscreenBackdrop`, shell/scene layout | `FullscreenNowPlaying.svelte` + `+page.svelte`; composición Windows existente conservada; transición Mac fuera del pedido |
+| `HomeView.swift`, `HomeFeaturedView.swift` | `windows/src/lib/components/home/HomeView.svelte` (saludo, Speed Dial, destacados paginados, configuración) |
+| `HomeFeedTableView/CollectionView` | `common/VirtualStack.svelte` + `HomeShelf.svelte` (ventanas vertical y horizontal, offsets conservados) |
+| cartas / controles comunes | `HomeCard.svelte`, `SearchResultCard.svelte`, `QuickResults.svelte`, `detail/TrackTable.svelte`, `library/AccountTrackTable.svelte`, `fullscreen/RecommendedPanel.svelte`; `common/MediaCard`, `MediaArtwork` y `RowPlay` integran PAR-009 |
+| `HomeViewModel` + settings | `HomeController` + `home/settings.ts`, `featured.ts`, `metadata.ts` (proyección, preferencias y continuaciones acotadas) |
+| `HomeSettingsPanel` | `home/HomeSettings.svelte`, overlay derecho con preferencias por cuenta |
+| `HomeAmbient*` | `home/HomeAmbient.svelte` + `home/ambient.ts`/worker; textura compartida generada una vez, rAF ≤30 actualizaciones/s |
 
 ## 8. Pruebas a replicar (Apple → Windows)
 
-Referencia de casos en `apple/Tests/SideBTests/`: `HomeRecommendationSettingsTests`, `HomeFeaturedPresentationTests`, `HomeRecommendationIntegrationTests`, `HomeCollectionPreferenceTests`, `HomeAlbumMetadataTests`, `HomePlaylistMetadataTests`, `HomeAmbientPaletteTests`, `HomeSettingsVisibilityTests`, `TopNavigationViewTests`, `ShellLayoutTests`. Mínimo a cubrir en Windows:
+Referencia de casos en `apple/Tests/SideBTests/`: `HomeRecommendationSettingsTests`, `HomeFeaturedPresentationTests`, `HomeRecommendationIntegrationTests`, `HomeCollectionPreferenceTests`, `HomeAlbumMetadataTests`, `HomePlaylistMetadataTests`, `HomeAmbientPaletteTests`, `HomeSettingsVisibilityTests`, `TopNavigationViewTests`, `ShellLayoutTests`. Casos de referencia. FIX-113-2 cubre selección/preferencias/metadatos/paleta/continuaciones/contextos con 17 nuevas pruebas (134 totales) y una revisión de navegador con fixtures. Validación nativa/consumo pendientes. Los casos 11/12 y el centrado TopNav del caso 9 quedan fuera del pedido por decisión del usuario:
 
 1. Prioridad estricta: la primera fuente agota el cupo antes de pasar a la siguiente; dedupe entre fuentes.
 2. Capacidad 2/4/6 → 12/24/36; ninguna colección inaccesible al estrechar la ventana.
@@ -234,12 +237,16 @@ Referencia de casos en `apple/Tests/SideBTests/`: `HomeRecommendationSettingsTes
 
 ## 9. Pendientes y límites conocidos (no declarar cerrados)
 
+Estado posterior FIX-114-2: 152 pruebas aprobadas, check sin errores/advertencias y build frontend aprobado. Fixture de resize/categorías y fila activa/foco/duplicados verificado; captura `auditoria-inicio.png` en la misma carpeta local ignorada. LRU de metadata seis por tipo y dos IPC totales Windows; renderer y momentum DOM adaptados. Historial de FIX-113-2 debajo conserva su verificación original. PAR-010 y PAR-011-2 siguen pendientes.
+
+Windows FIX-113-2: frontend `pnpm check` (0 errores/advertencias), `pnpm test` (134), `pnpm build` aprobados; artefacto frontend `windows/build`, sin EXE standalone. Navegador con datos ficticios verifica overlay/resize/paginadores/teclado/filtro/orden/gestos y DOM acotado de 5000 categorías. WebView2, arrastre/foco exhaustivos, cuenta real, audio audible y consumo pendientes. Captura/fixture locales en `windows/.cache/ui-review-2026-10-04/`; no se incluyen en producto ni Git.
+
 - Arrastre real, navegación de páginas 1–6 y teclado exhaustivo, cuenta real y Instruments: **pendientes en Apple** (PLAN-007). No hay certificación de 120 FPS ni de audio.
 - Medición de consumo del fondo animado: pendiente (FIX-109). Apariencia, foco/gestos y audio reales de cartas comunes: pendientes (FIX-111 / PLAN-009).
 - Opciones futuras **no acordadas**, no portar como si existieran: playlists reproducidas en Side B, selección propia, «nuevas para vos».
 - No existen datos para «más escuchadas históricamente», «recién publicadas» ni «creadas por mí»; no proponerlas.
 - PLAN-008 de limpieza/eficiencia sigue **propuesto, sin implementar**. No incluir aliases unificados, refactor ni optimizaciones como funciones ya aplicadas.
-- Fix de referencia por tema: barra superior FIX-090/107 · configuración FIX-105/106 · Speed Dial y destacados FIX-098/099/100/111 · cartas comunes FIX-111 · fondo FIX-108/109 · carga de más FIX-104 · reciclaje FIX-101 (descartado).
+- Fix de referencia por tema: barra superior FIX-090 / FIX-107 · configuración FIX-105 / FIX-106 · Speed Dial y destacados FIX-098 / FIX-099 / FIX-100 / FIX-111 · cartas comunes FIX-111 · fondo FIX-108 / FIX-109 · carga de más FIX-104 · reciclaje FIX-101 (descartado).
 
 ## 10. Cobertura auditada desde TopNav — FIX-110
 
@@ -249,7 +256,7 @@ Revisión estática del 2026-10-04 contra código Apple/Windows, FIXES y planes;
 |---|---|---|
 | [FIX-090](FIXES.md#fix-090), [FIX-107](FIXES.md#fix-107) | Selector, salida con sidebar y grupo de acciones en posición permanente; adaptar implementación nativa | PAR-007 / PAR-006 |
 | [FIX-091](FIXES.md#fix-091), [FIX-092](FIXES.md#fix-092), [FIX-093](FIXES.md#fix-093), [FIX-094](FIXES.md#fix-094), [FIX-095](FIXES.md#fix-095) | Continuidad de fondo/fullscreen/sidebar y geometría; referencia final 095, intentos anteriores documentados | PAR-008 |
-| [FIX-096](FIXES.md#fix-096) | Alcance de flechas de estantes | PAR-002, por verificar en Windows |
+| [FIX-096](FIXES.md#fix-096) | Alcance de flechas de estantes | PAR-002; destino implementado en FIX-113-2, validación nativa pendiente |
 | [FIX-097](FIXES.md#fix-097) | Catálogo/tandas, fuente canónica y shuffle reversible | PAR-001 |
 | [FIX-098](FIXES.md#fix-098), [FIX-099](FIXES.md#fix-099), [FIX-100](FIXES.md#fix-100) | Saludo, Speed Dial, destacados adaptativos, gestos, metadata, acciones y ambiente | PAR-003 |
 | [FIX-101](FIXES.md#fix-101), [FIX-102](FIXES.md#fix-102), [FIX-103](FIXES.md#fix-103) | Viewport/identidades/acciones; 101 descartado, contrato AppKit 102 y montaje condicional 103 sin port literal | PAR-004 |
@@ -257,7 +264,7 @@ Revisión estática del 2026-10-04 contra código Apple/Windows, FIXES y planes;
 | [FIX-105](FIXES.md#fix-105), [FIX-106](FIXES.md#fix-106), [FIX-107](FIXES.md#fix-107) | Overlay, fuentes por tipo, categorías dinámicas, persistencia/cuentas, seis páginas, foco y centro fijo | PAR-006 / PAR-007 |
 | [FIX-108](FIXES.md#fix-108), [FIX-109](FIXES.md#fix-109) | Paleta, luz/humo y movimiento final de build-0029; adaptación CSS/canvas | PAR-003 |
 
-Ampliación posterior: [FIX-111](FIXES.md#fix-111) lleva controles/identidad/interacción comunes a toda la app (PAR-009), con build-0030 y runner completo: 180 Rust (7 live ignorados), 52 XCTest y 187 Swift Testing aprobados. Validación visual/audio real/consumo y Windows pendientes.
+Ampliación posterior: [FIX-111](FIXES.md#fix-111) lleva controles/identidad/interacción comunes a toda la app (PAR-009), con build-0030 y runner completo: 180 Rust (7 live ignorados), 52 XCTest y 187 Swift Testing aprobados. En aquel fix Windows estaba pendiente; FIX-113-2 implementa el destino. Validación visual/audio real/consumo pendiente.
 
 La exclusividad histórica de APIs AppKit/SwiftUI no excluye registrar el resultado visible que Windows debe lograr. Se trasladan contratos/comportamientos y se implementan con la tecnología del destino. No declarar resuelto ninguno de estos pendientes sin evidencia Windows.
 

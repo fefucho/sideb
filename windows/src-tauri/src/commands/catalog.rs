@@ -59,6 +59,7 @@ pub(crate) async fn search_songs(
     state: tauri::State<'_, AppState>,
     query: String,
 ) -> Result<Vec<SongDto>, CommandError> {
+    let generation = state.auth_generation.load(Ordering::SeqCst);
     let trimmed = query.trim();
     if trimmed.is_empty() {
         return Err(CommandError::new(
@@ -80,7 +81,10 @@ pub(crate) async fn search_songs(
     };
 
     match core.search_songs(trimmed.to_string(), false).await {
-        Ok(results) => Ok(results.into_iter().map(SongDto::from).collect()),
+        Ok(results) => {
+            if state.auth_generation.load(Ordering::SeqCst) != generation { return Err(CommandError::new("SESSION_CHANGED", "La sesión cambió durante la operación.")); }
+            Ok(results.into_iter().map(SongDto::from).collect())
+        },
         Err(_) => Err(CommandError::new(
             "SEARCH_FAILED",
             "No se pudo completar la búsqueda en YouTube Music. Comprobá tu conexión a internet.",
@@ -216,13 +220,16 @@ pub(crate) async fn get_artist(state: tauri::State<'_, AppState>, browse_id: Str
 
 #[tauri::command]
 pub(crate) async fn get_browse_grid(state: tauri::State<'_, AppState>, browse_id: String, params: Option<String>) -> Result<Vec<BrowseCardDto>, CommandError> {
+    let generation = state.auth_generation.load(Ordering::SeqCst);
     let id = browse_id.trim();
     if id.is_empty() { return Err(CommandError::new("INVALID_ID", "El identificador de la sección no puede estar vacío.")); }
     let params = params.and_then(|p| { let p = p.trim().to_owned(); (!p.is_empty()).then_some(p) });
     let core = state.core.read().map_err(|_| CommandError::new("LOCK_ERROR", "Error de concurrencia al acceder al motor."))?.clone()
         .ok_or_else(|| CommandError::new("CORE_NOT_INITIALIZED", "El motor de Side B no está listo. Reintentá la inicialización."))?;
-    core.get_browse_grid(id.to_owned(), params).await.map(|items| items.into_iter().map(BrowseCardDto::from).collect())
-        .map_err(|_| CommandError::new("BROWSE_FAILED", "No se pudo cargar esta sección. Comprobá tu conexión a internet."))
+    let result = core.get_browse_grid(id.to_owned(), params).await.map(|items| items.into_iter().map(BrowseCardDto::from).collect())
+        .map_err(|_| CommandError::new("BROWSE_FAILED", "No se pudo cargar esta sección. Comprobá tu conexión a internet."))?;
+    if state.auth_generation.load(Ordering::SeqCst) != generation { return Err(CommandError::new("SESSION_CHANGED", "La sesión cambió durante la operación.")); }
+    Ok(result)
 }
 
 #[tauri::command]

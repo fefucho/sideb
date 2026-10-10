@@ -145,9 +145,20 @@ function Ensure-FrontendDependencies {
 }
 
 function Invoke-Cargo([string[]] $Arguments) {
-    Push-Location (Join-Path $RepoRoot 'core')
-    try { & cargo @Arguments; if ($LASTEXITCODE -ne 0) { throw "cargo $($Arguments -join ' ') falló ($LASTEXITCODE)." } }
-    finally { Pop-Location }
+    # sideb-core also emits an unhashed rlib/cdylib. Sharing one target directory
+    # with the Tauri workspace lets its independent dependency graph overwrite
+    # that artifact while Cargo still considers Tauri's fingerprint fresh.
+    $previousTarget = $env:CARGO_TARGET_DIR
+    try {
+        if ($previousTarget) {
+            $env:CARGO_TARGET_DIR = Join-Path ([IO.Path]::GetFullPath($previousTarget)) 'core-verify'
+        }
+        Push-Location (Join-Path $RepoRoot 'core')
+        try {
+            & cargo @Arguments
+            if ($LASTEXITCODE -ne 0) { throw "cargo $($Arguments -join ' ') falló ($LASTEXITCODE)." }
+        } finally { Pop-Location }
+    } finally { $env:CARGO_TARGET_DIR = $previousTarget }
 }
 
 function Invoke-Tauri([string[]] $Arguments) {

@@ -39,7 +39,7 @@ export class SearchPreviewController {
 
   private emit() {
     if (!this.disposed) this.onChange({ ...this.data, results: this.data.results ? { ...this.data.results,
-      top: [...this.data.results.top], songs: [...this.data.results.songs], albums: [...this.data.results.albums],
+      top: [...this.data.results.top], topSongs: [...(this.data.results.topSongs ?? [])], songs: [...this.data.results.songs], albums: [...this.data.results.albums],
       artists: [...this.data.results.artists], playlists: [...this.data.results.playlists] } : null });
   }
 

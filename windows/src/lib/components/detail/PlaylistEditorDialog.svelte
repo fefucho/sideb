@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t, language, resolveMessage, message, type AppMessage } from '$lib/i18n';
   import { onMount, tick } from 'svelte';
   import type { AccountPlaylistDto as PlaylistDetailDto } from '$lib/account/types';
 
@@ -13,8 +14,9 @@
   let description = $state('');
   let privacy = $state('PRIVATE');
   let pending = $state(false);
-  let error = $state<string | null>(null);
+  let error = $state<AppMessage | string | null>(null);
   let nameInput: HTMLInputElement;
+  let dialog: HTMLDivElement;
   let previousFocus: HTMLElement | null = null;
 
   onMount(() => {
@@ -24,7 +26,7 @@
     const keydown = (event: KeyboardEvent) => {
       if (event.key === 'Escape' && !pending) { event.stopPropagation(); onClose(); }
       if (event.key !== 'Tab') return;
-      const focusable = Array.from(document.querySelectorAll<HTMLElement>('[data-playlist-editor] button:not(:disabled), [data-playlist-editor] input:not(:disabled), [data-playlist-editor] textarea:not(:disabled), [data-playlist-editor] select:not(:disabled)'));
+      const focusable = Array.from(dialog.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), textarea:not(:disabled), select:not(:disabled)'));
       if (!focusable.length) { event.preventDefault(); return; }
       if (event.shiftKey && document.activeElement === focusable[0]) { event.preventDefault(); focusable.at(-1)?.focus(); }
       else if (!event.shiftKey && document.activeElement === focusable.at(-1)) { event.preventDefault(); focusable[0]?.focus(); }
@@ -35,10 +37,11 @@
 
   async function submit(event: SubmitEvent) {
     event.preventDefault();
+    if (pending) return;
     const cleanName = name.trim();
-    if (!cleanName || cleanName.length > 150) { error = 'El nombre debe tener entre 1 y 150 caracteres.'; nameInput?.focus(); return; }
-    if (description.trim().length > 5000) { error = 'La descripción no puede superar los 5000 caracteres.'; return; }
-    if (!['PRIVATE', 'UNLISTED', 'PUBLIC'].includes(privacy)) { error = 'Elegí una privacidad válida.'; return; }
+    if (!cleanName || cleanName.length > 150) { error = message('windows.ui.theNameMustContainBetween1And150Characters'); nameInput?.focus(); return; }
+    if (description.trim().length > 5000) { error = message('windows.ui.theDescriptionCannotExceed5000Characters'); return; }
+    if (!['PRIVATE', 'UNLISTED', 'PUBLIC'].includes(privacy)) { error = message('windows.ui.chooseAValidPrivacyOption'); return; }
     pending = true; error = null;
     try { await onSave({ name: cleanName, description: description.trim(), privacy }); onClose(); }
     catch (cause) { error = cause instanceof Error ? cause.message : String(cause); }
@@ -47,19 +50,19 @@
 </script>
 
 <div class="scrim" role="presentation" onclick={(event) => { if (event.target === event.currentTarget && !pending) onClose(); }}>
-  <div class="dialog" data-playlist-editor role="dialog" aria-modal="true" aria-labelledby="editor-title" aria-busy={pending}>
-    <header><div><p>PLAYLIST</p><h2 id="editor-title">{isNewPlaylist ? 'Nueva playlist' : 'Editar detalles'}</h2></div><button type="button" aria-label="Cerrar editor" disabled={pending} onclick={onClose}>×</button></header>
+  <div class="dialog" bind:this={dialog} data-playlist-editor role="dialog" aria-modal="true" aria-labelledby="editor-title" aria-busy={pending}>
+    <header><div><p>{$t('detail.kind.playlist')}</p><h2 id="editor-title">{isNewPlaylist ? $t('detail.playlistEditor.createTitle') : $t('menu.edit_details')}</h2></div><button type="button" aria-label={$t('windows.ui.closeEditor')} disabled={pending} onclick={onClose}>×</button></header>
     <form onsubmit={submit}>
-      <label for="playlist-name">Nombre</label>
-      <input id="playlist-name" bind:this={nameInput} bind:value={name} maxlength="150" required autocomplete="off" />
-      <label for="playlist-description">Descripción</label>
-      <textarea id="playlist-description" bind:value={description} maxlength="5000" rows="4"></textarea>
-      <label for="playlist-privacy">Privacidad</label>
-      <select id="playlist-privacy" bind:value={privacy}>
-        <option value="PRIVATE">Privada</option><option value="UNLISTED">No listada</option><option value="PUBLIC">Pública</option>
+      <label for="playlist-name">{$t('windows.ui.name')}</label>
+      <input id="playlist-name" bind:this={nameInput} bind:value={name} maxlength="150" required autocomplete="off" disabled={pending} />
+      <label for="playlist-description">{$t('detail.playlistEditor.description')}</label>
+      <textarea id="playlist-description" bind:value={description} maxlength="5000" rows="4" disabled={pending}></textarea>
+      <label for="playlist-privacy">{$t('windows.ui.privacy')}</label>
+      <select id="playlist-privacy" bind:value={privacy} disabled={pending}>
+        <option value="PRIVATE">{$t('detail.playlistEditor.private')}</option><option value="UNLISTED">{$t('detail.playlistEditor.unlisted')}</option><option value="PUBLIC">{$t('detail.playlistEditor.public')}</option>
       </select>
-      {#if error}<p class="error" role="alert">{error}</p>{/if}
-      <footer><button class="cancel" type="button" disabled={pending} onclick={onClose}>Cancelar</button><button class="save" type="submit" disabled={pending}>{pending ? (isNewPlaylist ? 'Creando…' : 'Guardando…') : (isNewPlaylist ? 'Crear playlist' : 'Guardar cambios')}</button></footer>
+      {#if error}<p class="error" role="alert">{resolveMessage(error, $language)}</p>{/if}
+      <footer><button class="cancel" type="button" disabled={pending} onclick={onClose}>{$t('update.cancel')}</button><button class="save" type="submit" disabled={pending}>{pending ? (isNewPlaylist ? $t('windows.ui.creating') : $t('windows.ui.saving')) : (isNewPlaylist ? $t('windows.ui.createPlaylist') : $t('windows.ui.saveChanges'))}</button></footer>
     </form>
   </div>
 </div>

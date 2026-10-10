@@ -61,7 +61,8 @@ test('pagination retries errors and stops repeating tokens without discarding re
     if (++tries === 1) throw new Error('temporary');
     return { items: [song('a', { setVideoId: 'entry1' }), song('a', { setVideoId: 'entry2' })], continuation: 'page2' };
   }, next => data = next);
-  account.reset(true); await account.load('songs'); await account.loadMoreSongs();
+  account.reset(true); await account.load('songs');
+  assert.equal(tries,1); assert.equal(data.songs.length,1); assert.ok(data.errors.songs);
   assert.equal(data.songContinuation, 'page2'); await account.loadMoreSongs();
   assert.equal(data.songContinuation, null); assert.equal(data.songs.length, 2);
   assert.equal(appendSongs([song('a')], [song('a')]).length, 2);
@@ -163,4 +164,21 @@ test('a stale hydration cannot populate the next account playback catalog', asyn
   await hydration;
   assert.deepEqual(await resolving, []);
   assert.deepEqual((await account.resolvePlaylistTracks('LM')).map(item => item.videoId), ['next-account']);
+});
+
+
+test('library preload reaches one hundred, keeps accepted prefix on failure and rejects old account pages',async()=>{
+  let data;const pending=deferred();let pages=0;
+  const account=new AccountController(async command=>command==='get_library_songs'?{items:Array.from({length:50},(_,i)=>song(`first${i}`)),continuation:'second'}:pending.promise,next=>data=next);
+  account.reset(true);const load=account.load('songs');await new Promise(resolve=>setTimeout(resolve,0));
+  assert.equal(data.songs.length,50);account.reset(true);pending.resolve({items:[song('old-private')],continuation:null});await load;
+  assert.equal(data.songs.length,0);
+  const active=new AccountController(async command=>command==='get_library_songs'?{items:Array.from({length:50},(_,i)=>song(`first${i}`)),continuation:'second'}:{items:Array.from({length:50},(_,i)=>song(`next${i}`)),continuation:'third'},next=>data=next);
+  active.reset(true);await active.load('songs');assert.equal(data.songs.length,100);assert.equal(data.songContinuation,'third');
+});
+
+test('saved albums use stable alphabetical order, playlists retain provider order',async()=>{
+  let data;const cards=[{id:'z',title:'Zulu'},{id:'b',title:'Árbol'},{id:'a',title:'Árbol'}];
+  const account=new AccountController(async()=>cards,next=>data=next);account.reset(true);await account.load('albums');
+  assert.deepEqual(data.albums.map(c=>c.id),['b','a','z']);await account.load('playlists');assert.deepEqual(data.playlists.map(c=>c.id),['z','b','a']);
 });

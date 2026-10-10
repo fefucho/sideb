@@ -3,13 +3,20 @@ use std::sync::{Arc, Mutex, RwLock};
 use tauri::{Emitter, Manager};
 
 mod dto;
+#[cfg(windows)]
+mod media_controls;
+mod playback_runtime;
+mod volume;
 mod queue;
 mod commands {
     pub(crate) mod account;
     pub(crate) mod catalog;
-    pub(crate) mod playback;
+    pub(crate) mod explore;
+    pub(crate) mod genius;
     pub(crate) mod lyrics;
+    pub(crate) mod playback;
     pub(crate) mod recommendations;
+    pub(crate) mod system;
     pub(crate) mod updater;
 }
 pub use dto::*;
@@ -19,6 +26,7 @@ use queue::{next_owner_epoch, QueueStateDto};
 #[serde(rename_all = "camelCase")]
 pub(crate) struct SearchResultsDto {
     pub top: Vec<SearchTopCardDto>,
+    pub top_songs: Vec<SongDto>,
     pub songs: Vec<SongDto>,
     pub albums: Vec<BrowseCardDto>,
     pub artists: Vec<BrowseCardDto>,
@@ -56,7 +64,11 @@ impl From<sideb_core::BrowseCardRecord> for SearchTopCardDto {
             artist_id: r.artist_id,
             album: r.album,
             album_id: r.album_id,
-            artist_runs: r.artist_runs.into_iter().map(HomeArtistRunDto::from).collect(),
+            artist_runs: r
+                .artist_runs
+                .into_iter()
+                .map(HomeArtistRunDto::from)
+                .collect(),
             is_video: r.is_video,
             explicit: r.explicit,
         }
@@ -67,10 +79,19 @@ impl From<sideb_core::SearchResultsRecord> for SearchResultsDto {
     fn from(result: sideb_core::SearchResultsRecord) -> Self {
         Self {
             top: result.top.into_iter().map(SearchTopCardDto::from).collect(),
+            top_songs: result.top_songs.into_iter().map(SongDto::from).collect(),
             songs: result.songs.into_iter().map(SongDto::from).collect(),
             albums: result.albums.into_iter().map(BrowseCardDto::from).collect(),
-            artists: result.artists.into_iter().map(BrowseCardDto::from).collect(),
-            playlists: result.playlists.into_iter().map(BrowseCardDto::from).collect(),
+            artists: result
+                .artists
+                .into_iter()
+                .map(BrowseCardDto::from)
+                .collect(),
+            playlists: result
+                .playlists
+                .into_iter()
+                .map(BrowseCardDto::from)
+                .collect(),
         }
     }
 }
@@ -81,6 +102,7 @@ mod session;
 mod session_store;
 
 pub struct PlaybackManager {
+    pub(crate) runtime: playback_runtime::PlaybackRuntime,
     pub is_playing: bool,
     pub is_loading: bool,
     pub is_ended: bool,
@@ -105,6 +127,7 @@ pub struct PlaybackManager {
 impl PlaybackManager {
     pub fn new() -> Self {
         Self {
+            runtime: Default::default(),
             is_playing: false,
             is_loading: false,
             is_ended: false,
@@ -140,8 +163,34 @@ impl PlaybackManager {
         self.is_shuffle = enabled;
     }
 
+    fn can_next(&self) -> bool {
+        let Some(index) = self
+            .queue
+            .current_index
+            .filter(|index| *index < self.queue.items.len())
+        else {
+            return false;
+        };
+        index + 1 < self.queue.items.len()
+            || self.is_repeat
+            || self
+                .runtime
+                .source
+                .as_ref()
+                .is_some_and(|source| source.continuation.is_some() || source.needs_restart)
+            || self
+                .queue
+                .source
+                .as_ref()
+                .is_some_and(|source| source.kind == "radio")
+                && !self.radio_exhausted
+    }
+
     pub fn to_dto(&self) -> PlaybackStateDto {
+        self.runtime.persist(self);
         PlaybackStateDto {
+            can_next: self.can_next(),
+            source_load: self.runtime.source_load(self.queue.items.len()),
             is_playing: self.is_playing,
             is_loading: self.is_loading,
             is_ended: self.is_ended,
@@ -150,6 +199,7 @@ impl PlaybackManager {
             position: self.position,
             duration: self.duration,
             volume: self.volume,
+            exponential_volume: self.runtime.exponential_volume,
             current_track: self.current_track.clone(),
             error: self.error.clone(),
             generation: self.generation,
@@ -162,6 +212,66 @@ impl PlaybackManager {
 mod playback_manager_tests {
     use super::*;
     use crate::queue::{QueueEntryDto, QueueSourceDto};
+
+    #[test]
+    fn next_availability_includes_progressive_radio_and_repeat_without_exposing_tokens() {
+        let mut pb = PlaybackManager::new();
+        assert!(!pb.to_dto().can_next);
+        pb.queue.replace(
+            vec![QueueEntryDto::new(
+                "a".into(),
+                "A".into(),
+                "".into(),
+                None,
+                None,
+            )],
+            0,
+            QueueSourceDto {
+                kind: "playlist".into(),
+                id: Some("list".into()),
+                title: None,
+            },
+        );
+        assert!(!pb.to_dto().can_next);
+        pb.is_repeat = true;
+        assert!(pb.to_dto().can_next);
+        pb.is_repeat = false;
+        pb.runtime.source = Some(playback_runtime::ProgressiveSource {
+            kind: "playlist".into(),
+            id: Some("list".into()),
+            continuation: Some("private-token".into()),
+            loading: true,
+            error: false,
+            needs_restart: false,
+            loaded_prefix: vec!["a".into()],
+            consumed_continuations: Default::default(),
+        });
+        assert!(pb.to_dto().can_next);
+        assert!(!serde_json::to_string(&pb.to_dto())
+            .unwrap()
+            .contains("private-token"));
+        let source = pb.runtime.source.as_mut().unwrap();
+        source.continuation = None;
+        source.needs_restart = true;
+        source.error = true;
+        assert!(pb.to_dto().can_next);
+        pb.runtime.source = None;
+        pb.queue.source.as_mut().unwrap().kind = "radio".into();
+        assert!(pb.to_dto().can_next);
+        pb.radio_exhausted = true;
+        assert!(!pb.to_dto().can_next);
+        pb.queue.append_source(
+            vec![QueueEntryDto::new(
+                "b".into(),
+                "B".into(),
+                "".into(),
+                None,
+                None,
+            )],
+            false,
+        );
+        assert!(pb.to_dto().can_next);
+    }
 
     #[test]
     fn playback_snapshot_carries_shuffle_and_repeat_flags_without_changing_generation() {
@@ -219,7 +329,13 @@ mod playback_manager_tests {
         playback.queue.replace(
             (0..2000)
                 .map(|index| {
-                    QueueEntryDto::new(index.to_string(), index.to_string(), String::new(), None, None)
+                    QueueEntryDto::new(
+                        index.to_string(),
+                        index.to_string(),
+                        String::new(),
+                        None,
+                        None,
+                    )
                 })
                 .collect(),
             2,
@@ -231,6 +347,7 @@ mod playback_manager_tests {
         );
         let active = playback.queue.current().unwrap();
         playback.current_track = Some(PlaybackTrackDto {
+            is_upload: false,
             video_id: active.video_id.clone(),
             title: active.title.clone(),
             artists: active.artists.clone(),
@@ -250,7 +367,13 @@ mod playback_manager_tests {
         playback.is_repeat = true;
         playback.eof_waiting = Some((42, 17));
         playback.queue.enqueue(
-            vec![QueueEntryDto::new("manual".into(), "Manual".into(), String::new(), None, None)],
+            vec![QueueEntryDto::new(
+                "manual".into(),
+                "Manual".into(),
+                String::new(),
+                None,
+                None,
+            )],
             true,
         );
         let original = playback.queue.items.clone();
@@ -268,7 +391,10 @@ mod playback_manager_tests {
             assert_eq!(playback.is_shuffle, enabled);
             let mut current_transport = serde_json::to_value(playback.to_dto()).unwrap();
             current_transport.as_object_mut().unwrap().remove("queue");
-            current_transport.as_object_mut().unwrap().remove("isShuffle");
+            current_transport
+                .as_object_mut()
+                .unwrap()
+                .remove("isShuffle");
             assert_eq!(current_transport, transport);
             let revision = playback.queue.revision;
             let order = playback.queue.items.clone();
@@ -317,6 +443,7 @@ mod playback_manager_tests {
         playback.queue.select(5);
         let active = playback.queue.current().unwrap();
         playback.current_track = Some(PlaybackTrackDto {
+            is_upload: false,
             video_id: active.video_id.clone(),
             title: active.title.clone(),
             artists: String::new(),
@@ -369,22 +496,14 @@ fn set_auth_status(app: &tauri::AppHandle, status: AuthStatusDto) {
     if let Ok(mut lock) = state.auth.write() {
         *lock = status.clone();
     }
+    playback_runtime::sync_account(app, &status);
     let _ = app.emit("auth-status-changed", status);
     let generation = state.auth_generation.load(Ordering::SeqCst);
     let playback_snapshot = if let Ok(mut playback) = state.playback.lock() {
         if playback.observed_auth_generation != generation {
             playback.observed_auth_generation = generation;
-            invalidate_queue_owner(&mut playback);
-            playback.radio_playlist_id = None;
-            playback.radio_cursor_video_id = None;
-            playback.radio_exhausted = false;
-            playback.eof_waiting = None;
-            if playback.queue.radio.is_some() {
-                playback.queue.end_radio(None, true);
-                Some(playback.to_dto())
-            } else {
-                None
-            }
+            playback_runtime::interrupt_auth_owner(&mut playback);
+            Some(playback.to_dto())
         } else {
             None
         }
@@ -402,6 +521,9 @@ pub(crate) fn invalidate_queue_owner(playback: &mut PlaybackManager) {
     playback.radio_cursor_video_id = None;
     playback.radio_exhausted = false;
     playback.eof_waiting = None;
+    playback.runtime.source = None;
+    playback.runtime.pending_next = None;
+    playback.runtime.disliked.clear();
 }
 
 fn auth_generation(app: &tauri::AppHandle) -> u64 {
@@ -464,20 +586,6 @@ async fn sign_out(
     if let Ok(Some(player)) = state.player.read().map(|lock| lock.clone()) {
         let _ = player.stop();
         let _ = player.clear_playlist();
-    }
-    if let Ok(mut playback) = state.playback.lock() {
-        playback.generation += 1;
-        playback.loaded_generation = None;
-        playback.is_playing = false;
-        playback.is_loading = false;
-        playback.is_ended = false;
-        playback.position = 0.0;
-        playback.duration = 0.0;
-        playback.current_track = None;
-        playback.error = None;
-        invalidate_queue_owner(&mut playback);
-        playback.queue = QueueStateDto::default();
-        let _ = app.emit("playback-state-changed", playback.to_dto());
     }
     set_auth_status(&app, AuthStatusDto::guest());
     session::clear_login_cookies(&app)
@@ -669,6 +777,12 @@ pub fn run() {
                                         let dur = pb.duration;
                                         let gen = pb.generation;
                                         drop(pb);
+                                        playback_runtime::record_progress(
+                                            &app_handle,
+                                            gen,
+                                            pos,
+                                            dur,
+                                        );
                                         if should_emit {
                                             let prog = PlaybackProgressDto {
                                                 position: pos,
@@ -757,6 +871,11 @@ pub fn run() {
 
             let core_to_restore = state.core.read().ok().and_then(|lock| lock.clone());
             app.manage(state);
+            #[cfg(windows)]
+            {
+                let _ = media_controls::initialize(app.handle());
+            }
+            playback_runtime::sync_account(app.handle(), &AuthStatusDto::guest());
             if let Some(core) = core_to_restore {
                 tauri::async_runtime::spawn(session::restore(app.handle().clone(), core.clone()));
                 tauri::async_runtime::spawn(session::watch_rotations(app.handle().clone(), core));
@@ -764,6 +883,11 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|window, event| {
+            if window.label() == "main"
+                && matches!(event, tauri::WindowEvent::CloseRequested { .. })
+            {
+                playback_runtime::flush();
+            }
             if window.label() == "sideb-login" && matches!(event, tauri::WindowEvent::Destroyed) {
                 let app = window.app_handle();
                 let state = app.state::<AppState>();
@@ -785,6 +909,23 @@ pub fn run() {
             cancel_login,
             sign_out,
             retry_init_core,
+            commands::system::open_external_url,
+            commands::explore::detect_music_country,
+            commands::explore::get_charts,
+            commands::genius::genius_cached,
+            commands::genius::genius_resolve,
+            commands::genius::genius_search,
+            commands::genius::genius_choose,
+            commands::genius::genius_clear_choice,
+            commands::genius::genius_report_miss,
+            commands::genius::genius_annotations,
+            commands::genius::genius_lyrics,
+            commands::genius::genius_metrics,
+            commands::playback::begin_queue_source,
+            commands::playback::retry_queue_source,
+            commands::playback::start_source_radio,
+            commands::playback::set_playback_muted,
+            commands::playback::filter_disliked_recommendations,
             commands::catalog::search_all,
             commands::catalog::search_videos,
             commands::catalog::search_cards,
@@ -829,6 +970,7 @@ pub fn run() {
             commands::playback::resume_playback,
             commands::playback::seek_playback,
             commands::playback::set_playback_volume,
+            commands::playback::set_exponential_volume,
             commands::playback::set_shuffle,
             commands::playback::set_repeat,
             commands::playback::get_playback_state,
