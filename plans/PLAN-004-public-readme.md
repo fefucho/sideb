@@ -1,6 +1,6 @@
 # Public GitHub README
 
-- Status: public copy and internal-guide migration reviewed; publishing documentation. Optional native screenshots pending.
+- Status: public README and About published and visually verified. Optional native screenshots pending.
 - Goal: present Side B in plain English, with its origins, features, design, backend and meaningful upstream credits.
 - Scope: README, relocation of the internal workflow guide and its links, project artwork, existing license notices and GitHub About metadata. No app/core changes or release-tag changes.
 - References: existing README/AGENTS, FIX-088/089/130, apple/Resources/Credits.rtf, platform manifests and source; upstream Limusic and Kaset repositories.
@@ -11,7 +11,7 @@
 - [x] Preserve the internal guide under .agents and update entry points/links.
 - [x] Write a public README with logo, downloads, features, design, backend and acknowledgments.
 - [x] Preserve upstream notices and the project's already-declared GPL license.
-- [x] Check links, image rendering, tone and scope. GitHub About description/topics updated; documentation publication follows.
+- [x] Check links, image rendering, tone and scope; publish the reviewed documentation and About metadata.
 - [ ] Add current native screenshots when suitable images are available. Existing QA fixtures/bug reports are not presentation screenshots.
 
 ## Verification
@@ -24,3 +24,4 @@ Review Markdown/image rendering and relative links. Check descriptions against c
 - GPL text copied from GNU and Kaset MIT notice copied from upstream, retaining its2025 sozercan copyright; manifests already declare GPL-3.0-or-later. No app/core/license-term changes.
 - GitHub About now describes both platforms and the artwork/lyrics/Genius focus. Topics: youtube-music, music-player, macos, windows, rust, swiftui, tauri, svelte; API state verified.
 - Native screenshot selection remains optional/pending: inspected existing QA/bug images, none appropriate as current public app screenshots. Directory and insertion point prepared without broken image links or published account data.
+- Published in source commit45a47d3 on main. Public GitHub page checked in a background browser: centered rounded icon/header, introduction, features, download table, backend and acknowledgments render; GitHub recognizes the root GPL license. Screenshot evidence saved locally at windows/.cache/release-tools/public-readme.png (ignored). Internal guide compared against the previous README: preserved exactly apart from heading/introduction and relocated links. No app/core edits or new build.

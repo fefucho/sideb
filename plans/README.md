@@ -4,7 +4,7 @@ Herramientas compartidas o fixes para ambas plataformas. [Formato](../.agents/WO
 
 | Plan | Estado |
 |---|---|
-| [Public GitHub README](PLAN-004-public-readme.md) | Copy, internal-guide migration, links/GFM render reviewed; About updated, publication underway, FIX-154 |
+| [Public GitHub README](PLAN-004-public-readme.md) | Published/visually verified; internal guide preserved, About updated; optional native screenshots pending, FIX-154 |
 | [1.2.0 Beta — macOS & Windows Feature Parity](RELEASE-1.2.0-beta.1.md) | Run38082175075: Mac test precision failure, Windows running; draft stays unpublished, FIX-152/153 / PAR-026 |
 | [Saludo de Inicio](PLAN-003-home-greeting.md) | Implementado/revisado: FIX-150, PAR-003; Windows comprobado, ejecución Mac pendiente |
 | [Álbum de Acceso rápido](PLAN-002-quick-access-album-metadata.md) | Implementado/revisado: FIX-148/149, PAR-022; pruebas Windows aprobadas, ejecución Swift en Mac pendiente |
