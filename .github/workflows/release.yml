@@ -8,7 +8,7 @@ on:
       release_tag:
         description: Release tag matching version.env
         required: true
-        default: v1.2.0-beta.1
+        default: v1.2.0
         type: string
 
 permissions:

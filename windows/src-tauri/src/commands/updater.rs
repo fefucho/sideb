@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Emitter, Manager};
+use super::update_version::{clean_version, is_version_newer};
 
 const DEFAULT_REPO_OWNER: &str = "fefucho";
 const DEFAULT_REPO_NAME: &str = "SIDE-B-CLIENT-NATIVE";
@@ -35,37 +36,6 @@ pub struct DownloadProgressDto {
 #[derive(Debug, Serialize, Deserialize, Default)]
 struct UpdateSettings {
     skipped_version: Option<String>,
-}
-
-pub fn clean_version(raw: &str) -> &str {
-    raw.trim_matches(|c: char| c == 'v' || c == 'V' || c.is_whitespace())
-}
-
-pub fn is_version_newer(remote: &str, current: &str) -> bool {
-    let clean_remote = clean_version(remote);
-    let clean_current = clean_version(current);
-
-    let parts_remote: Vec<u64> = clean_remote
-        .split('.')
-        .filter_map(|s| s.parse().ok())
-        .collect();
-    let parts_current: Vec<u64> = clean_current
-        .split('.')
-        .filter_map(|s| s.parse().ok())
-        .collect();
-
-    let count = parts_remote.len().max(parts_current.len());
-    for i in 0..count {
-        let p_rem = parts_remote.get(i).copied().unwrap_or(0);
-        let p_cur = parts_current.get(i).copied().unwrap_or(0);
-        if p_rem > p_cur {
-            return true;
-        }
-        if p_rem < p_cur {
-            return false;
-        }
-    }
-    false
 }
 
 fn get_settings_path(app: &AppHandle) -> Result<PathBuf, String> {
@@ -384,24 +354,6 @@ if exist %APP_EXE% (
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_clean_version() {
-        assert_eq!(clean_version("v1.2.3"), "1.2.3");
-        assert_eq!(clean_version("V0.1.0"), "0.1.0");
-        assert_eq!(clean_version("  1.0.0 \n"), "1.0.0");
-    }
-
-    #[test]
-    fn test_is_version_newer() {
-        assert!(is_version_newer("0.2.0", "0.1.0"));
-        assert!(is_version_newer("v1.0.0", "0.9.9"));
-        assert!(is_version_newer("0.1.1", "0.1.0"));
-        assert!(is_version_newer("1.0.0.1", "1.0.0"));
-        assert!(!is_version_newer("0.1.0", "0.1.0"));
-        assert!(!is_version_newer("0.0.9", "0.1.0"));
-        assert!(!is_version_newer("0.1.0", "0.2.0"));
-    }
 
     #[test]
     fn zip_is_not_mislabelled_as_executable_installer() {

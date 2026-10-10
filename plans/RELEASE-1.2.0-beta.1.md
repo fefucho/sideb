@@ -1,7 +1,7 @@
 # Side B 1.2.0 — macOS & Windows Feature Parity
 
-- Status: delivered under FIX-162. Six assets and updated English notes attached to the existing published release; GitHub SHA-256 digests verified. Mac build-0074 passed584 tests; recovered Windows CI packages passed646 tests.
-- Version: 1.2.0, public build 13, tag v1.2.0-beta.1. GitHub now marks this release published/Latest/non-prerelease, with zero assets before this request. All current and earlier versions remain betas; preserve the user's existing release/tag/flags.
+- Status: delivered under FIX-162; repeated prompt resolved by FIX-163 using numeric tag v1.2.0 on the same release. Published packages remain Mac build-0074 (584 tests) and Windows CI (646 tests); hardened comparison verified in local Mac build-0075 (587 tests) and five real Rust module tests. No new native packages published.
+- Version: 1.2.0, public build13, current tag v1.2.0 (original delivery tag v1.2.0-beta.1 retained as a source ref). Same published/Latest/non-prerelease release409175343; six assets. All current and earlier versions remain betas; numeric tag alignment does not change this status.
 - Scope: current reviewed Apple/Windows integrations and attachment to the existing release. The published tag remains at 9594f47; Windows is built from that CI revision and its sources/core are unchanged by the Mac follow-ups. Mac package comes from977d436; sanitized per-platform provenance is published in SideB-build-info.json. No protected core changes.
 - Authorization: user requested release preparation, compilation on GitHub, beta publication, English release information, and a feature-parity release title.
 - References: FIX-132–151, PARIDAD, RELEASE-1.1.8 and official [Xcode 27 runner](https://github.com/actions/runner-images/issues/14404).
@@ -78,6 +78,28 @@ FIX-162: [published release](https://github.com/fefucho/SIDE-B-CLIENT-NATIVE/rel
 
 Portable Windows bytes match CI exactly; its asset filename uses lowercase windows to preserve ordering alongside the Mac ZIP for legacy clients. The checksum filename entry and sanitized provenance were updated accordingly. Latest returns SideB-macOS.zip as its first ZIP, and the new Mac selects that package explicitly. Published body matches the prepared English notes. Tag and targetCommitish still point to9594f4721c3e467a5b7f201392febc849079250b; draft=false/prerelease=false remain the existing GitHub flags. All app versions remain beta.
 
-## Follow-up outside this package delivery
+## Follow-up noted during initial delivery (resolved by FIX-163 below)
 
 The actual Swift and Rust numeric comparison functions both return true for v1.2.0-beta.1 >1.2.0. This corrects the earlier assumption that the unchanged public version prevents an update prompt: the beta tag can be offered repeatedly after installation. Public notes recommend downloading the refreshed Mac ZIP directly and choosing Skip this version if the prompt returns. Normalize beta tags in both clients in a follow-up; this delivery does not modify version comparison or claim a new Windows build. Future packaging should retain the legacy-compatible ZIP order. Physical UI/account/audible playback acceptance remains pending.
+
+## Repeated update prompt — FIX-163 / 2026-10-10
+
+User reports the repeated installed1.2.0 → remote1.2.0-beta.1 prompt in both clients and supplies a Mac screenshot. FIX-163 compares the numeric bundle/Cargo version before release labels/build metadata, preserving the original release identity for display/skip. Invalid segments are rejected rather than dropped. Rust comparison is a pure production module with direct tests.
+
+To fix already-installed clients without a forced reinstall, align the existing release409175343 to v1.2.0 at the same9594f47 target. Preserve original beta tag as a source ref, all package bytes/asset IDs, publication flags and beta notice. Update current English notes, sanitized provenance and workflow default; keep the original delivery records as history. GitHub's [Update a release API](https://docs.github.com/en/rest/releases/releases#update-a-release) supports changing tag_name at the explicit target revision.
+
+- [x] Reproduce the bug with exact legacy Swift/Rust functions and prove the numeric tag stops it while preserving updates from1.1.8.
+- [x] Implement comparison in both shells and regression coverage; five standalone tests of the production Rust module passed.
+- [x] Complete Swift/Windows frontend verification and numbered Mac build.
+- [x] Apply/recheck the same-release tag correction, unchanged binary digests/flags and Latest behavior.
+- [x] Close FIX-163/PAR-026 and record final verification; source changes are saved/pushed with their FIX IDs after the stable build.
+
+Verification prerequisite FIX-164: frontend check0/0 succeeded, but initial frontend suite had278 pass/1 fail/1 native fixture skipped on Mac. Failure was a stale generated Windows translation catalog after FIX-157's four shared keys; regenerate692 keys and replace the historical fixed-count assertion with the existing exact-source check. No native Windows build or new package publication is implied.
+
+Final FIX-163 verification:15 Swift updater tests,5 standalone tests of the production Rust comparison module,6 release-helper tests and real v1.2.0 preflight passed. Numbered Mac build-0075:182 Rust +140 XCTest +265 Swift Testing = **587 passed**;7 live Rust ignored. compiled/sourceChangedDuringBuild false, source10a9a30 plus reviewed local changes, four steps,692 keys, ten artifact hashes, signature and arm64/SDK27.0/minimum15 verified. Documentation closure followed the build. Core/bindings unchanged; no app automatically opened/replaced.
+
+FIX-164 recheck:692 shared keys verified, frontend279 passed/0 failed/1 Windows-only fixture skipped on Mac; check0/0 and frontend build passed. The initial failing attempt is preserved above. Native Windows/Tauri build, installer execution and physical UI/account/audio were not repeated for this correction.
+
+Public unauthenticated Latest now returns v1.2.0 and release409175343 at unchanged9594f47. Original beta ref also remains9594f47. Five binary/checksum assets retain IDs/sizes/digests; only sanitized provenance JSON was replaced to record current/original tags. Notes match release-notes/1.2.0.md, download URLs use the new tag and downloaded provenance matches byte-for-byte. Mac remains first ZIP. Original public Mac/Windows package bytes and their source revisions are unchanged, so current users can dismiss the stale modal and check again without reinstalling. Future binary updates need a higher numeric installed version.
+
+Local verification app: builds/macos/build-0075/Side B.app. Current [release link](https://github.com/fefucho/SIDE-B-CLIENT-NATIVE/releases/tag/v1.2.0); historical links/tags above record the original delivery.

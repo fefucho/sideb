@@ -33,6 +33,7 @@ struct UpdateServiceTests {
         #expect(UpdateService.cleanVersion("V2.3.4") == "2.3.4")
         #expect(UpdateService.cleanVersion("  v1.5.0  \n") == "1.5.0")
         #expect(UpdateService.cleanVersion("1.0.0") == "1.0.0")
+        #expect(UpdateService.cleanVersion("v1.2.0-beta.1+build.13") == "1.2.0-beta.1+build.13")
     }
 
     @Test("Comparación SemVer: versión mayor")
@@ -66,6 +67,37 @@ struct UpdateServiceTests {
         #expect(UpdateService.isVersion("1.0.1", newerThan: "1.0"))
         #expect(!UpdateService.isVersion("1.0", newerThan: "1.0.1"))
         #expect(UpdateService.isVersion("1.1", newerThan: "1.0.5"))
+        #expect(UpdateService.isVersion("1.0.0.1", newerThan: "1.0.0"))
+    }
+
+    @Test("Un tag beta o metadata de build no vuelve a ofrecer la versión instalada")
+    func testReleaseLabelsDoNotOfferInstalledVersionAgain() {
+        for remote in ["v1.2.0-beta.1", "1.2.0-beta.999", "V1.2.0-rc.99", "1.2.0+build.999", "1.2.0-beta.1+build.13"] {
+            #expect(!UpdateService.isVersion(remote, newerThan: "1.2.0"))
+            #expect(!UpdateService.isVersion("1.2.0", newerThan: remote))
+        }
+    }
+
+    @Test("Los calificadores conservan actualizaciones reales y rechazan versiones anteriores")
+    func testLabelsPreserveRealUpdates() {
+        for (remote, current, expected) in [
+            ("v1.2.0-beta.1", "1.1.8", true),
+            ("v1.2.1-beta.1", "1.2.0", true),
+            ("1.3.0-beta.1", "1.2.9", true),
+            ("1.2.0-beta.999", "1.2.1", false),
+            ("1.2.0+build.999", "1.2.1", false),
+            ("v1.1.9-beta.999", "1.2.0", false)
+        ] {
+            #expect(UpdateService.isVersion(remote, newerThan: current) == expected)
+        }
+    }
+
+    @Test("Una versión inválida no se reconstruye descartando segmentos")
+    func testMalformedVersionsDoNotTriggerUpdate() {
+        for invalid in ["", "garbage", "1..2", "1.beta.999", "1.2.3trailing", "1.-2.0", "-1.2.0", "18446744073709551616.0.0"] {
+            #expect(!UpdateService.isVersion(invalid, newerThan: "1.2.0"))
+            #expect(!UpdateService.isVersion("1.2.1", newerThan: invalid))
+        }
     }
 
     @Test("Omitir versión: suprime notificación en comprobación automática")

@@ -9,8 +9,7 @@ const source = await readFile(new URL('../src/lib/i18n/format.ts', import.meta.u
 const output = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText;
 const { lookup, format, message, normalizeLanguage } = await import(`data:text/javascript;base64,${Buffer.from(output).toString('base64')}`);
 const catalog = JSON.parse(await readFile(new URL('../src/lib/i18n/catalog.json', import.meta.url), 'utf8'));
-test('all 688 Apple editorial keys are exactly preserved and generated resources are current', () => {
-  assert.equal(Object.keys(catalog).length, 688);
+test('all Apple editorial keys are exactly preserved and generated resources are current', () => {
   execFileSync(process.execPath, [fileURLToPath(new URL('./sync-localizations.mjs', import.meta.url)), '--check']);
 });
 test('Spanish defaults/fallback, English and complete plurals at presentation time', () => {

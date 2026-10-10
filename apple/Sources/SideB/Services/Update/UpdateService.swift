@@ -312,13 +312,23 @@ public final class UpdateService: NSObject, @unchecked Sendable {
         raw.trimmingCharacters(in: CharacterSet(charactersIn: "vV \t\n\r"))
     }
 
-    /// Compara dos cadenas de versión según Semantic Versioning (v1 > v2).
+    /// Compare the numeric app versions shipped in both bundles. Release labels
+    /// (-beta.1) and build metadata (+build.13) do not identify a newer app version.
     public nonisolated static func isVersion(_ v1: String, newerThan v2: String) -> Bool {
-        let clean1 = cleanVersion(v1)
-        let clean2 = cleanVersion(v2)
+        func numericComponents(_ raw: String) -> [UInt64]? {
+            let base = cleanVersion(raw).prefix { $0 != "-" && $0 != "+" }
+            let components = base.split(separator: ".", omittingEmptySubsequences: false)
+            guard !components.isEmpty else { return nil }
+            var values: [UInt64] = []
+            for part in components {
+                guard !part.isEmpty, part.utf8.allSatisfy({ (48...57).contains($0) }),
+                      let value = UInt64(part) else { return nil }
+                values.append(value)
+            }
+            return values
+        }
 
-        let parts1 = clean1.split(separator: ".").compactMap { Int($0) }
-        let parts2 = clean2.split(separator: ".").compactMap { Int($0) }
+        guard let parts1 = numericComponents(v1), let parts2 = numericComponents(v2) else { return false }
 
         let count = max(parts1.count, parts2.count)
         for i in 0..<count {

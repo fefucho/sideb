@@ -17,6 +17,7 @@ mod commands {
     pub(crate) mod playback;
     pub(crate) mod recommendations;
     pub(crate) mod system;
+    pub(crate) mod update_version;
     pub(crate) mod updater;
 }
 pub use dto::*;

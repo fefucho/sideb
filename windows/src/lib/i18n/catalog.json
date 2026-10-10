@@ -1047,6 +1047,10 @@
     "es": "Por %@",
     "en": "By %@"
   },
+  "genius.annotationColor": {
+    "es": "Color de las anotaciones",
+    "en": "Annotation color"
+  },
   "genius.annotations": {
     "es": "Anotaciones",
     "en": "Annotations"
@@ -1070,6 +1074,18 @@
   "genius.closeAnnotation": {
     "es": "Cerrar anotación",
     "en": "Close annotation"
+  },
+  "genius.colorArtwork": {
+    "es": "Carátula",
+    "en": "Artwork"
+  },
+  "genius.colorContrast": {
+    "es": "Contraste",
+    "en": "Contrast"
+  },
+  "genius.colorNeutral": {
+    "es": "Neutro",
+    "en": "Neutral"
   },
   "genius.composition": {
     "es": "Composición",
