@@ -1,6 +1,6 @@
 # Planes Apple
 
-[Formato](../../README.md#planes), [fixes](../../FIXES.md), [paridad](../../PARIDAD.md).
+[Formato](../../.agents/WORKFLOW.md#planes), [fixes](../../FIXES.md), [paridad](../../PARIDAD.md).
 
 | Plan | Estado | Referencia |
 |---|---|---|

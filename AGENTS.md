@@ -1,6 +1,6 @@
 # Side B: instrucciones comunes
 
-Leer [README.md](README.md) al comenzar y seguir su ruta de lectura. Comunicar en español. Este archivo define las reglas comunes; los AGENTS de ámbito agregan las específicas. No duplicar reglas en `.agents/rules`, skills, planes o bitácoras.
+Leer [README.md](README.md) al comenzar; para trabajar seguir la ruta de lectura de [.agents/WORKFLOW.md](.agents/WORKFLOW.md). Comunicar en español. Este archivo define las reglas comunes; los AGENTS de ámbito agregan las específicas. No duplicar reglas en `.agents/rules`, skills, planes o bitácoras.
 
 ## Ámbito y core protegido
 
@@ -16,7 +16,7 @@ Leer [README.md](README.md) al comenzar y seguir su ruta de lectura. Comunicar e
 - Mantener acciones y comportamientos durante refactors y cambios visuales. Resolver el problema completo dentro del ámbito autorizado.
 - Antes de corregir un componente, buscar síntomas, nombres de archivos y componentes en `FIXES.md`. Revisar antecedentes, motivos y verificaciones; contrastarlos con el código y Git antes de atribuir una regresión. Consultar entradas relevantes, sin cargar todo el historial por rutina.
 - Usar varios agentes cuando se solicite o esté autorizado. Cada encargo define objetivo, ámbito, archivos, contratos y verificación; un integrador responde por el resultado. Evitar escrituras simultáneas sobre los mismos archivos; usar worktrees cuando hagan falta.
-- Crear un plan en la carpeta del ámbito para trabajos de varias etapas o decisiones pendientes; no para cada ajuste pequeño. El formato está en el README.
+- Crear un plan en la carpeta del ámbito para trabajos de varias etapas o decisiones pendientes; no para cada ajuste pequeño. El formato está en la [guía interna](.agents/WORKFLOW.md#planes).
 
 ## Cierre obligatorio de un fix
 

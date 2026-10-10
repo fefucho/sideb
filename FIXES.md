@@ -1,12 +1,25 @@
 # Historial único de fixes
 
-Memoria de cambios de Side B para investigar problemas y regresiones. Buscar aquí por síntoma, componente, archivo o ID antes de modificar; leer qué se cambió y por qué, contrastarlo con el código y enlazar los antecedentes en el nuevo fix. [Formato y búsquedas](README.md#registrar-un-fix).
+Memoria de cambios de Side B para investigar problemas y regresiones. Buscar aquí por síntoma, componente, archivo o ID antes de modificar; leer qué se cambió y por qué, contrastarlo con el código y enlazar los antecedentes en el nuevo fix. [Formato y búsquedas](.agents/WORKFLOW.md#registrar-un-fix).
 
 Tags de ámbito: `[Apple]`, `[Windows]`, `[Compartido]`. Core y herramientas comunes usan Compartido, detallando el componente. El tag indica dónde se hizo el cambio; no demuestra que ambas plataformas hayan sido verificadas. Estados, fechas, componentes y relaciones se conservan dentro de cada entrada.
 
-Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-154**. Se conservaron los FIX/FEAT históricos. Dos números antiguos repetidos se distinguen como `FIX-027-2` y `FIX-028-2`, anotando el ID original; al citar FIX-027/028 comprobar título y entrada exacta.
+Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-155**. Se conservaron los FIX/FEAT históricos. Dos números antiguos repetidos se distinguen como `FIX-027-2` y `FIX-028-2`, anotando el ID original; al citar FIX-027/028 comprobar título y entrada exacta.
 
 ## Cambios recientes
+
+<a id="fix-154"></a>
+
+### [FIX-154] [Compartido] - Public GitHub README and preserved internal workflow
+
+- Date: 2026-10-10 (America/Montevideo).
+- Component / status: public project documentation and upstream attribution; implemented, link/render review and publication recorded in the plan.
+- Problem / cause: the root README was an agent/developer workflow rather than a useful introduction to Side B. GitHub's About still described only macOS; the repository had no root license text despite GPL-3.0-or-later in its manifests.
+- Change / reason: write a plain-English public README with the app icon, origins, supported features, design, downloads, shared Rust backend, Limusic/Kaset acknowledgments and feedback links. Preserve the previous internal guide under .agents/WORKFLOW.md, adjusting relative links and active entry points without deleting workflow instructions. Include the existing GPL license text and upstream Kaset MIT notice; no license terms are changed. Prepare a location for current native screenshots without publishing test fixtures or old bug screenshots as product images.
+- Files: README.md, AGENTS.md, .agents/WORKFLOW.md, LICENSE, THIRD_PARTY_NOTICES.md, docs/images/sideb.png, docs/licenses/Kaset-MIT.txt, docs/screenshots/README.md, plan/index links, FIXES.md and PARIDAD.md introductory links.
+- Related fixes: reorganizes the presentation established in FIX-088/089 and preserves publication/history boundaries from FIX-130. Existing apple/Resources/Credits.rtf confirms Limusic's backend origins; upstream repository/license links checked directly.
+- Verification / limits: documentation-only; relative links, section anchors, icon and diff reviewed, with final rendering/publication results in [PLAN-004](plans/PLAN-004-public-readme.md). No application tests/build needed or claimed. Native screenshots remain pending; public README has no broken placeholder images. Separate release CI is not evidence for this documentation change.
+- Parity: no port required; the public page describes both apps from current source, preserving stated platform requirements and differences. Product code, protected core, manifests, version and release tags remain unchanged by this fix.
 
 <a id="fix-153"></a>
 

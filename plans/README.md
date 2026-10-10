@@ -1,10 +1,11 @@
 # Planes generales
 
-Herramientas compartidas o fixes para ambas plataformas. [Formato](../README.md#planes). El core conserva su restricción aunque exista un plan.
+Herramientas compartidas o fixes para ambas plataformas. [Formato](../.agents/WORKFLOW.md#planes). El core conserva su restricción aunque exista un plan.
 
 | Plan | Estado |
 |---|---|
-| [1.2.0 Beta — macOS & Windows Feature Parity](RELEASE-1.2.0-beta.1.md) | Corrected joint GitHub run38082175075 compiling; draft prepared, publication pending, FIX-152/153 / PAR-026 |
+| [Public GitHub README](PLAN-004-public-readme.md) | Copy, internal-guide migration, links/GFM render reviewed; About updated, publication underway, FIX-154 |
+| [1.2.0 Beta — macOS & Windows Feature Parity](RELEASE-1.2.0-beta.1.md) | Run38082175075: Mac test precision failure, Windows running; draft stays unpublished, FIX-152/153 / PAR-026 |
 | [Saludo de Inicio](PLAN-003-home-greeting.md) | Implementado/revisado: FIX-150, PAR-003; Windows comprobado, ejecución Mac pendiente |
 | [Álbum de Acceso rápido](PLAN-002-quick-access-album-metadata.md) | Implementado/revisado: FIX-148/149, PAR-022; pruebas Windows aprobadas, ejecución Swift en Mac pendiente |
 | [Historial público y material local](PLAN-001-git-publication.md) | Completado; checkpoints retirados de main/tags y temp excluida, fuentes/releases conservadas |

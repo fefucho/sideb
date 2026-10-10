@@ -1,93 +1,79 @@
-# Side B
+<p align="center">
+  <img src="docs/images/sideb.png" alt="Side B app icon" width="96" height="96">
+</p>
 
-Dos apps, un core Rust y un `main`: Mac usa SwiftUI/AppKit y AVPlayer; Windows usa Svelte/TypeScript, Tauri y libmpv.
+<h1 align="center">Side B</h1>
 
-Este README es la entrada para personas y agentes. Abrir como proyecto esta carpeta `SIDE B`, que contiene `.git`, y empezar leyendo este archivo y [AGENTS.md](AGENTS.md).
+<p align="center">YouTube Music, with a desktop app of its own.</p>
 
-## Qué leer según la tarea
+<p align="center">
+  <a href="https://github.com/fefucho/SIDE-B-CLIENT-NATIVE/releases">Download</a> ·
+  <a href="#features">Features</a> ·
+  <a href="#how-it-works">How it works</a> ·
+  <a href="#thanks">Thanks</a>
+</p>
 
-| Trabajo | Instrucciones | Registro y pendientes |
+Side B is a YouTube Music client for macOS and Windows. Browse your music, put an album on, and keep the player nearby while you do something else. Or open fullscreen and spend some time with the artwork, lyrics, and the story behind a song.
+
+It started with the work of [Limusic](https://github.com/SimoHypers/limusic) and [Kaset](https://github.com/sozercan/kaset): Limusic provided the Rust backend foundations, and Kaset helped shape the Mac app and its native design. Side B builds on that work with its own interface and a shared backend for both platforms.
+
+## Features
+
+- **A Home that feels like your library.** Speed Dial, featured albums and playlists, recommendations, and controls for what appears on your Home page.
+- **Search and discovery.** Find songs, artists, albums, and playlists; explore new releases, charts, moods, and genres.
+- **Your YouTube Music account.** Access liked songs, playlists, saved albums, and listening history. Create and edit playlists, add tracks, and manage your collection.
+- **A queue you can work with.** Reorder tracks, shuffle, repeat, and keep listening with song radio and recommendations.
+- **Fullscreen listening.** Large artwork, backgrounds drawn from the cover's colors, and the queue and lyrics close at hand.
+- **Lyrics and Genius.** Synced lyrics when available, line annotations, song information, and credits.
+- **Everyday desktop controls.** A compact player, keyboard shortcuts, media keys, and system playback controls.
+- **English and Spanish.** Change the interface language in settings.
+
+The two apps share the same main features, with a few settings and system integrations specific to each platform. Side B is still being actively developed, so some edges are rough.
+
+## Design
+
+Album artwork has a lot of room here. Its colors carry into the background, while track lists and controls stay easy to read. The compact player leaves room to browse; fullscreen brings the current song, lyrics, and queue together.
+
+On Mac, the interface uses SwiftUI and AppKit. Windows follows the same layout and visual direction, using Svelte and Tauri. Each app uses its platform's playback engine and desktop controls.
+
+<!-- Add current native Home/fullscreen screenshots here; see docs/screenshots/README.md. -->
+
+## Download
+
+Get builds from the [Releases page](https://github.com/fefucho/SIDE-B-CLIENT-NATIVE/releases). Choose the files listed for your platform; beta builds are marked as prereleases.
+
+| Platform | Requirements | Package |
 |---|---|---|
-| Mac | [Apple AGENTS](apple/AGENTS.md) | [Fixes: tag Apple](FIXES.md), [planes Apple](apple/plans/README.md) |
-| Windows | [Windows AGENTS](windows/AGENTS.md) | [Fixes: tag Windows](FIXES.md), [planes Windows](windows/plans/README.md) |
-| Fix compartido / herramientas | [AGENTS general](AGENTS.md); [Core AGENTS](core/AGENTS.md) si cambia Rust | [Fixes: tag Compartido](FIXES.md), [planes generales](plans/README.md) |
-| Trasladar un arreglo | AGENTS del destino y fix del origen | [Paridad Mac ↔ Windows](PARIDAD.md) y su referencia |
-| Compilar Mac | [Skill Mac](.agents/skills/sideb-build-macos/SKILL.md) | Nueva versión en `builds/macos/` |
-| Compilar Windows | [Skill Windows](.agents/skills/sideb-build-windows/SKILL.md) | Nueva versión en `builds/windows/` |
-| Guardar / subir cambios | [Skill Git](.agents/skills/sideb-git/SKILL.md) | Diff, fixes, paridad y planes del trabajo |
+| macOS | Apple Silicon, macOS 15 or later | `SideB-macOS.zip` |
+| Windows | 64-bit Windows 10 or later, WebView2 | `SideB-Windows-x64-setup.exe` or `SideB-Windows-x64.zip` |
 
-Antes de corregir algo, buscar su síntoma, componente y archivos en FIXES.md; leer los cambios anteriores relacionados y contrastarlos con el código/Git. Consultar también paridad y planes. Leer sólo las entradas/referencias relevantes, sin cargar todo el historial por rutina.
+On Mac, unzip the download and move **Side B.app** to Applications. Builds are currently ad-hoc signed rather than notarized; if macOS blocks the first launch, use **System Settings → Privacy & Security → Open Anyway** after trying to open the app.
 
-## Builds locales conservadas
+On Windows, use the installer or extract the entire portable ZIP. Keep the executable and its runtime files together. Sign in inside the app to access your personal YouTube Music library and recommendations.
 
-Desde la raíz, con Node.js 22.12 o superior:
+## How it works
 
-```sh
-node Scripts/build-version.mjs macos
-node Scripts/build-version.mjs windows
-```
+Both apps use a shared **Rust core** running on your computer. It talks to YouTube Music through **InnerTube**, handles search and metadata, resolves audio streams, and uses **SQLite** for local storage. You don't need to run a separate Side B server.
 
-Configuración predeterminada: `release` en ambos sistemas. Usar `--configuration debug` para debug y `--open` cuando también se quiera abrir la app. Mac requiere Apple Silicon, Xcode y Rust; Windows requiere MSVC 2022, WebView2, Rust, pnpm y PowerShell. Las skills detallan los requisitos.
+The Mac app connects to that core through **UniFFI** and plays audio with **AVPlayer**. The Windows app uses **Tauri** to connect its **Svelte/TypeScript** interface to Rust and plays audio with **libmpv**. Lyrics and Genius information come from their respective providers.
 
-El comando verifica, compila y crea `builds/<plataforma>/build-0001/`, luego `build-0002/`, etc. Cada carpeta conserva la aplicación, `BUILD.json` con commit/estado local/configuración/comandos/hashes y `build.log`. Sólo `status: compiled` indica comprobaciones y empaquetado terminados; un fallo conserva el diagnóstico y consume su número.
+The source is split into [`apple/`](apple/), [`windows/`](windows/), and [`core/`](core/). If you'd like to build or contribute, the [development guide](.agents/WORKFLOW.md) covers the setup and build commands.
 
-El número local no cambia `version.env`. Las cachés se reutilizan; los resultados numerados se conservan. Borrar versiones antiguas sólo cuando se solicite y conservar `.next-number`. `.lock` protege la compilación activa: si queda tras una interrupción abrupta, comprobar que no haya compilación antes de quitarlo.
+## Thanks
 
-`Scripts/compile_and_run.sh` es la entrada compatible para compilar y abrir Mac y usa el mismo flujo versionado. Los scripts internos/de release no son rutas alternativas para las builds locales. No ejecutar `release_update.sh` para guardar código: publica una release.
+Side B would not exist without these projects:
 
-## Registrar un fix
+- **[Limusic](https://github.com/SimoHypers/limusic), by [SimoHypers](https://github.com/SimoHypers) and contributors.** The foundation for the Rust backend: InnerTube, stream handling, local storage, and much of the work needed to make YouTube Music playback possible outside the browser.
+- **[Kaset](https://github.com/sozercan/kaset), by [sozercan](https://github.com/sozercan) and contributors.** An essential starting point and source of inspiration for the Mac app, its desktop interface, and the way it fits into macOS.
 
-Un único `FIXES.md` conserva la historia de todas las plataformas, incluidas las entradas importadas. Cada entrada lleva un ID único `FIX-NNN` y un tag de ámbito: `[Apple]`, `[Windows]` o `[Compartido]`. Core y herramientas comunes usan Compartido y detallan el componente. El tag describe dónde se hizo el cambio, no dónde falta trasladarlo ni qué plataformas se verificaron.
+Thanks also to the people behind [RustyPipe](https://codeberg.org/ThetaDev/rustypipe), [UniFFI](https://github.com/mozilla/uniffi-rs), [Tauri](https://github.com/tauri-apps/tauri), [Svelte](https://github.com/sveltejs/svelte), and [mpv](https://github.com/mpv-player/mpv). A lot of work goes into these projects before an app like Side B can even start.
 
-Elegir el siguiente número libre global; no renumerar entradas anteriores. Se conservaron IDs `FEAT` históricos y se distinguieron los dos números antiguos repetidos con sufijo `-2`, dejando el alias original. Las mejoras nuevas usan la serie FIX y declaran su tipo.
+## Feedback and license
 
-```markdown
-### [FIX-NNN] [Apple] - Título concreto
+Found a bug or have an idea? [Open an issue](https://github.com/fefucho/SIDE-B-CLIENT-NATIVE/issues) and include your operating system, app version, and what happened. Screenshots help with UI issues.
 
-- Fecha: YYYY-MM-DD (America/Montevideo).
-- Componente: cola / shuffle / navegación / búsqueda / Core / build / etc.
-- Tipo / estado: fix; implementado / validado / validación pendiente.
-- Problema y causa: escenario reproducible y causa encontrada.
-- Solución y motivo: qué se cambió y por qué se eligió esa solución.
-- Archivos: rutas o enlaces del cambio.
-- Fixes relacionados: IDs anteriores; explicar si completa, reemplaza o corrige una regresión.
-- Verificación: comandos y resultados reales; prueba manual por separado.
-- Límites: lo pendiente y las relaciones causales aún por investigar.
-- Paridad: PAR-NNN, o «No aplica: motivo específico».
-- Plan / build / commit: referencias disponibles; omitir lo inexistente.
-```
+Side B is open source under [GPL-3.0-or-later](LICENSE). Upstream acknowledgments and the preserved Kaset license are in [third-party notices](THIRD_PARTY_NOTICES.md).
 
-El registro sirve para investigar el origen de errores: conservar antecedentes y motivos, no sólo decir «arreglado». No atribuir una causa a un fix anterior sin contrastar el código/evidencia. Si aún no existe commit, incluir el ID del fix en su mensaje cuando se guarde: permite localizarlo con `git log --all --grep='FIX-089'` sin actualizar otra bitácora.
+Side B is an independent project and is not affiliated with YouTube or Google.
 
-Búsquedas desde la raíz:
-
-```sh
-rg -n -i -C 5 'shuffle|QueueManager|PlayerViewModel' FIXES.md
-rg -n '^### .*\[Windows\]' FIXES.md
-```
-
-Evaluar la otra plataforma en cada fix. [PARIDAD.md](PARIDAD.md) registra lo trasladable o por investigar; un caso exclusivo se explica en su entrada. Resolver paridad requiere evidencia del destino. No borrar fixes cerrados: los nuevos enlazan los antecedentes. Los registros importados indican `Histórico: sí`; sus mediciones y mandatos anteriores no son reglas activas ni mejoras nuevas de una release.
-
-## Planes
-
-Guardar en `apple/plans/`, `windows/plans/` o `plans/`. Los índices enlazan planes activos; PARIDAD conserva el estado de los ports, sin otro backlog duplicado.
-
-Cada plan indica objetivo, estado, alcance/exclusiones, referencias, pasos con casillas, comprobaciones de cierre y enlaces a fixes/builds. Actualizar el mismo archivo. Usar nombres como `PLAN-001-shuffle-reversible.md`. Un plan describe trabajo; un fix registra lo realizado.
-
-La auditoría completa Mac → Windows del 2026-10-09 está en [PLAN-001 Windows](windows/plans/PLAN-001-feature-parity.md): diferencia funciones ausentes, implementaciones parciales, adaptaciones y validación nativa pendiente. El estado agregado sigue en [PARIDAD](PARIDAD.md).
-
-## Referencias anteriores
-
-`archive/` conserva las referencias que deben acompañar al repositorio. Sus instrucciones y resultados son históricos:
-
-- El [historial de fixes](FIXES.md#historial-importado) ya está integrado en el registro único; los resultados importados conservan su condición histórica.
-- [Blueprint Apple](archive/APPLE_UI_ARCHITECTURE.md): contrastar nombres, medidas y decisiones con el código.
-- [Arquitectura Windows](archive/WINDOWS_ARCHITECTURE.md): contrastar contratos con el código actual.
-- [Port de playlists/shuffle](archive/PLAYLIST_SHUFFLE_PORT.md): referencia de PAR-001.
-- [Índice histórico](archive/README.md): ubicación y condición de las referencias preservadas.
-
-Al incorporar una referencia a una tarea nueva, comprobar su estado y registrar el resultado en los archivos activos. Código y pruebas actuales prevalecen sobre decisiones antiguas.
-
-El resto de lo reunido permanece intacto en `temp/` como material local de importación. Al retomar una tarea, trasladar sólo la referencia necesaria a un plan/documento versionable, revisar sus enlaces y agregarla al índice; no convertir toda la carpeta en instrucciones activas.
-
-`temp/` está excluida por `.gitignore`. Los checkpoints de recuperación se guardan fuera del repositorio publicable; el push incluye todos los commits antecesores pendientes, por lo que también deben revisarse. Publicar sólo código, pruebas y documentación autorizados con mensajes descriptivos, siguiendo la skill Git. La [limpieza del historial público](plans/PLAN-001-git-publication.md) conserva los árboles de las releases; los SHA anteriores que figuran en registros históricos identifican la evidencia original y se mantienen en un respaldo local fuera del repositorio.
+<!-- Internal contributor/agent instructions start at AGENTS.md and .agents/WORKFLOW.md. -->

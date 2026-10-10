@@ -17,7 +17,7 @@
 - [Auditoría funcional contra macOS](AUDIT-001-home-parity.md) — evidencia por función y diferencias registradas en PARIDAD.
 - [Auditoría general de UI Windows/macOS](AUDIT-002-ui-parity.md) — comparación estática terminada; 30 puntos de estructura, presentación y funciones, con diferencias pendientes en PAR-012-2 a PAR-017-2. FIX-117-2; sin cambios de UI.
 
-[Formato](../../README.md#planes), [fixes](../../FIXES.md#fix-087), [paridad](../../PARIDAD.md).
+[Formato](../../.agents/WORKFLOW.md#planes), [fixes](../../FIXES.md#fix-087), [paridad](../../PARIDAD.md).
 
 | Plan | Estado | Alcance |
 |---|---|---|

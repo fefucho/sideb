@@ -1,6 +1,6 @@
 # Paridad Mac ↔ Windows
 
-Registro único de arreglos por trasladar o comprobar en la otra plataforma. Los exclusivos explican el motivo en su fix. [Procedimiento](README.md#registrar-un-fix). **Especificación consolidada para portar a Windows la barra superior, la configuración, el orden de Inicio, el Speed Dial, los destacados y el fondo animado: [PORTEO-INICIO.md](PORTEO-INICIO.md)** (PAR-001 a PAR-010; TopNav, shell y cartas comunes incluidos). **Auditoría integral y checklist de ejecución: [PLAN-001 Windows](windows/plans/PLAN-001-feature-parity.md)** (2026-10-09, PAR-001 a PAR-021).
+Registro único de arreglos por trasladar o comprobar en la otra plataforma. Los exclusivos explican el motivo en su fix. [Procedimiento](.agents/WORKFLOW.md#registrar-un-fix). **Especificación consolidada para portar a Windows la barra superior, la configuración, el orden de Inicio, el Speed Dial, los destacados y el fondo animado: [PORTEO-INICIO.md](PORTEO-INICIO.md)** (PAR-001 a PAR-010; TopNav, shell y cartas comunes incluidos). **Auditoría integral y checklist de ejecución: [PLAN-001 Windows](windows/plans/PLAN-001-feature-parity.md)** (2026-10-09, PAR-001 a PAR-021).
 
 Estados: `Pendiente`, `En curso`, `Implementado / validación pendiente`, `Resuelto`, `Por verificar`. Resuelto requiere fix y evidencia del destino; compilar no basta. IDs `PAR-001`, etc.; conservar filas cerradas.
 
