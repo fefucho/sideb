@@ -802,5 +802,21 @@
   "genius.composition": {
     "es": "Composición",
     "en": "Composition"
+  },
+  "genius.annotationColor": {
+    "es": "Color de las anotaciones",
+    "en": "Annotation color"
+  },
+  "genius.colorArtwork": {
+    "es": "Carátula",
+    "en": "Artwork"
+  },
+  "genius.colorContrast": {
+    "es": "Contraste",
+    "en": "Contrast"
+  },
+  "genius.colorNeutral": {
+    "es": "Neutro",
+    "en": "Neutral"
   }
 }

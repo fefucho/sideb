@@ -117,18 +117,21 @@ final class HomeFeedScrollTests: XCTestCase {
         XCTAssertEqual(coordinator.rows.sectionIndex(forRow: 3), 1)
         XCTAssertEqual(coordinator.rows.loadMoreRow, 4)
         let host = try XCTUnwrap(coordinator.tableView(table, viewFor: table.tableColumns.first, row: 1))
+        // AppKit coordinate conversions can introduce sub-pixel floating-point error.
+        // Keep this far below a visible point while still catching viewport/layout drift.
+        let geometryAccuracy: CGFloat = 0.000001
         for width: CGFloat in [1100, 960, 900, 899, 820, 760, 700, 640, 820, 900, 1100] {
             scroll.frame = NSRect(x: 0, y: 0, width: width, height: 300)
             scroll.contentView.setBoundsSize(NSSize(width: width, height: 300))
             table.frame.size.width = width
             coordinator.boundsChanged(Notification(name: NSView.boundsDidChangeNotification, object: scroll.contentView))
-            XCTAssertEqual(coordinator.featuredViewport.width, width)
+            XCTAssertEqual(coordinator.featuredViewport.width, width, accuracy: geometryAccuracy)
             host.layoutSubtreeIfNeeded()
             let probe = try XCTUnwrap(descendants(host).compactMap { $0 as? HomeFeaturedWidthProbeView }.first)
-            XCTAssertEqual(probe.renderedWidth, width)
+            XCTAssertEqual(probe.renderedWidth, width, accuracy: geometryAccuracy)
             let expected = HomeFeaturedLayout.height(width: width, hasSongs: true, hasAlbums: true)
             XCTAssertEqual(coordinator.tableView(table, heightOfRow: 0), 158)
-            XCTAssertEqual(coordinator.tableView(table, heightOfRow: 1), expected)
+            XCTAssertEqual(coordinator.tableView(table, heightOfRow: 1), expected, accuracy: geometryAccuracy)
             XCTAssertEqual(table.rect(ofRow: 1).height, expected, accuracy: 0.5)
             XCTAssertEqual(table.rect(ofRow: 2).minY, table.rect(ofRow: 1).maxY, accuracy: 0.5)
             XCTAssertTrue(host === coordinator.tableView(table, viewFor: table.tableColumns.first, row: 1))

@@ -4452,6 +4452,23 @@
         }
       }
     },
+    "genius.annotationColor": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Color de las anotaciones"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Annotation color"
+          }
+        }
+      }
+    },
     "genius.annotations": {
       "extractionState": "manual",
       "localizations": {
@@ -4550,6 +4567,57 @@
           "stringUnit": {
             "state": "translated",
             "value": "Close annotation"
+          }
+        }
+      }
+    },
+    "genius.colorArtwork": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Carátula"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Artwork"
+          }
+        }
+      }
+    },
+    "genius.colorContrast": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Contraste"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Contrast"
+          }
+        }
+      }
+    },
+    "genius.colorNeutral": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Neutro"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Neutral"
           }
         }
       }

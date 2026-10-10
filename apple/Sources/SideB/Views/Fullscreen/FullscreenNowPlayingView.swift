@@ -47,6 +47,7 @@ struct FullscreenNowPlayingView: View, Animatable {
     @State private var failedOriginalURL: URL? = nil
     @State private var failedMaxQualityURL: URL? = nil
     @State private var isArtworkFlipped = false
+    @State private var geniusAnnotationColorMode = GeniusAnnotationColorMode.artwork
     
     @Namespace private var tabNamespace
     
@@ -590,7 +591,8 @@ struct FullscreenNowPlayingView: View, Animatable {
     private func lyricsPanel(height: CGFloat) -> some View {
         Group {
             if viewModel.isShowingGeniusLyrics {
-                GeniusPanelView(model: viewModel.genius)
+                GeniusPanelView(model: viewModel.genius, artwork: viewModel.currentTrack?.thumbnail,
+                                annotationColorMode: $geniusAnnotationColorMode)
                     .id(viewModel.currentTrack?.videoId)
             } else {
                 nativeLyricsPanel(height: height)

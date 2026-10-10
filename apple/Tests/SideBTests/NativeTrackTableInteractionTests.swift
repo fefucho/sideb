@@ -188,3 +188,169 @@ private func tableTestTrack(_ id: String) -> SongItemRecord {
     (standard as? NativeTrackCellView)?.performPrimaryAction()
     #expect(played == [0])
 }
+
+@Test @MainActor func queueDurationFallsBackToPlayerOnlyForTheCurrentOccurrence() throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let suite = "QueueDuration.\(UUID())"
+    let preferences = try #require(UserDefaults(suiteName: suite))
+    defer { preferences.removePersistentDomain(forName: suite) }
+    let audio = AudioPlayerService(preferences: preferences, preferencePrefix: "test")
+    let player = PlayerViewModel(rustCore: nil, audioService: audio,
+                               playbackStore: PlaybackStateStore(directory: directory))
+    defer { audio.stop() }
+    let repeated = tableTestTrack("same-video")
+    player.queueManager.replaceQueue(with: [repeated, repeated], startingAt: 0,
+                                    context: .custom(title: "Queue"))
+    player.currentTrack = repeated
+    func view() -> NativeTrackTableView {
+        NativeTrackTableView(tracks: player.queueManager.queue, currentTrackVideoId: repeated.videoId,
+                            playerViewModel: player, presentation: .queue,
+                            menuOrigin: { .queue(occurrenceIndex: $0) }, onPlayTrack: { _ in })
+    }
+    let table = NativeTrackTableViewInternal()
+    let coordinator = view().makeCoordinator()
+    func duration(at index: Int) throws -> String {
+        let cell = try #require(coordinator.tableView(table, viewFor: nil, row: index) as? NativeQueueTrackCellView)
+        let label = try #require(cell.subviews.first {
+            $0.accessibilityIdentifier() == "NativeQueueTrackDuration"
+        } as? NSTextField)
+        #expect(!label.isHidden)
+        return label.stringValue
+    }
+    #expect(try duration(at: 0) == "—:—")
+    #expect(try duration(at: 1).isEmpty)
+    audio.duration = 255
+    let resolved = view()
+    #expect(resolved.currentQueueDuration == "4:15")
+    coordinator.update(parent: resolved)
+    #expect(try duration(at: 0) == "4:15")
+    #expect(try duration(at: 1).isEmpty)
+    #expect(player.queueManager.queue == [repeated, repeated])
+    #expect(player.currentTrack?.duration == nil)
+
+    // Advance to the duplicate while its own stream is still resolving.
+    _ = player.queueManager.selectTrack(at: 1)
+    audio.duration = 0
+    coordinator.update(parent: view())
+    #expect(try duration(at: 0).isEmpty)
+    #expect(try duration(at: 1) == "—:—")
+    for invalid in [Double.nan, .infinity, -1] {
+        audio.duration = invalid
+        coordinator.update(parent: view())
+        #expect(try duration(at: 1) == "—:—")
+    }
+    audio.duration = 200
+    coordinator.update(parent: view())
+    #expect(try duration(at: 1) == "3:20")
+    let cell = try #require(coordinator.tableView(table, viewFor: nil, row: 1) as? NativeQueueTrackCellView)
+    let catalogTrack = SongItemRecord(videoId: repeated.videoId, title: repeated.title, artists: repeated.artists,
+                                     album: nil, duration: "3:19", thumbnail: nil, artistId: nil, albumId: nil,
+                                     setVideoId: nil, isVideo: false, isUpload: false, library: nil, artistRuns: [])
+    cell.configure(track: catalogTrack, index: 1, isCurrentTrack: true, isPlaying: false, isLiked: false,
+                   hideAlbum: true, showAlbumInSubtitle: true, isReorderable: true, rowHeight: 46)
+    cell.updatePlaybackDuration("3:20")
+    let catalogLabel = try #require(cell.subviews.first {
+        $0.accessibilityIdentifier() == "NativeQueueTrackDuration"
+    } as? NSTextField)
+    #expect(catalogLabel.stringValue == "3:19")
+    player.currentTrack = tableTestTrack("different-track")
+    #expect(view().currentQueueDuration == nil)
+}
+
+@Test @MainActor func queuePlayedTrackKeepsDurationAndLikeAfterSkippingAndRestoring() throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let suite = "QueuePlayedDuration.\(UUID())"
+    let preferences = try #require(UserDefaults(suiteName: suite))
+    defer { preferences.removePersistentDomain(forName: suite) }
+    let audio = AudioPlayerService(preferences: preferences, preferencePrefix: "test")
+    let player = PlayerViewModel(rustCore: nil, audioService: audio,
+                               playbackStore: PlaybackStateStore(directory: directory))
+    defer { audio.stop() }
+    player.switchPlaybackSession(to: "account:queue-duration")
+    let repeated = tableTestTrack("same-video")
+    player.queueManager.replaceQueue(with: [repeated, repeated], startingAt: 0,
+                                    context: .custom(title: "Queue"))
+    player.currentTrack = repeated
+    let token = player.queueManager.queueToken
+    let occurrenceIDs = player.queueManager.orderSnapshot.occurrenceIDs
+    audio.duration = 255
+    audio.onPlaybackProgress?(1, 255)
+    #expect(player.currentTrack?.duration == "4:15")
+    #expect(player.queueManager.queue[0].duration == "4:15")
+    #expect(player.queueManager.queue[1].duration == nil)
+    #expect(player.queueManager.queueToken == token)
+    #expect(player.queueManager.orderSnapshot.occurrenceIDs == occurrenceIDs)
+
+    player.playNext()
+    #expect(player.queueManager.currentIndex == 1)
+    #expect(player.currentTrack?.duration == nil)
+    #expect(player.queueManager.queue[0].duration == "4:15")
+    let table = NativeTrackTableViewInternal()
+    func checkFirstRow(_ source: PlayerViewModel) throws {
+        let view = NativeTrackTableView(tracks: source.queueManager.tracks,
+                                       currentTrackVideoId: source.currentTrack?.videoId,
+                                       playerViewModel: source, presentation: .queue,
+                                       menuOrigin: { .queue(occurrenceIndex: $0) }, onPlayTrack: { _ in })
+        let coordinator = view.makeCoordinator()
+        let cell = try #require(coordinator.tableView(table, viewFor: nil, row: 0) as? NativeQueueTrackCellView)
+        let duration = try #require(cell.subviews.first {
+            $0.accessibilityIdentifier() == "NativeQueueTrackDuration"
+        } as? NSTextField)
+        let like = try #require(cell.subviews.first {
+            $0.accessibilityIdentifier() == "NativeQueueTrackLike"
+        } as? NSButton)
+        #expect(!duration.isHidden && duration.stringValue == "4:15")
+        #expect(!like.isHidden && like.alphaValue == 1)
+    }
+    try checkFirstRow(player)
+    audio.onPlaybackProgress?(1, 200)
+    #expect(player.queueManager.queue.map(\.duration) == ["4:15", "3:20"])
+    audio.onPlaybackProgress?(2, 400)
+    #expect(player.queueManager.queue[1].duration == "3:20")
+    player.playPrevious()
+    #expect(player.currentTrack?.duration == "4:15")
+    try checkFirstRow(player)
+
+    player.flushPlaybackState()
+    let restoredAudio = AudioPlayerService(preferences: preferences, preferencePrefix: "restored")
+    defer { restoredAudio.stop() }
+    let restored = PlayerViewModel(rustCore: nil, audioService: restoredAudio,
+                                   playbackStore: PlaybackStateStore(directory: directory))
+    restored.switchPlaybackSession(to: "account:queue-duration")
+    #expect(restored.queueManager.queue.map(\.duration) == ["4:15", "3:20"])
+    #expect(restored.queueManager.orderSnapshot.occurrenceIDs == occurrenceIDs)
+    try checkFirstRow(restored)
+    restored.switchPlaybackSession(to: "account:other")
+    restoredAudio.onPlaybackProgress?(1, 500)
+    #expect(restored.queueManager.queue.isEmpty && restored.currentTrack == nil)
+}
+
+@Test @MainActor func queueDurationEnrichmentRejectsInvalidAndMismatchedPlayback() throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let suite = "QueueInvalidDuration.\(UUID())"
+    let preferences = try #require(UserDefaults(suiteName: suite))
+    defer { preferences.removePersistentDomain(forName: suite) }
+    let audio = AudioPlayerService(preferences: preferences, preferencePrefix: "test")
+    let player = PlayerViewModel(rustCore: nil, audioService: audio,
+                               playbackStore: PlaybackStateStore(directory: directory))
+    defer { audio.stop() }
+    let track = tableTestTrack("video")
+    player.queueManager.replaceQueue(with: [track], startingAt: 0, context: .custom(title: "Queue"))
+    player.currentTrack = track
+    for invalid in [Double.nan, .infinity, 0, -1, Double(Int.max)] {
+        audio.onPlaybackProgress?(0, invalid)
+        #expect(player.queueManager.queue[0].duration == nil)
+    }
+    player.currentTrack = tableTestTrack("different-video")
+    audio.onPlaybackProgress?(1, 255)
+    #expect(player.queueManager.queue[0].duration == nil && player.currentTrack?.duration == nil)
+    var catalogTrack = track
+    catalogTrack.duration = "3:19"
+    player.queueManager.replaceQueue(with: [catalogTrack], startingAt: 0, context: .custom(title: "Queue"))
+    player.currentTrack = catalogTrack
+    audio.onPlaybackProgress?(1, 200)
+    #expect(player.queueManager.queue[0].duration == "3:19")
+}

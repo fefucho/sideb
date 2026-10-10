@@ -13,8 +13,8 @@ private func queueCellTrack(_ id: String = "song", album: String? = "Mr. Morale 
     try #require(cell.subviews.first { $0.accessibilityIdentifier() == id } as? T)
 }
 
-@MainActor private func configureQueueCell(_ cell: NativeQueueTrackCellView, track: SongItemRecord = queueCellTrack(), liked: Bool = false) {
-    cell.configure(track: track, index: 0, isCurrentTrack: true, isPlaying: true, isLiked: liked,
+@MainActor private func configureQueueCell(_ cell: NativeQueueTrackCellView, track: SongItemRecord = queueCellTrack(), liked: Bool = false, current: Bool = false, playing: Bool = true) {
+    cell.configure(track: track, index: 0, isCurrentTrack: current, isPlaying: playing, isLiked: liked,
                    hideAlbum: true, showAlbumInSubtitle: true, isReorderable: true, rowHeight: 46)
     cell.layoutSubtreeIfNeeded()
 }
@@ -24,7 +24,7 @@ private func queueCellTrack(_ id: String = "song", album: String? = "Mr. Morale 
     cell.translatesAutoresizingMaskIntoConstraints = false
     let widthConstraint = cell.widthAnchor.constraint(equalToConstant: 576)
     NSLayoutConstraint.activate([widthConstraint, cell.heightAnchor.constraint(equalToConstant: 46)])
-    configureQueueCell(cell)
+    configureQueueCell(cell, current: true)
     let title = try queueSubview(cell, "NativeQueueTrackTitle", as: NSTextField.self)
     let credits = try queueSubview(cell, "NativeQueueTrackCredits", as: NSTextField.self)
     let album = try queueSubview(cell, "NativeQueueTrackAlbum", as: NSTextField.self)
@@ -42,6 +42,22 @@ private func queueCellTrack(_ id: String = "song", album: String? = "Mr. Morale 
         for view in cell.subviews where !view.isHidden {
             #expect(view.frame.maxX <= width + 1, "width=\(width) id=\(view.accessibilityIdentifier() ?? String(describing: type(of: view))) frame=\(view.frame)")
         }
+        if let directory = ProcessInfo.processInfo.environment["SIDEB_PRESENTATION_QA"] {
+            func invalidate(_ view: NSView) {
+                view.needsDisplay = true
+                view.subviews.forEach(invalidate)
+            }
+            for hovered in [false, true] {
+                cell.updateHover(isHovered: hovered)
+                invalidate(cell)
+                let bitmap = try #require(cell.bitmapImageRepForCachingDisplay(in: cell.bounds))
+                cell.cacheDisplay(in: cell.bounds, to: bitmap)
+                let data = try #require(bitmap.representation(using: .png, properties: [:]))
+                try data.write(to: URL(fileURLWithPath: directory)
+                    .appendingPathComponent("queue-\(Int(width))-\(hovered ? "hover" : "normal").png"))
+            }
+            cell.updateHover(isHovered: false)
+        }
     }
     configureQueueCell(cell, track: queueCellTrack(album: nil))
     #expect(credits.stringValue == "Kendrick Lamar")
@@ -54,14 +70,14 @@ private func queueCellTrack(_ id: String = "song", album: String? = "Mr. Morale 
     let dislike = try queueSubview(cell, "NativeQueueTrackDislike", as: NSButton.self)
     let grip = try queueSubview(cell, "NativeQueueTrackReorderGrip", as: NSImageView.self)
     let duration = try queueSubview(cell, "NativeQueueTrackDuration", as: NSTextField.self)
-    #expect(like.isHidden && dislike.isHidden && grip.isHidden && !duration.isHidden)
+    #expect(!like.isHidden && dislike.isHidden && grip.isHidden && !duration.isHidden)
     #expect(cell.subviews.compactMap { $0 as? NSButton }.count == 2)
     cell.updateSelection(isSelected: true)
-    #expect(like.isHidden && dislike.isHidden && grip.isHidden)
+    #expect(!like.isHidden && dislike.isHidden && grip.isHidden)
     cell.updateHover(isHovered: true)
     #expect(!like.isHidden && !dislike.isHidden && !grip.isHidden && duration.isHidden)
     cell.updateHover(isHovered: false)
-    #expect(like.isHidden && dislike.isHidden && grip.isHidden && !duration.isHidden)
+    #expect(!like.isHidden && dislike.isHidden && grip.isHidden && !duration.isHidden)
     cell.updateCreditFocus(true)
     #expect(!like.isHidden && !dislike.isHidden && !grip.isHidden && duration.isHidden)
     cell.updateCreditFocus(false)
@@ -88,6 +104,28 @@ private func queueCellTrack(_ id: String = "song", album: String? = "Mr. Morale 
     #expect(cell.onLike == nil && cell.onDislike == nil)
     #expect(like.isHidden && dislike.isHidden)
     configureQueueCell(cell, track: queueCellTrack("other"))
-    #expect(like.isHidden && dislike.isHidden)
+    #expect(!like.isHidden && dislike.isHidden)
     #expect(like.accessibilityLabel() == "Me gusta")
+}
+
+@Test @MainActor func nativeQueueCurrentTrackKeepsLikeVisibleAcrossPauseAndReuse() throws {
+    let cell = NativeQueueTrackCellView(frame: NSRect(x: 0, y: 0, width: 576, height: 46))
+    let like = try queueSubview(cell, "NativeQueueTrackLike", as: NSButton.self)
+    let duration = try queueSubview(cell, "NativeQueueTrackDuration", as: NSTextField.self)
+    for playing in [true, false] {
+        configureQueueCell(cell, current: true, playing: playing)
+        #expect(!like.isHidden && like.alphaValue == 1)
+        #expect(!duration.isHidden && duration.stringValue == "4:15")
+        cell.updateHover(isHovered: true)
+        cell.updateHover(isHovered: false)
+        cell.updateCreditFocus(true)
+        cell.updateCreditFocus(false)
+        #expect(!like.isHidden && !duration.isHidden)
+        #expect(like.accessibilityLabel() == "Me gusta")
+    }
+    cell.prepareForReuse()
+    configureQueueCell(cell, track: queueCellTrack("next"))
+    #expect(!like.isHidden && like.alphaValue == 1)
+    configureQueueCell(cell, liked: true, current: true)
+    #expect(!like.isHidden && like.accessibilityLabel() == "Quitar de Me gusta")
 }

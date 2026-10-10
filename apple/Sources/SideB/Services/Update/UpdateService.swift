@@ -155,18 +155,7 @@ public final class UpdateService: NSObject, @unchecked Sendable {
             let body = json["body"] as? String ?? ""
             let publishedAt = json["published_at"] as? String
 
-            // Buscar el asset .zip
-            var downloadURL: URL?
-            if let assets = json["assets"] as? [[String: Any]] {
-                for asset in assets {
-                    if let name = asset["name"] as? String, name.hasSuffix(".zip"),
-                       let browserDownloadURL = asset["browser_download_url"] as? String,
-                       let assetURL = URL(string: browserDownloadURL) {
-                        downloadURL = assetURL
-                        break
-                    }
-                }
-            }
+            let downloadURL = Self.macOSDownloadURL(in: json["assets"] as? [[String: Any]] ?? [])
 
             guard let finalDownloadURL = downloadURL else {
                 if manual { setFailure(AppMessage(key: "update.error_release_missing_zip", args: [tagName])) }
@@ -307,6 +296,17 @@ public final class UpdateService: NSObject, @unchecked Sendable {
     }
 
     // MARK: - Utilidades SemVer
+
+    /// Shared releases also contain a Windows ZIP; asset order is not a platform contract.
+    nonisolated static func macOSDownloadURL(in assets: [[String: Any]]) -> URL? {
+        assets.lazy.compactMap { asset -> URL? in
+            guard let name = asset["name"] as? String,
+                  name.caseInsensitiveCompare("SideB-macOS.zip") == .orderedSame,
+                  let download = asset["browser_download_url"] as? String,
+                  let url = URL(string: download), url.scheme == "https", url.host != nil else { return nil }
+            return url
+        }.first
+    }
 
     public nonisolated static func cleanVersion(_ raw: String) -> String {
         raw.trimmingCharacters(in: CharacterSet(charactersIn: "vV \t\n\r"))

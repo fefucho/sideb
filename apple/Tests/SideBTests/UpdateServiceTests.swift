@@ -5,6 +5,28 @@ import Testing
 @Suite("Tests de Auto-Actualizador (UpdateService)")
 struct UpdateServiceTests {
 
+    @Test("Release compartido: Mac elige su ZIP independientemente del orden")
+    func testMacDownloadFromMixedPlatformAssets() {
+        let mac = ["name": "SideB-macOS.zip", "browser_download_url": "https://example.com/SideB-macOS.zip"]
+        let windows = ["name": "SideB-Windows-x64.zip", "browser_download_url": "https://example.com/SideB-Windows-x64.zip"]
+        let checksum = ["name": "SideB-macOS-SHA256.txt", "browser_download_url": "https://example.com/checksums.txt"]
+        for assets in [[windows, checksum, mac], [mac, windows, checksum], [mac]] {
+            #expect(UpdateService.macOSDownloadURL(in: assets) == URL(string: mac["browser_download_url"]!))
+        }
+    }
+
+    @Test("Release incompleto: no descargar Windows ni un destino inválido en Mac")
+    func testMacDownloadRejectsMissingAndInvalidPackage() {
+        for assets: [[String: Any]] in [[],
+            [["name": "SideB-Windows-x64.zip", "browser_download_url": "https://example.com/windows.zip"]],
+            [["name": "SideB-macOS.zip"]],
+            [["name": "SideB-macOS.zip", "browser_download_url": "file:///tmp/mac.zip"]],
+            [["name": "SideB-macOS.zip", "browser_download_url": "mac.zip"]]
+        ] {
+            #expect(UpdateService.macOSDownloadURL(in: assets) == nil)
+        }
+    }
+
     @Test("Limpieza de prefijos de versión (v / V / espacios)")
     func testCleanVersion() {
         #expect(UpdateService.cleanVersion("v1.0.1") == "1.0.1")

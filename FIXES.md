@@ -4,9 +4,103 @@ Memoria de cambios de Side B para investigar problemas y regresiones. Buscar aqu
 
 Tags de ámbito: `[Apple]`, `[Windows]`, `[Compartido]`. Core y herramientas comunes usan Compartido, detallando el componente. El tag indica dónde se hizo el cambio; no demuestra que ambas plataformas hayan sido verificadas. Estados, fechas, componentes y relaciones se conservan dentro de cada entrada.
 
-Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-156**. Se conservaron los FIX/FEAT históricos. Dos números antiguos repetidos se distinguen como `FIX-027-2` y `FIX-028-2`, anotando el ID original; al citar FIX-027/028 comprobar título y entrada exacta.
+Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-163**. Se conservaron los FIX/FEAT históricos. Dos números antiguos repetidos se distinguen como `FIX-027-2` y `FIX-028-2`, anotando el ID original; al citar FIX-027/028 comprobar título y entrada exacta.
 
 ## Cambios recientes
+
+<a id="fix-162"></a>
+
+### [FIX-162] [Compartido] - Adjuntar paquetes Mac y Windows al release 1.2.0 existente
+
+- Fecha: 2026-10-10 (America/Montevideo).
+- Tipo / estado: entrega autorizada por el usuario; preparación/verificación en curso, subida pendiente.
+- Componente: release v1.2.0-beta.1, código main, paquetes y notas de ambas plataformas.
+- Problema / evidencia: GitHub ya muestra release409175343 publicado/Latest/non-prerelease, pero sin assets. Windows había compilado correctamente en run38082175075 y la publicación conjunta se omitió por el antiguo test Mac. El usuario pide subir ambos paquetes al release existente.
+- Cambio previsto: conservar tag/version1.2.0/build13/flags; publicar fuente Mac FIX-156–161 en main, generar/verificar el paquete final y recuperar el instalador/portable Windows ya verificados en CI. Sin forzar tag publicado ni reetiquetar binarios Windows. Notas inglesas corrigen procedencia por plataforma, colores Genius Mac y descarga manual para instalaciones ya1.2.0.
+- Verificación disponible: Windows CI a9594f47, 646 pruebas aprobadas (280 frontend/366 nativas;14 live ignoradas), compiled/fuentes estables, dos checksums de paquetes y cuatro hashes del runtime verificados. Fuentes de producción core/Windows sin diff respecto a esa revisión. Mac build-0073 aprobó582 pruebas; FIX-161 requiere nueva build. Subida/digests remotos pendientes.
+- Archivos / antecedentes: release-notes/1.2.0-beta.1.md, FIXES/PARIDAD/plans; FIX-152/153/155 y FIX-156–161. [PAR-026](PARIDAD.md), [plan de release](plans/RELEASE-1.2.0-beta.1.md). Artefactos/diagnósticos permanecen fuera de Git.
+- Límites: sin nueva compilación Windows, aceptación física de cuenta/UI/audio ni ejecución conjunta nueva en GitHub. La misma versión1.2.0 no dispara actualización desde otra1.2.0; descargar el ZIP nuevo manualmente. Resultado final se registra al completar la entrega.
+
+<a id="fix-161"></a>
+
+### [FIX-161] [Apple] - Actualizador selecciona el ZIP de Mac en releases compartidos
+
+- Fecha: 2026-10-10 (America/Montevideo).
+- Componente / estado: UpdateService; implementado, build/pruebas pendientes antes de subir.
+- Problema / causa: FEAT-060 elegía el primer asset terminado en .zip. Al adjuntar por primera vez instalador y portable Windows junto al Mac, el orden de la API podía dirigir la actualización Mac al ZIP Windows.
+- Solución / motivo: seleccionar explícitamente SideB-macOS.zip, sin depender del orden; aceptar URL HTTPS válida y tratar ausencia/invalidez del paquete Mac con el error existente. Subir Mac primero mantiene la ruta adecuada para clientes históricos que aún seleccionan el primer ZIP; verificar también el orden realmente devuelto por Latest.
+- Archivos: apple/Sources/SideB/Services/Update/UpdateService.swift, apple/Tests/SideBTests/UpdateServiceTests.swift; registro/paridad/plan/notas de release.
+- Antecedentes / paridad: completa FEAT-060 para empaquetado compartido FIX-152. [PAR-026](PARIDAD.md); Windows select_best_windows_asset ya prioriza setup/installer.exe, comprobado en fuente sin modificar destino. Core/Windows intactos.
+- Verificación / límites: dos regresiones nuevas cubren orden mixto/inverso, sólo Mac, sólo Windows, ausencia y URLs inválidas. Pendiente de ejecutar runner/build numerada. No se modifica SemVer, skippedVersion, descarga/instalación ni flags del release. [Plan](plans/RELEASE-1.2.0-beta.1.md).
+
+<a id="fix-160"></a>
+
+### [FIX-160] [Apple] - La cola conserva duración y Like después de saltar de canción
+
+- Fecha: 2026-10-10 (America/Montevideo).
+- Componente / estado: PlayerViewModel y NativeQueueTrackCellView; implementado, pruebas y build-0073 aprobadas; aceptación física pendiente.
+- Problema / causa: FIX-159 limitó el fallback de duración y el Like no marcado a la ocurrencia activa. Al avanzar, la primera canción volvía al duration vacío del catálogo y ocultaba el Like; la prueba anterior incluso esperaba esa ausencia. No era un fallo de centrado ni prueba de un problema de audio.
+- Solución / motivo: conservar en currentTrack y en la ocurrencia seleccionada la duración válida resuelta al iniciar el stream o recibir progreso, sólo si falta en catálogo. Se reutiliza updateCurrentMetadata con token/ocurrencia vigentes, sin reconstruir cola, alterar IDs/orden ni copiar a duplicados. Un dato ya conocido no se reemplaza ni produce nuevas mutaciones por tick. Duraciones no finitas, cero/negativas, fuera de Int y pistas que no corresponden a la cola se descartan. Like visible en todas las filas de la cola, preservando corazón marcado/acciones; Dislike y asa mantienen hover/foco.
+- Archivos: apple/Sources/SideB/ViewModels/PlayerViewModel.swift; apple/Sources/SideB/Views/Common/NativeQueueTrackCellView.swift; apple/Tests/SideBTests/{NativeQueueTrackCellTests,NativeTrackTableInteractionTests}.swift; FIXES/PARIDAD/PLAN-015 e índice.
+- Antecedentes / paridad: completa el caso que faltaba en FIX-159, conservando centrado FIX-158, ocurrencias/metadata de FIX-097/148 y foco/arrastre de FIX-113. [PAR-009](PARIDAD.md): Windows aún oculta Like no marcado fuera de hover/foco; conservación de duración resuelta tras skip requiere contraste en destino. Windows/core/transporte de audio intactos.
+- Verificación: nueve Swift Testing focales aprobadas. La regresión reproduce playNext/playPrevious con dos ocurrencias del mismo video, comprueba tiempo/Like de la primera celda ya inactiva, duración independiente de la segunda, mismo token/IDs, restauración de sesión y descarte al cambiar cuenta. Datos inválidos, pista distinta y prioridad del catálogo comprobados. Renders de celda aislada disponibles, sin equipararlos a ventana real.
+- Build / límites: runner build-0073, **582 pruebas aprobadas** (182 Rust, 140 XCTest y 260 Swift Testing/5 suites; 7 live Rust ignoradas); 692 claves ES/EN verificadas. BUILD.json compiled/sourceChangedDuringBuild false, SDK 27.0/arm64/mínimo macOS 15, firma ad hoc y diez hashes comprobados. XCFramework/bindings regenerados sin diff. App en builds/macos/build-0073/Side B.app. [PLAN-015](apple/plans/PLAN-015-genius-color-queue-alignment.md); cierre documental posterior a build. Sin aceptación física, cuenta/audio real, apertura automática ni push/publicación.
+
+<a id="fix-159"></a>
+
+### [FIX-159] [Apple] - Like visible y duración resuelta para la canción activa de la cola
+
+- Fecha: 2026-10-10 (America/Montevideo).
+- Componente / estado: NativeQueueTrackCellView y NativeTrackTableView; implementado, pruebas y build-0072 aprobadas; aceptación física pendiente.
+- Problema / causa: la visibilidad sólo consideraba hover/foco o Like marcado, sin distinguir la ocurrencia activa. La etiqueta leía exclusivamente SongItemRecord.duration: algunas cartas omiten ese dato aunque AudioPlayerService ya conozca la duración del stream. FIX-158 sólo corrigió el centrado, no estas reglas anteriores.
+- Solución / motivo: Like de la ocurrencia actual visible también sin hover y durante pausa; reset al reciclar. Duración del catálogo tiene prioridad y, si falta, la celda activa recibe el tiempo formateado del reproductor. Mientras se resuelve muestra —:—. El snapshot de la tabla detecta cambios del tiempo resuelto y refresca las celdas visibles. El asa sigue reemplazando la duración al hover/foco como en FIX-113/158.
+- Integración: fallback sólo en presentación queue y misma pista/ocurrencia seleccionada; duplicados no heredan el tiempo de la activa. Sin mutar DTO, cola autoritativa, orden, metadatos para callbacks, audio ni generaciones.
+- Archivos: apple/Sources/SideB/Views/Common/{NativeQueueTrackCellView,NativeTrackTableView}.swift; apple/Tests/SideBTests/{NativeQueueTrackCellTests,NativeTrackTableInteractionTests}.swift; registro, paridad y PLAN-015.
+- Antecedentes / paridad: amplía FIX-113 y conserva centrado de FIX-158; [PAR-009](PARIDAD.md). Windows QueuePanel sigue leyendo entry.duration y revela Like no marcado sólo con hover/foco: trasladar/comprobar el contrato de pista activa en Windows. Código Windows/core intacto.
+- Verificación: siete Swift Testing focales aprobadas: fila activa durante reproducción/pausa, salida de hover/foco, reuso y Like marcado, fallback de duración tardía/ausente/inválida, prioridad del catálogo, pista distinta y duplicados por ocurrencia. Renders de celdas AppKit aisladas en 350/576/900 puntos; inspección a 350/576 confirma corazón y tiempo visibles en reposo, sin aceptar la ventana completa.
+- Build / límites: runner build-0072, **580 pruebas aprobadas** (182 Rust, 140 XCTest, 258 Swift Testing/5 suites; 7 live Rust ignoradas), 692 claves ES/EN verificadas. BUILD.json compiled/sourceChangedDuringBuild false, release arm64/SDK 27.0/mínimo macOS 15, firma ad hoc y diez hashes verificados. XCFramework/bindings regenerados sin diff. App en builds/macos/build-0072/Side B.app. Sin comprobación física de ventana, cuenta ni audio. [PLAN-015](apple/plans/PLAN-015-genius-color-queue-alignment.md); documentación de cierre posterior a build, sin push/publicación.
+
+<a id="fix-158"></a>
+
+### [FIX-158] [Apple] - Duración de la cola centrada sobre el eje del asa
+
+- Fecha: 2026-10-10 (America/Montevideo).
+- Componente / estado: NativeQueueTrackCellView; implementado, pruebas y centrado en renders nativos aislados comprobados; build-0071 compilada, aceptación física pendiente.
+- Problema / causa: al reemplazar el tiempo por el asa durante hover/foco, el contenido se desplazaba horizontalmente. Las dos cajas ya compartían centro, pero la duración se alineaba a derecha dentro de 44 puntos y el símbolo se centraba. La comparación estática de FIX-145 daba por alineado Apple al mirar las restricciones; no verificaba el texto dentro de la caja.
+- Solución / motivo: centrar el texto de duración en su caja existente, equivalente al eje común de QueuePanel Windows. Preservar dimensiones, anclas, votos, foco, menú contextual, hitboxes, identidad y algoritmos de arrastre.
+- Archivos: apple/Sources/SideB/Views/Common/NativeQueueTrackCellView.swift; NativeQueueTrackCellTests.swift permite guardar renders de la celda real para QA mediante SIDEB_PRESENTATION_QA. Plan/registro/paridad actualizados.
+- Antecedentes / paridad: completa presentación Apple FIX-113 a partir de la corrección Windows FIX-145. [PAR-009](PARIDAD.md); Windows ya usa texto centrado y asa superpuesta, sólo consultado. Core intacto.
+- Verificación: tres pruebas existentes de cola aprobaron créditos/anchos, hover/foco, votos y reutilización. Capturas AppKit sin ventana en 350/576/900 puntos: centros de tinta duración/asa con diferencia X de 0.75 puntos e Y de 0, dentro del ajuste óptico de tipografía/SF Symbol. Medición limitada a la columna derecha; capturas offscreen de capas no equivalen a aceptación de toda la ventana. Evidencia local en /tmp/sideb-presentation-qa.
+- Build / límites: runner build-0071, 578 pruebas aprobadas (182 Rust, 140 XCTest, 256 Swift Testing/5 suites; 7 live Rust ignoradas), compiled/sourceChangedDuringBuild false, release arm64/SDK 27.0/mínimo macOS 15, firma ad hoc y diez hashes verificados. Aceptación física de hover, foco y arrastre pendiente. [PLAN-015](apple/plans/PLAN-015-genius-color-queue-alignment.md). Documentación de cierre posterior a la build; sin push/publicación.
+
+<a id="fix-157"></a>
+
+### [FIX-157] [Apple] - Anotaciones Genius con color de carátula y modos de Windows
+
+- Fecha: 2026-10-10 (America/Montevideo).
+- Componente / estado: Genius fullscreen, paleta y traducciones; implementado, pruebas/render nativo aislado y build-0071 aprobados; aceptación física pendiente.
+- Problema / causa: Apple seguía usando blanco normal/hover y rojo fijo al seleccionar, mientras FIX-140 Windows usa colores del arte con luminancia acotada. Pedido de trasladar la presentación antes de publicar.
+- Solución / motivo: reutilizar el sampler y ImageCache existentes con imagen 32×32, conversión de matiz HSL y límite de luminancia equivalentes a Windows. Opciones Carátula (predeterminada), Contraste y Neutro traducidas ES/EN; modo retenido durante fullscreen, sin preferencia persistente nueva. Estado vacío/error usa gris. Tarea ligada a URL cancelable y asociación de paleta a URL evitan pintar la portada anterior.
+- Integración: actualizar únicamente el dibujo del NSTextView conservando texto, rangos, selección, scroll y anotación activa; opacidades .16/.28/.48. Neutro mantiene blanco normal/hover y carátula legible al seleccionar, como Windows. Muestreo fuera del hilo principal; no se cambia descarga/parseo de Genius ni reproducción.
+- Archivos: nuevo Models/GeniusAnnotationPalette.swift; Views/Fullscreen/GeniusPanelView.swift y FullscreenNowPlayingView.swift; fragmento player-detail.json y recursos derivados; GeniusAnnotationPaletteTests.swift/GeniusLyricsLayoutTests.swift; PLAN-015/índice, FIXES/PARIDAD.
+- Antecedentes / paridad: traslada FIX-140 desde Windows y conserva geometría, selección y popover de FIX-073. [PAR-023](PARIDAD.md); Windows/core sin cambios.
+- Verificación: cuatro pruebas de referencia Windows y diez focales Swift aprobadas. Fixtures del algoritmo real Windows coinciden en Swift: azul 102/131/214, complementario 161/142/84, verde 75/157/94 y fallback 140/140/147. Contraste ≥4.5:1 en el fondo oscuro de prueba para los tres modos/colores de regresión. Render real NSTextView cambia azul→verde conservando texto, selección, referent y rectángulos. Cuatro claves ES/EN añadidas, catálogo/recursos generados y check aprobado (692 claves).
+- Build / límites: builds/macos/build-0071/Side B.app, 578 pruebas aprobadas, compiled/sourceChangedDuringBuild false, release arm64/SDK 27.0/mínimo macOS 15, firma ad hoc y diez hashes verificados. XCFramework/bindings sin diff; core/Windows intactos. Fixtures sin cuenta ni proveedor real; aceptación física del selector/scroll/cambio de canción pendiente. [PLAN-015](apple/plans/PLAN-015-genius-color-queue-alignment.md). Cierre documental posterior; sin push/publicación.
+
+<a id="fix-156"></a>
+
+### [FIX-156] [Apple] - Tolerancia numérica en la prueba de geometría de Inicio que bloqueaba CI
+
+- Fecha: 2026-10-10 (America/Montevideo).
+- Componente / estado: pruebas AppKit de Inicio y verificación de build Mac; corregido y comprobado localmente, repetición de CI pendiente.
+- Problema / causa: el run 38082175075 compiló los targets Swift pero falló en diez aserciones de un mismo test de HomeFeedScrollTests. Igualdades exactas rechazaron medidas como `959.9999999999999` frente a `960` y `541.9999999999999` frente a `542`. Son diferencias de representación numérica, no evidencia de un cambio visible. El test y la geometría de producción no cambiaron en los seis commits recibidos hasta `6c162f7`; la revisión original compiló localmente en build-0069 con 574 pruebas aprobadas. No se atribuye una regresión a las nuevas funciones ni se identifica qué particularidad del entorno CI introduce el redondeo.
+- Solución / motivo: usar `accuracy: 0.000001` puntos únicamente para ancho del viewport, ancho realmente renderizado y altura calculada de destacados. Mantener los once tamaños, cruces de breakpoint, identidad del hosting, mapeo y continuidad de filas, alturas nativas y ausencia de scrollbar horizontal. La tolerancia está muy por debajo de un píxel; no se redondea ni modifica el layout de la app.
+- Archivos: apple/Tests/SideBTests/HomeFeedScrollTests.swift; FIXES.md, PARIDAD.md, plans/RELEASE-1.2.0-beta.1.md, plans/PLAN-002-quick-access-album-metadata.md, plans/PLAN-003-home-greeting.md y plans/README.md.
+- Antecedentes: conserva el contrato de viewport/identidad de FIX-099/119. Resuelve localmente el bloqueo de precisión documentado en FIX-152/155; verifica además las diez regresiones Swift de FIX-148 y las dos de FIX-150 recibidas de GitHub.
+- Verificación: focal release HomeFeedScrollTests, 8 XCTest aprobadas. Runner `node Scripts/build-version.mjs macos`, build-0070: 182 Rust, 140 XCTest y 252 Swift Testing/5 suites aprobadas, 574 en total; 7 live Rust ignoradas. XCFramework/bindings regenerados sin diff. BUILD.json compiled/sourceChangedDuringBuild false, release arm64, SDK 27.0/mínimo macOS 15, firma ad hoc verificada y diez hashes. Diff revisado/whitespace limpio; documentación de cierre posterior a la build.
+- Límites: GitHub aún no ejecutó este arreglo; su run anterior permanece fallido. Sin prueba manual de UI/audio/FPS, ejecución Windows nueva ni publicación. El borrador beta/tag/version.env quedan intactos.
+- Paridad: comparación XCTest/AppKit exclusiva de Apple, sin lógica trasladable a Windows. [PAR-026](PARIDAD.md) conserva el requisito de CI conjunta; [PAR-003](PARIDAD.md) y [PAR-022](PARIDAD.md) incorporan ejecución automatizada Mac, sin cerrar aceptación física.
+- Build: builds/macos/build-0070/Side B.app, BUILD.json y build.log. Build-0069 original conservada; sin commit/push.
 
 <a id="fix-155"></a>
 

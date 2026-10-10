@@ -21,6 +21,7 @@ final class NativeQueueTrackCellView: NSTableCellView, NativeTrackCellPresenting
     private var includesAlbumInSubtitle = false
     private var isReorderable: Bool = false
     private var isLiked: Bool = false
+    private var isCurrentTrack = false
     private var isPointerHovered = false
     private var isCreditFocused = false
 
@@ -61,6 +62,7 @@ final class NativeQueueTrackCellView: NSTableCellView, NativeTrackCellPresenting
         boundTrack = nil
         artworkImageView.image = nil
         isLiked = false
+        isCurrentTrack = false
         isReorderable = false
         isPointerHovered = false
         isCreditFocused = false
@@ -184,7 +186,7 @@ final class NativeQueueTrackCellView: NSTableCellView, NativeTrackCellPresenting
         // 6. Duración y Grip Handle de Reordenamiento
         durationLabel.font = .systemFont(ofSize: 12, weight: .regular)
         durationLabel.textColor = .tertiaryLabelColor
-        durationLabel.alignment = .right
+        durationLabel.alignment = .center
         durationLabel.translatesAutoresizingMaskIntoConstraints = false
         durationLabel.setAccessibilityIdentifier("NativeQueueTrackDuration")
         addSubview(durationLabel)
@@ -341,9 +343,9 @@ final class NativeQueueTrackCellView: NSTableCellView, NativeTrackCellPresenting
         let controlsAreActive = isPointerHovered || isCreditFocused || containsKeyboardFocus
         durationLabel.isHidden = isReorderable && controlsAreActive
         reorderHandleImageView.isHidden = !(isReorderable && controlsAreActive)
-        likeButton.isHidden = !(isLiked || controlsAreActive)
+        likeButton.isHidden = false
         dislikeButton.isHidden = !controlsAreActive
-        likeButton.alphaValue = isLiked ? 1 : (controlsAreActive ? 1 : 0)
+        likeButton.alphaValue = 1
         dislikeButton.alphaValue = controlsAreActive ? 0.70 : 0
     }
 
@@ -366,6 +368,7 @@ final class NativeQueueTrackCellView: NSTableCellView, NativeTrackCellPresenting
         self.currentVideoId = track.videoId
         self.isReorderable = isReorderable
         self.isLiked = isLiked
+        self.isCurrentTrack = isCurrentTrack
         isPointerHovered = false
         isCreditFocused = containsKeyboardFocus
 
@@ -423,7 +426,7 @@ final class NativeQueueTrackCellView: NSTableCellView, NativeTrackCellPresenting
             subtitleTrailingNoAlbum?.isActive = true
         }
 
-        durationLabel.stringValue = track.duration ?? ""
+        updatePlaybackDuration(nil)
         durationLabel.font = .systemFont(ofSize: subtitleFontSize, weight: .regular)
 
         // 3. Botones Like & Dislike adaptativos
@@ -470,6 +473,17 @@ final class NativeQueueTrackCellView: NSTableCellView, NativeTrackCellPresenting
 
         // 6. Miniatura Desacoplada (0ms de impacto en SwiftUI)
         loadThumbnail(for: track, targetSize: CGSize(width: artSize, height: artSize))
+    }
+
+    /// Catalog cards can omit duration even after the player has resolved the stream.
+    /// This is display-only; voting callbacks retain the original bound occurrence.
+    func updatePlaybackDuration(_ duration: String?) {
+        let catalogDuration = boundTrack?.duration?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let catalogDuration, !catalogDuration.isEmpty {
+            durationLabel.stringValue = catalogDuration
+        } else {
+            durationLabel.stringValue = isCurrentTrack ? (duration ?? "—:—") : ""
+        }
     }
 
     private func loadThumbnail(for track: SongItemRecord, targetSize: CGSize) {

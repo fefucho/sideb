@@ -4,6 +4,10 @@ import SideBCore
 
 struct GeniusPanelView: View {
     @Bindable var model: GeniusViewModel
+    let artwork: String?
+    @Binding var annotationColorMode: GeniusAnnotationColorMode
+    @State private var palette = GeniusAnnotationPalette.fallback
+    @State private var paletteArtwork: String?
     @State private var section: Section = .lyrics
     @State private var showingCandidates = false
     @State private var manualQuery = ""
@@ -53,6 +57,13 @@ struct GeniusPanelView: View {
         .padding(.horizontal, 8)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .onAppear { model.ensureNow() }
+        .task(id: artwork) {
+            let requestedArtwork = artwork
+            let resolved = await GeniusAnnotationPalette.resolve(thumbnail: requestedArtwork)
+            guard !Task.isCancelled else { return }
+            palette = resolved
+            paletteArtwork = requestedArtwork
+        }
     }
 
     private var optionsMenu: some View {
@@ -82,6 +93,12 @@ struct GeniusPanelView: View {
                 }
             }
             Button(L10n.text("genius.refreshData"), systemImage: "arrow.clockwise") { model.refresh() }
+            Divider()
+            Picker(L10n.text("genius.annotationColor"), selection: $annotationColorMode) {
+                ForEach(GeniusAnnotationColorMode.allCases, id: \.self) { mode in
+                    Text(mode.title).tag(mode)
+                }
+            }
             Divider()
             Toggle(L10n.text("genius.automaticSearch"), isOn: automaticFetchBinding)
             Toggle(L10n.text("genius.showDiagnostics"), isOn: $showsDebugControls)
@@ -227,6 +244,8 @@ struct GeniusPanelView: View {
                     lyrics: model.lyrics,
                     selectedReferentId: model.selectedAnnotation?.referentId ?? model.selectedAnnotation?.id,
                     isScrollLocked: (isShowingLyricPopover && model.selectedAnnotation != nil),
+                    annotationPalette: paletteArtwork == artwork ? palette : .fallback,
+                    annotationColorMode: annotationColorMode,
                     onSelectAnnotation: { id, rect in
                         if let annotation = model.annotation(for: id) {
                             model.selectedAnnotation = annotation
@@ -404,6 +423,8 @@ struct GeniusLyricsTextView: NSViewRepresentable {
     let lyrics: [GeniusLyricLineRecord]
     let selectedReferentId: Int64?
     let isScrollLocked: Bool
+    var annotationPalette = GeniusAnnotationPalette.fallback
+    var annotationColorMode = GeniusAnnotationColorMode.artwork
     let onSelectAnnotation: (Int64, CGRect) -> Void
 
     func makeNSView(context: Context) -> GeniusLyricsScrollView {
@@ -436,7 +457,8 @@ struct GeniusLyricsTextView: NSViewRepresentable {
         context.coordinator.scrollView = scrollView
 
         textView.onSelectAnnotation = onSelectAnnotation
-        context.coordinator.update(lyrics: lyrics, selectedReferentId: selectedReferentId, isScrollLocked: isScrollLocked)
+        context.coordinator.update(lyrics: lyrics, selectedReferentId: selectedReferentId, isScrollLocked: isScrollLocked,
+                                   palette: annotationPalette, colorMode: annotationColorMode)
 
         return scrollView
     }
@@ -444,7 +466,8 @@ struct GeniusLyricsTextView: NSViewRepresentable {
     func updateNSView(_ scrollView: GeniusLyricsScrollView, context: Context) {
         guard let textView = scrollView.documentView as? GeniusLyricsNSTextView else { return }
         textView.onSelectAnnotation = onSelectAnnotation
-        context.coordinator.update(lyrics: lyrics, selectedReferentId: selectedReferentId, isScrollLocked: isScrollLocked)
+        context.coordinator.update(lyrics: lyrics, selectedReferentId: selectedReferentId, isScrollLocked: isScrollLocked,
+                                   palette: annotationPalette, colorMode: annotationColorMode)
     }
 
     func makeCoordinator() -> Coordinator {
@@ -459,8 +482,10 @@ struct GeniusLyricsTextView: NSViewRepresentable {
         private var lastSelectedReferentId: Int64?
         private var lastScrollLocked: Bool = false
 
-        func update(lyrics: [GeniusLyricLineRecord], selectedReferentId: Int64?, isScrollLocked: Bool) {
+        func update(lyrics: [GeniusLyricLineRecord], selectedReferentId: Int64?, isScrollLocked: Bool,
+                    palette: GeniusAnnotationPalette, colorMode: GeniusAnnotationColorMode) {
             guard let textView, let scrollView else { return }
+            textView.setAnnotationAppearance(palette: palette, mode: colorMode)
 
             if isScrollLocked != lastScrollLocked {
                 lastScrollLocked = isScrollLocked
@@ -514,6 +539,15 @@ final class GeniusLyricsNSTextView: NSTextView {
     private(set) var selectedReferentId: Int64?
     private var trackingArea: NSTrackingArea?
     private var referentRanges: [Int64: [NSRange]] = [:]
+    private(set) var annotationPalette = GeniusAnnotationPalette.fallback
+    private(set) var annotationColorMode = GeniusAnnotationColorMode.artwork
+
+    func setAnnotationAppearance(palette: GeniusAnnotationPalette, mode: GeniusAnnotationColorMode) {
+        guard annotationPalette != palette || annotationColorMode != mode else { return }
+        annotationPalette = palette
+        annotationColorMode = mode
+        needsDisplay = true
+    }
 
     override func scrollWheel(with event: NSEvent) {
         if isScrollLocked {
@@ -567,14 +601,18 @@ final class GeniusLyricsNSTextView: NSTextView {
         let visibleCharacters = layoutManager.characterRange(
             forGlyphRange: visibleGlyphs, actualGlyphRange: nil
         )
+        let tint = annotationPalette.tint(for: annotationColorMode)
+        let selectedTint = annotationPalette.tint(for: annotationColorMode, active: true)
+        let baseColor = NSColor(srgbRed: tint.red, green: tint.green, blue: tint.blue, alpha: 1)
+        let selectedColor = NSColor(srgbRed: selectedTint.red, green: selectedTint.green, blue: selectedTint.blue, alpha: 1)
         for (id, ranges) in referentRanges {
             let color: NSColor
             if id == selectedReferentId {
-                color = NSColor.sidebAccent.withAlphaComponent(0.48)
+                color = selectedColor.withAlphaComponent(0.48)
             } else if id == hoveredReferentId {
-                color = NSColor.white.withAlphaComponent(0.28)
+                color = baseColor.withAlphaComponent(0.28)
             } else {
-                color = NSColor.white.withAlphaComponent(0.16)
+                color = baseColor.withAlphaComponent(0.16)
             }
             color.setFill()
             for range in ranges where NSIntersectionRange(range, visibleCharacters).length > 0 {

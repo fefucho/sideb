@@ -82,4 +82,32 @@ struct GeniusLyricsLayoutTests {
         }
         #expect(selectedIDs == [1, 2, 3])
     }
+
+    @Test("Artwork tint redraws highlights while keeping text, selection and annotation geometry")
+    func artworkTintRedraw() throws {
+        let view = makeView(width: 560)
+        view.setFrameSize(NSSize(width: 560, height: 160))
+        view.drawsBackground = false
+        view.setLyrics(lines, selectedReferentId: 2)
+        view.setSelectedRange(NSRange(location: 4, length: 7))
+        let text = view.string
+        let rects = view.annotationHighlightRects(for: 2)
+        func render(_ rgb: HomeAmbientRGB, name: String) throws -> Data {
+            view.setAnnotationAppearance(palette: .from([rgb]), mode: .artwork)
+            let bitmap = try #require(view.bitmapImageRepForCachingDisplay(in: view.bounds))
+            view.cacheDisplay(in: view.bounds, to: bitmap)
+            let data = try #require(bitmap.representation(using: .png, properties: [:]))
+            if let directory = ProcessInfo.processInfo.environment["SIDEB_PRESENTATION_QA"] {
+                try data.write(to: URL(fileURLWithPath: directory).appendingPathComponent("genius-\(name).png"))
+            }
+            return data
+        }
+        let blue = try render(HomeAmbientRGB(red: 0.14, green: 0.31, blue: 0.82), name: "blue")
+        let green = try render(HomeAmbientRGB(red: 0.20, green: 0.71, blue: 0.31), name: "green")
+        #expect(blue != green)
+        #expect(view.string == text)
+        #expect(view.selectedRange() == NSRange(location: 4, length: 7))
+        #expect(view.selectedReferentId == 2)
+        #expect(view.annotationHighlightRects(for: 2) == rects)
+    }
 }

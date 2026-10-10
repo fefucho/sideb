@@ -284,8 +284,22 @@ public final class PlayerViewModel {
 
     private func setupPlaybackProgressListener() {
         self.audioService.onPlaybackProgress = { [weak self] current, duration in
+            self?.rememberCurrentTrackDuration(duration)
             self?.checkAndRecordPlaybackHistory(current: current, duration: duration)
         }
+    }
+
+    /// Preserve resolved metadata when this occurrence stops being the active row.
+    /// Catalog duration wins, and already enriched tracks incur no repeated mutation.
+    private func rememberCurrentTrackDuration(_ seconds: Double) {
+        guard var track = currentTrack, HomeSongMetadata.clean(track.duration) == nil,
+              seconds.isFinite, seconds > 0, seconds < Double(Int.max),
+              let occurrenceID = queueManager.currentOccurrenceID,
+              queueManager.currentTrack?.videoId == track.videoId else { return }
+        let queueToken = queueManager.queueToken
+        track.duration = formatTime(seconds)
+        currentTrack = track
+        queueManager.updateCurrentMetadata(track, occurrenceID: occurrenceID, queueToken: queueToken)
     }
 
     private func checkAndRecordPlaybackHistory(current: Double, duration: Double) {
@@ -841,6 +855,7 @@ public final class PlayerViewModel {
                     headers: playbackInfo.headers,
                     expectedDuration: expectedSecs
                 )
+                self.rememberCurrentTrackDuration(self.audioService.duration)
                 self.genius.playbackStarted(identity: token)
                 self.updateNowPlayingInfo()
             } catch {

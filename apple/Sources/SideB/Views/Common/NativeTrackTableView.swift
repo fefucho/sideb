@@ -116,6 +116,7 @@ struct NativeTrackTableView: NSViewRepresentable {
     let currentTrackVideoId: String?
     let currentQueueOccurrenceID: String?
     let currentQueueIndex: Int?
+    let currentQueueDuration: String?
     let isPlaying: Bool
     let playerViewModel: PlayerViewModel?
     let router: NavigationRouter?
@@ -181,6 +182,13 @@ struct NativeTrackTableView: NSViewRepresentable {
         self.currentTrackVideoId = currentTrackVideoId
         self.currentQueueOccurrenceID = playerViewModel?.queueManager.currentOccurrenceID
         self.currentQueueIndex = playerViewModel?.queueManager.currentIndex
+        if presentation == .queue, let playerViewModel,
+           currentTrackVideoId == playerViewModel.currentTrack?.videoId,
+           playerViewModel.duration.isFinite, playerViewModel.duration > 0 {
+            self.currentQueueDuration = playerViewModel.formattedDuration
+        } else {
+            self.currentQueueDuration = nil
+        }
         self.isPlaying = isPlaying
         self.playerViewModel = playerViewModel
         self.router = router
@@ -353,6 +361,7 @@ struct NativeTrackTableView: NSViewRepresentable {
         let isPlayingChanged = oldParent.isPlaying != isPlaying
         let likedChanged = oldParent.likedVideoIds != likedVideoIds
         let reorderabilityChanged = oldParent.isReorderable != isReorderable
+        let queueDurationChanged = oldParent.currentQueueDuration != currentQueueDuration
         let rowHeightChanged = oldParent.rowHeight != rowHeight || oldParent.footerHeight != footerHeight
 
         let preservesHeader = scrollingHeader != nil && oldParent.scrollingHeader != nil &&
@@ -393,7 +402,7 @@ struct NativeTrackTableView: NSViewRepresentable {
                         tableView.updateHover()
                     }
                 } else { tableView.reloadData() }
-            } else if activeTrackChanged || isPlayingChanged || reorderabilityChanged {
+            } else if activeTrackChanged || isPlayingChanged || reorderabilityChanged || queueDurationChanged {
                 tableView.enumerateAvailableRowViews { rowView, row in
                     guard row < self.rowItems.count else { return }
                     if case .track(let track, let overallIndex, _, let itemIndex) = self.rowItems[row] {
@@ -414,6 +423,7 @@ struct NativeTrackTableView: NSViewRepresentable {
                                 isReorderable: self.isReorderable,
                                 rowHeight: self.rowHeight
                             )
+                            (cellView as? NativeQueueTrackCellView)?.updatePlaybackDuration(isCurrent ? self.currentQueueDuration : nil)
                             cellView.updateCreditFocus(cellView.containsKeyboardFocus)
                             let hovered = (tableView as? NativeTrackTableViewInternal)?.hoveredRowIndex == row
                             cellView.updateHover(isHovered: hovered)
@@ -740,6 +750,7 @@ struct NativeTrackTableView: NSViewRepresentable {
                                    isLiked: parent.likedVideoIds.contains(track.videoId),
                                    hideAlbum: true, showAlbumInSubtitle: true,
                                    isReorderable: parent.isReorderable, rowHeight: parent.rowHeight)
+                    cell.updatePlaybackDuration(isCurrent ? parent.currentQueueDuration : nil)
                     cell.refreshLocalization()
                     cell.updateCreditFocus(cell.containsKeyboardFocus)
                     cell.updateHover(isHovered: (tableView as? NativeTrackTableViewInternal)?.hoveredRowIndex == row)

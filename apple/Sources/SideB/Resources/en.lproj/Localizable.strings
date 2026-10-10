@@ -516,6 +516,8 @@
 	<string>Annotation</string>
 	<key>genius.annotationBy</key>
 	<string>By %@</string>
+	<key>genius.annotationColor</key>
+	<string>Annotation color</string>
 	<key>genius.annotations</key>
 	<string>Annotations</string>
 	<key>genius.automaticSearch</key>
@@ -528,6 +530,12 @@
 	<string>Choose the version that matches this song.</string>
 	<key>genius.closeAnnotation</key>
 	<string>Close annotation</string>
+	<key>genius.colorArtwork</key>
+	<string>Artwork</string>
+	<key>genius.colorContrast</key>
+	<string>Contrast</string>
+	<key>genius.colorNeutral</key>
+	<string>Neutral</string>
 	<key>genius.composition</key>
 	<string>Composition</string>
 	<key>genius.diagnostics</key>
