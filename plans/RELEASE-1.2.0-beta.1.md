@@ -1,6 +1,6 @@
 # Side B 1.2.0 Beta — macOS & Windows Feature Parity
 
-- Status: first GitHub attempt failed Windows build-shell setup; corrected retry being prepared, release remains unpublished.
+- Status: corrected GitHub run compiling both platforms; draft created, release not yet published.
 - Version: 1.2.0, public build 13, tag v1.2.0-beta.1, GitHub prerelease; keep stable/Latest at v1.1.8.
 - Scope: current reviewed Apple/Windows integrations and joint packaging. No protected core changes.
 - Authorization: user requested release preparation, compilation on GitHub, beta publication, English release information, and a feature-parity release title.
@@ -29,3 +29,4 @@ FIX-152 / PAR-026: six release-validation regressions and real beta preflight pa
 
 - Source834395d: [run38081906898](https://github.com/fefucho/SIDE-B-CLIENT-NATIVE/actions/runs/38081906898), draft created with requested English title/prerelease flag. Windows failed before compilation: nested legacy PowerShell lacked Get-FileHash; diagnostics artifact11680492662 preserved. The incomplete attempt is stopped before retry; no packages published. FIX-153 corrects shell selection. GitHub did not create the draft's tag automatically, so the pipeline now creates/verifies it explicitly with its workflow token.
 - Retry preparation:16 build/release tests passed,1 Mac-only fixture skipped on Windows; actionlint/diffcheck passed. Only this task's unpublished empty beta draft/tag is replaced to point at corrected source; stable v1.1.8 remains unchanged.
+- Corrected source9594f4721c3e467a5b7f201392febc849079250b: [run38082175075](https://github.com/fefucho/SIDE-B-CLIENT-NATIVE/actions/runs/38082175075). Preparation succeeded; both native jobs started. [Current draft](https://github.com/fefucho/SIDE-B-CLIENT-NATIVE/releases/tag/untagged-38d582d7872d5cfcc063) title is **Side B 1.2.0 Beta — macOS & Windows Feature Parity**, isDraft/isPrerelease both true, targetCommitish and actual beta tag both match9594f47. Stable Latest independently confirmed v1.1.8. Joint publication is automatic only after both build/package/hash jobs pass; otherwise this draft stays unpublished. Diagnostics and final results are available through the run link; no completed native build is claimed while jobs are running.

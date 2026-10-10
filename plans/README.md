@@ -4,7 +4,7 @@ Herramientas compartidas o fixes para ambas plataformas. [Formato](../README.md#
 
 | Plan | Estado |
 |---|---|
-| [1.2.0 Beta — macOS & Windows Feature Parity](RELEASE-1.2.0-beta.1.md) | Hosted build-shell correction prepared; joint retry/publication pending, FIX-152/153 / PAR-026 |
+| [1.2.0 Beta — macOS & Windows Feature Parity](RELEASE-1.2.0-beta.1.md) | Corrected joint GitHub run38082175075 compiling; draft prepared, publication pending, FIX-152/153 / PAR-026 |
 | [Saludo de Inicio](PLAN-003-home-greeting.md) | Implementado/revisado: FIX-150, PAR-003; Windows comprobado, ejecución Mac pendiente |
 | [Álbum de Acceso rápido](PLAN-002-quick-access-album-metadata.md) | Implementado/revisado: FIX-148/149, PAR-022; pruebas Windows aprobadas, ejecución Swift en Mac pendiente |
 | [Historial público y material local](PLAN-001-git-publication.md) | Completado; checkpoints retirados de main/tags y temp excluida, fuentes/releases conservadas |
