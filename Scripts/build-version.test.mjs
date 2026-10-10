@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
-import { buildVersion, reserveBuild, parseArguments, sourceSnapshot } from './build-version.mjs';
+import { buildVersion, reserveBuild, parseArguments, sourceSnapshot, selectPowerShell } from './build-version.mjs';
 
 const scripts = dirname(fileURLToPath(import.meta.url));
 function fixture(t) {
@@ -16,6 +16,16 @@ function fixture(t) {
   return root;
 }
 const snapshot = () => ({ commit: 'test-commit', branch: 'main', workingTree: ' M source', sourceSHA256: 'source-hash' });
+test('Windows runner chooses a shell with hash cmdlets, preferring PowerShell 7', () => {
+  const probe = shells => (command, args) => {
+    assert.match(args.at(-1), /Get-Command Get-FileHash -ErrorAction Stop/);
+    return shells.includes(command) ? 'Get-FileHash' : 'no disponible';
+  };
+  assert.equal(selectPowerShell(scripts, probe(['pwsh', 'powershell'])), 'pwsh');
+  assert.equal(selectPowerShell(scripts, probe(['powershell'])), 'powershell');
+  assert.equal(selectPowerShell(scripts, probe(['pwsh'])), 'pwsh');
+  assert.equal(selectPowerShell(scripts, probe([])), undefined);
+});
 function nativeArtifacts(root, configuration) {
   const dir = join(root, 'windows', 'src-tauri', 'target', configuration);
   mkdirSync(dir, { recursive: true });

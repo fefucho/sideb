@@ -4,9 +4,22 @@ Memoria de cambios de Side B para investigar problemas y regresiones. Buscar aqu
 
 Tags de ámbito: `[Apple]`, `[Windows]`, `[Compartido]`. Core y herramientas comunes usan Compartido, detallando el componente. El tag indica dónde se hizo el cambio; no demuestra que ambas plataformas hayan sido verificadas. Estados, fechas, componentes y relaciones se conservan dentro de cada entrada.
 
-Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-153**. Se conservaron los FIX/FEAT históricos. Dos números antiguos repetidos se distinguen como `FIX-027-2` y `FIX-028-2`, anotando el ID original; al citar FIX-027/028 comprobar título y entrada exacta.
+Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-154**. Se conservaron los FIX/FEAT históricos. Dos números antiguos repetidos se distinguen como `FIX-027-2` y `FIX-028-2`, anotando el ID original; al citar FIX-027/028 comprobar título y entrada exacta.
 
 ## Cambios recientes
+
+<a id="fix-153"></a>
+
+### [FIX-153] [Compartido] - Select a functional Windows build shell on GitHub
+
+- Date: 2026-10-10 (America/Montevideo).
+- Component / status: numbered build runner; CI environment fix implemented, retry pending.
+- Problem / confirmed cause: joint release run38081906898 failed Windows verification before compilation because the nested powershell process could not resolve Get-FileHash, while its parent pwsh bootstrap succeeded. The runner selected legacy PowerShell based only on its version. Inheriting PowerShell7's module environment does not guarantee legacy Utility cmdlets are available.
+- Change / reason: prefer pwsh and probe Get-FileHash availability, retaining powershell as a tested fallback. Explicit injected shells remain supported for tests. Mac build commands are unchanged. The release draft remains unpublished; the failed run and its diagnostic artifact remain available.
+- Files: Scripts/build-version.mjs, Scripts/build-version.test.mjs; release workflow additionally creates/verifies its tag because GitHub leaves draft tags uncreated until publication.
+- Related fixes: completes FIX-152 after the first real hosted-runner attempt; retains existing numbered-build contracts and runtime isolation already verified in FIX-136.
+- Verification: node --test Scripts/build-version.test.mjs Scripts/release-config.test.mjs:16 passed,1 Mac-only shell fixture skipped on Windows, zero failures. Regression covers both shells, unavailable hash cmdlets and fallback; real local probe selected pwsh. Official actionlint passed with documented xcode-27 label; diffcheck clean. No new local application build is claimed.
+- Limits / parity: [PAR-026](PARIDAD.md), [beta plan](plans/RELEASE-1.2.0-beta.1.md). Shell selection is exclusive to Windows; Mac bypasses it and continues with native tools. Retrying both platforms is necessary for joint publication; no audio/installation validation implied.
 
 <a id="fix-152"></a>
 

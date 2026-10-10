@@ -1,6 +1,6 @@
 # Side B 1.2.0 Beta — macOS & Windows Feature Parity
 
-- Status: preparing source and GitHub builds; not published.
+- Status: first GitHub attempt failed Windows build-shell setup; corrected retry being prepared, release remains unpublished.
 - Version: 1.2.0, public build 13, tag v1.2.0-beta.1, GitHub prerelease; keep stable/Latest at v1.1.8.
 - Scope: current reviewed Apple/Windows integrations and joint packaging. No protected core changes.
 - Authorization: user requested release preparation, compilation on GitHub, beta publication, English release information, and a feature-parity release title.
@@ -12,7 +12,7 @@
 - [x] Prepare English release notes, including platform-specific options and validation limits.
 - [x] Align Windows manifests and add a joint Mac/Windows release workflow.
 - [x] Check source, version/package regression tests and outgoing commits; exclude local artifacts/secrets. Explicit staged paths reviewed before commit.
-- [ ] Commit and push the authorized release sources to main, then dispatch the GitHub workflow at that revision.
+- [x] Commit and push the authorized release sources to main, then dispatch the GitHub workflow at that revision.
 - [ ] Record workflow/draft links and build results. Publish only after both packages and their checksums are available.
 
 ## Packages and limits
@@ -24,3 +24,8 @@ The previous local Windows build0012 is compiled with646 passing tests and a ver
 ## Preparation verification
 
 FIX-152 / PAR-026: six release-validation regressions and real beta preflight passed. Official actionlint1.7.12 passed with the documented xcode-27 label added to its local configuration; shellcheck/pyflakes were unavailable. Tauri CLI supports packaging without rebuilding/binary patching. Cargo metadata --locked confirms the Windows package at1.2.0. Source diffcheck clean; origin/main has no outgoing checkpoint commits. Final commit and workflow links are recorded below when available.
+
+## Hosted build attempts
+
+- Source834395d: [run38081906898](https://github.com/fefucho/SIDE-B-CLIENT-NATIVE/actions/runs/38081906898), draft created with requested English title/prerelease flag. Windows failed before compilation: nested legacy PowerShell lacked Get-FileHash; diagnostics artifact11680492662 preserved. The incomplete attempt is stopped before retry; no packages published. FIX-153 corrects shell selection. GitHub did not create the draft's tag automatically, so the pipeline now creates/verifies it explicitly with its workflow token.
+- Retry preparation:16 build/release tests passed,1 Mac-only fixture skipped on Windows; actionlint/diffcheck passed. Only this task's unpublished empty beta draft/tag is replaced to point at corrected source; stable v1.1.8 remains unchanged.

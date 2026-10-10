@@ -101,6 +101,13 @@ function commandVersion(command, args, root) {
   return result.status === 0 ? result.stdout.trim() : 'no disponible';
 }
 
+export function selectPowerShell(root, probe = commandVersion) {
+  // PowerShell 7's inherited module path can leave a nested Windows PowerShell
+  // without Utility cmdlets. Prefer pwsh and require the hash command we use.
+  return ['pwsh', 'powershell'].find(command =>
+    probe(command, ['-NoProfile', '-Command', '(Get-Command Get-FileHash -ErrorAction Stop).Name'], root) === 'Get-FileHash');
+}
+
 function hashes(path, root = path) {
   const result = {};
   for (const entry of readdirSync(path, { withFileTypes: true })) {
@@ -165,8 +172,7 @@ export async function buildVersion(root, options, dependencies = {}) {
       await step('bash', [join(root, 'Scripts', 'build-macos.sh'), options.configuration, artifact]);
       if (!existsSync(join(artifact, 'Contents', 'MacOS', 'Side B'))) throw new Error('Falta el ejecutable del bundle Mac.');
     } else {
-      const powerShell = dependencies.powerShell || ['powershell', 'pwsh'].find(command =>
-        commandVersion(command, ['-NoProfile', '-Command', '$PSVersionTable.PSVersion.ToString()'], root) !== 'no disponible');
+      const powerShell = dependencies.powerShell || selectPowerShell(root);
       if (!powerShell) throw new Error('Falta PowerShell.');
       metadata.tools.powerShell = commandVersion(powerShell, ['-NoProfile', '-Command', '$PSVersionTable.PSVersion.ToString()'], root);
       // pnpm is usually a .cmd shim on Windows; resolve it through its shell.

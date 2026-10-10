@@ -63,10 +63,15 @@ jobs:
           fi
           if is_draft=$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft 2>/dev/null); then
             test "$is_draft" = true || { echo 'Refusing to replace a published release'; exit 1; }
-            test "$(gh api "repos/$GH_REPO/commits/$RELEASE_TAG" --jq .sha)" = "$GITHUB_SHA" || { echo 'Tag points to a different revision'; exit 1; }
+            test "$(gh release view "$RELEASE_TAG" --json targetCommitish --jq .targetCommitish)" = "$GITHUB_SHA" || { echo 'Draft points to a different revision'; exit 1; }
           else
             gh release create "$RELEASE_TAG" --target "$GITHUB_SHA" --title "$title" --notes-file "$NOTES" --draft --latest=false "${flags[@]}"
           fi
+          # GitHub does not create the tag for an unpublished draft.
+          if ! gh api "repos/$GH_REPO/git/ref/tags/$RELEASE_TAG" >/dev/null 2>&1; then
+            gh api "repos/$GH_REPO/git/refs" --method POST -f "ref=refs/tags/$RELEASE_TAG" -f "sha=$GITHUB_SHA" >/dev/null
+          fi
+          test "$(gh api "repos/$GH_REPO/commits/$RELEASE_TAG" --jq .sha)" = "$GITHUB_SHA" || { echo 'Tag points to a different revision'; exit 1; }
 
   macos:
     name: Build and package macOS arm64
