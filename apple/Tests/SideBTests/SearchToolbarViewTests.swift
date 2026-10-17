@@ -187,11 +187,14 @@ import Testing
         let line = layoutManager.lineFragmentUsedRect(forGlyphAt: 0, effectiveRange: nil)
         let editorLine = editor.convert(line.offsetBy(dx: editor.textContainerOrigin.x,
                                                        dy: editor.textContainerOrigin.y), to: bar)
-        #expect(abs(editorLine.midY - bar.bounds.midY) < 0.01)
+        // AppKit rounds editor glyphs/caret to backing pixels. Odd line heights
+        // can land half a physical pixel from the exact center on a 1x screen.
+        let pixelTolerance = 0.5 / window.backingScaleFactor + 0.01
+        #expect(abs(editorLine.midY - bar.bounds.midY) <= pixelTolerance)
         #expect(bar.textField.frame == placeholderFrame)
         let caretScreen = editor.firstRect(forCharacterRange: NSRange(location: 0, length: 0), actualRange: nil)
         let caret = bar.convert(window.convertFromScreen(caretScreen), from: nil)
-        #expect(abs(caret.midY - bar.bounds.midY) < 0.01)
+        #expect(abs(caret.midY - bar.bounds.midY) <= pixelTolerance)
         #expect(caret.height <= bar.textField.frame.height)
         #expect(bar.bounds.contains(editorLine))
     }

@@ -30,3 +30,15 @@ Run39069262028 iniciado2026-10-17T21:02:42Z; preparación aprobada y ambos traba
 ### Primer intento: fallo de fixture Windows
 
 Windows llega a frontend check0/0 y suite con379 aprobadas/3 fallos (382 totales, sin omisiones en host destino). Fallan sólo playlists/albums/artists en presentación lista: la fixture detecta un sufijo de ruta POSIX y no siembra la preferencia en Windows. FIX-203 usa path.join igual que la carga; ocho focales SSR aprobadas en Mac, aserciones visuales intactas. No se cambia producto ni se declara verificado Windows hasta repetir CI. Mac sigue en ejecución; publicación conjunta queda bloqueada y Latest1.2.0 permanece intacta. Se reemplazará únicamente el borrador vacío/tag no publicado de este intento para la revisión corregida; los runs/diagnósticos se conservan.
+
+Reintento: commit e2c6169a9c75c494cd4ec422b3e1bd7a5945be9a subido; [run39069529111](https://github.com/fefucho/sideb/actions/runs/39069529111) despachado para v1.2.1. Se comprobó que el borrador anterior era propio, vacío y no publicado antes de reemplazar borrador/tag de ese intento. Referencias de releases publicadas intactas; el reintento espera el grupo de concurrencia existente.
+
+Se cancela el run obsoleto39069262028 después del fallo Windows, para liberar el grupo y permitir la verificación corregida de ambas plataformas. CI Mac de ese intento no se presenta como aprobada; build local0130 mantiene su evidencia747. Los diagnósticos Windows y el historial de Actions se conservan.
+
+Run corregido39069529111: preparación aprobada; draft vacío y tag v1.2.1 apuntan a e2c6169a9c75c494cd4ec422b3e1bd7a5945be9a. Ambos jobs iniciados. El log del Mac cancelado confirma188 pruebas Rust aprobadas y XCFramework terminado antes de interrumpir compilación Swift; no se confunde con el resultado final pendiente.
+
+### Segundo intento: pruebas nativas
+
+Run39069529111: Windows aprueba382 frontend/check/build,97 InnerTube+91 core+93 bridge (14 live ignoradas) y tres pruebas puras player. La prueba real libmpv termina con acceso inválido0xc0000005; no se omite ni se declara audio aprobado. Mac compila y ejecuta222 XCTest/344 Swift Testing, pero falla cuatro aserciones de viewport y dos de redondeo nativo. FIX-204 corrige ambos supuestos de fixture; cinco focales locales aprobadas sin cambiar producto.
+
+Investigación libmpv: workflow diagnóstico manual en copia temporal de player; primer intento39070618224 falló antes de ejecutar por ejemplo ausente en la copia, corregido. Run39070749039 aprueba original serial instrumentado y variante con vida útil retenida (4+20 ejecuciones). No reproduce aún la caída original ni permite atribuirla definitivamente al teardown. Un tercer diagnóstico retiene el receptor tras soltar Player para comprobar esa vida útil; fuentes productivas core sin cambios durante investigación.

@@ -159,3 +159,5 @@ Seguimiento PAR-013/PAR-032 / FIX-199 (2026-10-17): el desplazamiento del Canvas
 Seguimiento FIX-200/201 (2026-10-17), PAR-009/PAR-012-2: Windows corrige indicador activo/selección y preserva identidad visual de origen separada del ownership nativo de cola. 381 frontend/check0/0/build y45 pruebas aisladas de queue.rs aprobadas; runtime nativo CI y QA física pendientes. Apple usa su tabla nativa sin compartir DTO; no requiere port. Entrega conjunta1.2.1/FIX-202 en preparación bajo PAR-026.
 
 FIX-203/PAR-028 (2026-10-17): CI destino detecta un sufijo POSIX en la fixture SSR que impedía sembrar layout=list en Windows. Se corrige identificación por path.join; viewport/compact/actions/pins se siguen verificando. No es un cambio de producto ni cierra QA física; nuevo run de release pendiente.
+
+FIX-204/PAR-031/PAR-027 (2026-10-17): pruebas Mac corrigen supuestos de scrollbar overlay y escala de pantalla; viewport real y margen de medio píxel físico, producto conservado. Cinco focales locales aprobadas, repetición CI1x pendiente. Sin cambios Windows/core.

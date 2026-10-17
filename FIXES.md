@@ -4,9 +4,20 @@ Memoria de cambios de Side B para investigar problemas y regresiones. Buscar aqu
 
 Tags de ámbito: `[Apple]`, `[Windows]`, `[Compartido]`. Core y herramientas comunes usan Compartido, detallando el componente. El tag indica dónde se hizo el cambio; no demuestra que ambas plataformas hayan sido verificadas. Estados, fechas, componentes y relaciones se conservan dentro de cada entrada.
 
-Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-204**. Se conservaron los FIX/FEAT históricos. Dos números antiguos repetidos se distinguen como `FIX-027-2` y `FIX-028-2`, anotando el ID original; al citar FIX-027/028 comprobar título y entrada exacta.
+Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-205**. Se conservaron los FIX/FEAT históricos. Dos números antiguos repetidos se distinguen como `FIX-027-2` y `FIX-028-2`, anotando el ID original; al citar FIX-027/028 comprobar título y entrada exacta.
 
 ## Cambios recientes
+
+<a id="fix-204"></a>
+
+### [FIX-204] [Apple] - Comprobar viewport y centrado con preferencias del runner
+
+- Fecha: 2026-10-17 (America/Montevideo).
+- Componente / estado: pruebas AppKit de Inicio retenido y campo de búsqueda; implementado, cinco focales locales aprobadas; CI por repetir.
+- Problema / causa: run39069529111 compila el producto y falla cuatro aserciones de ancho de fila (scrollbar clásica reserva17pt) y dos de centrado nativo (redondeo de medio píxel a1x). Las pruebas asumían scrollbar overlay y escala2x del Mac local. No se atribuyen defectos de producto a estas diferencias de preferencias/renderizado.
+- Cambio: fila de Inicio debe llenar el clip viewport; el scroll exterior sigue llenando exactamente el shell. Probar ambos estilos legacy/overlay y mantener borde izquierdo, tamaños y límites. Editor/caret admiten como máximo medio píxel físico más0,01pt; placeholder/frame/tamaño natural siguen exactos y un error visible de2pt de FIX-196 sigue rechazado.
+- Archivos: `apple/Tests/SideBTests/{HomeFullscreenSuspensionTests,SearchToolbarViewTests}.swift`.
+- Verificación / límites: cuatro XCTest y un Swift Testing aprobados con ambos estilos de scroller locales; la escala1x se comprueba en el próximo CI. Mismas acciones, geometría y código de producción. Antecedentes FIX-185/186/196, PAR-031/PAR-027 y [plan1.2.1](plans/RELEASE-1.2.1.md). Exclusivo de AppKit, sin port Windows/core.
 
 <a id="fix-203"></a>
 

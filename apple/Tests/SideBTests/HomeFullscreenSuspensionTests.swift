@@ -191,20 +191,28 @@ final class HomeFullscreenSuspensionTests: XCTestCase {
         host.frame = NSRect(x: 0, y: 0, width: 960, height: 680)
         host.layoutSubtreeIfNeeded()
         let scroll = try XCTUnwrap(descendants(host).compactMap { $0 as? HomeFeedScrollView }.first)
-        for (page, reserve): (PageDestination, CGFloat) in [
-            (.explore(.discover), 242), (.library, 242), (.home, 242),
-            (.home, 0), (.home, 242), (.home, 0)
-        ] {
-            host.rootView = shell(page, reserve: reserve)
-            host.layoutSubtreeIfNeeded()
-            guard page == .home else { continue }
-            let frame = scroll.convert(scroll.bounds, to: host)
-            XCTAssertEqual(frame.minX, reserve, accuracy: 0.5)
-            XCTAssertEqual(frame.width, 960-reserve, accuracy: 0.5)
-            let table = try XCTUnwrap(scroll.documentView as? NSTableView)
-            let featured = try XCTUnwrap(table.view(atColumn: 0, row: 0, makeIfNecessary: true))
-            XCTAssertEqual(featured.convert(featured.bounds, to: host).minX, reserve, accuracy: 0.5)
-            XCTAssertEqual(featured.frame.width, frame.width, accuracy: 0.5)
+        for scrollerStyle: NSScroller.Style in [.legacy, .overlay] {
+            scroll.scrollerStyle = scrollerStyle
+            for (page, reserve): (PageDestination, CGFloat) in [
+                (.explore(.discover), 242), (.library, 242), (.home, 242),
+                (.home, 0), (.home, 242), (.home, 0)
+            ] {
+                host.rootView = shell(page, reserve: reserve)
+                host.layoutSubtreeIfNeeded()
+                guard page == .home else { continue }
+                let frame = scroll.convert(scroll.bounds, to: host)
+                XCTAssertEqual(frame.minX, reserve, accuracy: 0.5)
+                XCTAssertEqual(frame.width, 960-reserve, accuracy: 0.5)
+                let table = try XCTUnwrap(scroll.documentView as? NSTableView)
+                let featured = try XCTUnwrap(table.view(atColumn: 0, row: 0, makeIfNecessary: true))
+                XCTAssertEqual(featured.convert(featured.bounds, to: host).minX, reserve, accuracy: 0.5)
+                // Legacy scrollers reserve space; the row fills the clip viewport,
+                // while the outer scroll view must still fill the shell proposal.
+                let viewport = scroll.contentView.convert(scroll.contentView.bounds, to: host)
+                XCTAssertEqual(viewport.minX, reserve, accuracy: 0.5)
+                XCTAssertEqual(featured.frame.width, viewport.width, accuracy: 0.5)
+                XCTAssertLessThanOrEqual(viewport.maxX, frame.maxX + 0.5)
+            }
         }
     }
 
