@@ -1,7 +1,7 @@
 # Release 1.2.1
 
 - Fecha: 2026-10-17 (America/Montevideo).
-- Estado: preparada; CI nativo y publicación pendientes.
+- Estado: entregada; v1.2.1 publicada como Latest con seis assets verificados. Mac build-0131 de1c0b2f4 y Windows CI39071362949 de c123b59; procedencia pública por plataforma.
 - Pedido: publicar una actualización pequeña al terminar FIX-199 y revisar lo completado por Gemini/FIX-200. Autorización explícita de commit, push, tag y release; no instalación ni cambio de datos de cuenta.
 - Versión:1.2.1/build14, tag v1.2.1. Continúa beta; el tag numérico evita el aviso repetido de FIX-163. Los actualizadores consultan Latest, por eso se mantiene distribución numérica normal con aviso beta en notas.
 - Ámbito: fuentes actuales revisadas de FIX-165–201 para macOS y Windows, incluyendo motor/biblioteca compartidos, TopNav/Spotlight Apple, volumen sólo en carátula/control, descenso reparado y selección/actividad Windows. Core previo compartido conservado; ningún cambio de core nuevo por FIX-199/201/202.
@@ -16,8 +16,8 @@
 - [x] Revisar rutas y patrones de secretos. .cache y prototipos suspendidos quedan fuera de Git; fixtures de proveedores son anónimas/sanitizadas. Coincidencia de cookie en lib.rs corresponde a tres fixtures sintéticas históricas. Bindings UniFFI conservados tal cual generados; sus espacios finales se documentan sin editar generación manualmente.
 - [x] Commit b07ace912d34906a805fe99d2c24ab8c63d060f3:210 rutas explícitas de fuentes/tests/fixtures/planes/fixes/notas; artefactos, .cache y prototipos suspendidos fuera.
 - [x] Push main y dispatch manual [run39069262028](https://github.com/fefucho/sideb/actions/runs/39069262028) al commit b07ace9; preflight aprobado, tag/draft v1.2.1 verificados en esa revisión. Publicada1.2.0 conservada.
-- [ ] Aprobar build/test native de ambas plataformas, checksums y publicación conjunta.
-- [ ] Verificar Latest/tag/versión, descargas y digests; cerrar registros con enlaces y límites físicos.
+- [x] Aprobar build/test native de ambas plataformas, checksums y publicación conjunta:747 pruebas Mac build-0131 y761 ejecuciones Windows CI; detalles bajo FIX-206. El workflow original permanece fallido por el formato de bindings; entrega recuperada con nueva build Mac validada y paquetes Windows originales verificados.
+- [x] Verificar Latest/tag/versión, descargas y digests; seis descargas públicas idénticas a staging, registros cerrados con enlaces y límites físicos.
 
 ## Límites
 
@@ -60,6 +60,12 @@ Run39071362949 terminó con Windows aprobado (32min, incluyendo23min33 de verifi
 La imagen hospedada incluye SwiftFormat0.63.1; UniFFI0.28.3 lo ejecuta automáticamente y este Mac no lo tiene. FIX-206 fija `--no-format` sin cambiar código Rust ni los bindings versionados. Pedido actual: reparar Mac y completar la subida; optimización de caché diferida. Se verificará generación real con formateador presente/ausente, se compilará Mac mediante el runner numerado y se recuperarán los paquetes Windows aprobados tras comparar íntegramente sus fuentes/dependencias con el commit de origen. Se conservará procedencia por plataforma y hashes públicos. No se reutilizará un paquete con fuentes Windows/core divergentes.
 
 - [x] Aprobar la regresión de generación independiente de SwiftFormat y los checks de release: UniFFI real con formateador simulado reproduce cambio en modo automático; `--no-format` conserva exactamente el binding versionado.17 pruebas runner/release, preflight y shell/diffcheck aprobados.
-- [ ] Guardar/subir FIX-206 y producir una build Mac estable, firmada y verificada de esa revisión.
-- [ ] Recuperar y verificar los paquetes Windows del run39071362949; comprobar igualdad de fuentes/dependencias.
-- [ ] Publicar ambos sistemas, checksums y procedencia; comprobar Latest y descargas remotas.
+- [x] Guardar/subir FIX-206 (1c0b2f4831e345a2cef6bc8258ef95f8193c2d6e) y producir Mac build-0131:747 pruebas aprobadas, compiled/sourceChangedDuringBuild=false, versión1.2.1/build14, arm64/mínimo15, diez hashes y firma deep/strict correctos antes/después de extraer ZIP.
+- [x] Recuperar y verificar Windows run39071362949:382frontend+97InnerTube+91core+93core/bridge+5player+93Tauri=761 ejecuciones aprobadas;14live ignoradas. Check0/0, hashes instalador/portable y cuatro runtimes internos verificados. Comparación Git de Windows/core/version.env/scripts de build/release/workflow sin diferencias entre c123b59 y1c0b2f4.
+- [x] Publicar ambos sistemas, checksums y procedencia; Latest1.2.1/tag1c0b2f4/versión/build/seis assets/digests aprobados. Descarga pública nueva de los seis archivos idéntica a staging.
+
+### Publicación completada
+
+[Side B1.2.1](https://github.com/fefucho/sideb/releases/tag/v1.2.1), release416075215, publicada2026-10-17 19:18:47 (America/Montevideo). Se conservó el borrador existente; sólo su tag antes no publicado se avanzó de c123b59 a1c0b2f4 mediante actualización fast-forward. Mac se subió primero para clientes antiguos; instalador/portable Windows, checksums y `SideB-build-info.json` completan los seis assets. Se cotejaron tamaños y digests remotos antes de publicar; después se verificaron Latest y las seis descargas nuevas contra los archivos locales. Releases anteriores e historial de Actions intactos; no se presenta el workflow fallido como aprobado.
+
+Procedencia: Mac build-0131 local de1c0b2f4, Windows job117509535174 aprobado de c123b59. Sus fuentes/dependencias Windows/core coinciden; sólo difieren script de generación Apple y documentación/notas. No se relabelaron binarios anteriores. ZIP/checksum Mac y evidencia de procedencia conservados en `builds/macos/build-0131/`; ver FIX-206 y el manifiesto público. Aceptación física de audio/cuenta/instalación/trackpad y notarización Mac siguen fuera de esta entrega. Caché diferida por pedido.
