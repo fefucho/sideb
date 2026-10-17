@@ -37,6 +37,26 @@ jobs:
           $instrumented = $instrumented.Replace('let after = af();', 'eprintln!("PROBE before last filter check"); let after = af();')
           $instrumented = $instrumented.Replace('assert!(!af().contains("rubberband"), "stored pitch survived the rollback: {}", af());', 'assert!(!af().contains("rubberband"), "stored pitch survived the rollback: {}", af()); eprintln!("PROBE before Player drop");')
           if ($instrumented -eq $original) { throw 'Missing diagnostic seam' }
+          $instrumented += @'
+
+          #[cfg(test)]
+          mod lifetime_probe {
+              #[test]
+              fn receiver_keeps_event_context_valid_after_player_drop() {
+                  let dir = std::env::temp_dir().join("sideb-lifetime-probe");
+                  std::fs::create_dir_all(&dir).unwrap();
+                  let mut player = super::Player::new(dir.to_str().unwrap()).unwrap();
+                  let receiver = player.take_events().unwrap();
+                  eprintln!("LIFETIME before dropping the last Player with a live receiver");
+                  drop(player);
+                  std::thread::sleep(std::time::Duration::from_millis(1250));
+                  eprintln!("LIFETIME player dropped; releasing receiver");
+                  drop(receiver);
+                  std::thread::sleep(std::time::Duration::from_millis(1250));
+                  eprintln!("LIFETIME finished");
+              }
+          }
+          '@
           [IO.File]::WriteAllText("$stage/crates/player/src/lib.rs", $instrumented)
           & cargo test --manifest-path "$stage/Cargo.toml" -p player -- --nocapture --test-threads=1
           $originalExit = $LASTEXITCODE
