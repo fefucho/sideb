@@ -43,6 +43,9 @@ jobs:
           if ($baseline -eq 0) { throw 'The regression failed to detect the missing native owner' }
           $details = $baselineOutput | Out-String
           if ($details -notmatch 'running 1 test' -or $details -notmatch 'live event stream must retain|STATUS_ACCESS_VIOLATION') { throw 'Unexpected baseline failure; lifetime regression was not demonstrated' }
+          # This step expects the old copy to fail. GitHub's pwsh wrapper otherwise
+          # propagates the last native exit code after the validated negative probe.
+          exit 0
       - name: Verify production player and repeated native teardown
         shell: pwsh
         run: |
