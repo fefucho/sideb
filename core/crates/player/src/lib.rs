@@ -120,9 +120,15 @@ impl Player {
         ev.observe_property("pause", Format::Flag, 2)?;
         ev.observe_property("idle-active", Format::Flag, 3)?;
 
+        // EventContext borrows this raw handle. Keep its owner alive until the
+        // worker has returned and dropped the context, even if Player is dropped first.
+        let event_mpv = Arc::clone(&mpv);
         std::thread::Builder::new()
             .name("mpv-events".into())
-            .spawn(move || event_loop(ev, tx))
+            .spawn(move || {
+                let _keep_alive = event_mpv;
+                event_loop(ev, tx);
+            })
             .expect("spawn mpv event thread");
 
         Ok(Player { mpv, events: Some(rx), af: std::sync::Mutex::new((None, 0)) })
@@ -366,6 +372,11 @@ fn event_loop(mut ev: EventContext, tx: tokio::sync::mpsc::UnboundedSender<Playe
     let mut idle = true;
     let mut playing = false;
     loop {
+        // An idle stream may never emit another event after its receiver closes.
+        // Stop on the next bounded wait instead of retaining the native owner forever.
+        if tx.is_closed() {
+            break;
+        }
         match ev.wait_event(1.0) {
             Some(Ok(event)) => {
                 let out = match event {
@@ -480,6 +491,26 @@ fn perceptual_to_mpv(percent: i64) -> f64 {
 mod tests {
     use super::{af_chain, perceptual_to_mpv, quoted};
 
+    static MPV_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    #[test]
+    fn native_handle_outlives_player_until_event_receiver_closes() {
+        let _lock = MPV_TEST_LOCK.lock().unwrap();
+        let dir = std::env::temp_dir().join("sideb-player-lifetime-test");
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut player = super::Player::new(dir.to_str().unwrap()).expect("libmpv");
+        let native = std::sync::Arc::downgrade(&player.mpv);
+        let receiver = player.take_events().unwrap();
+        drop(player);
+        assert!(native.strong_count() > 0, "the live event stream must retain its native handle");
+        drop(receiver);
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
+        while native.strong_count() > 0 && std::time::Instant::now() < deadline {
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        assert_eq!(native.strong_count(), 0, "closing the stream must release the idle native owner");
+    }
+
     #[test]
     fn gain_and_pitch_share_one_chain() {
         // The bug this exists for: either setter clobbering the other's filter.
@@ -498,6 +529,7 @@ mod tests {
     /// runs tests in parallel.
     #[test]
     fn mpv_keeps_the_gain_through_pitch_changes_and_failures() {
+        let _lock = MPV_TEST_LOCK.lock().unwrap();
         use super::{Error, Player, NO_RUBBERBAND};
         use std::sync::atomic::Ordering;
 

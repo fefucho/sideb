@@ -4,9 +4,21 @@ Memoria de cambios de Side B para investigar problemas y regresiones. Buscar aqu
 
 Tags de ámbito: `[Apple]`, `[Windows]`, `[Compartido]`. Core y herramientas comunes usan Compartido, detallando el componente. El tag indica dónde se hizo el cambio; no demuestra que ambas plataformas hayan sido verificadas. Estados, fechas, componentes y relaciones se conservan dentro de cada entrada.
 
-Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-205**. Se conservaron los FIX/FEAT históricos. Dos números antiguos repetidos se distinguen como `FIX-027-2` y `FIX-028-2`, anotando el ID original; al citar FIX-027/028 comprobar título y entrada exacta.
+Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-206**. Se conservaron los FIX/FEAT históricos. Dos números antiguos repetidos se distinguen como `FIX-027-2` y `FIX-028-2`, anotando el ID original; al citar FIX-027/028 comprobar título y entrada exacta.
 
 ## Cambios recientes
+
+<a id="fix-205"></a>
+
+### [FIX-205] [Windows] - Retener handle libmpv hasta terminar el hilo de eventos
+
+- Fecha: 2026-10-17 (America/Montevideo).
+- Componente / estado: wrapper nativo Rust player; corrección de vida útil implementada, verificación exacta/regresión nativa en preparación. La investigación serial previa no reproduce de forma determinista el acceso inválido de CI; no se le atribuye el crash sin stack nativo.
+- Problema comprobado por código: EventContext copia el handle de Mpv y corre en otro hilo sin retener Arc<Mpv>. Liberar Player puede ejecutar mpv_terminate_destroy mientras el worker todavía entra en mpv_wait_event. Además, sin eventos nuevos el worker sólo comprobaba cierre del receptor al intentar enviar, por lo que una retención simple podría dejarlo vivo indefinidamente.
+- Cambio: el worker retiene Arc<Mpv> hasta que retorna event_loop y se libera EventContext. El loop comprueba tx.is_closed antes de cada espera acotada de1s. Regresión con libmpv real conserva el receptor al soltar Player, verifica handle vivo y liberación acotada tras cerrar receptor. Los dos tests nativos comparten mutex por el estado global de filtros.
+- Archivo: `core/crates/player/src/lib.rs`; workflow manual `.github/workflows/player-diagnostic.yml` comprueba regresión roja en copia temporal sin dueño, suite exacta de producción y20 repeticiones, sin relajar tests de release.
+- Alcance / autorización: el pedido vigente autoriza verificar/arreglar lo necesario y terminar la release de ambas apps. Se limita esta excepción al core protegido al wrapper requerido por el fallo nativo Windows, sin modificar proveedor, persistencia, contratos, curva, audio AVPlayer ni bindings Apple. El defecto de propiedad del handle es independiente del SO que use este wrapper; la app Apple usa AVPlayer y no comparte ese flujo. No se afirma un síntoma Apple equivalente.
+- Antecedentes / paridad / planes: FIX-197/202 y PAR-024/PAR-032; [plan1.2.1](plans/RELEASE-1.2.1.md). Se conserva evidencia de los intentos: run39070749039 original serial instrumentado4+variante4/20 aprobadas;39070910401 original con receptor5+variante5/20 aprobadas, sin repro determinista del acceso inválido. La prueba nueva verifica la propiedad de seguridad y ausencia de retención indefinida. CI completo y audio físico pendientes.
 
 <a id="fix-204"></a>
 

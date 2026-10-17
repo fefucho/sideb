@@ -1,4 +1,4 @@
-name: Diagnose native player lifetime
+name: Verify native player lifetime
 
 on:
   workflow_dispatch: {}
@@ -16,15 +16,14 @@ jobs:
       - name: Bootstrap verified native runtime
         shell: pwsh
         run: ./windows/scripts/windows.ps1 bootstrap
-      - name: Compare original player with a temporary lifetime repair
+      - name: Verify regression detects the former missing owner
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           $PSNativeCommandUseErrorActionPreference = $false
           $env:SIDEB_MPV_DIR = Join-Path $PWD 'windows/.cache/mpv'
           $env:PATH = "$env:SIDEB_MPV_DIR;$env:PATH"
-          $env:RUST_BACKTRACE = 'full'
-          $stage = Join-Path $env:RUNNER_TEMP 'player-lifetime'
+          $stage = Join-Path $env:RUNNER_TEMP 'player-before-lifetime-fix'
           New-Item -ItemType Directory -Path "$stage/crates/player/src" -Force | Out-Null
           Copy-Item core/Cargo.toml,core/Cargo.lock -Destination $stage
           Copy-Item core/crates/player/Cargo.toml,core/crates/player/build.rs -Destination "$stage/crates/player"
@@ -32,44 +31,25 @@ jobs:
           $workspace = [IO.File]::ReadAllText("$stage/Cargo.toml")
           $workspace = [regex]::Replace($workspace, '(?s)members\s*=\s*\[.*?\]', 'members = ["crates/player"]', 1)
           [IO.File]::WriteAllText("$stage/Cargo.toml", $workspace)
-          $original = [IO.File]::ReadAllText('core/crates/player/src/lib.rs').Replace("`r`n", "`n")
-          $instrumented = $original.Replace('let p = Player::new(dir.to_str().unwrap()).expect("libmpv");', 'eprintln!("PROBE before Player::new"); let p = Player::new(dir.to_str().unwrap()).expect("libmpv"); eprintln!("PROBE after Player::new");')
-          $instrumented = $instrumented.Replace('let after = af();', 'eprintln!("PROBE before last filter check"); let after = af();')
-          $instrumented = $instrumented.Replace('assert!(!af().contains("rubberband"), "stored pitch survived the rollback: {}", af());', 'assert!(!af().contains("rubberband"), "stored pitch survived the rollback: {}", af()); eprintln!("PROBE before Player drop");')
-          if ($instrumented -eq $original) { throw 'Missing diagnostic seam' }
-          $instrumented += @'
-
-          #[cfg(test)]
-          mod lifetime_probe {
-              #[test]
-              fn receiver_keeps_event_context_valid_after_player_drop() {
-                  let dir = std::env::temp_dir().join("sideb-lifetime-probe");
-                  std::fs::create_dir_all(&dir).unwrap();
-                  let mut player = super::Player::new(dir.to_str().unwrap()).unwrap();
-                  let receiver = player.take_events().unwrap();
-                  eprintln!("LIFETIME before dropping the last Player with a live receiver");
-                  drop(player);
-                  std::thread::sleep(std::time::Duration::from_millis(1250));
-                  eprintln!("LIFETIME player dropped; releasing receiver");
-                  drop(receiver);
-                  std::thread::sleep(std::time::Duration::from_millis(1250));
-                  eprintln!("LIFETIME finished");
-              }
-          }
-          '@
-          [IO.File]::WriteAllText("$stage/crates/player/src/lib.rs", $instrumented)
-          & cargo test --manifest-path "$stage/Cargo.toml" -p player -- --nocapture --test-threads=1
-          $originalExit = $LASTEXITCODE
-          Write-Host "ORIGINAL_PLAYER_EXIT=$originalExit"
-          $fixed = $instrumented.Replace('.spawn(move || event_loop(ev, tx))', '.spawn(move || { let _keep_alive = event_mpv; event_loop(ev, tx); })')
-          $fixed = $fixed.Replace('std::thread::Builder::new()', 'let event_mpv = Arc::clone(&mpv); std::thread::Builder::new()')
-          $fixed = $fixed.Replace('match ev.wait_event(1.0) {', 'if tx.is_closed() { break; } match ev.wait_event(1.0) {')
-          if ($fixed -eq $instrumented) { throw 'Missing lifetime repair seam' }
-          [IO.File]::WriteAllText("$stage/crates/player/src/lib.rs", $fixed)
-          & cargo test --manifest-path "$stage/Cargo.toml" -p player -- --nocapture --test-threads=1
-          if ($LASTEXITCODE -ne 0) { throw "Repaired player failed: $LASTEXITCODE" }
+          $source = [IO.File]::ReadAllText('core/crates/player/src/lib.rs').Replace("`r`n", "`n")
+          $source = $source.Replace('let event_mpv = Arc::clone(&mpv);', '')
+          $source = $source.Replace('let _keep_alive = event_mpv;', '')
+          $source = $source.Replace("        if tx.is_closed() {`n            break;`n        }", '')
+          [IO.File]::WriteAllText("$stage/crates/player/src/lib.rs", $source)
+          & cargo test --manifest-path "$stage/Cargo.toml" -p player native_handle_outlives_player_until_event_receiver_closes -- --nocapture
+          $baseline = $LASTEXITCODE
+          Write-Host "FORMER_LIFETIME_REGRESSION_EXIT=$baseline"
+          if ($baseline -eq 0) { throw 'The regression failed to detect the missing native owner' }
+      - name: Verify production player and repeated native teardown
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:SIDEB_MPV_DIR = Join-Path $PWD 'windows/.cache/mpv'
+          $env:PATH = "$env:SIDEB_MPV_DIR;$env:PATH"
+          & cargo test --locked --manifest-path core/Cargo.toml -p player
+          if ($LASTEXITCODE -ne 0) { throw 'Production player tests failed' }
           for ($iteration = 1; $iteration -le 20; $iteration++) {
-            & cargo test --manifest-path "$stage/Cargo.toml" -p player mpv_keeps_the_gain_through_pitch_changes_and_failures -- --nocapture --test-threads=1
-            if ($LASTEXITCODE -ne 0) { throw "Repaired player failed repetition $iteration" }
+            & cargo test --locked --manifest-path core/Cargo.toml -p player
+            if ($LASTEXITCODE -ne 0) { throw "Production player failed repetition $iteration" }
           }
-          Write-Host "LIFETIME_REPAIR_REPETITIONS_PASSED=20 ORIGINAL_PLAYER_EXIT=$originalExit"
+          Write-Host 'PRODUCTION_PLAYER_REPETITIONS_PASSED=20'

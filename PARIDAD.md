@@ -161,3 +161,5 @@ Seguimiento FIX-200/201 (2026-10-17), PAR-009/PAR-012-2: Windows corrige indicad
 FIX-203/PAR-028 (2026-10-17): CI destino detecta un sufijo POSIX en la fixture SSR que impedía sembrar layout=list en Windows. Se corrige identificación por path.join; viewport/compact/actions/pins se siguen verificando. No es un cambio de producto ni cierra QA física; nuevo run de release pendiente.
 
 FIX-204/PAR-031/PAR-027 (2026-10-17): pruebas Mac corrigen supuestos de scrollbar overlay y escala de pantalla; viewport real y margen de medio píxel físico, producto conservado. Cinco focales locales aprobadas, repetición CI1x pendiente. Sin cambios Windows/core.
+
+FIX-205/PAR-024/PAR-032 (2026-10-17): seguridad de vida útil del wrapper libmpv durante teardown; retener dueño mientras EventContext usa raw handle y detener worker al cerrar receptor. El flujo Apple usa AVPlayer y no requiere port; proveedor/ABI/curva conservados. Excepción acotada al core nativo bajo autorización de reparación para release, validación Windows focal/completa pendiente. No se atribuye determinísticamente el acceso inválido previo sin stack.
