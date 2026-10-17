@@ -14,11 +14,19 @@
 - [x] Corregir fallo restante de duplicados/shuffle/foco Windows tras FIX-200. 381 frontend/una omitida, check0/0 y build frontend aprobados;45 pruebas del módulo queue.rs real en harness Mac. Tauri/WebView2 se verifican en host Windows.
 - [x] Elegir versiones/notas/paquetes y aprobar preflight real. Pruebas runner/release detectan una fixture de packaging desactualizada: faltaba preflight de localización y bundle de recursos. Fixture completada sin cambiar guardas de producto; 17 pruebas finales aprobadas;741 claves de localización verificadas.
 - [x] Revisar rutas y patrones de secretos. .cache y prototipos suspendidos quedan fuera de Git; fixtures de proveedores son anónimas/sanitizadas. Coincidencia de cookie en lib.rs corresponde a tres fixtures sintéticas históricas. Bindings UniFFI conservados tal cual generados; sus espacios finales se documentan sin editar generación manualmente.
-- [ ] Commit explícito de fuentes, tests, planes/fixes/notas; conservar artefactos y material local fuera.
-- [ ] Push y dispatch del workflow al commit exacto; tag/draft nuevos sin modificar releases existentes.
+- [x] Commit b07ace912d34906a805fe99d2c24ab8c63d060f3:210 rutas explícitas de fuentes/tests/fixtures/planes/fixes/notas; artefactos, .cache y prototipos suspendidos fuera.
+- [x] Push main y dispatch manual [run39069262028](https://github.com/fefucho/sideb/actions/runs/39069262028) al commit b07ace9; preflight aprobado, tag/draft v1.2.1 verificados en esa revisión. Publicada1.2.0 conservada.
 - [ ] Aprobar build/test native de ambas plataformas, checksums y publicación conjunta.
 - [ ] Verificar Latest/tag/versión, descargas y digests; cerrar registros con enlaces y límites físicos.
 
 ## Límites
 
 La app Mac no se abre por la revisión física diferida. Los tests no certifican audio audible, cuenta real, fluidez ni instalación/actualización interactiva. Mac ad hoc sin notarización; Windows con WebView2/libmpv. No se elimina material local ni se altera el historial público existente.
+
+## Compilación hospedada
+
+Run39069262028 iniciado2026-10-17T21:02:42Z; preparación aprobada y ambos trabajos nativos en ejecución. GitHub redirige el nombre histórico del repositorio a fefucho/sideb; no se cambian remotes ni identidad de actualizadores por este movimiento. El commit incluye [skip ci] para evitar duplicar las builds de push; dispatch de release ejecuta su verificación completa. Resultado/paquetes pendientes.
+
+### Primer intento: fallo de fixture Windows
+
+Windows llega a frontend check0/0 y suite con379 aprobadas/3 fallos (382 totales, sin omisiones en host destino). Fallan sólo playlists/albums/artists en presentación lista: la fixture detecta un sufijo de ruta POSIX y no siembra la preferencia en Windows. FIX-203 usa path.join igual que la carga; ocho focales SSR aprobadas en Mac, aserciones visuales intactas. No se cambia producto ni se declara verificado Windows hasta repetir CI. Mac sigue en ejecución; publicación conjunta queda bloqueada y Latest1.2.0 permanece intacta. Se reemplazará únicamente el borrador vacío/tag no publicado de este intento para la revisión corregida; los runs/diagnósticos se conservan.

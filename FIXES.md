@@ -4,9 +4,20 @@ Memoria de cambios de Side B para investigar problemas y regresiones. Buscar aqu
 
 Tags de ámbito: `[Apple]`, `[Windows]`, `[Compartido]`. Core y herramientas comunes usan Compartido, detallando el componente. El tag indica dónde se hizo el cambio; no demuestra que ambas plataformas hayan sido verificadas. Estados, fechas, componentes y relaciones se conservan dentro de cada entrada.
 
-Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-203**. Se conservaron los FIX/FEAT históricos. Dos números antiguos repetidos se distinguen como `FIX-027-2` y `FIX-028-2`, anotando el ID original; al citar FIX-027/028 comprobar título y entrada exacta.
+Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-204**. Se conservaron los FIX/FEAT históricos. Dos números antiguos repetidos se distinguen como `FIX-027-2` y `FIX-028-2`, anotando el ID original; al citar FIX-027/028 comprobar título y entrada exacta.
 
 ## Cambios recientes
+
+<a id="fix-203"></a>
+
+### [FIX-203] [Windows] - Fixture de Biblioteca compatible con rutas nativas
+
+- Fecha: 2026-10-17 (America/Montevideo).
+- Componente / estado: fixture SSR de virtualización/lista de Biblioteca; corrección de prueba implementada, ocho focales Mac aprobadas; repetición en Windows CI pendiente.
+- Problema / causa: run39069262028 falla tres casos de lista en Windows, aunque pasan localmente. La fixture identifica LibraryView con endsWith('/library/LibraryView.svelte'); Windows entrega separadores invertidos. No se aplica la preferencia sembrada de lista, se renderiza grid y las aserciones de compact fallan. No evidencia un defecto del producto.
+- Cambio: identificar el archivo con path.join(root, ...), igual que su carga. Conservar comprobaciones de viewport acotado, compact/actions/pins y pitch; sin relajar aserciones ni modificar UI.
+- Archivo: `windows/scripts/library-virtualization.test.mjs`.
+- Verificación / límites: ocho focales SSR aprobadas en Mac; el run original conserva diagnóstico Windows (379 aprobadas/3 fallos), Mac sigue ejecutándose. Validación corregida de Windows queda en el nuevo run de release. Antecedentes FIX-172, PAR-028 y [plan1.2.1](plans/RELEASE-1.2.1.md). Exclusivo del harness de destino, sin port Apple ni cambio core.
 
 <a id="fix-202"></a>
 

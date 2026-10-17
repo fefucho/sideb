@@ -21,7 +21,7 @@ async function compiledModule(filename, layout = 'grid') {
   modules.set(moduleKey, outputUrl);
   let source = await readFile(filename, 'utf8');
   // SSR skips account onMount. Seed the existing local layout preference for each fixture.
-  if (filename.endsWith('/library/LibraryView.svelte')) {
+  if (filename === path.join(root, 'src/lib/components/library/LibraryView.svelte')) {
     const initial = 'libraryDefaults());';
     assert.ok(source.includes(initial));
     source = source.replace(initial, `{...libraryDefaults(),layout:'${layout}'});`);
