@@ -36,10 +36,13 @@ jobs:
           $source = $source.Replace('let _keep_alive = event_mpv;', '')
           $source = $source.Replace("        if tx.is_closed() {`n            break;`n        }", '')
           [IO.File]::WriteAllText("$stage/crates/player/src/lib.rs", $source)
-          & cargo test --manifest-path "$stage/Cargo.toml" -p player native_handle_outlives_player_until_event_receiver_closes -- --nocapture
+          $baselineOutput = @(& cargo test --manifest-path "$stage/Cargo.toml" -p player native_handle_outlives_player_until_event_receiver_closes -- --nocapture 2>&1)
           $baseline = $LASTEXITCODE
+          $baselineOutput | ForEach-Object { Write-Host $_ }
           Write-Host "FORMER_LIFETIME_REGRESSION_EXIT=$baseline"
           if ($baseline -eq 0) { throw 'The regression failed to detect the missing native owner' }
+          $details = $baselineOutput | Out-String
+          if ($details -notmatch 'running 1 test' -or $details -notmatch 'live event stream must retain|STATUS_ACCESS_VIOLATION') { throw 'Unexpected baseline failure; lifetime regression was not demonstrated' }
       - name: Verify production player and repeated native teardown
         shell: pwsh
         run: |
