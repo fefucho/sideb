@@ -1,5 +1,7 @@
 # Planes Windows
 
+- [PLAN-009: Volumen con rueda y feedback fullscreen](PLAN-009-volume-scroll-feedback.md) — FIX-198 corregido;378 pruebas/check/build frontend aprobados / nativa pendiente; FIX-198: sólo cápsula abierta y carátula, fondo excluido, entrada WebView2, Tauri/libmpv y validación física propia. Complementa PLAN-021 Apple.
+
 - [PLAN-008: Fondo, logo y tipografía fullscreen](PLAN-008-fullscreen-color-logo-type.md) — implementado/revisado; FIX-146/151/PAR-025, build-0012 release con646 pruebas aprobadas e icono PE redondeado verificado; aceptación física pendiente.
 
 - [PLAN-007: Volumen exponencial opcional](PLAN-007-exponential-volume.md) — implementado/revisado; FIX-143/PAR-024, opción inicial OFF, build-0008 release/631 pruebas aprobadas; escucha física pendiente.

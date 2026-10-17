@@ -2,6 +2,11 @@ import SwiftUI
 import AppKit
 import SideBCore
 
+private struct HomePageRequest: Equatable {
+    let session: Int
+    let active: Bool
+}
+
 /// Inicio nuevo: estado y controles ligeros en SwiftUI, feed reciclable en AppKit.
 struct HomeView: View {
     @Bindable var playerViewModel: PlayerViewModel
@@ -15,8 +20,9 @@ struct HomeView: View {
     @State private var observedFeaturedCapacity = 2
     @State private var greetingHour = HomeGreeting.localHour()
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.sideBPageIsActive) private var pageIsActive
 
-    private var isObscured: Bool { playerViewModel.isFullscreenPresented }
+    private var isObscured: Bool { !pageIsActive || playerViewModel.isFullscreenPresented }
     private var greetingClockIsActive: Bool { !isObscured && scenePhase == .active }
 
     var body: some View {
@@ -37,8 +43,8 @@ struct HomeView: View {
                 catch { return }
             }
         }
-        .task(id: sessionRevision) {
-            guard sessionRevision > 0, homeViewModel.sections.isEmpty,
+        .task(id: HomePageRequest(session: sessionRevision, active: !isObscured)) {
+            guard !isObscured, sessionRevision > 0, homeViewModel.sections.isEmpty,
                   let core = playerViewModel.rustCore else { return }
             await homeViewModel.loadHomeFeed(core: core)
         }
@@ -76,16 +82,12 @@ struct HomeView: View {
                 HomeFeedTableView(
                     headerContent: hasFeatured ? nil : AnyView(scrollHeader),
                     headerHeight: hasFeatured ? 0 : scrollHeaderHeight,
-                    featuredContent: hasFeatured ? featuredContent : nil,
-                    featuredHeight: hasFeatured ? { width in
-                        scrollHeaderHeight + HomeFeaturedLayout.height(width: width, hasSongs: !homeViewModel.featured.songs.isEmpty,
-                                                  hasAlbums: !homeViewModel.featured.collections.isEmpty,
-                                                  songCount: homeViewModel.featured.songs.count,
-                                                  albumCount: homeViewModel.featured.collections.count)
-                    } : nil,
+                    featuredNavigationContent: hasFeatured ? featuredContent : nil,
+                    hostedContentIdentity: hostedContentIdentity,
+                    featuredHeight: hasFeatured ? featuredHeight : nil,
                     topContentInset: topContentInset,
                     sections: homeViewModel.featured.remainingSections,
-                    isObscured: playerViewModel.isFullscreenPresented,
+                    isObscured: isObscured,
                     revision: homeViewModel.contentRevision,
                     selectedChip: homeViewModel.selectedChipParams,
                     hasMore: homeViewModel.continuationToken != nil,
@@ -113,7 +115,9 @@ struct HomeView: View {
         !homeViewModel.featured.songs.isEmpty || !homeViewModel.featured.collections.isEmpty
     }
 
-    private var scrollHeaderHeight: CGFloat { homeViewModel.chips.isEmpty ? 112 : 158 }
+    private var scrollHeaderHeight: CGFloat {
+        88 + 24 + (homeViewModel.chips.isEmpty ? 0 : SideBControlMetrics.categoryHeight + 8)
+    }
 
     private var scrollHeader: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -125,7 +129,27 @@ struct HomeView: View {
         .frame(height: scrollHeaderHeight, alignment: .top)
     }
 
-    private var featuredContent: (CGFloat) -> AnyView {
+    private var hostedContentIdentity: HomeFeedHostedContentIdentity {
+        HomeFeedHostedContentIdentity(revision: homeViewModel.contentRevision,
+            selectionRevision: homeViewModel.selectionRevision, sessionRevision: sessionRevision,
+            greeting: greeting, accountThumbnail: accountThumbnail, chips: homeViewModel.chips,
+            loadingCollectionID: homeViewModel.featured.collectionKind == .albums
+                ? playerViewModel.loadingRecommendedAlbumID : playerViewModel.loadingRecommendedPlaylistID,
+            coreIdentity: playerViewModel.rustCore.map(ObjectIdentifier.init),
+            homeIdentity: ObjectIdentifier(homeViewModel))
+    }
+
+    private var featuredHeight: (CGFloat) -> CGFloat {
+        let introHeight = scrollHeaderHeight
+        let songCount = homeViewModel.featured.songs.count
+        let collectionCount = homeViewModel.featured.collections.count
+        return { width in
+            introHeight + HomeFeaturedLayout.height(width: width, hasSongs: songCount > 0,
+                hasAlbums: collectionCount > 0, songCount: songCount, albumCount: collectionCount)
+        }
+    }
+
+    private var featuredContent: (CGFloat, HomeFeedNavigationActions) -> AnyView {
         // Snapshot the observable inputs here so native row builders never hide dependencies.
         let featured = homeViewModel.featured
         let loading = featured.collectionKind == .albums
@@ -136,7 +160,7 @@ struct HomeView: View {
         let isPlaying = playerViewModel.isPlaying
         let intro = AnyView(scrollHeader)
         let introHeight = scrollHeaderHeight
-        return { width in
+        return { width, actions in
             AnyView(VStack(alignment: .leading, spacing: 0) {
                 intro
                 HomeFeaturedView(
@@ -144,11 +168,11 @@ struct HomeView: View {
                     resetKey: key, metadataSessionKey: String(sessionRevision), loadingCollectionID: loading, core: core,
                     onSong: { playerViewModel.activateMediaRadio(SongItemRecord(fromHomeItem: $0)) },
                     onCollection: { item in
-                        if item.kind == "playlist" { navigate(.playlist(browseId: item.id)) }
-                        else { navigate(.album(browseId: item.id)) }
+                        if item.kind == "playlist" { actions.navigate(.playlist(browseId: item.id)) }
+                        else { actions.navigate(.album(browseId: item.id)) }
                     },
                     onArtist: { item in
-                        if let id = item.artistId, !id.isEmpty { navigate(.artist(browseId: id)) }
+                        if let id = item.artistId, !id.isEmpty { actions.navigate(.artist(browseId: id)) }
                     },
                     onPlayCollection: { item, shuffle in
                         playerViewModel.activateMediaCollection(id: item.id, kind: item.kind)
@@ -209,7 +233,7 @@ struct HomeView: View {
 
     private var chips: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
+            HStack(spacing: SideBControlMetrics.categorySpacing) {
                 chip(title: L10n.text("app.home.allChip"), params: nil)
                 ForEach(homeViewModel.chips, id: \.params) { value in
                     chip(title: Self.localizedChipTitle(value.title), params: value.params)
@@ -217,9 +241,8 @@ struct HomeView: View {
             }
             .padding(.horizontal, 28)
         }
-        .frame(height: 42)
-        .windowGestureRegion(.horizontalContent, active: !playerViewModel.isFullscreenPresented)
-        .padding(.bottom, 4)
+        .frame(height: SideBControlMetrics.categoryHeight + 8)
+        .windowGestureRegion(.horizontalContent, active: !isObscured)
     }
 
     private func chip(title: String, params: String?) -> some View {
@@ -228,12 +251,7 @@ struct HomeView: View {
             guard !selected, let core = playerViewModel.rustCore else { return }
             Task { await homeViewModel.loadHomeFeed(core: core, chipParams: params) }
         }
-        .font(.system(size: 13, weight: selected ? .semibold : .medium))
-        .foregroundStyle(selected ? Color.white : Color.primary)
-        .padding(.horizontal, 14)
-        .padding(.vertical, 7)
-        .background(selected ? Color.sidebAccent : Color.primary.opacity(0.07), in: Capsule())
-        .buttonStyle(.plain)
+        .buttonStyle(SideBControlStyle(size: .category, selected: selected))
         .accessibilityAddTraits(selected ? [.isSelected] : [])
     }
 
@@ -286,11 +304,11 @@ struct HomeView: View {
                             .fontWeight(.semibold)
                             .foregroundStyle(.primary)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(SideBControlStyle(size: .utility))
                 } else if let playbackError = playerViewModel.errorMessage {
                     Text(playbackError).lineLimit(2)
                     Button(L10n.text("home.close")) { playerViewModel.errorMessage = nil }
-                        .buttonStyle(.plain)
+                        .buttonStyle(SideBControlStyle(size: .utility))
                 } else if homeViewModel.isShowingSavedFeed {
                     if homeViewModel.isRefreshing {
                         Text(L10n.text("home.refresh.saved_updating"))
@@ -317,7 +335,7 @@ struct HomeView: View {
             Text(error)
         } actions: {
             Button(L10n.text("home.retry")) { refresh() }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(SideBControlStyle(prominent: true))
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }

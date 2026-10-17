@@ -1688,7 +1688,9 @@ pub(crate) async fn set_playback_volume(
     app: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
     volume: f64,
+    expected_generation: u64,
 ) -> Result<PlaybackStateDto, CommandError> {
+    let auth_generation = state.auth_generation.load(Ordering::SeqCst);
     if !volume.is_finite() {
         return Err(CommandError::new(
             "INVALID_VOLUME",
@@ -1718,10 +1720,49 @@ pub(crate) async fn set_playback_volume(
             "Error de concurrencia al actualizar reproducción.",
         )
     })?;
+    ensure_audio_owner(&pb, expected_generation, auth_generation,
+        state.auth_generation.load(Ordering::SeqCst))?;
     let exponential = pb.runtime.exponential_volume;
     let dto = apply_volume_preferences(&mut pb, &player, clamped, exponential)?;
     let _ = app.emit("playback-state-changed", &dto);
     Ok(dto)
+}
+
+// Checked while holding playback: account restoration cannot replace the owner between
+// this check and audio/RAM application. A queued IPC from the old UI must carry its
+// original playback generation, even when execution starts after an account switch.
+fn ensure_audio_owner(
+    pb: &crate::PlaybackManager,
+    expected_generation: u64,
+    requested_auth_generation: u64,
+    current_auth_generation: u64,
+) -> Result<(), CommandError> {
+    if pb.generation != expected_generation
+        || pb.observed_auth_generation != requested_auth_generation
+        || requested_auth_generation != current_auth_generation
+    {
+        return Err(CommandError::new("STALE_PLAYBACK", "La sesión de reproducción cambió."));
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod audio_owner_tests {
+    use super::ensure_audio_owner;
+
+    #[test]
+    fn delayed_audio_cannot_cross_track_or_account_owner() {
+        let mut pb = crate::PlaybackManager::new();
+        pb.generation = 12;
+        pb.observed_auth_generation = 7;
+        assert!(ensure_audio_owner(&pb, 12, 7, 7).is_ok());
+        assert!(ensure_audio_owner(&pb, 11, 7, 7).is_err()); // old IPC starts after restoration
+        assert!(ensure_audio_owner(&pb, 12, 6, 7).is_err()); // auth changed while awaiting lock
+        assert!(ensure_audio_owner(&pb, 12, 7, 8).is_err()); // logout is committed, reset pending
+        pb.observed_auth_generation = 8;
+        assert!(ensure_audio_owner(&pb, 12, 7, 8).is_err());
+        assert!(ensure_audio_owner(&pb, 12, 8, 8).is_ok());
+    }
 }
 
 // Caller holds playback for both reading old preferences and applying them, also during load.
@@ -1749,6 +1790,7 @@ fn apply_volume_preferences(
     if volume > 0.0 { pb.runtime.last_audible = volume; }
     pb.volume = volume;
     pb.runtime.exponential_volume = exponential;
+    pb.audio_revision = pb.audio_revision.wrapping_add(1);
     Ok(pb.to_dto())
 }
 
@@ -1757,8 +1799,12 @@ pub(crate) fn set_exponential_volume(
     app: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
     enabled: bool,
+    expected_generation: u64,
 ) -> Result<PlaybackStateDto, CommandError> {
+    let auth_generation = state.auth_generation.load(Ordering::SeqCst);
     let mut pb = state.playback.lock().map_err(|_| CommandError::new("LOCK_ERROR", "No se pudo leer el volumen."))?;
+    ensure_audio_owner(&pb, expected_generation, auth_generation,
+        state.auth_generation.load(Ordering::SeqCst))?;
     let player = state.player.read().ok().and_then(|player| player.clone())
         .ok_or_else(|| CommandError::new("PLAYER_NOT_INITIALIZED", "El reproductor de audio no está listo."))?;
     let volume = pb.volume;
@@ -2372,9 +2418,13 @@ pub(crate) async fn set_playback_muted(
     app: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
     muted: bool,
+    expected_generation: u64,
 ) -> Result<PlaybackStateDto, CommandError> {
+    let auth_generation = state.auth_generation.load(Ordering::SeqCst);
     let mut pb = state.playback.lock()
         .map_err(|_| CommandError::new("LOCK_ERROR", "No se pudo leer el volumen."))?;
+    ensure_audio_owner(&pb, expected_generation, auth_generation,
+        state.auth_generation.load(Ordering::SeqCst))?;
     let volume = if muted {
             0.0
         } else if pb.runtime.last_audible > 0.0 {

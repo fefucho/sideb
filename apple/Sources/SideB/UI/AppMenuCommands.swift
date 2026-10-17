@@ -40,6 +40,7 @@ final class AppMenuContext {
     var loginSheet: Binding<Bool>?
     var createPlaylistSheet: Binding<Bool>?
     var onLogout: (() -> Void)?
+    var onOpenSettings: (() -> Void)?
 
     var song: SongItemRecord? { selectedSong ?? player?.currentTrack }
     var isLoggedIn: Bool { account?.isLoggedIn == true }
@@ -92,6 +93,12 @@ struct SideBMenuCommands: Commands {
         }
 
         CommandGroup(replacing: .newItem) {}
+
+        CommandGroup(replacing: .appSettings) {
+            Button(L10n.text("settings.title")) { context?.onOpenSettings?() }
+                .keyboardShortcut(",", modifiers: .command)
+                .disabled(context?.onOpenSettings == nil)
+        }
 
         CommandMenu(L10n.text("menu.file")) {
             Button(L10n.text("menu.new_playlist_ellipsis")) {
@@ -176,6 +183,12 @@ struct SideBMenuCommands: Commands {
         }
 
         CommandMenu(L10n.text("menu.account")) {
+            Button(L10n.text("settings.title")) { context?.onOpenSettings?() }
+                .disabled(context?.onOpenSettings == nil)
+            Button(L10n.text("menu.check_updates")) {
+                Task { await UpdateService.shared.checkForUpdates(manual: true) }
+            }
+            Divider()
             if context?.isLoggedIn == true {
                 Button(L10n.text("account.sign_out")) { context?.logout() }
             } else {

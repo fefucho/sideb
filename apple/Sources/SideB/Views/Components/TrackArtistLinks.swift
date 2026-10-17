@@ -15,7 +15,7 @@ struct TrackArtistLinks: View {
             ForEach(Array(track.displayArtistRuns.enumerated()), id: \.offset) { index, run in
                 if let id = run.id, !id.isEmpty {
                     artistButton(run.text, id: id, index: index)
-                } else if track.artistRuns.isEmpty {
+                } else if track.artistRuns.isEmpty || !run.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !["&", ",", "y", "and", "/"].contains(run.text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()) {
                     artistButton(run.text, id: nil, index: index)
                 } else {
                     Text(run.text).foregroundStyle(color)
@@ -27,9 +27,8 @@ struct TrackArtistLinks: View {
     }
 
     private func artistButton(_ name: String, id: String?, index: Int) -> some View {
-        Button { onNavigate(id, name) } label: {
-            Text(name).foregroundStyle(hoveredIndex == index ? hoverColor : color)
-        }
+        FeaturedArtistLink(track:track,name:name,destinationID:id,onNavigate:onNavigate,hoverColor:hoverColor)
+            .foregroundStyle(hoveredIndex == index ? hoverColor : color)
         .buttonStyle(.plain)
         .onHover { hoveredIndex = $0 ? index : nil }
         .help(L10n.text("detail.artist.viewNamed", args: [name]))

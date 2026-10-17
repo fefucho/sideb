@@ -27,7 +27,7 @@ struct FullscreenSceneMetrics {
         leftWidth = max(100, availableWidth - rightWidth)
         artworkSize = max(100, min(leftWidth * 0.90,
                                   availableContentHeight - metadataSpacing - metadataHeight - 16))
-        contentPanelHeight = max(80, availableContentHeight - 54)
+        contentPanelHeight = max(80, availableContentHeight - SideBControlMetrics.groupHeight - 14)
     }
 
     var artworkBlockHeight: CGFloat { artworkSize + metadataSpacing + metadataHeight }

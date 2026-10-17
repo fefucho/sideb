@@ -1,4 +1,6 @@
 {
+  "windows.player.volumeScrollHint": { "es": "Desplazá verticalmente para ajustar el volumen en pasos de 1 punto.", "en": "Scroll vertically to adjust volume in 1-point steps." },
+  "windows.player.volumeAnnouncement": { "es": "Volumen: %@ %%", "en": "Volume: %@%%" },
   "windows.settings.audio": { "es": "Audio", "en": "Audio" },
   "windows.settings.exponentialVolume": { "es": "Volumen exponencial", "en": "Exponential volume" },
   "windows.settings.exponentialVolumeHint": { "es": "Más control a volumen bajo para equipos con sonido fuerte. Conserva el volumen máximo.", "en": "More control at low volume on loud systems. Keeps the maximum volume unchanged." },

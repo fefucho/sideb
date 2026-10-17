@@ -29,6 +29,7 @@ public enum FullscreenPanel: String, CaseIterable, Identifiable {
 // MARK: - FullscreenNowPlayingView (Proporcional 60/40, Sólido y Resistente a Resizing)
 
 struct FullscreenNowPlayingView: View, Animatable {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Bindable var viewModel: PlayerViewModel
     let canvasSize: CGSize
     var sidebarProgress: CGFloat
@@ -49,7 +50,6 @@ struct FullscreenNowPlayingView: View, Animatable {
     @State private var isArtworkFlipped = false
     @State private var geniusAnnotationColorMode = GeniusAnnotationColorMode.artwork
     
-    @Namespace private var tabNamespace
     
     var animatableData: CGFloat {
         get { sidebarProgress }
@@ -68,6 +68,7 @@ struct FullscreenNowPlayingView: View, Animatable {
                     artworkView(size: layout.artworkSize)
                     trackInfoView(width: layout.artworkSize)
                         .frame(height: layout.metadataHeight, alignment: .top)
+                        .windowGestureRegion(.excluded)
                 }
                 .frame(width: layout.artworkSize, height: layout.artworkBlockHeight)
                 .frame(width: layout.leftWidth, height: layout.availableContentHeight, alignment: .center)
@@ -96,6 +97,8 @@ struct FullscreenNowPlayingView: View, Animatable {
                 viewModel.isFullscreenPresented = false
             }
         }
+        .onDisappear { viewModel.volumeScroll.cancel() }
+        .onChange(of: isArtworkFlipped) { _, _ in viewModel.volumeScroll.cancel() }
         .onChange(of: viewModel.currentTrack?.videoId) { _, _ in
             failedOriginalURL = nil
             failedMaxQualityURL = nil
@@ -135,6 +138,8 @@ struct FullscreenNowPlayingView: View, Animatable {
             .opacity(isArtworkFlipped ? 0 : 1)
             .rotation3DEffect(.degrees(isArtworkFlipped ? 180 : 0), axis: (x: 0, y: 1, z: 0))
             .allowsHitTesting(!isArtworkFlipped)
+            .windowGestureRegion(.volumeFullscreen, active: !isArtworkFlipped &&
+                viewModel.isFullscreenPresented && viewModel.currentTrack != nil)
 
             artworkInformationCard(size: size)
                 .opacity(isArtworkFlipped ? 1 : 0)
@@ -144,7 +149,11 @@ struct FullscreenNowPlayingView: View, Animatable {
         }
         .frame(width: size, height: size)
         .shadow(color: .black.opacity(0.42), radius: 22, x: 0, y: 10)
-        .animation(.easeInOut(duration: 0.48), value: isArtworkFlipped)
+        .overlay(alignment: .topTrailing) {
+            FullscreenBackVolumeFeedback(player: viewModel, flipped: isArtworkFlipped)
+                .offset(y: -38)
+        }
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.48), value: isArtworkFlipped)
     }
 
     private func artworkFront(size: CGFloat, originalUrl: URL?, maxQualityUrl: URL?, activeArtworkUrl: URL?) -> some View {
@@ -175,17 +184,8 @@ struct FullscreenNowPlayingView: View, Animatable {
                     .frame(width: size, height: size)
             }
 
-            // Capa de oscurecimiento sutil en hover
-            RoundedRectangle(cornerRadius: AppTheme.artworkHeroRadius, style: .continuous)
-                .fill(Color.black.opacity(isHoveringArtwork ? 0.22 : 0.0))
-                .animation(.easeInOut(duration: 0.18), value: isHoveringArtwork)
+            FullscreenArtworkVolumeFeedback(player: viewModel, size: size, hovered: isHoveringArtwork)
 
-            // Icono sutil de play/pausa que aparece en hover
-            Image(systemName: viewModel.isPlaying ? "pause.fill" : "play.fill")
-                .font(.system(size: max(28, size * 0.14), weight: .bold))
-                .foregroundStyle(Color.white.opacity(isHoveringArtwork ? 0.92 : 0.0))
-                .shadow(color: .black.opacity(0.5), radius: 8, y: 2)
-                .animation(.easeInOut(duration: 0.18), value: isHoveringArtwork)
         }
         .frame(width: size, height: size)
         .contentShape(RoundedRectangle(cornerRadius: AppTheme.artworkHeroRadius, style: .continuous))
@@ -361,10 +361,11 @@ struct FullscreenNowPlayingView: View, Animatable {
         return HStack(alignment: .center, spacing: 14) {
             VStack(alignment: .leading, spacing: 4) {
                 // Título de la Canción (Bold prominente estilo cartel Now Playing)
-                Text(viewModel.currentTrack?.title ?? L10n.text("player.noPlayback"))
-                    .font(.system(size: titleSize, weight: .bold))
-                    .foregroundStyle(.white)
-                    .lineLimit(1)
+                Group {
+                    if let track = viewModel.currentTrack {
+                        FeaturedTrackTitle(track:track,font:.system(size:titleSize,weight:.bold),color:.white,pointSize:titleSize) { id,name in navigateToArtist(track:track,artistId:id,name:name) }
+                    } else { Text(L10n.text("player.noPlayback")).font(.system(size:titleSize,weight:.bold)).foregroundStyle(.white).lineLimit(1) }
+                }
                 
                 // Artista • Álbum con enlaces interactivos (sin subrayado)
                 HStack(spacing: 7) {
@@ -440,50 +441,17 @@ struct FullscreenNowPlayingView: View, Animatable {
     
     // MARK: - Selector de Pestañas Cápsula (Centrado en su columna, estilo Apple Music / sideb OLD)
     private var compactTabBar: some View {
-        HStack(spacing: 0) {
-            ForEach(FullscreenPanel.allCases) { panel in
-                Button {
-                    withAnimation(.spring(response: 0.30, dampingFraction: 0.82)) {
-                        selectedPanel = panel
-                    }
-                    if panel == .recommended, let track = viewModel.currentTrack {
-                        viewModel.fetchRecommendations(for: track)
-                    }
-                } label: {
-                    HStack(spacing: 7) {
-                        Image(systemName: panel.icon)
-                            .font(.system(size: 12.5, weight: selectedPanel == panel ? .semibold : .medium))
-                Text(panel.title)
-                            .font(.system(size: 13, weight: selectedPanel == panel ? .semibold : .medium))
-                            .lineLimit(1)
-                            .fixedSize(horizontal: true, vertical: false)
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
-                    .foregroundStyle(selectedPanel == panel ? Color.white : Color.white.opacity(0.65))
-                    .background {
-                        if selectedPanel == panel {
-                            Capsule()
-                                .fill(Color.sidebAccent)
-                                .matchedGeometryEffect(id: "fullscreenTabIndicator", in: tabNamespace)
-                        }
-                    }
-                    .contentShape(Capsule())
-                }
-                .buttonStyle(.plain)
+        SideBSegmentedControl(
+            segments: FullscreenPanel.allCases.map { SideBControlSegment(id: $0, title: $0.title, symbol: $0.icon) },
+            selection: selectedPanel
+        ) { panel in
+            selectedPanel = panel
+            if panel == .recommended, let track = viewModel.currentTrack {
+                viewModel.fetchRecommendations(for: track)
             }
         }
-        .padding(4)
-        .background(
-            Capsule()
-                .fill(Color.white.opacity(0.08))
-        )
-        .overlay(
-            Capsule()
-                .strokeBorder(Color.white.opacity(0.12), lineWidth: 0.6)
-        )
     }
-    
+
     // MARK: - Panel de Contenido (Sin tarjeta gris ni borde, flotando directo sobre el fondo)
     private func contentPanelView(height: CGFloat) -> some View {
         ZStack {
@@ -734,22 +702,9 @@ private struct SyncedLyricsPanel: View {
                         isFollowing = true
                         centerCurrentLine(using: proxy, animated: true)
                     } label: {
-                        Label(L10n.text("fullscreen.returnToCurrentLyric"), systemImage: "location.fill")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 17)
-                            .padding(.vertical, 10)
-                            .contentShape(Capsule())
+                        SideBControlLabel(title: L10n.text("fullscreen.returnToCurrentLyric"), symbol: "location.fill")
                     }
-                    .buttonStyle(.plain)
-                    .background {
-                        if reduceTransparency {
-                            Capsule().fill(Color.sidebDarkBackground)
-                        } else {
-                            Capsule().fill(.clear).compatGlass(interactive: true, in: Capsule())
-                        }
-                    }
-                    .overlay(Capsule().strokeBorder(.white.opacity(0.18), lineWidth: 0.7))
+                    .buttonStyle(SideBControlStyle())
                     .shadow(color: .black.opacity(0.3), radius: 12, y: 5)
                     .padding(.bottom, 18)
                     .transition(.opacity.combined(with: .move(edge: .bottom)))
@@ -813,6 +768,59 @@ private struct SyncedLyricsPanel: View {
             }
         } else {
             proxy.scrollTo(activeIndex, anchor: .center)
+        }
+    }
+}
+
+
+/// Observes only the feedback and effective audio value; the image subtree is retained.
+private struct FullscreenArtworkVolumeFeedback: View {
+    let player: PlayerViewModel
+    let size: CGFloat
+    let hovered: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.colorSchemeContrast) private var contrast
+
+    var body: some View {
+        let visible = player.volumeScroll.isVisible
+        ZStack {
+            RoundedRectangle(cornerRadius: AppTheme.artworkHeroRadius, style: .continuous)
+                .fill(Color.black.opacity(hovered || visible ? 0.22 : 0))
+                .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: hovered)
+            if visible {
+                Text(VolumeScrollFeedback.percentage(player.volume))
+                    .font(.system(size: max(28, size * 0.14), weight: .bold).monospacedDigit())
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 10).padding(.vertical, 4)
+                    .background((reduceTransparency || contrast == .increased) ? Color.black.opacity(0.8) : .clear,
+                                in: RoundedRectangle(cornerRadius: 10))
+                    .shadow(color: .black.opacity(0.5), radius: 8, y: 2)
+            } else {
+                Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
+                    .font(.system(size: max(28, size * 0.14), weight: .bold))
+                    .foregroundStyle(Color.white.opacity(hovered ? 0.92 : 0))
+                    .shadow(color: .black.opacity(0.5), radius: 8, y: 2)
+                    .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: hovered)
+            }
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+}
+
+private struct FullscreenBackVolumeFeedback: View {
+    let player: PlayerViewModel
+    let flipped: Bool
+    var body: some View {
+        if flipped && player.volumeScroll.isVisible {
+            Text(VolumeScrollFeedback.percentage(player.volume))
+                .font(.system(size: 18, weight: .semibold).monospacedDigit())
+                .foregroundStyle(.white)
+                .padding(.horizontal, 12).padding(.vertical, 5)
+                .background(.black.opacity(0.8), in: Capsule())
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
         }
     }
 }

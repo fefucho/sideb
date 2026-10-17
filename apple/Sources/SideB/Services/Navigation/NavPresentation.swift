@@ -2,17 +2,16 @@ import SwiftUI
 
 /// The selected main destination follows only the history already visited.
 enum MainNavigationDestination: Equatable {
-    case home, explore, library, search
+    case home, explore, library
 
-    static func selected(history: [PageDestination], currentIndex: Int, searchPresented: Bool) -> Self {
-        if searchPresented { return .search }
+    static func selected(history: [PageDestination], currentIndex: Int, searchPresented: Bool = false) -> Self {
         guard currentIndex >= 0 else { return .home }
         for page in history.prefix(currentIndex + 1).reversed() {
             switch page {
             case .home: return .home
             case .explore: return .explore
             case .library, .history: return .library
-            case .search: return .search
+            case .search: continue
             default: continue
             }
         }
@@ -26,6 +25,6 @@ enum NavPresentation {
     }
 
     static func animation(reduceMotion: Bool) -> Animation {
-        reduceMotion ? .easeOut(duration: 0.12) : .smooth(duration: 0.42, extraBounce: 0)
+        reduceMotion ? .easeOut(duration: 0.15) : .smooth(duration: 0.42, extraBounce: 0)
     }
 }

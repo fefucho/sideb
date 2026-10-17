@@ -98,6 +98,27 @@ test('exact duplicate occurrence remains identifiable after shuffle and reorderi
  const state={...emptyPlaybackData(),currentTrack:prepared.song,isShuffle:true,queue:{items:[entries[1],entries[0]],currentIndex:0,source:{kind:'playlist',id:'LM'},revision:1}};
  assert.equal(occurrenceActive(state,songs[1],1,'playlist','LM'),true);assert.equal(occurrenceActive(state,songs[0],0,'playlist','LM'),false);
 });
+test('native rust queue tracks and advances active occurrences in album or playlist',()=>{
+ const albumSongs=[{videoId:'track-1',title:'Track 1',artists:''},{videoId:'track-2',title:'Track 2',artists:''}];
+ const nativeItems=[{entryId:'queue-12345-1',videoId:'track-1',title:'Track 1',artists:''},{entryId:'queue-12345-2',videoId:'track-2',title:'Track 2',artists:''}];
+ const state={...emptyPlaybackData(),currentTrack:albumSongs[0],queue:{items:nativeItems,currentIndex:0,source:{kind:'album',id:'MPREb_album1'},revision:1}};
+ assert.equal(occurrenceActive(state,albumSongs[0],0,'album','MPREb_album1'),true);
+ assert.equal(occurrenceActive(state,albumSongs[1],1,'album','MPREb_album1'),false);
+ const nextState={...state,currentTrack:albumSongs[1],queue:{...state.queue,currentIndex:1,revision:2}};
+ assert.equal(occurrenceActive(nextState,albumSongs[0],0,'album','MPREb_album1'),false);
+ assert.equal(occurrenceActive(nextState,albumSongs[1],1,'album','MPREb_album1'),true);
+});
+test('native ownership preserves source occurrences across shuffle, manual slots and duplicate tracks',()=>{
+ const songs=[{videoId:'same',title:'A',artists:'',setVideoId:'first'},{videoId:'same',title:'A',artists:'',setVideoId:'second'}];
+ const entries=prepareCollectionPlayback(songs,1,{kind:'playlist',id:'PL1',title:'Playlist'}).options.queueItems.map((entry,index)=>({...entry,sourceOccurrenceId:entry.entryId,entryId:`queue-native-${index}`}));
+ const state={...emptyPlaybackData(),currentTrack:entries[1],isShuffle:true,queue:{items:[{...entries[0],entryId:'manual',sourceOccurrenceId:null},entries[1],entries[0]],currentIndex:1,source:{kind:'playlist',id:'PL1'},revision:1}};
+ assert.equal(occurrenceActive(state,songs[0],0,'playlist','PL1'),false);
+ assert.equal(occurrenceActive(state,songs[1],1,'playlist','PL1'),true);
+ assert.equal(occurrenceActive(state,songs[1],1,'playlist','other'),false);
+ const legacy={...state,queue:{...state.queue,items:state.queue.items.map(entry=>({...entry,sourceOccurrenceId:null}))}};
+ assert.equal(occurrenceActive(legacy,songs[0],0,'playlist','PL1'),false);
+ assert.equal(occurrenceActive(legacy,songs[1],1,'playlist','PL1'),false);
+});
 test('manual feed click crosses hidden and repeated pages, then stops on visible change',async()=>{
  let data,calls=0;const settings=defaults();settings.hiddenCategoryKeys=['custom:hidden'];settings.albumSources=settings.albumSources.map(r=>({...r,enabled:false}));
  const signature=page=>visibleSignature(projectHome(page.sections,'chip',settings,'albums',2));

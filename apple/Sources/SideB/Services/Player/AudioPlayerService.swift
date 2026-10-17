@@ -14,30 +14,45 @@ public final class AudioPlayerService {
     public var isBuffering: Bool = false
     public var currentTime: Double = 0.0
     public var duration: Double = 0.0
-    public var volume: Float = 1.0 {
-        didSet {
-            player.volume = volume
-            preferences.set(volume, forKey: volumeKey)
+    @ObservationIgnored private(set) var volumeAssignmentRevision = 0
+    private var storedVolume: Float = 1.0
+    public var volume: Float {
+        get { storedVolume }
+        set {
+            guard newValue.isFinite else { return }
+            volumeAssignmentRevision &+= 1
+            let effective = min(1, max(0, newValue))
+            guard effective != storedVolume else { return }
+            if effective == 0 && storedVolume > 0 {
+                previousVolume = storedVolume
+                preferences.set(previousVolume, forKey: previousVolumeKey)
+            }
+            storedVolume = effective
+            player.volume = effective
+            preferences.set(effective, forKey: volumeKey)
         }
     }
-    private var previousVolume: Float = 1.0
+    private var previousVolume: Float = 0.75
     private let preferences: UserDefaults
     private let preferencePrefix: String
     private var volumeKey: String { "\(preferencePrefix).volume" }
     private var previousVolumeKey: String { "\(preferencePrefix).previousVolume" }
 
     public func toggleMute() {
-        if volume > 0.01 {
+        if volume > 0 {
             previousVolume = volume
             preferences.set(previousVolume, forKey: previousVolumeKey)
             volume = 0.0
         } else {
-            volume = previousVolume > 0.05 ? previousVolume : 0.75
+            volume = previousVolume.isFinite && previousVolume > 0 ? previousVolume : 0.75
         }
     }
 
     public var onTrackDidEnd: (() -> Void)?
     public var onPlaybackProgress: ((Double, Double) -> Void)?
+    /// Reports the accepted item actually entering playback, including a later resume.
+    public var onPlaybackStarted: ((UUID) -> Void)?
+    public var onPlaybackFailed: ((UUID) -> Void)?
     public var currentUrl: String?
     public var hasReachedEnd: Bool { hasTriggeredTrackEnd }
     private var expectedDuration: Double?
@@ -47,11 +62,18 @@ public final class AudioPlayerService {
     public var avPlayer: AVPlayer { player }
     private var timeObserverToken: Any?
     private var itemStatusObserver: NSKeyValueObservation?
+    private var playbackStatusObserver: NSKeyValueObservation?
+    private var loadedPlaybackID: UUID?
+    private var reportedPlaybackID: UUID?
     private var itemBufferEmptyObserver: NSKeyValueObservation?
     private var itemBufferKeepUpObserver: NSKeyValueObservation?
     private var itemEndObserver: NSObjectProtocol?
     private var itemStalledObserver: NSObjectProtocol?
     private var hasTriggeredTrackEnd: Bool = false
+
+    func isPlayingItem(playbackID: UUID) -> Bool {
+        loadedPlaybackID == playbackID && player.currentItem != nil && player.timeControlStatus == .playing
+    }
 
     public convenience init() {
         self.init(preferences: .standard, preferencePrefix: HomeLabConfiguration.enabled ? "sideb.lab" : "sideb")
@@ -64,11 +86,11 @@ public final class AudioPlayerService {
         self.player.automaticallyWaitsToMinimizeStalling = true
         if let saved = preferences.object(forKey: volumeKey) as? NSNumber {
             let value = saved.floatValue
-            if value.isFinite { volume = min(1, max(0, value)) }
+            if value.isFinite { storedVolume = min(1, max(0, value)) }
         }
         if let saved = preferences.object(forKey: previousVolumeKey) as? NSNumber {
             let value = saved.floatValue
-            if value.isFinite && value > 0.05 { previousVolume = min(1, value) }
+            if value.isFinite && value > 0 { previousVolume = min(1, value) }
         }
         player.volume = volume
     }
@@ -82,9 +104,10 @@ public final class AudioPlayerService {
     /// Carga una URL de streaming directa (AAC m4a) y comienza la reproducción inmediata.
     /// Si se proporciona `expectedDuration` (o si la URL contiene el parámetro `dur`),
     /// se previene el bug conocido de CoreMedia que duplica la duración (2x) en streams fMP4 con sidx.
-    public func play(urlString: String, headers: [String: String] = [:], expectedDuration: Double? = nil) {
+    public func play(urlString: String, headers: [String: String] = [:], expectedDuration: Double? = nil, playbackID: UUID = UUID()) {
         guard let url = URL(string: urlString) else {
             print("[AudioPlayerService] URL inválida: \(urlString)")
+            onPlaybackFailed?(playbackID)
             return
         }
 
@@ -110,6 +133,8 @@ public final class AudioPlayerService {
         }
 
         cleanupItemObservers()
+        loadedPlaybackID = playbackID
+        reportedPlaybackID = nil
 
         let options: [String: Any] = headers.isEmpty ? [:] : ["AVURLAssetHTTPHeaderFieldsKey": headers]
         let asset = AVURLAsset(url: url, options: options)
@@ -123,12 +148,22 @@ public final class AudioPlayerService {
         observePlayerItem(playerItem)
 
         player.replaceCurrentItem(with: playerItem)
+        playbackStatusObserver = player.observe(\.timeControlStatus, options: [.new]) { [weak self, weak playerItem] _, change in
+            guard change.newValue == .playing else { return }
+            Task { @MainActor in
+                guard let self, let playerItem,
+                      self.loadedPlaybackID == playbackID,
+                      self.player.currentItem === playerItem else { return }
+                self.reportPlaybackStartedIfNeeded()
+            }
+        }
         setupTimeObserver()
         player.play()
         self.isPlaying = true
     }
 
     public func pause() {
+        reportedPlaybackID = nil
         player.pause()
         self.isPlaying = false
     }
@@ -170,6 +205,8 @@ public final class AudioPlayerService {
     }
 
     public func stop() {
+        loadedPlaybackID = nil
+        reportedPlaybackID = nil
         cleanupItemObservers()
         cleanupTimeObserver()
         player.pause()
@@ -185,6 +222,15 @@ public final class AudioPlayerService {
 
     // MARK: - Observadores y Manejo de Fin de Pista
 
+    /// The status notification can be missed; the existing progress observer also
+    /// verifies the accepted item. Reporting once avoids work on every 100 ms tick.
+    private func reportPlaybackStartedIfNeeded() {
+        guard let playbackID = loadedPlaybackID, reportedPlaybackID != playbackID,
+              isPlayingItem(playbackID: playbackID) else { return }
+        reportedPlaybackID = playbackID
+        onPlaybackStarted?(playbackID)
+    }
+
     private func setupTimeObserver() {
         cleanupTimeObserver()
 
@@ -193,6 +239,7 @@ public final class AudioPlayerService {
         timeObserverToken = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
             MainActor.assumeIsolated {
                 guard let self = self else { return }
+                self.reportPlaybackStartedIfNeeded()
                 let secs = CMTimeGetSeconds(time)
                 if !secs.isNaN && !secs.isInfinite {
                     self.currentTime = secs
@@ -235,6 +282,7 @@ public final class AudioPlayerService {
                 case .failed:
                     self.isBuffering = false
                     self.isPlaying = false
+                    if let id = self.loadedPlaybackID { self.onPlaybackFailed?(id) }
                     print("[AudioPlayerService] Error de reproducción: \(String(describing: playerItem.error))")
                 case .unknown:
                     self.isBuffering = true
@@ -296,6 +344,8 @@ public final class AudioPlayerService {
     }
 
     private func cleanupItemObservers() {
+        playbackStatusObserver?.invalidate()
+        playbackStatusObserver = nil
         itemStatusObserver?.invalidate()
         itemStatusObserver = nil
         itemBufferEmptyObserver?.invalidate()

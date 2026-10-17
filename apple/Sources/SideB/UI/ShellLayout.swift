@@ -6,14 +6,21 @@ enum ShellLayout {
     static let sidebarInset: CGFloat = 6
     static let sidebarWidth: CGFloat = 230
     static let sidebarCornerRadius: CGFloat = 10
-    static let toolbarHostHeight: CGFloat = 72
-    static let navigationTopInset: CGFloat = 21
-    static let navigationControlHeight: CGFloat = 28
-    static let navigationSurfaceHeight: CGFloat = navigationControlHeight + 6
+    static let navigationTopInset: CGFloat = 18
+    static let navigationBottomInset: CGFloat = 18
+    static let navigationContentSpacing: CGFloat = 8
+    static let navigationControlHeight: CGFloat = 36
+    static let navigationSurfaceHeight: CGFloat = 42
+    static let toolbarHostHeight = navigationTopInset + navigationSurfaceHeight + navigationBottomInset
+    static let searchCollapsedWidth: CGFloat = 42
+    static let searchExpandedWidth: CGFloat = 298
+    static let destinationsSurfaceWidth: CGFloat = 246
+    static let historySurfaceWidth: CGFloat = 76
+    static let navigationClusterGap: CGFloat = 10
     static let navigationMinimumWidth: CGFloat = 420
     static let homeSettingsWidth: CGFloat = 292
 
-    static let navigationRowCenter: CGFloat = 28
+    static let navigationRowCenter: CGFloat = navigationTopInset + navigationSurfaceHeight / 2
 
     /// Both groups are laid out in one actual toolbar viewport, including the fallback.
     static func navigationFrames(bounds: CGRect, menuSize: CGSize, historySize: CGSize,

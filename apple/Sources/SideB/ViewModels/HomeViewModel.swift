@@ -50,6 +50,7 @@ final class HomeViewModel {
     @ObservationIgnored private var sessionToken = UUID().uuidString
     @ObservationIgnored private var didHydrate = false
     @ObservationIgnored private var sectionRecords: [HomeSectionRecord] = []
+    @ObservationIgnored private var projectedShelfSections: [HomeSectionPresentation] = []
     @ObservationIgnored private var snapshots: [String: FeedSnapshot] = [:]
     @ObservationIgnored private var snapshotOrder: [String] = []
     @ObservationIgnored private var requestGeneration: UInt64 = 0
@@ -100,7 +101,9 @@ final class HomeViewModel {
         let capacity = [2, 4, 6].contains(capacity) ? capacity : 2
         guard capacity != featuredCapacity else { return }
         featuredCapacity = capacity
-        rebuildProjection()
+        // Width changes only repartition the featured pages and their remainder.
+        // Provider identities, category ordering and options have not changed.
+        rebuildFeaturedProjection()
     }
 
     private func rebuildProjection(forceRevision: Bool = false) {
@@ -108,19 +111,26 @@ final class HomeViewModel {
         let shelfRecords = recommendationSettings.visibleFeedRecords(recommendationSettings.orderedFeedRecords(sectionRecords))
         let shelfSections = HomePresentationFactory.sections(from: shelfRecords, chip: selectedChipParams,
             preserveProviderOrder: recommendationSettings.categoryOrderMode != .sideB)
-        let projected = HomeFeaturedPresentation.make(from: providerSections, collectionKind: featuredCollectionKind,
-            settings: recommendationSettings, capacity: featuredCapacity, supplemental: supplemental, shelfSections: shelfSections)
-        sections = providerSections
+        projectedShelfSections = shelfSections
+        if sections != providerSections { sections = providerSections }
         var seen = Set<String>()
         let categoryOptions = recommendationSettings.categoryOrderMode == .sideB
             ? providerSections.map { HomeCategoryOption(id: HomeRecommendationSettings.categoryKey(forTitle: $0.title), title: $0.title) }
             : recommendationSettings.orderedFeedRecords(sectionRecords).map {
                 HomeCategoryOption(id: HomeRecommendationSettings.categoryKey(forTitle: $0.title), title: $0.title)
             }
-        receivedCategories = categoryOptions.filter { seen.insert($0.id).inserted }
-        let visibleChanged = forceRevision || projected != featured
-        featured = projected
-        if visibleChanged { contentRevision &+= 1 }
+        let categories = categoryOptions.filter { seen.insert($0.id).inserted }
+        if receivedCategories != categories { receivedCategories = categories }
+        rebuildFeaturedProjection(forceRevision: forceRevision)
+    }
+
+    private func rebuildFeaturedProjection(forceRevision: Bool = false) {
+        let projected = HomeFeaturedPresentation.make(from: sections, collectionKind: featuredCollectionKind,
+            settings: recommendationSettings, capacity: featuredCapacity, supplemental: supplemental,
+            shelfSections: projectedShelfSections)
+        let visibleChanged = projected != featured
+        if visibleChanged || projected.collectionSources != featured.collectionSources { featured = projected }
+        if forceRevision || visibleChanged { contentRevision &+= 1 }
     }
 
     /// Uses already loaded library/history lists; no collection catalogs are requested.
@@ -195,6 +205,7 @@ final class HomeViewModel {
         snapshots.removeAll()
         snapshotOrder.removeAll()
         sectionRecords = []
+        projectedShelfSections = []
         chips = []
         selectedChipParams = nil
         sections = []

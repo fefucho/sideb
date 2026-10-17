@@ -6,6 +6,7 @@
   import { visibleTrackRange, trackSegments } from '$lib/components/common/trackList';
   import type { PlaybackStateDto, QueueEntryDto } from '$lib/types';
   import ArtistCredits from '$lib/components/ArtistCredits.svelte';
+  import FeaturedTrackTitle from '$lib/components/FeaturedTrackTitle.svelte';
 
   interface Props {
     playback: PlaybackStateDto;
@@ -258,7 +259,7 @@
           <button type="button" class="queue-select" aria-current={current ? 'true' : undefined} aria-label={`${current && playback.isPlaying ? $t('player.pause') : $t('player.play')} ${entry.title}`} disabled={current && playback.isLoading} onkeydown={(event) => contextMenuFromKeyboard(event, entry)} onclick={() => activateEntry(entry)}></button>
           <span class="queue-index" aria-hidden="true"><TrackActivity active={current} playing={playback.isPlaying} number={index + 1} {awake} presentation="queue" /></span>
           <span class="queue-art"><TrackArtwork title={entry.title} thumbnail={entry.thumbnail} active={current} playing={playback.isPlaying} pending={current && playback.isLoading} size={36} showPlayOverlay={false} onPlay={() => activateEntry(entry)} /></span>
-          <span class="queue-meta"><span class="queue-title">{entry.title}</span><ArtistCredits artistRuns={entry.artistRuns} artists={entry.artists} artistId={entry.artistId} album={entry.album} albumId={entry.albumId} onOpenArtist={onOpenArtist ? (id) => openArtist(entry, id) : undefined} {onOpenAlbum} /></span>
+          <span class="queue-meta"><span class="queue-title"><FeaturedTrackTitle track={entry} onOpenArtist={onOpenArtist ? (id) => openArtist(entry,id) : undefined} onPlay={()=>activateEntry(entry)} /></span><ArtistCredits track={entry} artistRuns={entry.artistRuns} artists={entry.artists} artistId={entry.artistId} album={entry.album} albumId={entry.albumId} onOpenArtist={onOpenArtist ? (id) => openArtist(entry, id) : undefined} {onOpenAlbum} /></span>
           <span class="queue-actions">
           {#if onDislike}
             <button type="button" class="queue-action dislike-action" aria-label={$t('windows.queue.dislike', [entry.title])} title={$t('windows.ui.dislikeAndRemoveFromQueue')} disabled={movePending || playback.isLoading} onclick={(event) => { event.stopPropagation(); onDislike?.(entry); }} onpointerdown={(event) => event.stopPropagation()}>
@@ -322,7 +323,7 @@
   .queue-title { display: block; min-width: 0; overflow: hidden; color: rgb(255 255 255 / 92%); font-size: 13px; font-weight: 500; line-height: 16px; text-overflow: ellipsis; white-space: nowrap; }
   .current .queue-title { font-weight: 650; }
   .queue-meta :global(.artist-credits) { color: rgb(255 255 255 / 60%); font-size: 11.5px; line-height: 14px; }
-  .queue-meta :global(.credit-link) { pointer-events: auto; }
+  .queue-meta :global(.credit-link),.queue-meta :global(.featured-link),.queue-meta :global(.title-text) { pointer-events: auto; }
   .queue-duration { width: max-content; min-width: 28px; color: rgb(255 255 255 / 45%); font-size: 11.5px; font-variant-numeric: tabular-nums; text-align: center; white-space: nowrap; pointer-events: none; }
   .queue-timing { position: relative; z-index: 1; display: grid; grid-template-columns: minmax(0, 1fr); place-items: center; width: 28px; height: 30px; margin-left: 8px; pointer-events: none; }
   .queue-actions { position: relative; z-index: 1; display: grid; grid-template-columns: repeat(2, 28px); gap: 8px; align-items: center; }

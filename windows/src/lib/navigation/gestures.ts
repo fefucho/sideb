@@ -1,6 +1,8 @@
+import { VolumeScrollPolicy, volumeScrollSurface, type VolumeScrollSurface, type VolumeScrollContext } from '../player/volume-scroll';
+
 /**
- * WebView2 WheelEvent has no contact/momentum phases. Ordinary wheel scrolling
- * therefore NEVER navigates. Alt + horizontal wheel is an explicit alternative,
+ * Ordinary wheel scrolling never navigates. Newer WebView2 runtimes may expose
+ * WheelEvent.momentum; volume feature-detects that optional signal. Alt + horizontal wheel is an explicit alternative,
  * grouped by 180 ms of silence and latched until Alt is released. This grouping
  * is not a claim about Precision Touchpad contact boundaries.
  * Touch/pen pull uses real PointerEvent capture/end/cancel, from an explicitly
@@ -90,7 +92,15 @@ export class NavigationGesturePolicy {
   }
 }
 
-export interface GestureHooks {context:()=>GestureContext;progress:(state:GestureProgress)=>void;commit:(action:GestureAction)=>void}
+export interface GestureHooks {
+  context:()=>GestureContext;progress:(state:GestureProgress)=>void;commit:(action:GestureAction)=>void;
+  volume?: {
+    context:()=>VolumeScrollContext;
+    adjust:(delta:number)=>void;
+    feedback:(surface:VolumeScrollSurface)=>void;
+    cancelFeedback:()=>void;
+  };
+}
 
 function ownerFor(target:EventTarget|null):GestureOwner {
   if(!(target instanceof Element))return 'excluded';
@@ -112,7 +122,7 @@ function pullSurface(target:EventTarget|null):HTMLElement|null {
 
 /** Root calls invalidate() on route/session/modal changes, and dispose() on teardown. */
 export function installNavigationGestures(view:Window,hooks:GestureHooks) {
-  const policy=new NavigationGesturePolicy();let timer:number|null=null;let captured:HTMLElement|null=null;let pointerId:number|null=null;
+  const policy=new NavigationGesturePolicy();const volume=new VolumeScrollPolicy();let timer:number|null=null;let captured:HTMLElement|null=null;let pointerId:number|null=null;
   let published=idleGesture();
   const apply=(output:GestureOutput)=>{
     const next=output.progress;
@@ -120,10 +130,29 @@ export function installNavigationGestures(view:Window,hooks:GestureHooks) {
     if(output.commit)hooks.commit(output.commit);
   };
   const clear=()=>{if(timer!==null)view.clearTimeout(timer);timer=null;};
-  const invalidate=()=>{clear();apply(policy.cancel());};
-  const resetForFocus=()=>{clear();apply(policy.reset());const previous=captured,id=pointerId;captured=null;pointerId=null;if(previous&&id!==null&&previous.hasPointerCapture(id))previous.releasePointerCapture(id);};
+  const invalidate=()=>{clear();volume.cancel();hooks.volume?.cancelFeedback();apply(policy.cancel());};
+  const resetForFocus=()=>{clear();volume.reset();hooks.volume?.cancelFeedback();apply(policy.reset());const previous=captured,id=pointerId;captured=null;pointerId=null;if(previous&&id!==null&&previous.hasPointerCapture(id))previous.releasePointerCapture(id);};
   const wheel=(event:WheelEvent)=>{
-    if(!event.altKey||event.ctrlKey||event.deltaMode!==0)return;
+    if(hooks.volume){
+      // Wheel targets may stay bound to the first element of a transaction.
+      // A fresh hit-test detects panels, overlays and pointer exit correctly.
+      const target=view.document.elementFromPoint(event.clientX,event.clientY);
+      const surface=volumeScrollSurface(target);
+      const result=volume.wheel({x:event.deltaX,y:event.deltaY,mode:event.deltaMode,at:event.timeStamp,
+        surface,cancelable:event.cancelable,defaultPrevented:event.defaultPrevented,
+        modified:event.altKey||event.ctrlKey||event.metaKey||event.shiftKey,
+        momentum:'momentum' in event && typeof event.momentum==='boolean' ? event.momentum : undefined,
+      },hooks.volume.context());
+      if(result.cancelled)hooks.volume.cancelFeedback();
+      if(result.consume){
+        event.preventDefault();
+        if(!event.defaultPrevented){volume.cancel();hooks.volume.cancelFeedback();return;}
+        if(result.feedback&&surface)hooks.volume.feedback(surface);
+        if(result.delta)hooks.volume.adjust(result.delta);
+        return;
+      }
+    }
+    if(event.defaultPrevented||!event.altKey||event.ctrlKey||event.deltaMode!==0)return;
     const result=policy.wheelEvent({x:event.deltaX,y:event.deltaY,at:event.timeStamp,alt:event.altKey,ctrl:event.ctrlKey,pixels:event.deltaMode===0,owner:ownerFor(event.target)},hooks.context());
     if(result.consume&&event.cancelable)event.preventDefault();apply(result);
     if(event.altKey){clear();timer=view.setTimeout(()=>{timer=null;apply(policy.settleWheel(hooks.context()));},180);}
@@ -131,10 +160,14 @@ export function installNavigationGestures(view:Window,hooks:GestureHooks) {
   const keyup=(event:KeyboardEvent)=>{if(event.key==='Alt'){clear();apply(policy.releaseAlt(hooks.context()));}};
   const keydown=(event:KeyboardEvent)=>{if(event.key==='Alt'&&!event.repeat){clear();policy.startAlt();}};
   const down=(event:PointerEvent)=>{
+    // Slider drags and touch/pen pull take priority over an existing wheel burst.
+    volume.cancel();hooks.volume?.cancelFeedback();
     if(!event.isPrimary||!['touch','pen'].includes(event.pointerType))return;const surface=pullSurface(event.target);if(!surface)return;const result=policy.beginPointer(event.pointerId,event.clientX,event.clientY,event.pointerType,true,hooks.context());
     if(result.consume&&surface){captured=surface;pointerId=event.pointerId;surface.setPointerCapture(event.pointerId);if(event.cancelable)event.preventDefault();apply(result);}
   };
-  const move=(event:PointerEvent)=>{if(event.pointerId!==pointerId)return;const result=policy.movePointer(event.pointerId,event.clientX,event.clientY,hooks.context());if(result.consume&&event.cancelable)event.preventDefault();apply(result);};
+  const move=(event:PointerEvent)=>{
+    if(hooks.volume&&volume.recent(event.timeStamp)&&volume.leave(volumeScrollSurface(view.document.elementFromPoint(event.clientX,event.clientY))))hooks.volume.cancelFeedback();
+    if(event.pointerId!==pointerId)return;const result=policy.movePointer(event.pointerId,event.clientX,event.clientY,hooks.context());if(result.consume&&event.cancelable)event.preventDefault();apply(result);};
   const end=(event:PointerEvent)=>{if(event.pointerId!==pointerId)return;const result=policy.endPointer(event.pointerId,hooks.context(),event.type!=='pointerup');const previous=captured;captured=null;pointerId=null;apply(result);if(previous?.hasPointerCapture(event.pointerId))previous.releasePointerCapture(event.pointerId);};
   const visibility=()=>{if(view.document.hidden)resetForFocus();};
   view.addEventListener('wheel',wheel,{passive:false});view.addEventListener('keyup',keyup);view.addEventListener('keydown',keydown);view.addEventListener('blur',resetForFocus);view.addEventListener('resize',invalidate);view.document.addEventListener('visibilitychange',visibility);

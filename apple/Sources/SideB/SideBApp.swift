@@ -43,6 +43,11 @@ struct SideBApp: App {
         }
     }
 
+    private func switchPersonalSession(to identity: String) {
+        configurePersonalFeatures(identity: identity, core: rustCore, library: libraryViewModel)
+        playerViewModel.switchPlaybackSession(to: identity)
+    }
+
     var body: some Scene {
         WindowGroup {
             if let error = initError {
@@ -80,12 +85,12 @@ struct SideBApp: App {
                     homeSessionRevision &+= 1
                     if hasSession {
                         await accountViewModel.fetchAccount(core: core)
-                        playerViewModel.switchPlaybackSession(to: PlaybackStateStore.identity(for: accountViewModel.account, cookieStorage: cookieStorage))
+                        switchPersonalSession(to: PlaybackStateStore.identity(for: accountViewModel.account, cookieStorage: cookieStorage))
                         if accountViewModel.isLoggedIn {
                             await libraryViewModel.loadLibrary(core: core)
                         }
                     } else {
-                        playerViewModel.switchPlaybackSession(to: "guest")
+                        switchPersonalSession(to: "guest")
                     }
                     Task {
                         // Esperar 2 segundos tras el bootstrap para no competir con el arranque de la app
@@ -103,14 +108,14 @@ struct SideBApp: App {
                 .sheet(isPresented: $showLoginSheet) {
                     LoginSheet(cookieStorage: cookieStorage, rustCore: core) {
                         let loginIdentity = PlaybackStateStore.identity(for: nil, cookieStorage: cookieStorage)
-                        playerViewModel.switchPlaybackSession(to: loginIdentity)
+                        switchPersonalSession(to: loginIdentity)
                         libraryViewModel.clear()
                         homeViewModel.prepareSession(identity: cookieStorage.homeCacheIdentity())
                         homeSessionRevision &+= 1
                         Task {
                             await accountViewModel.fetchAccount(core: core)
                             guard PlaybackStateStore.identity(for: nil, cookieStorage: cookieStorage) == loginIdentity else { return }
-                            playerViewModel.switchPlaybackSession(to: PlaybackStateStore.identity(for: accountViewModel.account, cookieStorage: cookieStorage))
+                            switchPersonalSession(to: PlaybackStateStore.identity(for: accountViewModel.account, cookieStorage: cookieStorage))
                             await libraryViewModel.loadLibrary(core: core)
                         }
                     }
@@ -149,6 +154,12 @@ struct WindowRootView: View {
     @State private var navigationHeaderWidth: CGFloat = 620
     @State private var router = NavigationRouter()
     @State private var isSpotlightPresented: Bool = false
+    @State private var spotlightSearchDraft = ""
+    @State private var isNavigationSearchExpanded = false
+    @State private var navigationSearchDraft = ""
+    @State private var navigationSearchFocusRevision = 0
+    @State private var navigationSearchCommands = QuickSearchCommandChannel()
+    @State private var navigationSearchSelectionLabel: String?
     @State private var isHomeSettingsPresented: Bool = false
     @State private var homeToolbarBottom: CGFloat = 0
     @State private var searchViewModel = SearchViewModel()
@@ -159,6 +170,13 @@ struct WindowRootView: View {
     @State private var menuContext = AppMenuContext()
     @State private var collectionBackground = CollectionBackgroundController()
     @State private var gesturePresentation = WindowGesturePresentation()
+    @State private var spotlightFocusSnapshot: SearchFocusSnapshot?
+    @State private var spotlightPreviousPage: PageDestination?
+
+    private func switchPersonalSession(to identity: String) {
+        configurePersonalFeatures(identity: identity, core: rustCore, library: libraryViewModel)
+        playerViewModel.switchPlaybackSession(to: identity)
+    }
 
     private var collectionBackgroundIdentity: String? {
         let session = playerViewModel.mediaSessionIdentity.uuidString
@@ -172,8 +190,12 @@ struct WindowRootView: View {
     private var pageTopInset: CGFloat {
         switch router.currentPage {
         case .home, .album, .playlist: return 0
-        default: return titlebarHeight
+        default: return navigationContentTopInset
         }
+    }
+
+    private var navigationContentTopInset: CGFloat {
+        titlebarHeight + ShellLayout.navigationContentSpacing
     }
 
     private var sidebarBinding: Binding<Bool> {
@@ -186,7 +208,15 @@ struct WindowRootView: View {
 
     private var searchBinding: Binding<Bool> {
         Binding(get: { isSpotlightPresented }, set: { presented in
-            if presented { playerViewModel.dismissFullscreen() }
+            if presented, !isSpotlightPresented {
+                let wasInlineSearch = isNavigationSearchExpanded
+                isNavigationSearchExpanded = false
+                setHomeSettingsPresented(false)
+                searchViewModel.cancelPreview()
+                spotlightFocusSnapshot = wasInlineSearch ? nil : SearchFocusSnapshot(window: NSApp.keyWindow)
+                spotlightPreviousPage = router.currentPage
+                playerViewModel.dismissFullscreen()
+            }
             withAnimation(NavPresentation.animation(reduceMotion: reduceMotion)) {
                 isSpotlightPresented = presented
             }
@@ -198,8 +228,9 @@ struct WindowRootView: View {
                     sidebarExpanded: isSidebarExpanded,
                     fullscreenPresented: playerViewModel.isFullscreenPresented
                 )
+                let searchSession = homeSessionRevision
                 return AnimatedWindowNavigationToolbarView(
-                    selection: MainNavigationDestination.selected(history: router.history, currentIndex: router.currentIndex, searchPresented: isSpotlightPresented),
+                    selection: MainNavigationDestination.selected(history: router.history, currentIndex: router.currentIndex),
                     isPresented: showsTopNavigation,
                     reduceMotion: reduceMotion,
                     revealProgress: showsTopNavigation ? 1 : 0,
@@ -215,14 +246,99 @@ struct WindowRootView: View {
                     onHome: { navigateMain(to: .home) },
                     onExplore: { navigateMain(to: .explore(.discover)) },
                     onLibrary: { navigateMain(to: .library) },
-                    onSearch: openSearch
+                    onSearch: openNavigationSearch,
+                    isSidebarExpanded: isSidebarExpanded,
+                    isSearchExpanded: isNavigationSearchExpanded,
+                    searchQuery: navigationSearchDraft,
+                    searchFocusRevision: navigationSearchFocusRevision,
+                    searchSessionRevision: searchSession,
+                    onSearchExpansionChange: { expanded in
+                        if expanded { openNavigationSearch() }
+                        else { isNavigationSearchExpanded = false }
+                    },
+                    onSearchQueryChange: { value in
+                        guard homeSessionRevision == searchSession, isNavigationSearchExpanded else { return }
+                        navigationSearchDraft = value
+                    },
+                    onSearchSubmit: { _ in sendNavigationSearchCommand(.submit) },
+                    onSearchMoveSelection: { delta in sendNavigationSearchCommand(delta < 0 ? .moveUp : .moveDown) },
+                    searchSelectionLabel: navigationSearchSelectionLabel,
+                    searchResultsContent: navigationSearchResultsContent
                 )
-                .frame(width: navigationHeaderWidth, height: ShellLayout.toolbarHostHeight)
+                .frame(width: navigationHeaderWidth)
+                .frame(maxHeight: .infinity, alignment: .top)
+                .background(alignment: .top) {
+                    Color.clear.frame(height: ShellLayout.toolbarHostHeight)
+                        .windowGestureRegion(.excluded, active: !playerViewModel.isFullscreenPresented)
+                }
+    }
+
+    private var navigationSearchResultsContent: AnyView? {
+        guard isNavigationSearchExpanded, !isSpotlightPresented,
+              !playerViewModel.isFullscreenPresented else { return nil }
+        return AnyView(
+            QuickSearchContentView(isPresented: navigationSearchBinding, draft: $navigationSearchDraft,
+                searchViewModel: searchViewModel, router: router, playerViewModel: playerViewModel,
+                rustCore: rustCore, style: .anchored, commandChannel: navigationSearchCommands,
+                onSelectionLabelChange: { label in
+                    if navigationSearchSelectionLabel != label { navigationSearchSelectionLabel = label }
+                })
+                .id(homeSessionRevision)
+                .environment(\.sideBMenuContext, menuContext)
+                .preferredColorScheme(.dark)
+                .tint(.white)
+                .compatGlass(interactive: true, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .shadow(color: .black.opacity(0.3), radius: 18, y: 8)
                 .windowGestureRegion(.excluded)
-                .animation(NavPresentation.animation(reduceMotion: reduceMotion), value: showsTopNavigation)
+        )
+    }
+
+    private func sendNavigationSearchCommand(_ kind: QuickSearchCommand.Kind) {
+        guard isNavigationSearchExpanded else { return }
+        navigationSearchCommands.commands.send(kind)
+    }
+
+    private var playlistCreationErrorBinding: Binding<Bool> {
+        Binding<Bool>(get: { playlistCreationError != nil }, set: { presented in
+            if !presented { playlistCreationError = nil }
+        })
+    }
+
+    private func restoreSpotlightFocus() {
+        let snapshot = spotlightFocusSnapshot
+        let page = spotlightPreviousPage
+        let session = homeSessionRevision
+        Task { @MainActor in
+            await Task.yield()
+            if homeSessionRevision == session, router.currentPage == page,
+               !isNavigationSearchExpanded, !isSpotlightPresented,
+               snapshot?.window === NSApp.keyWindow { _ = snapshot?.restoreIfUnclaimed() }
+        }
+        spotlightFocusSnapshot = nil
+        spotlightPreviousPage = nil
     }
 
     private func openSearch() { searchBinding.wrappedValue = true }
+
+    /// The integrated editor and quick Spotlight keep separate drafts and preview owners.
+    private func openNavigationSearch() {
+        playerViewModel.dismissFullscreen()
+        searchBinding.wrappedValue = false
+        setHomeSettingsPresented(false)
+        if !isNavigationSearchExpanded {
+            searchViewModel.cancelPreview()
+            navigationSearchSelectionLabel = nil
+        }
+        isNavigationSearchExpanded = true
+        navigationSearchFocusRevision &+= 1
+    }
+
+    private var navigationSearchBinding: Binding<Bool> {
+        Binding(get: { isNavigationSearchExpanded }, set: { expanded in
+            if expanded { openNavigationSearch() }
+            else { isNavigationSearchExpanded = false }
+        })
+    }
 
     private var canPresentHomeSettings: Bool {
         HomeSettingsVisibility.canPresent(page: router.currentPage,
@@ -236,8 +352,17 @@ struct WindowRootView: View {
         }
     }
 
+    private func openHomeSettingsFromMenu() {
+        playerViewModel.dismissFullscreen()
+        isNavigationSearchExpanded = false
+        searchBinding.wrappedValue = false
+        if router.currentPage != .home { router.navigate(to: .home) }
+        setHomeSettingsPresented(true)
+    }
+
     private func navigateMain(to destination: PageDestination) {
         playerViewModel.dismissFullscreen()
+        isNavigationSearchExpanded = false
         searchBinding.wrappedValue = false
         if destination == .library && router.currentPage == .library {
             PlaylistCatalog.shared.invalidateAll()
@@ -247,7 +372,30 @@ struct WindowRootView: View {
         }
     }
 
-    var body: some View {
+    private func configureMenuContext() {
+        menuContext.player = playerViewModel
+        menuContext.router = router
+        menuContext.core = rustCore
+        menuContext.account = accountViewModel
+        menuContext.library = libraryViewModel
+        menuContext.cookieStorage = cookieStorage
+        menuContext.sidebar = sidebarBinding
+        menuContext.search = searchBinding
+        menuContext.loginSheet = $showLoginSheet
+        menuContext.createPlaylistSheet = $isCreatePlaylistPresented
+        menuContext.onOpenSettings = openHomeSettingsFromMenu
+        let sessionRevision = $homeSessionRevision
+        menuContext.onLogout = { [libraryViewModel, homeViewModel, cookieStorage, router] in
+            switchPersonalSession(to: "guest")
+            libraryViewModel.clear()
+            homeViewModel.prepareSession(identity: cookieStorage.homeCacheIdentity())
+            sessionRevision.wrappedValue &+= 1
+            router.navigate(to: .home)
+        }
+        DispatchQueue.main.async { AppMenuBarOrganizer.normalize() }
+    }
+
+    private var windowContent: some View {
         ZStack {
             // Pages are the bottom content layer. Their fading backgrounds must
             // not cover the fullscreen backdrop on only one side of the window.
@@ -262,32 +410,33 @@ struct WindowRootView: View {
                     // Capa 1: Navegador de Páginas
                     ZStack(alignment: .topTrailing) {
                         // Contenido de la Página según router.currentPage
-                        Group {
-                            switch router.currentPage {
-                            case .home:
-                                HomeView(
-                                    playerViewModel: playerViewModel,
-                                    homeViewModel: homeViewModel,
+                        RetainedMainPages(page: router.currentPage,
+                            isCovered: playerViewModel.isFullscreenPresented || isSpotlightPresented,
+                            home: {
+                                HomeView(playerViewModel: playerViewModel, homeViewModel: homeViewModel,
                                     sessionRevision: homeSessionRevision,
                                     accountName: accountViewModel.isLoggedIn ? accountViewModel.account?.name : nil,
                                     accountThumbnail: accountViewModel.isLoggedIn ? accountViewModel.account?.thumbnail : nil,
-                                    topContentInset: titlebarHeight,
-                                    router: router,
-                                    onNavigate: { dest in
-                                        router.navigate(to: dest)
-                                    }
-                                )
-                            case .explore(let route):
+                                    topContentInset: navigationContentTopInset, router: router,
+                                    onNavigate: { router.navigate(to: $0) })
+                            }, explore: { route in
                                 ExploreView(route: route, rustCore: rustCore, model: exploreViewModel,
                                     playerViewModel: playerViewModel, router: router, sessionRevision: homeSessionRevision,
                                     isObscured: playerViewModel.isFullscreenPresented || isSpotlightPresented)
+                            }, library: {
+                                LibraryView(rustCore: rustCore, playerViewModel: playerViewModel,
+                                    libraryViewModel: libraryViewModel, accountViewModel: accountViewModel, router: router)
+                            }) {
+                            switch router.currentPage {
+                            case .home, .explore, .library:
+                                EmptyView()
                             case .playlist(let id):
                                 PlaylistDetailView(
                                     playlistId: id,
                                     rustCore: rustCore,
                                     playerViewModel: playerViewModel,
                                     router: router,
-                                    topContentInset: titlebarHeight
+                                    topContentInset: navigationContentTopInset
                                 )
                                 .id(id)
                             case .album(let id):
@@ -296,7 +445,7 @@ struct WindowRootView: View {
                                     rustCore: rustCore,
                                     playerViewModel: playerViewModel,
                                     router: router,
-                                    topContentInset: titlebarHeight
+                                    topContentInset: navigationContentTopInset
                                 )
                                 .id(id)
                             case .artist(let id):
@@ -324,14 +473,6 @@ struct WindowRootView: View {
                                     libraryViewModel: libraryViewModel,
                                     router: router
                                 )
-                            case .library:
-                                LibraryView(
-                                    rustCore: rustCore,
-                                    playerViewModel: playerViewModel,
-                                    libraryViewModel: libraryViewModel,
-                                    accountViewModel: accountViewModel,
-                                    router: router
-                                )
                             case .search(let query):
                                 SearchView(
                                     initialQuery: query ?? "",
@@ -341,21 +482,9 @@ struct WindowRootView: View {
                                     searchViewModel: searchViewModel
                                 )
                                 .id(query ?? "empty_search")
-                            default:
-                                HomeView(
-                                    playerViewModel: playerViewModel,
-                                    homeViewModel: homeViewModel,
-                                    sessionRevision: homeSessionRevision,
-                                    accountName: accountViewModel.isLoggedIn ? accountViewModel.account?.name : nil,
-                                    accountThumbnail: accountViewModel.isLoggedIn ? accountViewModel.account?.thumbnail : nil,
-                                    topContentInset: titlebarHeight,
-                                    router: router,
-                                    onNavigate: { dest in
-                                        router.navigate(to: dest)
-                                    }
-                                )
                             }
                         }
+                        .id(homeSessionRevision)
                         .padding(.top, pageTopInset)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
 
@@ -419,13 +548,16 @@ struct WindowRootView: View {
                             showLoginSheet = true
                         },
                         onLogout: {
-                            playerViewModel.switchPlaybackSession(to: "guest")
+                            switchPersonalSession(to: "guest")
                             libraryViewModel.clear()
                             homeViewModel.prepareSession(identity: cookieStorage.homeCacheIdentity())
                             homeSessionRevision &+= 1
                             router.navigate(to: .home)
                         }
                     )
+                    // Resolve the moving surface as a unit before passing its
+                    // position to the fixed-width sidebar's controls.
+                    .geometryGroup()
                     .windowGestureRegion(.excluded)
                     .padding(ShellLayout.sidebarInset)
                     .transition(reduceMotion ? .opacity : .move(edge: .leading).combined(with: .opacity))
@@ -454,17 +586,30 @@ struct WindowRootView: View {
                     searchViewModel: searchViewModel,
                     router: router,
                     playerViewModel: playerViewModel,
-                    rustCore: rustCore
+                    rustCore: rustCore,
+                    persistedDraft: $spotlightSearchDraft,
+                    onRestoreFocus: restoreSpotlightFocus
                 )
+                .id(homeSessionRevision)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .clipped()
                 .padding(.leading, ShellLayout.sidebarReserveWidth(expanded: isSidebarExpanded))
                 .zIndex(5)
             }
         }
+    }
+
+    private var configuredWindowContent: some View {
+        windowContent
+        // AppKit changes the automatic segmented-control renderer inside an
+        // NSToolbar item. Keep the prototype's native glass/lens in the content
+        // plane; the header still aligns its capsules in window coordinates.
+        .overlay(alignment: .top) {
+            windowNavigationToolbar
+        }
         .background {
             Button("") {
-                openSearch()
+                openNavigationSearch()
             }
             .keyboardShortcut("f", modifiers: .command)
             .opacity(0)
@@ -472,13 +617,11 @@ struct WindowRootView: View {
         }
         .background {
             ZStack {
-                if router.currentPage == .home {
-                    HomeAmbientBackground(thumbnails: homeViewModel.featured.ambientThumbnails,
+                Color.sidebDarkBackground
+                HomeAmbientBackground(thumbnails: homeViewModel.featured.ambientThumbnails,
                                           sessionRevision: homeSessionRevision,
-                                          isObscured: playerViewModel.isFullscreenPresented)
-                } else {
-                    Color.sidebDarkBackground
-                }
+                                          isObscured: router.currentPage != .home || playerViewModel.isFullscreenPresented || isSpotlightPresented)
+                    .opacity(router.currentPage == .home ? 1 : 0)
                 CollectionWindowBackground(controller: collectionBackground,
                                            identity: collectionBackgroundIdentity,
                                            enabled: !playerViewModel.isFullscreenPresented)
@@ -491,7 +634,7 @@ struct WindowRootView: View {
             isFullscreenPresented: playerViewModel.isFullscreenPresented,
             titlebarHeight: $titlebarHeight,
             onContentWidthChange: { width in
-                navigationHeaderWidth = max(ShellLayout.navigationMinimumWidth, width - 280)
+                navigationHeaderWidth = max(ShellLayout.navigationMinimumWidth, width)
             }
         ))
         .background(
@@ -499,10 +642,11 @@ struct WindowRootView: View {
                 router: router,
                 presentation: gesturePresentation,
                 isFullscreenPresented: playerViewModel.isFullscreenPresented,
-                canHandleGestures: !isSpotlightPresented && !showLoginSheet &&
+                canHandleGestures: !isSpotlightPresented && !isNavigationSearchExpanded && !showLoginSheet &&
                     !isCreatePlaylistPresented && !isHomeSettingsPresented,
                 reduceMotion: reduceMotion,
                 sessionRevision: homeSessionRevision,
+                volumePlayer: playerViewModel,
                 onDismissFullscreen: {
                     var transaction = Transaction(animation: nil)
                     transaction.disablesAnimations = true
@@ -513,34 +657,30 @@ struct WindowRootView: View {
         .environment(\.sideBMenuContext, menuContext)
         .environment(\.collectionBackgroundController, collectionBackground)
         .focusedSceneValue(\.sideBMenuContext, menuContext)
-        .onAppear {
-            menuContext.player = playerViewModel
-            menuContext.router = router
-            menuContext.core = rustCore
-            menuContext.account = accountViewModel
-            menuContext.library = libraryViewModel
-            menuContext.cookieStorage = cookieStorage
-            menuContext.sidebar = sidebarBinding
-            menuContext.search = searchBinding
-            menuContext.loginSheet = $showLoginSheet
-            menuContext.createPlaylistSheet = $isCreatePlaylistPresented
-            let sessionRevision = $homeSessionRevision
-            menuContext.onLogout = { [libraryViewModel, homeViewModel, cookieStorage, router] in
-                playerViewModel.switchPlaybackSession(to: "guest")
-                libraryViewModel.clear()
-                homeViewModel.prepareSession(identity: cookieStorage.homeCacheIdentity())
-                sessionRevision.wrappedValue &+= 1
-                router.navigate(to: .home)
-            }
-            DispatchQueue.main.async { AppMenuBarOrganizer.normalize() }
-        }
+        .onAppear(perform: configureMenuContext)
+    }
+
+    var body: some View {
+        configuredWindowContent
         .modifier(HomeSupplementalSync(home: homeViewModel, library: libraryViewModel,
             core: playerViewModel.rustCore, sessionRevision: homeSessionRevision))
         .onChange(of: homeSessionRevision) { _, _ in
+            spotlightFocusSnapshot = nil
+            spotlightSearchDraft = ""
+            spotlightPreviousPage = nil
             searchViewModel.clear()
             exploreViewModel.prepareSession(homeSessionRevision)
             isSpotlightPresented = false
+            isNavigationSearchExpanded = false
+            navigationSearchDraft = ""
+            navigationSearchSelectionLabel = nil
             setHomeSettingsPresented(false)
+        }
+        .onChange(of: playerViewModel.isFullscreenPresented) { _, presented in
+            if presented { isNavigationSearchExpanded = false }
+        }
+        .onChange(of: isSpotlightPresented) { _, presented in
+            if presented { isNavigationSearchExpanded = false }
         }
         .onChange(of: canPresentHomeSettings) { _, canPresent in
             if !canPresent { setHomeSettingsPresented(false) }
@@ -563,10 +703,6 @@ struct WindowRootView: View {
             ToolbarItem(placement: .navigation) {
                 SidebarToolbarToggle(isExpanded: sidebarBinding)
                     .frame(height: ShellLayout.toolbarHostHeight)
-            }
-            .compatToolbarBackgroundHidden()
-            ToolbarItem(placement: .primaryAction) {
-                windowNavigationToolbar
             }
             .compatToolbarBackgroundHidden()
         }
@@ -593,10 +729,7 @@ struct WindowRootView: View {
                 }
             }
         }
-        .alert(L10n.text("app.addSongError"), isPresented: Binding(
-            get: { playlistCreationError != nil },
-            set: { if !$0 { playlistCreationError = nil } }
-        )) {
+        .alert(L10n.text("app.addSongError"), isPresented: playlistCreationErrorBinding) {
             Button(L10n.text("app.accept"), role: .cancel) { playlistCreationError = nil }
         } message: {
             Text(playlistCreationError ?? "")
@@ -614,7 +747,10 @@ struct WindowRootView: View {
         }
         .onChange(of: router.currentPage) { _, _ in
             playerViewModel.dismissFullscreen()
+            isNavigationSearchExpanded = false
             menuContext.clearSelection()
+            // A retained hidden page must not keep receiving keyboard input.
+            NSApp.keyWindow?.makeFirstResponder(nil)
         }
     }
 }
@@ -649,4 +785,16 @@ private struct HomeSupplementalSync: ViewModifier {
         }
         home.updateSupplemental(albums: library.albums, playlists: library.playlists, history: library.historyGroups)
     }
+}
+
+/// Configure account-scoped feature services before library requests or playback restore.
+@MainActor
+private func configurePersonalFeatures(identity: String, core: SideBCore?, library: LibraryViewModel) {
+    library.configureAccount(identity: identity)
+    guard let core else { return }
+    FeaturedArtistResolver.shared.configure(search: { query in
+        try await core.searchCards(query: query, category: "artists")
+            .filter { $0.kind == "artist" && !$0.id.isEmpty }
+            .map { FeaturedArtistCandidate(id: $0.id, name: $0.title, subtitle: $0.subtitle) }
+    }, scope: identity)
 }

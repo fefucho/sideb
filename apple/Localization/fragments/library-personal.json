@@ -1,0 +1,102 @@
+{
+  "library.tab.all": {
+    "es": "Todo",
+    "en": "All"
+  },
+  "library.subtitle": {
+    "es": "Tu música, tus colecciones y tus favoritos a mano.",
+    "en": "Your music, collections and favorites within reach."
+  },
+  "library.search.placeholder": {
+    "es": "Buscar en tu biblioteca",
+    "en": "Search your library"
+  },
+  "library.sort.label": {
+    "es": "Ordenar biblioteca",
+    "en": "Sort library"
+  },
+  "library.sort.original": {
+    "es": "Orden original",
+    "en": "Original order"
+  },
+  "library.sort.name": {
+    "es": "Nombre",
+    "en": "Name"
+  },
+  "library.sort.artist": {
+    "es": "Artista",
+    "en": "Artist"
+  },
+  "library.view.list": {
+    "es": "Vista de lista",
+    "en": "List view"
+  },
+  "library.view.grid": {
+    "es": "Vista de cuadrícula",
+    "en": "Grid view"
+  },
+  "library.search.loaded": {
+    "es": "Buscando en %@ canciones cargadas",
+    "en": "Searching %@ loaded songs"
+  },
+  "library.search.complete": {
+    "es": "Buscando en %@ canciones disponibles",
+    "en": "Searching %@ available songs"
+  },
+  "library.search.collections": {
+    "es": "Filtra las colecciones disponibles del proveedor.",
+    "en": "Filters collections available from the provider."
+  },
+  "library.search.rest": {
+    "es": "Buscar en el resto",
+    "en": "Search remaining songs"
+  },
+  "library.search.continue": {
+    "es": "Continuar búsqueda",
+    "en": "Continue searching"
+  },
+  "library.search.cancel": {
+    "es": "Cancelar",
+    "en": "Cancel"
+  },
+  "library.search.progress": {
+    "es": "%@ páginas recorridas",
+    "en": "%@ pages searched"
+  },
+  "library.search.empty": {
+    "es": "Sin coincidencias en lo cargado",
+    "en": "No matches in loaded items"
+  },
+  "library.search.pending": {
+    "es": "Todavía quedan canciones por cargar.",
+    "en": "There are still songs to load."
+  },
+  "library.pinned": {
+    "es": "Fijados",
+    "en": "Pinned"
+  },
+  "library.pin": {
+    "es": "Fijar %@",
+    "en": "Pin %@"
+  },
+  "library.unpin": {
+    "es": "Desfijar %@",
+    "en": "Unpin %@"
+  },
+  "library.pin.up": {
+    "es": "Mover %@ arriba",
+    "en": "Move %@ up"
+  },
+  "library.pin.down": {
+    "es": "Mover %@ abajo",
+    "en": "Move %@ down"
+  },
+  "library.see_all": {
+    "es": "Ver todos",
+    "en": "See all"
+  },
+  "library.empty.all": {
+    "es": "Tus colecciones guardadas aparecerán aquí",
+    "en": "Your saved collections will appear here"
+  }
+}

@@ -8,6 +8,9 @@ enum WindowGestureRegion: Sendable {
     case excluded
     case horizontalContent
     case verticalContent
+    case volumeCapsule
+    case volumeFullscreen
+    case volumeExcluded
 }
 
 struct WindowGestureRouting: Equatable {
@@ -78,6 +81,33 @@ enum WindowGestureRegions {
         return result
     }
 
+    /// Resolve the foremost semantic surface. A fullscreen background terminates
+    /// traversal before retained pages underneath; nested panels and shell controls
+    /// are visited first. Capsule children may override the player bar exclusion.
+    static func volumeZone(at point: NSPoint, in root: NSView) -> VolumeScrollPolicy.Zone? {
+        guard root.bounds.contains(point) else { return nil }
+        return volumeSurface(at: point, in: root)?.zone
+    }
+
+    private struct VolumeSurface { var zone: VolumeScrollPolicy.Zone? }
+    private static func volumeSurface(at point: NSPoint, in view: NSView) -> VolumeSurface? {
+        guard !view.isHidden, view.alphaValue > 0.01 else { return nil }
+        if view.clipsToBounds && !view.bounds.contains(point) { return nil }
+        for child in view.subviews.reversed() {
+            if let result = volumeSurface(at: child.convert(point, from: view), in: child) { return result }
+        }
+        guard let marker = view as? WindowGestureRegionView, marker.isRegionActive, marker.bounds.contains(point) else { return nil }
+        switch marker.region {
+        case .volumeCapsule:
+            let radius = marker.bounds.height / 2
+            guard NSBezierPath(roundedRect: marker.bounds, xRadius: radius, yRadius: radius).contains(point) else { return nil }
+            return VolumeSurface(zone: .capsule)
+        case .volumeFullscreen: return VolumeSurface(zone: .fullscreen)
+        case .excluded, .horizontalContent, .verticalContent, .volumeExcluded: return VolumeSurface(zone: nil)
+        case .content: return nil
+        }
+    }
+
     private static func collectMarkers(at point: NSPoint, in view: NSView,
                                        includeLegacyOwners: Bool,
                                        into result: inout WindowGestureRouting) {
@@ -88,6 +118,7 @@ enum WindowGestureRegions {
             case .excluded: result.isExcluded = true
             case .horizontalContent: result.ownsHorizontal = true
             case .verticalContent: result.ownsVertical = true
+            case .volumeCapsule, .volumeFullscreen, .volumeExcluded: break
             }
         }
         if includeLegacyOwners, let owner = view as? HorizontalNavigationGestureOwner,

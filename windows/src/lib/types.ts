@@ -89,6 +89,9 @@ export interface SearchResultsDto {
   artists: BrowseCardDto[];
   playlists: BrowseCardDto[];
 }
+export interface SearchSuggestionsDto { queries: string[]; results: SearchResultsDto }
+export interface SearchCorrectionDto { query: string; applied: boolean }
+export interface SearchCatalogDto { results: SearchResultsDto; correction: SearchCorrectionDto | null }
 export interface ArtistCarouselDto { title: string; items: BrowseCardDto[]; moreBrowseId: string | null; moreParams: string | null }
 export interface ArtistDetailDto {
   channelId: string; name: string; thumbnail: string | null; description: string | null;
@@ -155,6 +158,7 @@ export interface PlaybackStateDto {
   position: number;
   duration: number;
   volume: number;
+  audioRevision?: number;
   exponentialVolume?: boolean;
   currentTrack: PlaybackTrackDto | null;
   error: string | null;
@@ -165,6 +169,7 @@ export interface PlaybackStateDto {
 export interface QueueEntryDto {
   isUpload?: boolean;
   entryId: string;
+  sourceOccurrenceId?: string | null;
   videoId: string;
   title: string;
   artists: string;

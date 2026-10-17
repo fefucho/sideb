@@ -21,6 +21,8 @@ struct FullscreenCanvas: View {
             .clipped()
         }
         .ignoresSafeArea(.container, edges: .top)
+        .windowGestureRegion(.volumeExcluded, active: viewModel.isFullscreenPresented)
+        .onHover { if !$0 { viewModel.volumeScroll.cancel() } }
         .allowsHitTesting(viewModel.isFullscreenPresented)
         .accessibilityHidden(!viewModel.isFullscreenPresented)
     }

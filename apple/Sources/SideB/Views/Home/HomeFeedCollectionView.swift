@@ -319,6 +319,7 @@ struct HomeFeedCollectionView: NSViewRepresentable {
                 onCover: { [weak self] in self?.activate(itemID: id, fromCover: true) },
                 onTitle: { [weak self] in self?.activate(itemID: id, fromCover: true) },
                 onArtist: { [weak self] in self?.navigateArtist(itemID: id) },
+                onFeatured: { [weak self] id,name in self?.parent.router?.navigate(to:id.map { .artist(browseId:$0) } ?? .search(query:name)) },
                 onAlbum: { [weak self] in self?.navigateAlbum(itemID: id) },
                 onDirectPlay: { [weak self] in self?.handleDirectPlay(itemID: id) },
                 // El menú debe usar el mismo valor inmutable que pintó esta celda. Consultar
@@ -557,13 +558,33 @@ final class HomeNativeCollectionView: NSCollectionView {
     private var hoverTrackingArea: NSTrackingArea?
     private let observedClipViews = NSHashTable<NSClipView>.weakObjects()
 
+    override var collectionViewLayout: NSCollectionViewLayout? {
+        didSet {
+            guard oldValue !== collectionViewLayout else { return }
+            stopObservingScrollViews()
+            // AppKit's setter may have laid out the new tree synchronously.
+            // Rearm its clips on the next normal pass after retiring old ones.
+            if shouldConfigureOrthogonalScrollViews { needsLayout = true }
+        }
+    }
+
+    private var shouldConfigureOrthogonalScrollViews: Bool {
+        guard let layout = collectionViewLayout else { return false }
+        // Current shelves and catalogs use Flow, which does not own orthogonal
+        // scrollers. Preserve handling for compositional, custom and transition
+        // layouts, including transitions whose endpoints use different layouts.
+        return !(layout is NSCollectionViewFlowLayout)
+    }
+
     override func didAddSubview(_ subview: NSView) {
         super.didAddSubview(subview)
+        guard shouldConfigureOrthogonalScrollViews else { return }
         configureOrthogonalScrollViews(in: subview)
     }
 
     override func layout() {
         super.layout()
+        guard shouldConfigureOrthogonalScrollViews else { return }
         // Compositional layout owns these orthogonal scroll views and may tile
         // them again as sections are laid out or reused.
         for subview in subviews { configureOrthogonalScrollViews(in: subview) }
@@ -571,12 +592,12 @@ final class HomeNativeCollectionView: NSCollectionView {
 
     private func configureOrthogonalScrollViews(in view: NSView) {
         if let scroll = view as? NSScrollView {
-            scroll.hasHorizontalScroller = false
-            scroll.horizontalScroller = nil
-            scroll.hasVerticalScroller = false
-            scroll.drawsBackground = false
-            scroll.horizontalScrollElasticity = .allowed
-            scroll.contentView.postsBoundsChangedNotifications = true
+            if scroll.hasHorizontalScroller { scroll.hasHorizontalScroller = false }
+            if scroll.horizontalScroller != nil { scroll.horizontalScroller = nil }
+            if scroll.hasVerticalScroller { scroll.hasVerticalScroller = false }
+            if scroll.drawsBackground { scroll.drawsBackground = false }
+            if scroll.horizontalScrollElasticity != .allowed { scroll.horizontalScrollElasticity = .allowed }
+            if !scroll.contentView.postsBoundsChangedNotifications { scroll.contentView.postsBoundsChangedNotifications = true }
             if !observedClipViews.contains(scroll.contentView) {
                 observedClipViews.add(scroll.contentView)
                 NotificationCenter.default.addObserver(self, selector: #selector(shelfBoundsChanged(_:)),
@@ -591,13 +612,14 @@ final class HomeNativeCollectionView: NSCollectionView {
         super.willRemoveSubview(subview)
     }
 
-    private func stopObservingScrollViews(in view: NSView) {
-        if let scroll = view as? NSScrollView {
-            NotificationCenter.default.removeObserver(self, name: NSView.boundsDidChangeNotification,
-                                                      object: scroll.contentView)
-            observedClipViews.remove(scroll.contentView)
+    private func stopObservingScrollViews(in view: NSView? = nil) {
+        // Work is proportional to clips actually registered, not every control
+        // in the departing card subtree. Flow collections keep this set empty.
+        for clip in observedClipViews.allObjects {
+            if let view, clip !== view && !clip.isDescendant(of: view) { continue }
+            NotificationCenter.default.removeObserver(self, name: NSView.boundsDidChangeNotification, object: clip)
+            observedClipViews.remove(clip)
         }
-        for child in view.subviews { stopObservingScrollViews(in: child) }
     }
 
     deinit { NotificationCenter.default.removeObserver(self) }
@@ -792,8 +814,8 @@ final class HomePlayHitButton: HomeFocusTrackingButton {
     }
 }
 
-private final class HomeCardTitleLabel: NSTextField {
-    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+private final class HomeCardTitleLabel: NativeTrackActionField {
+    override func hitTest(_ point:NSPoint)->NSView? { let hit = super.hitTest(point); return hit is NativeFeaturedArtistButton ? hit : nil }
 }
 
 final class HomeItemView: NSView {
@@ -816,6 +838,13 @@ final class HomeItemView: NSView {
         let loading: Bool
     }
 
+    var showsDirectPlayControl = true {
+        didSet {
+            guard oldValue != showsDirectPlayControl else { return }
+            renderedAppearance = nil
+            refreshAppearance()
+        }
+    }
     let cardButton = HomeFocusTrackingButton()
     private let cover = HomeFocusTrackingButton()
     let equalizerOverlay = HomeEqualizerOverlayView()
@@ -827,6 +856,7 @@ final class HomeItemView: NSView {
     private let title = HomeCardTitleLabel(labelWithString: "")
     let artist = HomeInteractiveLinkButton()
     private let largeArtistLabel = NSTextField(labelWithString: "")
+    private let songArtistLinks = NativeTrackActionField(frame:.zero)
     private let album = HomeInteractiveLinkButton()
     private let subtitle = NSTextField(labelWithString: "")
     private let bullet = NSTextField(labelWithString: "•")
@@ -917,6 +947,10 @@ final class HomeItemView: NSView {
         title.cell?.wraps = true
         title.setAccessibilityElement(false)
         addSubview(title)
+        songArtistLinks.isEditable = false; songArtistLinks.isSelectable = false; songArtistLinks.isBezeled = false; songArtistLinks.drawsBackground = false
+        songArtistLinks.lineBreakMode = .byTruncatingTail; songArtistLinks.maximumNumberOfLines = 1
+        songArtistLinks.font = Self.compactArtistMeasureFont; songArtistLinks.textColor = .secondaryLabelColor
+        songArtistLinks.isHidden = true
 
         setup(artist, selector: #selector(artistPressed), font: .systemFont(ofSize: 15.5, weight: .regular), attach: false)
         artist.onFocusChanged = { [weak self] in self?.scheduleFocusAppearanceRefresh() }
@@ -1020,11 +1054,11 @@ final class HomeItemView: NSView {
             let badgeWidth: CGFloat = explicitBadge.isHidden ? 0 : 18
             explicitBadge.frame = NSRect(x: textLeading, y: 31, width: 14, height: 14)
             let metadataLeading = textLeading + badgeWidth
-            let artistWidth = artist.isHidden ? 0 : min(compactArtistTextWidth, max(0, maxTextWidth - badgeWidth))
+            let artistWidth = artist.isHidden && songArtistLinks.isHidden ? 0 : min(compactArtistTextWidth, max(0, maxTextWidth - badgeWidth))
             artist.frame = NSRect(x: metadataLeading, y: 30, width: artistWidth, height: 17)
             let separatorX = metadataLeading + artistWidth + 3
             bullet.frame = NSRect(x: separatorX, y: 30, width: 10, height: 17)
-            bullet.isHidden = artist.isHidden || album.isHidden
+            bullet.isHidden = artist.isHidden && songArtistLinks.isHidden || album.isHidden
             let albumX = separatorX + (bullet.isHidden ? 0 : 10)
             album.frame = NSRect(x: albumX, y: 30, width: max(0, bounds.width - albumX - moreTrailingMargin), height: 17)
 
@@ -1072,7 +1106,7 @@ final class HomeItemView: NSView {
             explicitBadge.frame = NSRect(x: 0, y: metadataY + 1, width: 15, height: 15)
             let metadataLeading = badgeWidth
             typeLabel.frame = NSRect(x: metadataLeading, y: metadataY, width: measuredTypeWidth, height: 17)
-            let showMetadataDetail = !artist.isHidden || !subtitle.isHidden
+            let showMetadataDetail = !artist.isHidden || !songArtistLinks.isHidden || !subtitle.isHidden
             let separatorX = metadataLeading + measuredTypeWidth + 5
             bullet.frame = NSRect(x: separatorX, y: metadataY, width: 8, height: 17)
             bullet.isHidden = !showMetadataDetail
@@ -1090,6 +1124,10 @@ final class HomeItemView: NSView {
             ? AppTheme.artworkThumbnailRadius
             : (representedKind == "artist" ? bounds.width / 2 : AppTheme.artworkCardRadius)
         loadingIndicator?.frame = playSymbol.frame.insetBy(dx: -1, dy: -1)
+        if !songArtistLinks.isHidden {
+            songArtistLinks.frame = artist.frame
+            songArtistLinks.font = style == .compactSong ? Self.compactArtistMeasureFont : Self.largeMetadataFont
+        }
         CATransaction.commit()
     }
 
@@ -1171,11 +1209,12 @@ final class HomeItemView: NSView {
         isPlaying: Bool,
         queueContext: QueueContext? = nil,
         onCard: @escaping () -> Void, onCover: @escaping () -> Void, onTitle: @escaping () -> Void,
-        onArtist: @escaping () -> Void, onAlbum: @escaping () -> Void,
+        onArtist: @escaping () -> Void, onFeatured: ((String?,String)->Void)? = nil, onAlbum: @escaping () -> Void,
         onDirectPlay: (() -> Void)? = nil,
         menuProvider: @escaping () -> NSMenu?
     ) {
         let samePresentation = representedRecord == record && self.style == style
+            && ((record.kind == "song" && onFeatured != nil) == !songArtistLinks.isHidden)
         if representedID != nil && !samePresentation { prepareForReuse() }
         self.style = style
         representedID = record.id
@@ -1188,7 +1227,14 @@ final class HomeItemView: NSView {
         self.onAlbum = onAlbum
         self.onDirectPlay = onDirectPlay
         self.menuProvider = menuProvider
+        if record.kind == "song", let onFeatured {
+            let track = SongItemRecord(fromHomeItem:record)
+            title.configureFeatured(track:track,isTitle:true,onNavigate:onFeatured)
+            songArtistLinks.configureFeatured(track:track,isTitle:false,onNavigate:onFeatured)
+            if songArtistLinks.superview == nil { addSubview(songArtistLinks) }; songArtistLinks.isHidden = false
+        } else { title.clearFeatured(); songArtistLinks.clearFeatured(); songArtistLinks.isHidden = true; songArtistLinks.removeFromSuperview() }
         if samePresentation {
+            if !songArtistLinks.isHidden { artist.isHidden = true; largeArtistLabel.isHidden = true }
             refreshMetadataAccessibility(for: record)
             updatePlayback(
                 currentTrackID: currentTrackID,
@@ -1240,6 +1286,7 @@ final class HomeItemView: NSView {
         showMetadata(bullet, when: style == .compactSong ? artistCanShow && showsAlbum : artistCanShow || showsSubtitle)
         showMetadata(explicitBadge, when: record.explicit)
 
+        if !songArtistLinks.isHidden { artist.isHidden = true; largeArtistLabel.isHidden = true }
         refreshMetadataAccessibility(for: record)
         refreshArtistAppearance()
         updatePlayback(
@@ -1322,6 +1369,7 @@ final class HomeItemView: NSView {
                              currentPlaylistBrowseId: String?, isPlaying: Bool,
                              queueContext: QueueContext?) {
         guard let record = representedRecord else { return }
+        if !songArtistLinks.isHidden { artist.isHidden = true; largeArtistLabel.isHidden = true }
         refreshMetadataAccessibility(for: record)
         updatePlayback(currentTrackID: currentTrackID, currentAlbumBrowseId: currentAlbumBrowseId,
                        currentPlaylistBrowseId: currentPlaylistBrowseId, isPlaying: isPlaying,
@@ -1407,6 +1455,7 @@ final class HomeItemView: NSView {
 
     override func prepareForReuse() {
         super.prepareForReuse()
+        showsDirectPlayControl = true
         setLoading(false)
         imageTask?.cancel()
         imageTask = nil
@@ -1418,6 +1467,7 @@ final class HomeItemView: NSView {
         onDirectPlay = nil
         representedID = nil
         representedRecord = nil
+        title.clearFeatured(); songArtistLinks.clearFeatured(); songArtistLinks.isHidden = true; songArtistLinks.removeFromSuperview()
         representedKind = ""
         compactArtistTextWidth = 0
         measuredLargeCardWidth = -1
@@ -1466,6 +1516,8 @@ final class HomeItemView: NSView {
 
     func setFeedVisible(_ visible: Bool) {
         feedVisible = visible
+        title.setFeaturedVisible(visible)
+        songArtistLinks.setFeaturedVisible(visible)
         equalizerOverlay.setFeedVisible(visible)
         if loading {
             if visible { loadingIndicator?.startAnimation(nil) }
@@ -1524,6 +1576,9 @@ final class HomeItemView: NSView {
         // orden de inserción de subviews al reciclar una tarjeta.
         let localPoint = superview.map { convert(point, from: $0) } ?? point
         guard bounds.contains(localPoint) else { return nil }
+        for field in [title,songArtistLinks] where !field.isHidden {
+            if let hit = field.hitTest(convert(localPoint,to:field.superview)), hit is NativeFeaturedArtistButton { return hit }
+        }
         if let event = NSApp.currentEvent,
            event.type == .rightMouseDown || (event.type == .leftMouseDown && event.modifierFlags.contains(.control)) {
             return self
@@ -1622,9 +1677,9 @@ final class HomeItemView: NSView {
             playSymbol.isHidden = !isHighlighted
             playSymbol.image = playImage
         }
-        playButton.isHidden = !isHighlighted
-        playButton.isEnabled = !loading
-        if loading { playSymbol.isHidden = true }
+        playButton.isHidden = !isHighlighted || !showsDirectPlayControl
+        playButton.isEnabled = !loading && showsDirectPlayControl
+        if loading || !showsDirectPlayControl { playSymbol.isHidden = true }
         playSymbol.contentTintColor = .white
         equalizerOverlay.setMotionEnabled(!NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
         equalizerOverlay.setFeedVisible(feedVisible)

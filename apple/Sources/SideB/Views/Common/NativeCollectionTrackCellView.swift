@@ -102,6 +102,7 @@ final class NativeCollectionTrackCellView: NSTableCellView, NativeTrackCellPrese
     var onLike: ((SongItemRecord) -> Void)?
     var onMenu: ((NSButton) -> Void)?
     var onArtist: ((SongItemRecord) -> Void)?
+    var onArtistDestination: ((String?,String)->Void)?
     var onAlbum: ((SongItemRecord) -> Void)?
     var onSelectionMouseDown: ((NSEvent) -> Void)?
     var onCreditFocusChanged: ((Bool) -> Void)?
@@ -208,6 +209,8 @@ final class NativeCollectionTrackCellView: NSTableCellView, NativeTrackCellPrese
         album.configureLink(label: track.displayAlbum ?? "", destinationExists: track.albumId != nil) { [weak self] in
             guard let self, let track = self.track else { return }; self.onAlbum?(track)
         } fallback: { [weak self] in self?.onPlay?() }
+        title.configureFeatured(track:track,isTitle:true) { [weak self] id,name in self?.onArtistDestination?(id,name) }
+        artist.configureFeatured(track:track,isTitle:false) { [weak self] id,name in self?.onArtistDestination?(id,name) }
         album.isHidden = !showsAlbum
         duration.stringValue = track.duration ?? "—"
         likeButton.image = NSImage(systemSymbolName: isLiked ? "heart.fill" : "heart", accessibilityDescription: L10n.text(isLiked ? "detail.track.unlike" : "detail.track.like"))?
@@ -261,7 +264,8 @@ final class NativeCollectionTrackCellView: NSTableCellView, NativeTrackCellPrese
         super.prepareForReuse()
         imageTask?.cancel(); imageTask = nil; requestID = UUID(); track = nil
         artwork.image = nil; hovered = false; focused = false; reorderable = false
-        onPlay = nil; onLike = nil; onMenu = nil; onArtist = nil; onAlbum = nil
+        title.clearFeatured(); artist.clearFeatured()
+        onPlay = nil; onLike = nil; onMenu = nil; onArtist = nil; onArtistDestination = nil; onAlbum = nil
         onSelectionMouseDown = nil; onCreditFocusChanged = nil
         updateControls()
     }

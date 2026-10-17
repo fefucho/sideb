@@ -9,6 +9,7 @@ struct ExploreView: View {
     let router: NavigationRouter
     let sessionRevision: Int
     var isObscured = false
+    @Environment(\.sideBPageIsActive) private var pageIsActive
     @State private var refreshRevision = 0
     @State private var previousRequest: RequestIdentity?
 
@@ -16,8 +17,9 @@ struct ExploreView: View {
         let route: ExploreRoute
         let session: Int
         let refresh: Int
+        let active: Bool
     }
-    private var requestIdentity: RequestIdentity { .init(route: route, session: sessionRevision, refresh: refreshRevision) }
+    private var requestIdentity: RequestIdentity { .init(route: route, session: sessionRevision, refresh: refreshRevision, active: pageIsActive) }
 
     var body: some View {
         let _ = L10n.revision
@@ -31,6 +33,7 @@ struct ExploreView: View {
             }
         }
         .task(id: requestIdentity) {
+            guard pageIsActive else { return }
             let identity = requestIdentity
             let force = previousRequest.map {
                 $0.route == identity.route && $0.session == identity.session && $0.refresh != identity.refresh
@@ -113,19 +116,15 @@ struct ExploreView: View {
 
     private var tabs: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
+            HStack(spacing: SideBControlMetrics.categorySpacing) {
                 ForEach(ExploreRoute.tabs, id: \.self) { tab in
                     Button { navigate(tab) } label: {
-                        Label(tab.title, systemImage: tab.symbol)
-                            .font(.system(size: 12, weight: .semibold))
-                            .padding(.horizontal, 15).padding(.vertical, 10)
-                            .background(route.selectedTab == tab ? Color.white.opacity(0.14) : Color.white.opacity(0.04), in: Capsule())
-                            .overlay(Capsule().strokeBorder(Color.white.opacity(route.selectedTab == tab ? 0.2 : 0.06)))
+                        SideBControlLabel(title: tab.title, symbol: tab.symbol)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(SideBControlStyle(size: .category, selected: route.selectedTab == tab))
                     .accessibilityAddTraits(route.selectedTab == tab ? .isSelected : [])
                 }
-            }.padding(2)
+            }.padding(.vertical, 4)
         }
         .windowGestureRegion(.horizontalContent, active: !playerViewModel.isFullscreenPresented)
     }
@@ -183,24 +182,41 @@ struct ExploreView: View {
         LinearGradient(colors: [Color(hue: hue, saturation: 0.48, brightness: 0.32), Color(hue: hue, saturation: 0.25, brightness: 0.15)], startPoint: .topLeading, endPoint: .bottomTrailing)
     }
 
+    private var chartRegionTitle: String {
+        if case .chartCountry(let code) = route {
+            return code == "ZZ" ? L10n.text("explore.region.global") : ExploreChartRegion.name(code)
+        }
+        return L10n.text("explore.region.global_and_yours")
+    }
+
     private var chartContents: some View {
         VStack(alignment: .leading, spacing: 24) {
             HStack(spacing: 16) {
-                Picker(L10n.text("explore.region.label"), selection: Binding(get: { route }, set: { navigate($0) })) {
-                    Text(L10n.text("explore.region.global_and_yours")).tag(ExploreRoute.charts)
-                    Text(L10n.text("explore.region.global")).tag(ExploreRoute.chartCountry("ZZ"))
-                    ForEach(model.chartCountries.filter { $0.code != "ZZ" }.sorted {
-                        ExploreChartRegion.name($0.code).localizedStandardCompare(ExploreChartRegion.name($1.code)) == .orderedAscending
-                    }, id: \.code) { country in
-                        Text(ExploreChartRegion.name(country.code)).tag(ExploreRoute.chartCountry(country.code))
+                Menu {
+                    Picker(L10n.text("explore.region.label"), selection: Binding(get: { route }, set: { navigate($0) })) {
+                        Text(L10n.text("explore.region.global_and_yours")).tag(ExploreRoute.charts)
+                        Text(L10n.text("explore.region.global")).tag(ExploreRoute.chartCountry("ZZ"))
+                        ForEach(model.chartCountries.filter { $0.code != "ZZ" }.sorted {
+                            ExploreChartRegion.name($0.code).localizedStandardCompare(ExploreChartRegion.name($1.code)) == .orderedAscending
+                        }, id: \.code) { country in
+                            Text(ExploreChartRegion.name(country.code)).tag(ExploreRoute.chartCountry(country.code))
+                        }
                     }
+                    .pickerStyle(.inline)
+                } label: {
+                    HStack(spacing: 8) {
+                        Text(chartRegionTitle)
+                        Image(systemName: "chevron.down").font(.system(size: 10, weight: .semibold))
+                    }
+                    .sidebControlLabel()
                 }
-                .pickerStyle(.menu).fixedSize()
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .fixedSize()
                 .accessibilityLabel(L10n.text("explore.region.selector"))
                 Spacer()
-                if model.isLoading { ProgressView().controlSize(.small) }
-                Button { refreshRevision &+= 1 } label: { Label(L10n.text("explore.refresh"), systemImage: "arrow.clockwise") }
-                    .buttonStyle(.bordered).disabled(model.isLoading)
+                Button { refreshRevision &+= 1 } label: { SideBControlLabel(title: L10n.text("explore.refresh"), symbol: "arrow.clockwise") }
+                    .buttonStyle(SideBControlStyle(loading: model.isLoading)).disabled(model.isLoading)
                 .help(L10n.text(route == .charts ? "explore.charts.refresh_detect" : "explore.charts.refresh"))
             }
             if route == .charts, let code = model.detectedCountry {
@@ -212,7 +228,7 @@ struct ExploreView: View {
                 HStack {
                     Text(error).font(.system(size: 12)).foregroundStyle(.secondary)
                     Spacer()
-                    Button(L10n.text("explore.retry")) { refreshRevision &+= 1 }.buttonStyle(.bordered)
+                    Button(L10n.text("explore.retry")) { refreshRevision &+= 1 }.buttonStyle(SideBControlStyle())
                 }
             }
             if model.chartSections.isEmpty, model.isLoading {
@@ -247,9 +263,8 @@ struct ExploreView: View {
     private func musicHeader(title: String, preview: Bool = false) -> some View {
         HStack {
             sectionHeader(title, destination: preview ? .releases : nil)
-            if model.isLoading, !model.cards.isEmpty { ProgressView().controlSize(.small) }
             Button { refreshRevision &+= 1 } label: { Image(systemName: "arrow.clockwise") }
-                .buttonStyle(.plain).disabled(model.isLoading).help(L10n.text("explore.refresh_music")).accessibilityLabel(L10n.text("explore.refresh_music"))
+                .buttonStyle(SideBControlStyle(iconOnly: true, loading: model.isLoading)).disabled(model.isLoading).help(L10n.text("explore.refresh_music")).accessibilityLabel(L10n.text("explore.refresh_music"))
         }
     }
 
@@ -259,7 +274,7 @@ struct ExploreView: View {
                 Image(systemName: "wifi.exclamationmark").foregroundStyle(.secondary)
                 Text(error).font(.system(size: 12)).foregroundStyle(.secondary)
                 Spacer()
-                Button(L10n.text("explore.retry")) { refreshRevision &+= 1 }.buttonStyle(.bordered)
+                Button(L10n.text("explore.retry")) { refreshRevision &+= 1 }.buttonStyle(SideBControlStyle())
             }
             .padding(16).background(.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 12))
         }
@@ -274,7 +289,7 @@ struct ExploreView: View {
     private func nativeCatalog(cards: [BrowseCardRecord], axis: ExploreCatalogGridView.Axis = .vertical,
                                header: AnyView? = nil, headerIdentity: ExploreCatalogHeaderIdentity? = nil) -> some View {
         ExploreCatalogGridView(cards: cards, route: route, sessionRevision: sessionRevision, axis: axis,
-            header: header, headerIdentity: headerIdentity, isObscured: isObscured,
+            header: header, headerIdentity: headerIdentity, isObscured: isObscured || !pageIsActive,
             queueContext: playerViewModel.queueManager.context, isPlaying: playerViewModel.isPlaying,
             loadingAlbumID: playerViewModel.loadingRecommendedAlbumID,
             loadingPlaylistID: playerViewModel.loadingRecommendedPlaylistID,

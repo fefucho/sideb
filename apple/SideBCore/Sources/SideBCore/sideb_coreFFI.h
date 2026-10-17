@@ -579,6 +579,11 @@ uint64_t uniffi_sideb_core_fn_method_sidebcore_search_all_json(void*_Nonnull ptr
 uint64_t uniffi_sideb_core_fn_method_sidebcore_search_cards(void*_Nonnull ptr, RustBuffer query, RustBuffer category
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_FN_METHOD_SIDEBCORE_SEARCH_CATALOG
+#define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_FN_METHOD_SIDEBCORE_SEARCH_CATALOG
+uint64_t uniffi_sideb_core_fn_method_sidebcore_search_catalog(void*_Nonnull ptr, RustBuffer query, int8_t record_history, int8_t ignore_spelling
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_FN_METHOD_SIDEBCORE_SEARCH_GENIUS
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_FN_METHOD_SIDEBCORE_SEARCH_GENIUS
 uint64_t uniffi_sideb_core_fn_method_sidebcore_search_genius(void*_Nonnull ptr, RustBuffer query
@@ -592,6 +597,11 @@ uint64_t uniffi_sideb_core_fn_method_sidebcore_search_songs(void*_Nonnull ptr, R
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_FN_METHOD_SIDEBCORE_SEARCH_SONGS_JSON
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_FN_METHOD_SIDEBCORE_SEARCH_SONGS_JSON
 uint64_t uniffi_sideb_core_fn_method_sidebcore_search_songs_json(void*_Nonnull ptr, RustBuffer query, int8_t record_history
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_FN_METHOD_SIDEBCORE_SEARCH_SUGGESTIONS
+#define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_FN_METHOD_SIDEBCORE_SEARCH_SUGGESTIONS
+uint64_t uniffi_sideb_core_fn_method_sidebcore_search_suggestions(void*_Nonnull ptr, RustBuffer query
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_FN_METHOD_SIDEBCORE_SEARCH_VIDEOS
@@ -1262,6 +1272,12 @@ uint16_t uniffi_sideb_core_checksum_method_sidebcore_search_cards(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_SEARCH_CATALOG
+#define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_SEARCH_CATALOG
+uint16_t uniffi_sideb_core_checksum_method_sidebcore_search_catalog(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_SEARCH_GENIUS
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_SEARCH_GENIUS
 uint16_t uniffi_sideb_core_checksum_method_sidebcore_search_genius(void
@@ -1277,6 +1293,12 @@ uint16_t uniffi_sideb_core_checksum_method_sidebcore_search_songs(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_SEARCH_SONGS_JSON
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_SEARCH_SONGS_JSON
 uint16_t uniffi_sideb_core_checksum_method_sidebcore_search_songs_json(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_SEARCH_SUGGESTIONS
+#define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_SEARCH_SUGGESTIONS
+uint16_t uniffi_sideb_core_checksum_method_sidebcore_search_suggestions(void
     
 );
 #endif

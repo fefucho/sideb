@@ -24,7 +24,7 @@ test('sorted playlist header starts the first song in chosen order',async()=>{
   const source=[song('z','Z'),song('a','A')];
   const component=await readFile(new URL('../src/lib/components/detail/PlaylistDetailView.svelte',import.meta.url),'utf8');
   // Evaluate the actual header selection expression with the same view data.
-  const expression=component.match(/class="play"[^\n]+onclick=\{\(\) => onPlay\(([^,]+), false, order\)/)?.[1];
+  const expression=component.match(/data-action="play"[^\n]+onclick=\{\(\) => onPlay\(([^,]+), false, order\)/)?.[1];
   assert.ok(expression,'header Play expression must remain reviewable');
   const ordered=projectTracks(source,'','title'),projection=ordered;
   const index=Function('ordered','projection',`return ${expression}`)(ordered,projection);

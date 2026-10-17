@@ -26,12 +26,12 @@ struct QuickResultCardRow: View {
         let artwork = Group {
             if let thumb = card.thumbnail,
                let url = ImageURLHelper.optimizedThumbnailURL(from: thumb, targetPixelSize: isHero ? 120 : 96) {
-                CachedAsyncImage(url: url, targetSize: CGSize(width: isHero ? 48 : 38, height: isHero ? 48 : 38)) { image in
+                CachedAsyncImage(url: url, targetSize: CGSize(width: 42, height: 42)) { image in
                     image.resizable().aspectRatio(contentMode: .fill)
                 } placeholder: {
                     placeholderIcon
                 }
-                .frame(width: isHero ? 48 : 38, height: isHero ? 48 : 38)
+                .frame(width: 42, height: 42)
                 .clipShape(isArtist ? AnyShape(Circle()) : AnyShape(RoundedRectangle(cornerRadius: AppTheme.artworkThumbnailRadius, style: .continuous)))
                 .overlay(isArtist
                     ? AnyView(Circle().stroke(Color.white.opacity(0.12), lineWidth: 0.5))
@@ -54,7 +54,7 @@ struct QuickResultCardRow: View {
                     onPlay: onPlay,
                     menuProvider: menuProvider
                 ) { artwork }
-                    .frame(width: isHero ? 48 : 38, height: isHero ? 48 : 38)
+                    .frame(width: 42, height: 42)
             } else if let onPlay, !isArtist {
                 MediaArtworkControls(
                     isCollection: false,
@@ -63,7 +63,7 @@ struct QuickResultCardRow: View {
                     onPlay: onPlay,
                     menuProvider: menuProvider
                 ) { artwork }
-                    .frame(width: isHero ? 48 : 38, height: isHero ? 48 : 38)
+                    .frame(width: 42, height: 42)
             } else {
                 Button(action: onSelect) { artwork }
                     .buttonStyle(.plain)
@@ -73,13 +73,13 @@ struct QuickResultCardRow: View {
             Button(action: onSelect) {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(card.title)
-                        .font(.system(size: isHero ? 14 : 13, weight: isHero ? .semibold : .medium))
+                        .font(.system(size: 15, weight: isHero ? .semibold : .medium))
                         .foregroundStyle(.primary)
                         .lineLimit(1)
                     
                     HStack(spacing: 4) {
                         Text(kindDisplayName)
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(.system(size: 12, weight: .semibold))
                             .foregroundStyle(isHero ? .primary : .secondary)
                         
                         if let sub = card.subtitle, !sub.isEmpty {
@@ -88,7 +88,7 @@ struct QuickResultCardRow: View {
                                 .foregroundStyle(.tertiary)
                             
                             Text(sub)
-                                .font(.system(size: 11))
+                                .font(.system(size: 12))
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)
                         }
@@ -103,24 +103,15 @@ struct QuickResultCardRow: View {
 
             Spacer()
                 
-                if isHero {
-                    Text(L10n.text("search.category.top_result"))
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(Color.primary.opacity(0.9))
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 3)
-                        .background(Color.white.opacity(0.10), in: Capsule())
-                }
-                
             if isArtist || isCollection {
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(isHovered ? Color.primary : Color.secondary.opacity(0.6))
                     .padding(.trailing, 4)
             }
         }
             .padding(.horizontal, 10)
-            .padding(.vertical, isHero ? 8 : 6)
+            .frame(minHeight: 58)
             .background(
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .fill(isHovered ? Color.white.opacity(0.08) : Color.clear)
@@ -155,7 +146,7 @@ struct QuickResultCardRow: View {
                     .foregroundStyle(.secondary)
             }
         }
-        .frame(width: isHero ? 48 : 38, height: isHero ? 48 : 38)
+        .frame(width: 42, height: 42)
     }
 }
 
@@ -163,6 +154,7 @@ struct QuickResultCardRow: View {
 
 struct QuickResultSongRow: View {
     let song: SongItemRecord
+    var onFeatured: ((String?, String) -> Void)? = nil
     var onArtist: (() -> Void)? = nil
     var onAlbum: (() -> Void)? = nil
     var menuProvider: (() -> NSMenu?)? = nil
@@ -181,10 +173,10 @@ struct QuickResultSongRow: View {
             ) {
                 if let thumb = song.thumbnail,
                    let url = ImageURLHelper.optimizedThumbnailURL(from: thumb, targetPixelSize: 96) {
-                    CachedAsyncImage(url: url, targetSize: CGSize(width: 38, height: 38)) { image in
+                    CachedAsyncImage(url: url, targetSize: CGSize(width: 42, height: 42)) { image in
                         image.resizable().aspectRatio(contentMode: .fill)
                     } placeholder: { quickSongPlaceholder }
-                        .frame(width: 38, height: 38)
+                        .frame(width: 42, height: 42)
                         .clipShape(RoundedRectangle(cornerRadius: AppTheme.artworkThumbnailRadius, style: .continuous))
                         .overlay(RoundedRectangle(cornerRadius: AppTheme.artworkThumbnailRadius, style: .continuous)
                             .stroke(Color.white.opacity(0.12), lineWidth: 0.5))
@@ -192,49 +184,52 @@ struct QuickResultSongRow: View {
                     quickSongPlaceholder
                 }
             }
-            .frame(width: 38, height: 38)
+            .frame(width: 42, height: 42)
 
             VStack(alignment: .leading, spacing: 2.5) {
-                Text(song.title)
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
-                    .allowsHitTesting(false)
+                if let onFeatured {
+                    FeaturedTrackTitle(track: song, font: .system(size: 15, weight: .medium), color: .primary, pointSize: 15, onNavigate: onFeatured)
+                } else { Text(song.title).font(.system(size: 15, weight: .medium)).foregroundStyle(.primary).lineLimit(1).allowsHitTesting(false) }
 
                 HStack(spacing: 4) {
-                    Text(L10n.text("metadata.song")).font(.system(size: 11, weight: .medium)).foregroundStyle(.secondary.opacity(0.8))
+                    Text(L10n.text(song.isVideo ? "search.filter.videos" : "metadata.song")).font(.system(size: 12, weight: .medium)).foregroundStyle(.secondary.opacity(0.8))
                         .allowsHitTesting(false)
-                    Text("•").font(.system(size: 10)).foregroundStyle(.tertiary).allowsHitTesting(false)
-                    if let onArtist {
+                    if !song.artists.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !song.artistRuns.isEmpty {
+                        Text("•").font(.system(size: 10)).foregroundStyle(.tertiary).allowsHitTesting(false)
+                    }
+                    if let onFeatured {
+                        TrackArtistLinks(track: song, font: .system(size: 12), color: .secondary,
+                            hoverColor: .primary, onNavigate: onFeatured)
+                    } else if let onArtist {
                         Button(action: onArtist) {
-                            Text(song.artists).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
+                            Text(song.artists).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
                         }
                         .buttonStyle(.plain)
                         .mediaCardFocusControl()
                     } else {
-                        Text(song.artists).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
+                        Text(song.artists).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
                             .allowsHitTesting(false)
                     }
                     if let album = song.album, !album.isEmpty, let onAlbum {
                         Text("•").font(.system(size: 10)).foregroundStyle(.tertiary)
                         Button(action: onAlbum) {
-                            Text(album).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
+                            Text(album).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
                         }
                         .buttonStyle(.plain)
                         .mediaCardFocusControl()
                     } else if let album = song.album, !album.isEmpty {
                         Text("•").font(.system(size: 10)).foregroundStyle(.tertiary).allowsHitTesting(false)
-                        Text(album).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1).allowsHitTesting(false)
+                        Text(album).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1).allowsHitTesting(false)
                     }
-                }
-                if let duration = song.duration {
-                    Text(duration).font(.system(size: 10)).foregroundStyle(.tertiary).allowsHitTesting(false)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+            if let duration = song.duration {
+                Text(duration).font(.system(size: 12).monospacedDigit()).foregroundStyle(.tertiary).allowsHitTesting(false)
+            }
         }
         .padding(.horizontal, 10)
-        .padding(.vertical, 5)
+        .frame(minHeight: 58)
         .background(RoundedRectangle(cornerRadius: 8, style: .continuous)
             .fill(isHovered ? Color.white.opacity(0.08) : Color.clear))
         .contentShape(Rectangle())
@@ -246,7 +241,7 @@ struct QuickResultSongRow: View {
     private var quickSongPlaceholder: some View {
         RoundedRectangle(cornerRadius: AppTheme.artworkThumbnailRadius, style: .continuous)
             .fill(Color.white.opacity(0.06))
-            .frame(width: 38, height: 38)
+            .frame(width: 42, height: 42)
             .overlay(Image(systemName: "music.note").foregroundStyle(.secondary))
     }
 }

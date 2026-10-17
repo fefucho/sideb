@@ -109,7 +109,7 @@ extension View {
     ) -> some View {
         self.contextMenu {
             let sections = MenuPolicy.resolveSections(target: target, origin: origin, facts: facts)
-            let executor = MenuActionExecutor(player: player, router: router, core: core)
+            let executor = MenuActionExecutor(player: player, router: router, core: core, origin: origin)
             MenuSectionContentView(
                 sections: sections,
                 target: target,
@@ -167,7 +167,7 @@ struct SideBEllipsisMenuButton: View {
     var body: some View {
         Menu {
             let sections = MenuPolicy.resolveSections(target: target, origin: origin, facts: facts)
-            let executor = MenuActionExecutor(player: player, router: router, core: core)
+            let executor = MenuActionExecutor(player: player, router: router, core: core, origin: origin)
             MenuSectionContentView(
                 sections: sections,
                 target: target,

@@ -781,6 +781,11 @@ public protocol SideBCoreProtocol : AnyObject {
      */
     func searchCards(query: String, category: String) async throws  -> [BrowseCardRecord]
     
+    /**
+     * Explicit mixed search, with reversible provider spelling correction.
+     */
+    func searchCatalog(query: String, recordHistory: Bool, ignoreSpelling: Bool) async throws  -> SearchCatalogRecord
+    
     func searchGenius(query: String) async throws  -> [GeniusCandidateRecord]
     
     /**
@@ -792,6 +797,11 @@ public protocol SideBCoreProtocol : AnyObject {
      * Search songs, returning a JSON array of SongItem (legacy/compat).
      */
     func searchSongsJson(query: String, recordHistory: Bool) async throws  -> String
+    
+    /**
+     * Anonymous provider autocomplete. Does not submit a search or write local recents.
+     */
+    func searchSuggestions(query: String) async throws  -> SearchSuggestionsRecord
     
     /**
      * Search video uploads, returning a typed list of SongItemRecord.
@@ -1921,6 +1931,26 @@ open func searchCards(query: String, category: String)async throws  -> [BrowseCa
         )
 }
     
+    /**
+     * Explicit mixed search, with reversible provider spelling correction.
+     */
+open func searchCatalog(query: String, recordHistory: Bool, ignoreSpelling: Bool)async throws  -> SearchCatalogRecord {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_sideb_core_fn_method_sidebcore_search_catalog(
+                    self.uniffiClonePointer(),
+                    FfiConverterString.lower(query),FfiConverterBool.lower(recordHistory),FfiConverterBool.lower(ignoreSpelling)
+                )
+            },
+            pollFunc: ffi_sideb_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_sideb_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_sideb_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeSearchCatalogRecord.lift,
+            errorHandler: FfiConverterTypeSideBError.lift
+        )
+}
+    
 open func searchGenius(query: String)async throws  -> [GeniusCandidateRecord] {
     return
         try  await uniffiRustCallAsync(
@@ -1974,6 +2004,26 @@ open func searchSongsJson(query: String, recordHistory: Bool)async throws  -> St
             completeFunc: ffi_sideb_core_rust_future_complete_rust_buffer,
             freeFunc: ffi_sideb_core_rust_future_free_rust_buffer,
             liftFunc: FfiConverterString.lift,
+            errorHandler: FfiConverterTypeSideBError.lift
+        )
+}
+    
+    /**
+     * Anonymous provider autocomplete. Does not submit a search or write local recents.
+     */
+open func searchSuggestions(query: String)async throws  -> SearchSuggestionsRecord {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_sideb_core_fn_method_sidebcore_search_suggestions(
+                    self.uniffiClonePointer(),
+                    FfiConverterString.lower(query)
+                )
+            },
+            pollFunc: ffi_sideb_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_sideb_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_sideb_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeSearchSuggestionsRecord.lift,
             errorHandler: FfiConverterTypeSideBError.lift
         )
 }
@@ -4910,6 +4960,138 @@ public func FfiConverterTypePlaylistDetailRecord_lower(_ value: PlaylistDetailRe
 }
 
 
+public struct SearchCatalogRecord {
+    public var results: SearchResultsRecord
+    public var correction: SearchCorrectionRecord?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(results: SearchResultsRecord, correction: SearchCorrectionRecord?) {
+        self.results = results
+        self.correction = correction
+    }
+}
+
+
+
+extension SearchCatalogRecord: Equatable, Hashable {
+    public static func ==(lhs: SearchCatalogRecord, rhs: SearchCatalogRecord) -> Bool {
+        if lhs.results != rhs.results {
+            return false
+        }
+        if lhs.correction != rhs.correction {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(results)
+        hasher.combine(correction)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeSearchCatalogRecord: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SearchCatalogRecord {
+        return
+            try SearchCatalogRecord(
+                results: FfiConverterTypeSearchResultsRecord.read(from: &buf), 
+                correction: FfiConverterOptionTypeSearchCorrectionRecord.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: SearchCatalogRecord, into buf: inout [UInt8]) {
+        FfiConverterTypeSearchResultsRecord.write(value.results, into: &buf)
+        FfiConverterOptionTypeSearchCorrectionRecord.write(value.correction, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSearchCatalogRecord_lift(_ buf: RustBuffer) throws -> SearchCatalogRecord {
+    return try FfiConverterTypeSearchCatalogRecord.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSearchCatalogRecord_lower(_ value: SearchCatalogRecord) -> RustBuffer {
+    return FfiConverterTypeSearchCatalogRecord.lower(value)
+}
+
+
+public struct SearchCorrectionRecord {
+    public var query: String
+    public var applied: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(query: String, applied: Bool) {
+        self.query = query
+        self.applied = applied
+    }
+}
+
+
+
+extension SearchCorrectionRecord: Equatable, Hashable {
+    public static func ==(lhs: SearchCorrectionRecord, rhs: SearchCorrectionRecord) -> Bool {
+        if lhs.query != rhs.query {
+            return false
+        }
+        if lhs.applied != rhs.applied {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(query)
+        hasher.combine(applied)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeSearchCorrectionRecord: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SearchCorrectionRecord {
+        return
+            try SearchCorrectionRecord(
+                query: FfiConverterString.read(from: &buf), 
+                applied: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: SearchCorrectionRecord, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.query, into: &buf)
+        FfiConverterBool.write(value.applied, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSearchCorrectionRecord_lift(_ buf: RustBuffer) throws -> SearchCorrectionRecord {
+    return try FfiConverterTypeSearchCorrectionRecord.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSearchCorrectionRecord_lower(_ value: SearchCorrectionRecord) -> RustBuffer {
+    return FfiConverterTypeSearchCorrectionRecord.lower(value)
+}
+
+
 public struct SearchResultsRecord {
     /**
      * Every song in the provider's top-result section, in provider order, including a song hero.
@@ -5011,6 +5193,72 @@ public func FfiConverterTypeSearchResultsRecord_lift(_ buf: RustBuffer) throws -
 #endif
 public func FfiConverterTypeSearchResultsRecord_lower(_ value: SearchResultsRecord) -> RustBuffer {
     return FfiConverterTypeSearchResultsRecord.lower(value)
+}
+
+
+public struct SearchSuggestionsRecord {
+    public var queries: [String]
+    public var results: SearchResultsRecord
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(queries: [String], results: SearchResultsRecord) {
+        self.queries = queries
+        self.results = results
+    }
+}
+
+
+
+extension SearchSuggestionsRecord: Equatable, Hashable {
+    public static func ==(lhs: SearchSuggestionsRecord, rhs: SearchSuggestionsRecord) -> Bool {
+        if lhs.queries != rhs.queries {
+            return false
+        }
+        if lhs.results != rhs.results {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(queries)
+        hasher.combine(results)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeSearchSuggestionsRecord: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SearchSuggestionsRecord {
+        return
+            try SearchSuggestionsRecord(
+                queries: FfiConverterSequenceString.read(from: &buf), 
+                results: FfiConverterTypeSearchResultsRecord.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: SearchSuggestionsRecord, into buf: inout [UInt8]) {
+        FfiConverterSequenceString.write(value.queries, into: &buf)
+        FfiConverterTypeSearchResultsRecord.write(value.results, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSearchSuggestionsRecord_lift(_ buf: RustBuffer) throws -> SearchSuggestionsRecord {
+    return try FfiConverterTypeSearchSuggestionsRecord.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSearchSuggestionsRecord_lower(_ value: SearchSuggestionsRecord) -> RustBuffer {
+    return FfiConverterTypeSearchSuggestionsRecord.lower(value)
 }
 
 
@@ -5961,6 +6209,30 @@ fileprivate struct FfiConverterOptionTypeLyricsInfo: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypeSearchCorrectionRecord: FfiConverterRustBuffer {
+    typealias SwiftType = SearchCorrectionRecord?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeSearchCorrectionRecord.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeSearchCorrectionRecord.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceInt64: FfiConverterRustBuffer {
     typealias SwiftType = [Int64]
 
@@ -6669,6 +6941,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_sideb_core_checksum_method_sidebcore_search_cards() != 49099) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_sideb_core_checksum_method_sidebcore_search_catalog() != 53112) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_sideb_core_checksum_method_sidebcore_search_genius() != 62249) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -6676,6 +6951,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_sideb_core_checksum_method_sidebcore_search_songs_json() != 15936) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_sideb_core_checksum_method_sidebcore_search_suggestions() != 2625) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_sideb_core_checksum_method_sidebcore_search_videos() != 42948) {

@@ -88,6 +88,8 @@
 	<string>Save</string>
 	<key>common.search</key>
 	<string>Search</string>
+	<key>common.undo</key>
+	<string>Undo</string>
 	<key>common.untitled</key>
 	<string>Untitled</string>
 	<key>destination.album</key>
@@ -448,6 +450,20 @@
 	<string>New on YouTube Music, ready to discover.</string>
 	<key>explore.title.discover</key>
 	<string>Something new to listen to.</string>
+	<key>featured.change</key>
+	<string>Change match…</string>
+	<key>featured.noMatches</key>
+	<string>No matching artists found.</string>
+	<key>featured.open</key>
+	<string>Open %@</string>
+	<key>featured.reset</key>
+	<string>Reset automatic match</string>
+	<key>featured.search</key>
+	<string>Search this name</string>
+	<key>featured.searching</key>
+	<string>Finding artist…</string>
+	<key>featured.suggested</key>
+	<string>Open %@ · suggested match</string>
 	<key>fullscreen.backToArtwork</key>
 	<string>Back to artwork</string>
 	<key>fullscreen.fansAlsoLike</key>
@@ -726,6 +742,8 @@
 	<string>Create a playlist</string>
 	<key>library.empty.albums</key>
 	<string>No saved albums</string>
+	<key>library.empty.all</key>
+	<string>Your saved collections will appear here</string>
 	<key>library.empty.artists</key>
 	<string>No artists in your library</string>
 	<key>library.empty.playlists</key>
@@ -767,16 +785,64 @@ History: %@</string>
 	<string>New playlist</string>
 	<key>library.open_card</key>
 	<string>Open %@</string>
+	<key>library.pin</key>
+	<string>Pin %@</string>
+	<key>library.pin.down</key>
+	<string>Move %@ down</string>
+	<key>library.pin.up</key>
+	<string>Move %@ up</string>
+	<key>library.pinned</key>
+	<string>Pinned</string>
 	<key>library.refresh</key>
 	<string>Refresh library</string>
 	<key>library.retry</key>
 	<string>Try again</string>
+	<key>library.search.cancel</key>
+	<string>Cancel</string>
+	<key>library.search.collections</key>
+	<string>Filters collections available from the provider.</string>
+	<key>library.search.complete</key>
+	<string>Searching %@ available songs</string>
+	<key>library.search.continue</key>
+	<string>Continue searching</string>
+	<key>library.search.empty</key>
+	<string>No matches in loaded items</string>
+	<key>library.search.loaded</key>
+	<string>Searching %@ loaded songs</string>
+	<key>library.search.pending</key>
+	<string>There are still songs to load.</string>
+	<key>library.search.placeholder</key>
+	<string>Search your library</string>
+	<key>library.search.progress</key>
+	<string>%@ pages searched</string>
+	<key>library.search.rest</key>
+	<string>Search remaining songs</string>
+	<key>library.see_all</key>
+	<string>See all</string>
+	<key>library.sort.artist</key>
+	<string>Artist</string>
+	<key>library.sort.label</key>
+	<string>Sort library</string>
+	<key>library.sort.name</key>
+	<string>Name</string>
+	<key>library.sort.original</key>
+	<string>Original order</string>
+	<key>library.subtitle</key>
+	<string>Your music, collections and favorites within reach.</string>
 	<key>library.tab.albums</key>
 	<string>Albums</string>
+	<key>library.tab.all</key>
+	<string>All</string>
 	<key>library.tab.playlists</key>
 	<string>Playlists</string>
 	<key>library.title</key>
 	<string>Library</string>
+	<key>library.unpin</key>
+	<string>Unpin %@</string>
+	<key>library.view.grid</key>
+	<string>Grid view</string>
+	<key>library.view.list</key>
+	<string>List view</string>
 	<key>login.heading</key>
 	<string>Sign in to YouTube Music</string>
 	<key>login.passkey_unavailable</key>
@@ -1055,6 +1121,14 @@ History: %@</string>
 	<string>Unmute</string>
 	<key>player.viewAlbum</key>
 	<string>View album: %@</string>
+	<key>player.volume</key>
+	<string>Volume</string>
+	<key>player.volumePercentage</key>
+	<string>%@%%</string>
+	<key>player.volumeScrollHelp</key>
+	<string>Volume: %@. Scroll to adjust by one percentage point.</string>
+	<key>player.volumeValue</key>
+	<string>Volume: %@</string>
 	<key>provider.chip.commute</key>
 	<string>Commute</string>
 	<key>provider.chip.energize</key>
@@ -1127,6 +1201,16 @@ History: %@</string>
 	<string>Drag to reorder song</string>
 	<key>search.category.top_result</key>
 	<string>Top result</string>
+	<key>search.correction.original</key>
+	<string>Search the original text</string>
+	<key>search.correction.original_results</key>
+	<string>Results from the original search</string>
+	<key>search.correction.search</key>
+	<string>Search this suggestion</string>
+	<key>search.correction.showing</key>
+	<string>Showing results for “%@”</string>
+	<key>search.correction.suggested</key>
+	<string>Did you mean “%@”?</string>
 	<key>search.empty.prompt_description</key>
 	<string>Type in the top bar to search for songs, artists, or albums.</string>
 	<key>search.empty.prompt_title</key>
@@ -1175,6 +1259,16 @@ History: %@</string>
 	<string>Play %@</string>
 	<key>search.play_now</key>
 	<string>Play now</string>
+	<key>search.recents.clear</key>
+	<string>Clear Side B recents</string>
+	<key>search.recents.remove</key>
+	<string>Remove from recents</string>
+	<key>search.recents.search_track</key>
+	<string>Search for this song</string>
+	<key>search.recents.title</key>
+	<string>Side B recents</string>
+	<key>search.recents.unavailable</key>
+	<string>This song could not be played. Search for it again or remove it from recents.</string>
 	<key>search.see_all.feminine</key>
 	<string>See all</string>
 	<key>search.see_all.masculine</key>
@@ -1184,13 +1278,17 @@ History: %@</string>
 	<key>search.spotlight.placeholder</key>
 	<string>Search songs, albums, artists, and playlists…</string>
 	<key>search.spotlight.prompt_description</key>
-	<string>Type to see quick results by category as you go</string>
+	<string>Searches you submit and songs you play from here will appear here.</string>
 	<key>search.spotlight.prompt_title</key>
-	<string>Find artists, songs, albums, and more</string>
+	<string>Your searches, close at hand</string>
 	<key>search.spotlight.submit_hint</key>
 	<string>Press Enter to search the full catalog</string>
 	<key>search.submit.full_results</key>
 	<string>Press Enter to see all results</string>
+	<key>search.suggestions.title</key>
+	<string>Search suggestions</string>
+	<key>search.title</key>
+	<string>Search</string>
 	<key>settings.albums</key>
 	<string>Albums</string>
 	<key>settings.categories</key>

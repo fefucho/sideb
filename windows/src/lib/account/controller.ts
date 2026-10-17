@@ -1,14 +1,14 @@
 import type { BrowseCardDto } from '../types';
 import type { AccountSongDto as SongDto, AccountPlaylistDto as PlaylistDetailDto } from './types';
 
-export type LibraryTab = 'songs' | 'playlists' | 'albums' | 'artists';
-type Channel = LibraryTab | 'history' | 'likes';
+export type LibraryTab = 'all' | 'songs' | 'playlists' | 'albums' | 'artists';
+type Channel = Exclude<LibraryTab, 'all'> | 'history' | 'likes';
 type SongPage = { items: SongDto[]; continuation: string | null };
 type HistoryGroup = { title: string; items: SongDto[] };
 export type AccountRpc = <T>(command: string, args?: Record<string, unknown>) => Promise<T>;
 export interface AccountData {
   loggedIn: boolean; tab: LibraryTab;
-  songs: SongDto[]; playlists: BrowseCardDto[]; albums: BrowseCardDto[]; artists: BrowseCardDto[];
+  songs: SongDto[]; playlists: BrowseCardDto[]; albums: BrowseCardDto[]; originalAlbums: BrowseCardDto[]; artists: BrowseCardDto[];
   history: HistoryGroup[]; songContinuation: string | null;
   playlist: PlaylistDetailDto | null; playlistLoading: boolean; playlistLoadingMore: boolean; playlistError: string | null;
   loadingMore: boolean; loading: Record<Channel, boolean>; errors: Record<Channel, string | null>;
@@ -16,7 +16,7 @@ export interface AccountData {
 }
 export type AccountNavigationSnapshot = Pick<AccountData, 'tab' | 'playlist' | 'playlistLoading' | 'playlistError'>;
 export function emptyAccountData(loggedIn = false): AccountData {
-  return { loggedIn, tab: 'songs', songs: [], playlists: [], albums: [], artists: [], history: [],
+  return { loggedIn, tab: 'all', songs: [], playlists: [], albums: [], originalAlbums: [], artists: [], history: [],
     songContinuation: null, playlist: null, playlistLoading: false, playlistLoadingMore: false,
     playlistError: null, loadingMore: false,
     loading: { songs: false, playlists: false, albums: false, artists: false, history: false, likes: false },
@@ -40,6 +40,7 @@ export function appendSongs(existing: SongDto[], incoming: SongDto[]) {
 export class AccountController {
   private data = emptyAccountData();
   private generation = 0;
+  private loadedChannels = new Set<Channel>();
   private requests = new Map<string, number>();
   private usedSongTokens = new Set<string>();
   private usedPlaylistTokens = new Set<string>();
@@ -85,14 +86,18 @@ export class AccountController {
     return () => generation === this.generation && revision === this.requests.get(key) && this.data.loggedIn;
   }
   reset(loggedIn: boolean) {
-    ++this.generation; this.requests.clear(); this.usedSongTokens.clear(); this.usedPlaylistTokens.clear();
+    ++this.generation; this.loadedChannels.clear(); this.requests.clear(); this.usedSongTokens.clear(); this.usedPlaylistTokens.clear();
     this.pendingHistoryListens = null;
     this.playlistCatalogEpochs.clear();
     this.likeOverrides.clear(); this.likesLoaded = false; this.likedPlaylist = null;
     this.likesHydration = null; this.invalidateCatalog();
     this.data = emptyAccountData(loggedIn); this.emit();
   }
-  setTab(tab: LibraryTab) { this.data.tab = tab; this.emit(); void this.load(tab); }
+  setTab(tab: LibraryTab) {
+    this.data.tab = tab; this.emit();
+    const required: Channel[] = tab === 'all' ? ['playlists','albums','artists'] : [tab];
+    if (required.some(channel => !this.loadedChannels.has(channel) && !this.data.loading[channel])) void this.load(tab);
+  }
   async refreshPlaylist(id: string) {
     this.invalidateCatalog();
     if (id === 'LM') {
@@ -102,9 +107,11 @@ export class AccountController {
     await this.openPlaylist(id);
     if (id === 'LM') await this.hydrateLikes();
   }
-  async initialize() { if (this.data.loggedIn) await Promise.allSettled([this.load('playlists'), this.load('albums'), this.hydrateLikes()]); }
+  async initialize() { if (this.data.loggedIn) await Promise.allSettled([this.load('playlists'), this.load('albums'), this.load('artists'), this.hydrateLikes()]); }
   async load(channel: LibraryTab | 'history') {
     if (!this.data.loggedIn) return;
+    if (channel === 'all') { await Promise.allSettled([this.load('playlists'), this.load('albums'), this.load('artists')]); return; }
+    let completed = false;
     const historyListens: SongDto[] | null = channel === 'history' ? [] : null;
     if (historyListens) this.pendingHistoryListens = historyListens;
     const valid = this.ticket(channel); this.data.loading[channel] = true; this.data.errors[channel] = null;
@@ -142,12 +149,18 @@ export class AccountController {
           this.data.history = groups;
         }
       } else {
-        const result = await this.rpc<BrowseCardDto[]>(`get_library_${channel}`); if (valid()) this.data[channel] = channel === 'albums' ? result.map((card,index)=>({card,index})).sort((a,b)=>a.card.title.localeCompare(b.card.title,undefined,{sensitivity:'base',numeric:true}) || a.index-b.index).map(item=>item.card) : result;
+        const result = await this.rpc<BrowseCardDto[]>(`get_library_${channel}`); if (valid()) {
+          if (channel === 'albums') {
+            this.data.originalAlbums = result;
+            this.data.albums = result.map((card,index)=>({card,index})).sort((a,b)=>a.card.title.localeCompare(b.card.title,undefined,{sensitivity:'base',numeric:true}) || a.index-b.index).map(item=>item.card);
+          } else this.data[channel] = result;
+        }
       }
+      completed = true;
     } catch (error) { if (valid()) this.data.errors[channel] = message(error, 'No se pudo cargar tu colección.'); }
     finally {
       if (historyListens && this.pendingHistoryListens === historyListens) this.pendingHistoryListens = null;
-      if (valid()) { this.data.loading[channel] = false; this.emit(); }
+      if (valid()) { if (completed) this.loadedChannels.add(channel); this.data.loading[channel] = false; this.emit(); }
     }
   }
   async loadMoreSongs() {

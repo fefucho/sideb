@@ -1,6 +1,6 @@
 use std::sync::atomic::Ordering;
 use crate::commands::account::account_core;
-use crate::{AppState, AlbumCardDto, AlbumDetailDto, ArtistDetailDto, BrowseCardDto, CommandError, HomePageDto, PlaylistDetailDto, SearchResultsDto, SongDto};
+use crate::{AppState, AlbumCardDto, AlbumDetailDto, ArtistDetailDto, BrowseCardDto, CommandError, HomePageDto, PlaylistDetailDto, SearchResultsDto, SearchSuggestionsDto, SearchCatalogDto, SearchCorrectionDto, SongDto};
 
 const SEARCH_CATEGORIES: [&str; 3] = ["albums", "artists", "playlists"];
 
@@ -12,6 +12,33 @@ fn search_core(state: &AppState) -> Result<std::sync::Arc<sideb_core::SideBCore>
 fn validate_search_query(query: &str) -> Result<&str, CommandError> {
     let query = query.trim();
     if query.is_empty() { Err(CommandError::new("EMPTY_QUERY", "La consulta de búsqueda no puede estar vacía.")) } else { Ok(query) }
+}
+
+#[tauri::command]
+pub(crate) async fn search_suggestions(state: tauri::State<'_, AppState>, query: String) -> Result<SearchSuggestionsDto, CommandError> {
+    let query = validate_search_query(&query)?;
+    let generation = state.auth_generation.load(Ordering::SeqCst);
+    let core = search_core(&state)?;
+    let result = core.search_suggestions(query.to_owned()).await
+        .map_err(|_| CommandError::new("SEARCH_FAILED", "No se pudieron obtener sugerencias de YouTube Music."))?;
+    if state.auth_generation.load(Ordering::SeqCst) != generation { return Err(CommandError::new("SESSION_CHANGED", "La sesión cambió durante la operación.")); }
+    Ok(SearchSuggestionsDto { queries: result.queries, results: result.results.into() })
+}
+
+#[tauri::command]
+pub(crate) async fn search_catalog(state: tauri::State<'_, AppState>, query: String, record_history: bool, ignore_spelling: bool) -> Result<SearchCatalogDto, CommandError> {
+    let query = validate_search_query(&query)?;
+    let generation = state.auth_generation.load(Ordering::SeqCst);
+    let _operation = if record_history { Some(state.auth_operation.lock().await) } else { None };
+    if state.auth_generation.load(Ordering::SeqCst) != generation { return Err(CommandError::new("SESSION_CHANGED", "La sesión cambió antes de completar la búsqueda.")); }
+    let core = search_core(&state)?;
+    let result = core.search_catalog(query.to_owned(), record_history, ignore_spelling).await
+        .map_err(|_| CommandError::new("SEARCH_FAILED", "No se pudo completar la búsqueda en YouTube Music."))?;
+    if state.auth_generation.load(Ordering::SeqCst) != generation { return Err(CommandError::new("SESSION_CHANGED", "La sesión cambió durante la operación.")); }
+    Ok(SearchCatalogDto {
+        results: result.results.into(),
+        correction: result.correction.map(|c| SearchCorrectionDto { query: c.query, applied: c.applied }),
+    })
 }
 
 #[tauri::command]

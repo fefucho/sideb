@@ -14,7 +14,7 @@ struct HomeAmbientBackground: View {
     @State private var paletteRevision: Int?
 
     private var request: PaletteRequest {
-        PaletteRequest(sessionRevision: sessionRevision, thumbnails: Array(thumbnails.prefix(4)))
+        PaletteRequest(sessionRevision: sessionRevision, thumbnails: Array(thumbnails.prefix(4)), active: !isObscured)
     }
 
     var body: some View {
@@ -25,6 +25,7 @@ struct HomeAmbientBackground: View {
         .accessibilityHidden(true)
         .task(id: self.request) {
             let currentRequest = self.request
+            guard currentRequest.active else { return }
             let requestedRevision = currentRequest.sessionRevision
             let resolved = await HomeAmbientPaletteCache.shared.resolve(
                 currentRequest.thumbnails,
@@ -60,6 +61,7 @@ struct HomeAmbientBackground: View {
 private struct PaletteRequest: Hashable {
     let sessionRevision: Int
     let thumbnails: [String]
+    let active: Bool
 }
 
 /// Small pure sampler so RGB fixtures can exercise the image policy without AppKit or a window.

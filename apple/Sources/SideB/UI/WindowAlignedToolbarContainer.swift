@@ -15,7 +15,7 @@ final class WindowAlignedToolbarContainer: NSView {
     var presentationOffset: CGFloat = 0 {
         didSet {
             guard oldValue != presentationOffset else { return }
-            needsLayout = true
+            if usesWindowAlignment { needsLayout = true }
             superview?.needsLayout = true
         }
     }
@@ -77,8 +77,9 @@ final class WindowAlignedToolbarContainer: NSView {
         super.layout()
         if !usesWindowAlignment {
             let embeddedSize = contentView.fittingSize
-            contentView.frame = CGRect(origin: .zero, size: embeddedSize)
-            contentView.bounds = CGRect(origin: .zero, size: embeddedSize)
+            let contentRect = CGRect(origin: .zero, size: embeddedSize)
+            if contentView.frame != contentRect { contentView.frame = contentRect }
+            if contentView.bounds != contentRect { contentView.bounds = contentRect }
             return
         }
         guard !layingOut, let windowContent = window?.contentView,

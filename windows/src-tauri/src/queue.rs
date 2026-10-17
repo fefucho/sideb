@@ -273,6 +273,9 @@ pub struct QueueEntryDto {
     #[serde(default)]
     pub is_upload: bool,
     pub entry_id: String,
+    /// Display identity in the source list, separate from fresh queue ownership.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_occurrence_id: Option<String>,
     pub video_id: String,
     pub title: String,
     pub artists: String,
@@ -340,6 +343,7 @@ impl QueueEntryDto {
         let mut entry = Self {
             is_upload: false,
             entry_id: new_entry_id(),
+            source_occurrence_id: None,
             video_id,
             title,
             artists,
@@ -542,6 +546,9 @@ impl QueueStateDto {
             .into_iter()
             .map(|mut item| {
                 item.normalize_metadata();
+                if item.source_occurrence_id.is_none() && item.entry_id.starts_with("collection|") {
+                    item.source_occurrence_id = Some(item.entry_id.clone());
+                }
                 item.entry_id = new_entry_id();
                 item
             })
@@ -1496,6 +1503,46 @@ mod tests {
 
     fn entry_ids(items: &[QueueEntryDto]) -> Vec<String> {
         items.iter().map(|entry| entry.entry_id.clone()).collect()
+    }
+
+    #[test]
+    fn source_occurrence_survives_fresh_queue_ownership_shuffle_and_restore() {
+        let mut first = item("same");
+        first.entry_id = "collection|playlist|PL1|first|same".into();
+        let mut second = item("same");
+        second.entry_id = "collection|playlist|PL1|second|same".into();
+        let source_id = second.entry_id.clone();
+        let mut queue = QueueStateDto::default();
+        queue.replace(vec![first, second], 1, source());
+        let active_id = queue.current().unwrap().entry_id;
+        assert!(active_id.starts_with("queue-"));
+        assert_ne!(active_id, source_id);
+        assert_eq!(
+            queue.current().unwrap().source_occurrence_id.as_deref(),
+            Some(source_id.as_str())
+        );
+        queue.shuffle_on_start();
+        assert_eq!(queue.current().unwrap().entry_id, active_id);
+        assert_eq!(
+            queue.current().unwrap().source_occurrence_id.as_deref(),
+            Some(source_id.as_str())
+        );
+        let json = serde_json::to_string(&queue.durable()).unwrap();
+        let durable: DurableQueue = serde_json::from_str(&json).unwrap();
+        let mut restored = durable.restore().unwrap();
+        restored.restore_original_order();
+        assert_eq!(
+            restored.current().unwrap().source_occurrence_id.as_deref(),
+            Some(source_id.as_str())
+        );
+        let items = restored.items.clone();
+        let index = restored.current_index.unwrap();
+        restored.replace(items, index, source());
+        assert_ne!(restored.current().unwrap().entry_id, active_id);
+        assert_eq!(
+            restored.current().unwrap().source_occurrence_id.as_deref(),
+            Some(source_id.as_str())
+        );
     }
 
     fn video_ids(queue: &QueueStateDto) -> Vec<&str> {

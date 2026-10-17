@@ -284,12 +284,12 @@
     "en": "See all results for"
   },
   "search.spotlight.prompt_title": {
-    "es": "Buscá artistas, canciones, álbumes y más",
-    "en": "Find artists, songs, albums, and more"
+    "es": "Tus búsquedas, a mano",
+    "en": "Your searches, close at hand"
   },
   "search.spotlight.prompt_description": {
-    "es": "Escribí para ver resultados rápidos por categoría en tiempo real",
-    "en": "Type to see quick results by category as you go"
+    "es": "Aquí aparecerán las búsquedas enviadas y las canciones que reproduzcas desde este buscador.",
+    "en": "Searches you submit and songs you play from here will appear here."
   },
   "search.spotlight.submit_hint": {
     "es": "Presioná Enter para buscar en todo el catálogo",

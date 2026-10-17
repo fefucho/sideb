@@ -1,0 +1,30 @@
+{
+  "featured.open": {
+    "es": "Abrir %@",
+    "en": "Open %@"
+  },
+  "featured.suggested": {
+    "es": "Abrir %@ · coincidencia sugerida",
+    "en": "Open %@ · suggested match"
+  },
+  "featured.searching": {
+    "es": "Buscando artista…",
+    "en": "Finding artist…"
+  },
+  "featured.change": {
+    "es": "Cambiar coincidencia…",
+    "en": "Change match…"
+  },
+  "featured.search": {
+    "es": "Buscar este nombre",
+    "en": "Search this name"
+  },
+  "featured.noMatches": {
+    "es": "No encontramos artistas compatibles.",
+    "en": "No matching artists found."
+  },
+  "featured.reset": {
+    "es": "Restablecer coincidencia automática",
+    "en": "Reset automatic match"
+  }
+}

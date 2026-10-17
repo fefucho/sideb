@@ -130,3 +130,15 @@ El usuario confirmó activación de historial en Inicio con 0060 y pidió recupe
 - [ ] Confirmar sensación y fases de trackpad real, dirección natural y fluidez en la misma build.
 
 La copia HomeLab reserva seis puntos de Inicio para contenido horizontal y conserva diez para historial; Biblioteca conserva dieciséis de dieciséis. Las pruebas del adaptador verifican que el contacto completo pase a los controles locales y que no se transfiera al historial. La automatización horizontal no cambió páginas/ítems visibles, por lo que el deslizamiento físico permanece pendiente. Evidencia y límites completos en FIX-129.
+
+## Regresión del descenso al incorporar volumen — FIX-199, 2026-10-17
+
+FIX-198 devuelve el fondo libre al arbitraje de descenso, manteniendo volumen exclusivamente sobre la carátula frontal/cápsula abierta. Ese descenso no debe cancelarse cuando el Canvas trasladado deja de estar bajo el cursor. El cambio de hover cancela sólo la secuencia/feedback de volumen; no reinicia la máquina de navegación ni la generación de su animación de cierre.
+
+- [x] Reproducir offset cero y completion descartada al cambiar únicamente `volumeScroll.contextRevision` durante contacto/cierre.
+- [x] Separar cancelación exclusiva de volumen y conservar invalidación global de ruta/sesión/modal/ventana.
+- [x] Aprobar 62 focales del adaptador/presentación/volumen; verificar que volumen propio sigue drenando y no se transfiere al descenso.
+- [x] Build-0130:747 pruebas ejecutadas aprobadas, fuentes estables, firma deep/strict y diez hashes verificados.
+- [ ] Confirmar con trackpad físico descenso corto/armado desde fondo libre y volumen sólo sobre carátula/control; calibración e Instruments continúan pendientes.
+
+La regresión procede de la revisión de volumen añadida en FIX-197. No se retira la cancelación de hover ni se restauran zonas amplias de volumen; el alcance actual de FIX-198 reemplaza las referencias históricas a descenso sobre portada de este plan. Windows usa pull touch/pen con captura propia y salida de volumen independiente; revisado sin cambios ni afirmación de aceptación física.

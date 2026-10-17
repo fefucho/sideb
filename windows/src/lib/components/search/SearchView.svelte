@@ -1,17 +1,19 @@
 <script lang="ts">
+  import ControlButton from '$lib/components/common/ControlButton.svelte';
+  import ControlFilter from '$lib/components/common/ControlFilter.svelte';
+
   import {t} from '$lib/i18n';
+  import {searchProjection} from '$lib/search/projection';
   import {resolveSearchSong,relatedTopSongs} from '$lib/search/songs';
   import VirtualCatalog from '../explore/VirtualCatalog.svelte';
   import VirtualStack from '../common/VirtualStack.svelte';
-  import ExplicitBadge from '../common/ExplicitBadge.svelte';
   import type { AlbumCardDto, BrowseCardDto, SongDto } from '$lib/types';
-  import type { SearchData, SearchMode } from '$lib/search/controller';
+  import type { SearchData, SearchMode, SearchPartialError } from '$lib/search/controller';
   import type { SearchPreviewData } from '$lib/search/preview';
-  import { createMenuHandlers } from '$lib/menu/hooks';
   import TrackTable from '$lib/components/detail/TrackTable.svelte';
-  import ArtistCredits from '$lib/components/ArtistCredits.svelte';
   import QuickResults from './QuickResults.svelte';
   import SearchSongRow from './SearchSongRow.svelte';
+  import MediaCard from '../common/MediaCard.svelte';
   import SearchResultCard from './SearchResultCard.svelte';
 
   interface Props {
@@ -21,9 +23,12 @@
     isPlaying: boolean;
     draftQuery: string;
     preview: SearchPreviewData;
+    onSearchOriginal?: () => void;
     onSubmit: (query: string, mode: SearchMode) => void;
     onRetry: (query: string, mode: SearchMode) => void;
+    onRetrySection?: (block: SearchPartialError)=>void;
     onModeChange: (mode: SearchMode) => void;
+    onPlayPreviewSong?: (song: SongDto) => void;
     onPlaySong: (song: SongDto) => void;
     onOpenAlbum: (album: AlbumCardDto) => void;
     onOpenArtist?: (id: string) => void;
@@ -35,14 +40,13 @@
 
   let {
     data, backendReady, currentTrackId, isPlaying, draftQuery, preview,
-    onSubmit, onRetry, onModeChange, onPlaySong, onOpenAlbum, onOpenArtist,
+    onSearchOriginal, onSubmit, onRetry, onRetrySection, onModeChange, onPlaySong, onPlayPreviewSong, onOpenAlbum, onOpenArtist,
     onOpenPlaylist, onDraftChange, onPreviewFocus, onPreviewDismiss,
   }: Props = $props();
 
-  const createMenu = createMenuHandlers();
+  const all = $derived(searchProjection({...data, albums:data.albums.map(card=>({...card,kind:'album',duration:null}))}));
   const modes: { id: SearchMode; label: string }[] = $derived([
-    { id: 'all', label: $t('search.filter.all') }, { id: 'songs', label: $t('search.filter.songs') }, { id: 'videos', label: $t('search.filter.videos') },
-    { id: 'albums', label: $t('search.filter.albums') }, { id: 'artists', label: $t('search.filter.artists') }, { id: 'playlists', label: $t('search.filter.playlists') },
+    { id: 'all', label: $t('search.filter.all') }, { id: 'songs', label: $t('search.filter.songs') }, { id: 'artists', label: $t('search.filter.artists') }, { id: 'albums', label: $t('search.filter.albums') }, { id: 'playlists', label: $t('search.filter.playlists') }, { id: 'videos', label: $t('search.filter.videos') },
   ]);
   let searchInput: HTMLInputElement;
   let searchForm: HTMLFormElement;
@@ -77,7 +81,14 @@
   }
 
   function onWindowKeydown(event: KeyboardEvent) {
-    if (searchFocused && !event.defaultPrevented && event.key === 'Escape') {
+    if (!searchFocused || event.defaultPrevented || document.querySelector('[role="menu"]')) return;
+    if (showPreview && (event.key==='ArrowDown'||event.key==='ArrowUp')) {
+      const rows=[...searchForm.querySelectorAll<HTMLElement>('.preview-content button[data-search-primary]:not(:disabled)')].filter(element=>element.offsetParent!==null);
+      const index=rows.indexOf(document.activeElement as HTMLElement);
+      const next=event.key==='ArrowDown'?Math.min(index+1,rows.length-1):index<=0?-1:index-1;
+      event.preventDefault();if(next<0)searchInput.focus();else rows[next]?.focus();return;
+    }
+    if (event.key === 'Escape') {
       event.preventDefault();
       dismissSearch();
       searchInput.blur();
@@ -90,13 +101,6 @@
 
   function asSong(card: BrowseCardDto): SongDto | null {
     return resolveSearchSong(card, data.mixedResults ?? {songs:data.songs,topSongs:data.topSongs}, data.videos);
-  }
-
-  function target(card: BrowseCardDto) {
-    if (card.kind === 'artist') return { kind: 'artist' as const, card };
-    if (card.kind === 'playlist') return { kind: 'playlist' as const, card };
-    if (card.kind === 'album') return { kind: 'album' as const, card };
-    const song=asSong(card); return song?{kind:'song' as const,song}:null;
   }
 
   function openCard(card: BrowseCardDto) {
@@ -113,7 +117,7 @@
   function playFromPreview(song: SongDto) {
     dismissSearch();
     searchInput.blur();
-    onPlaySong(song);
+    (onPlayPreviewSong??onPlaySong)(song);
   }
 
   function selectFromPreview(card: BrowseCardDto) {
@@ -124,7 +128,8 @@
 
   function retry(mode = data.mode) {
     const query = data.lastSearchedQuery || data.query.trim();
-    if (query) onRetry(query, mode);
+    if(onRetrySection && (mode==='songs'||mode==='videos'||mode==='albums'||mode==='artists'||mode==='playlists'))onRetrySection(mode==='songs'||mode==='videos'?mode:'categories');
+    else if (query) onRetry(query, mode);
   }
 
   function filteredCards(): BrowseCardDto[] {
@@ -169,7 +174,7 @@
           {#if preview.isLoading}<span class="input-spinner" aria-label="Buscando vista previa"></span>{:else if draftQuery}<button class="clear-button" type="button" aria-label="Limpiar búsqueda" onclick={() => { onDraftChange(''); focusSearch(); searchInput.focus(); }}><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="7.25"></circle><path d="m7.5 7.5 5 5m0-5-5 5"></path></svg></button>{/if}
           {#if showPreview}
             <div class="preview-popover" role="region" aria-label="Resultados rápidos">
-              <div class="preview-content"><QuickResults preview={preview} variant="dropdown" onSelectCard={selectFromPreview} onPlaySong={playFromPreview} /></div>
+              <div class="preview-content"><QuickResults preview={preview} variant="dropdown" onSelectCard={selectFromPreview} onPlaySong={playFromPreview} onQuery={query=>{dismissSearch();onSubmit(query,data.mode);}} /></div>
               <div class="preview-footer"><span>{$t('search.submit.full_results')}</span><svg viewBox="0 0 18 18" aria-hidden="true"><path d="M4 4v6h9m-3-3 3 3-3 3"/></svg></div>
             </div>
           {/if}
@@ -178,67 +183,52 @@
 
       <nav class="mode-tabs" aria-label="Filtros de búsqueda">
         {#each modes as mode (mode.id)}
-          <button type="button" class="mode-tab" class:active={data.mode === mode.id} disabled={!backendReady} aria-current={data.mode === mode.id ? 'page' : undefined} onclick={() => onModeChange(mode.id)}><span class="mode-icon" aria-hidden="true">{#if mode.id === 'all'}<svg viewBox="0 0 16 16"><path d="M3 3h4v4H3zM9 3h4v4H9zM3 9h4v4H3zM9 9h4v4H9z"/></svg>{:else if mode.id === 'songs'}<svg viewBox="0 0 16 16"><path d="M9 12V3l5-1v9M9 12a2 2 0 1 1-2-2 2 2 0 0 1 2 2Zm5-1a2 2 0 1 1-2-2 2 2 0 0 1 2 2Z"/></svg>{:else if mode.id === 'videos'}<svg viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="10" rx="2"/><path d="m7 6 4 2-4 2z"/></svg>{:else if mode.id === 'albums'}<svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"/><circle cx="8" cy="8" r="2"/></svg>{:else if mode.id === 'artists'}<svg viewBox="0 0 16 16"><circle cx="8" cy="5" r="2.5"/><path d="M2.5 14a5.5 5.5 0 0 1 11 0"/></svg>{:else}<svg viewBox="0 0 16 16"><path d="M2.5 3.5h11v9h-11zM5 6h6M5 9h4"/></svg>{/if}</span>{mode.label}</button>
+          <ControlFilter selected={data.mode === mode.id} type="button" disabled={!backendReady} onclick={() => onModeChange(mode.id)}><span class="mode-icon" aria-hidden="true">{#if mode.id === 'all'}<svg viewBox="0 0 16 16"><path d="M3 3h4v4H3zM9 3h4v4H9zM3 9h4v4H3zM9 9h4v4H9z"/></svg>{:else if mode.id === 'songs'}<svg viewBox="0 0 16 16"><path d="M9 12V3l5-1v9M9 12a2 2 0 1 1-2-2 2 2 0 0 1 2 2Zm5-1a2 2 0 1 1-2-2 2 2 0 0 1 2 2Z"/></svg>{:else if mode.id === 'videos'}<svg viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="10" rx="2"/><path d="m7 6 4 2-4 2z"/></svg>{:else if mode.id === 'albums'}<svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"/><circle cx="8" cy="8" r="2"/></svg>{:else if mode.id === 'artists'}<svg viewBox="0 0 16 16"><circle cx="8" cy="5" r="2.5"/><path d="M2.5 14a5.5 5.5 0 0 1 11 0"/></svg>{:else}<svg viewBox="0 0 16 16"><path d="M2.5 3.5h11v9h-11zM5 6h6M5 9h4"/></svg>{/if}</span>{mode.label}</ControlFilter>
         {/each}
       </nav>
     </div>
   </header>
 
   <div class="results-scroll" aria-live="polite" aria-busy={data.isLoading}>
-    {#if data.isLoading}
+    {#if data.ignoreSpelling}<p class="original-context">{$t('search.correction.original_results')}</p>{/if}
+    {#if data.correction}<div class="correction" role="status"><span>{$t(data.correction.applied?'search.correction.showing':'search.correction.suggested',[data.correction.query])}</span>{#if !data.correction.applied}<button type="button" onclick={()=>onSubmit(data.correction!.query,data.mode)}>{$t('search.correction.search')}</button>{/if}{#if data.correction.applied&&onSearchOriginal}<button type="button" onclick={onSearchOriginal}>{$t('search.correction.original')}</button>{/if}</div>{/if}
+    {#if data.isLoading && !data.top.length && !data.songs.length && !data.albums.length && !data.artists.length && !data.playlists.length && !data.videos.length}
       <div class="state loading-state"><span class="spinner" aria-hidden="true"></span><strong>{$t('search.loading.catalog')}</strong></div>
     {:else if data.error && !Object.keys(data.partialErrors).length}
-      <div class="state error-state" role="alert"><strong>No se pudo completar la búsqueda</strong><span>{data.error}</span><button type="button" class="retry-button" onclick={() => retry()}>{$t('common.retry')}</button></div>
+      <div class="state error-state" role="alert"><strong>No se pudo completar la búsqueda</strong><span>{data.error}</span><ControlButton type="button"  onclick={() => retry()}>{$t('common.retry')}</ControlButton></div>
     {:else if !data.hasSearched}
       <div class="state empty-state"><svg class="empty-icon" viewBox="0 0 40 40" aria-hidden="true"><circle cx="17" cy="17" r="10"/><path d="m24 24 9 9"/></svg><strong>{$t('search.empty.prompt_title')}</strong><span>{$t('search.empty.prompt_description')}</span></div>
     {:else if data.mode === 'all'}
-      {#if data.partialErrors.global}<div class="partial-error" role="status">No se pudieron cargar los resultados principales. <button type="button" onclick={() => retry('all')}>{$t('common.retry')}</button></div>{/if}
+      {#if data.pendingBlocks?.includes('global')}<section class="hero-placeholder" role="status">{$t('search.loading.catalog')}</section>{/if}
+      {#if data.partialErrors.global}<div class="partial-error" role="status">No se pudieron cargar los resultados principales. <ControlButton type="button" onclick={() => onRetrySection ? onRetrySection('global') : retry('all')}>{$t('common.retry')}</ControlButton></div>{/if}
 
-      {#if data.top.length}
-        {@const hero = data.top[0]}
-        {@const relatedSongs=relatedTopSongs(data)}
-        {@const heroMenu = createMenu(() => target(hero), { view: 'search_results' })}
-        <section class="result-section" aria-label="Resultado principal">
-          <h2 class="hero-heading">{$t('search.category.top_result')}</h2>
-          <div class="hero-section" class:has-related={relatedTopSongs(data).length > 0}>
-            <article class="hero-card" oncontextmenu={heroMenu.onContextMenu}>
-              <button class="hero-art" class:artist={hero.kind === 'artist'} type="button" aria-label={`${hero.kind === 'artist' ? 'Abrir' : 'Ver'} ${hero.title}`} onclick={() => openCard(hero)} onkeydown={heroMenu.onKeyDown}>
-                {#if hero.thumbnail}<img src={hero.thumbnail} alt="" loading="lazy" />{:else if hero.kind === 'artist'}<svg class="hero-person-icon" viewBox="0 0 36 36" aria-hidden="true"><circle cx="18" cy="12" r="6"/><path d="M6 33c.7-7.5 5-11.5 12-11.5S29.3 25.5 30 33"/></svg>{:else}<span aria-hidden="true">♫</span>{/if}
-              </button>
-              <div class="hero-copy">
-                <span class="eyebrow">{hero.kind === 'artist' ? 'ARTISTA' : hero.kind === 'album' ? 'ÁLBUM' : hero.kind === 'playlist' ? 'PLAYLIST' : 'CANCIÓN'}</span>
-                <button class="hero-title" type="button" onclick={() => openCard(hero)} onkeydown={heroMenu.onKeyDown}>{hero.title}</button>
-                {#if hero.artistRuns?.length || hero.artists}<span class="hero-subtitle"><ArtistCredits artistRuns={hero.artistRuns} artists={hero.artists??''} artistId={hero.artistId} {onOpenArtist} album={hero.album} albumId={hero.albumId} onOpenAlbum={id=>onOpenAlbum({id,title:hero.album??'',subtitle:hero.artists??null,thumbnail:hero.thumbnail})}/></span>{:else if hero.subtitle}<span class="hero-subtitle">{hero.subtitle}</span>{/if}
-                {#if hero.kind === 'artist'}<span class="hero-helper">{$t('search.full_discography')}</span>{/if}
-                <div class="badges">{#if hero.explicit}<ExplicitBadge />{/if}{#if hero.isVideo}<span class="tag">VIDEO</span>{/if}</div>
-              </div>
-              {#if hero.kind === 'artist'}<button class="hero-action" type="button" aria-label={`Abrir perfil de ${hero.title}`} disabled={!onOpenArtist} onclick={() => onOpenArtist?.(hero.id)}><svg viewBox="0 0 36 36" aria-hidden="true"><circle cx="18" cy="18" r="17"/><path d="M10 18h16m-7-7 7 7-7 7"/></svg></button>
-              {:else if hero.kind === 'song'}<button class="hero-action" type="button" aria-label={`Reproducir ${hero.title}`} onclick={() => openCard(hero)}><svg class="play-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="m7 4 9 6-9 6z"/></svg></button>{/if}
-            </article>
-
-            {#if relatedSongs.length}<div class="hero-related"><h3>Canciones destacadas</h3><div class="song-list">{#each relatedSongs as song (song.videoId)}<SearchSongRow {song} {currentTrackId} {isPlaying} onPlay={onPlaySong} {onOpenArtist} onOpenAlbum={id=>openAlbumForSong(song,id)}/>{/each}</div></div>{/if}
-          </div>
+      {#if all.top.length}
+        {@const principal = all.top[0]}
+        <section class="principal-result" aria-label={$t('search.category.top_result')}>
+          {#if ['song','video'].includes(principal.kind)}{@const song=asSong(principal)}{#if song}<SearchSongRow {song} {currentTrackId} {isPlaying} onPlay={onPlaySong} {onOpenArtist} onOpenAlbum={id=>openAlbumForSong(song,id)}/>{/if}
+          {:else}<MediaCard card={principal} layout="compact" onOpen={()=>openCard(principal)} {onOpenArtist} onOpenAlbum={id=>onOpenAlbum({id,title:principal.album??'',subtitle:principal.artists??null,thumbnail:principal.thumbnail})}/>{/if}
+          {#each relatedTopSongs(all) as song (song.videoId)}<SearchSongRow {song} {currentTrackId} {isPlaying} onPlay={onPlaySong} {onOpenArtist} onOpenAlbum={id=>openAlbumForSong(song,id)}/>{/each}
         </section>
       {/if}
 
-      {#if data.songs.length}<section class="result-section"><div class="section-heading"><h2>{$t('search.filter.songs')}</h2><button type="button" onclick={() => onModeChange('songs')}>{$t('search.see_all.feminine')}</button></div><div class="song-list">{#each data.songs.slice(0, 5) as song (`${song.videoId}-${song.setVideoId ?? ''}`)}<SearchSongRow {song} {currentTrackId} {isPlaying} onPlay={onPlaySong} {onOpenArtist} onOpenAlbum={(id) => openAlbumForSong(song, id)} />{/each}</div></section>{/if}
 
-      {#if data.albums.length}<section class="result-section"><div class="section-heading"><h2>{$t('search.filter.albums')}</h2><button type="button" onclick={() => onModeChange('albums')}>{$t('search.see_all.masculine')}</button></div><div class="card-shelf">{#each data.albums.slice(0, 12) as album (album.id)}{@const card: BrowseCardDto = { kind: 'album', id: album.id, title: album.title, subtitle: album.subtitle, thumbnail: album.thumbnail, duration: null }}<SearchResultCard {card} size="album" onActivate={() => openCard(card)} />{/each}</div></section>{/if}
 
-      {#if data.artists.length}<section class="result-section"><div class="section-heading"><h2>{$t('search.filter.artists')}</h2><button type="button" onclick={() => onModeChange('artists')}>{$t('search.see_all.masculine')}</button></div><div class="card-shelf">{#each data.artists.slice(0, 12) as card (card.id)}<SearchResultCard {card} size="artist" onActivate={() => openCard(card)} />{/each}</div></section>{/if}
 
-      {#if data.videos.length}<section class="result-section"><div class="section-heading"><h2>{$t('search.filter.videos')}</h2><button type="button" onclick={() => onModeChange('videos')}>{$t('search.see_all.masculine')}</button></div><div class="song-list">{#each data.videos.slice(0, 4) as song (`${song.videoId}-${song.setVideoId ?? ''}`)}<SearchSongRow {song} {currentTrackId} {isPlaying} onPlay={onPlaySong} {onOpenArtist} onOpenAlbum={(id) => openAlbumForSong(song, id)} showVideo />{/each}</div></section>{/if}
 
-      {#if data.playlists.length}<section class="result-section"><div class="section-heading"><h2>{$t('search.filter.playlists')}</h2><button type="button" onclick={() => onModeChange('playlists')}>{$t('search.see_all.feminine')}</button></div><div class="card-shelf">{#each data.playlists.slice(0, 12) as card (card.id)}<SearchResultCard {card} size="playlist" onActivate={() => openCard(card)} />{/each}</div></section>{/if}
 
-      {#if data.partialErrors.songs || data.partialErrors.videos || data.partialErrors.categories}<div class="partial-error" role="status">Algunas secciones no se pudieron cargar. <button type="button" onclick={() => retry('all')}>{$t('common.retry')}</button></div>{/if}
-      {#if !data.top.length && !data.songs.length && !data.albums.length && !data.artists.length && !data.videos.length && !data.playlists.length}
-        {#if Object.keys(data.partialErrors).length}<div class="state error-state"><strong>Algunas secciones no están disponibles</strong><button type="button" class="retry-button" onclick={() => retry('all')}>{$t('common.retry')}</button></div>
+      {#if all.songs.length}<section class="result-section"><div class="section-heading"><h2>{$t('search.filter.songs')}</h2><ControlButton emphasis="quiet" size="utility"  type="button" onclick={() => onModeChange('songs')}>{$t('search.see_all.feminine')}</ControlButton></div><div class="song-list">{#each all.songs.slice(0, 5) as song (`${song.videoId}-${song.setVideoId ?? ''}`)}<SearchSongRow {song} {currentTrackId} {isPlaying} onPlay={onPlaySong} {onOpenArtist} onOpenAlbum={(id) => openAlbumForSong(song, id)} />{/each}</div></section>{/if}
+      {#if all.artists.length}<section class="result-section"><div class="section-heading"><h2>{$t('search.filter.artists')}</h2><ControlButton emphasis="quiet" size="utility"  type="button" onclick={() => onModeChange('artists')}>{$t('search.see_all.masculine')}</ControlButton></div><div class="card-shelf">{#each all.artists.slice(0, 12) as card (card.id)}<SearchResultCard {card} size="artist" onActivate={() => openCard(card)} />{/each}</div></section>{/if}
+      {#if all.albums.length}<section class="result-section"><div class="section-heading"><h2>{$t('search.filter.albums')}</h2><ControlButton emphasis="quiet" size="utility"  type="button" onclick={() => onModeChange('albums')}>{$t('search.see_all.masculine')}</ControlButton></div><div class="card-shelf">{#each all.albums.slice(0, 12) as album (album.id)}{@const card: BrowseCardDto = { kind: 'album', id: album.id, title: album.title, subtitle: album.subtitle, thumbnail: album.thumbnail, duration: null }}<SearchResultCard {card} size="album" onActivate={() => openCard(card)} />{/each}</div></section>{/if}
+      {#if all.playlists.length}<section class="result-section"><div class="section-heading"><h2>{$t('search.filter.playlists')}</h2><ControlButton emphasis="quiet" size="utility"  type="button" onclick={() => onModeChange('playlists')}>{$t('search.see_all.feminine')}</ControlButton></div><div class="card-shelf">{#each all.playlists.slice(0, 12) as card (card.id)}<SearchResultCard {card} size="playlist" onActivate={() => openCard(card)} />{/each}</div></section>{/if}
+      {#if all.videos.length}<section class="result-section"><div class="section-heading"><h2>{$t('search.filter.videos')}</h2><ControlButton emphasis="quiet" size="utility"  type="button" onclick={() => onModeChange('videos')}>{$t('search.see_all.masculine')}</ControlButton></div><div class="song-list">{#each all.videos.slice(0, 4) as song (`${song.videoId}-${song.setVideoId ?? ''}`)}<SearchSongRow {song} {currentTrackId} {isPlaying} onPlay={onPlaySong} {onOpenArtist} onOpenAlbum={(id) => openAlbumForSong(song, id)} showVideo />{/each}</div></section>{/if}
+      {#each (['songs','videos','categories'] as SearchPartialError[]) as block}{#if data.partialErrors[block]}<div class="partial-error" role="status">{data.partialErrors[block]} <ControlButton type="button" onclick={() => onRetrySection ? onRetrySection(block) : retry('all')}>{$t('common.retry')}</ControlButton></div>{/if}{/each}
+      {#if !all.top.length && !all.songs.length && !all.albums.length && !all.artists.length && !all.videos.length && !all.playlists.length}
+        {#if Object.keys(data.partialErrors).length}<div class="state error-state"><strong>Algunas secciones no están disponibles</strong><ControlButton type="button"  onclick={() => retry('all')}>{$t('common.retry')}</ControlButton></div>
         {:else}<div class="state empty-state"><strong>Sin resultados</strong><span>No se encontraron resultados para «{data.lastSearchedQuery}».</span></div>{/if}
       {/if}
     {:else if data.mode === 'songs' || data.mode === 'videos'}
       {@const songs = filteredSongs()}
-      {#if partialError(data.mode)}<div class="partial-error" role="status">No se pudo cargar esta sección. <button type="button" onclick={() => retry(data.mode)}>{$t('common.retry')}</button></div>{/if}
+      {#if partialError(data.mode)}<div class="partial-error" role="status">No se pudo cargar esta sección. <ControlButton type="button" onclick={() => retry(data.mode)}>{$t('common.retry')}</ControlButton></div>{/if}
       {#if songs.length}
         {#if data.mode === 'songs'}
           <TrackTable items={songs} {currentTrackId} {isPlaying} onPlay={(index) => onPlaySong(songs[index])} {onOpenArtist} onOpenAlbum={(id) => { const song = songs.find((item) => item.albumId === id); if (song) openAlbumForSong(song, id); }} origin={{ view: 'search_results' }} />
@@ -246,7 +236,7 @@
       {:else}<div class="state empty-state"><strong>{partialError(data.mode) ? 'Sección no disponible' : 'Sin resultados'}</strong>{#if !partialError(data.mode)}<span>No se encontraron {data.mode === 'videos' ? 'videos' : 'canciones'} para «{data.lastSearchedQuery}».</span>{/if}</div>{/if}
     {:else}
       {@const cards = filteredCards()}
-      {#if partialError(data.mode)}<div class="partial-error" role="status">No se pudo cargar esta sección. <button type="button" onclick={() => retry(data.mode)}>{$t('common.retry')}</button></div>{/if}
+      {#if partialError(data.mode)}<div class="partial-error" role="status">No se pudo cargar esta sección. <ControlButton type="button" onclick={() => retry(data.mode)}>{$t('common.retry')}</ControlButton></div>{/if}
       {#if cards.length}<VirtualCatalog items={cards} scrollSelector=".results-scroll">{#snippet children(card)}<SearchResultCard {card} size={card.kind==='artist'?'artist':data.mode==='playlists'?'playlist':'album'} filtered onActivate={()=>openCard(card)}/>{/snippet}</VirtualCatalog>
       {:else}<div class="state empty-state"><strong>{partialError(data.mode) ? 'Sección no disponible' : 'Sin resultados'}</strong>{#if !partialError(data.mode)}<span>No se encontraron resultados para «{data.lastSearchedQuery}».</span>{/if}</div>{/if}
     {/if}
@@ -272,54 +262,39 @@
   .preview-content { box-sizing:border-box; width:100%; min-height:0; flex:1; overflow-y:auto; }
   .preview-footer { box-sizing:border-box; display:flex; width:100%; flex:none; align-items:center; gap:8px; padding:8px 10px 2px; border-top:1px solid rgb(255 255 255 / 8%); color:rgb(255 255 255 / 48%); font-size:11.5px; }
   .preview-footer svg { width:14px; height:14px; margin-left:auto; fill:none; stroke:currentColor; stroke-width:1.5; stroke-linecap:round; stroke-linejoin:round; }
-  .mode-tabs { display:flex; width:100%; flex:none; flex-wrap:nowrap; justify-content:flex-start; gap:8px; overflow-x:auto; scrollbar-width:none; }
+  .mode-tabs { display:flex; width:100%; flex:none; flex-wrap:nowrap; justify-content:flex-start; gap:var(--control-category-gap); overflow-x:auto; padding:4px 3px; scrollbar-width:none; }
   .mode-tabs::-webkit-scrollbar { display:none; }
-  .mode-tab { display:inline-flex; flex:none; align-items:center; gap:6px; padding:5px 12px; border:1px solid transparent; border-radius:999px; background:rgb(255 255 255 / 7%); color:rgb(255 255 255 / 67%); font-size:12.5px; font-weight:550; white-space:nowrap; cursor:pointer; }
-  .mode-icon { display:inline-flex; width:13px; height:13px; align-items:center; justify-content:center; }
-  .mode-icon svg { width:13px; height:13px; fill:none; stroke:currentColor; stroke-width:1.4; stroke-linecap:round; stroke-linejoin:round; }
-  .mode-tab:hover:not(:disabled) { background:rgb(255 255 255 / 7%); color:#fff; }
-  .mode-tab.active { background:var(--sideb-accent, #a33d45); color:#fff; }
-  .mode-tab:disabled { opacity:.45; cursor:not-allowed; }
+
+  .mode-icon { display:inline-flex; width:18px; height:18px; align-items:center; justify-content:center; }
+  .mode-icon svg { width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:1.4; stroke-linecap:round; stroke-linejoin:round; }
+
+
+
   .results-scroll { min-height:0; flex:1; overflow:auto; padding:20px 24px 120px; scrollbar-color:rgb(255 255 255 / 20%) transparent; }
+  .hero-placeholder {display:grid;place-items:center;min-height:58px;margin-bottom:24px;border-radius:14px;background:rgb(255 255 255 / 4%);color:#aaa;font-size:12px}
   .result-section { margin:0 0 24px; }
   .section-heading { display:flex; min-height:26px; align-items:center; justify-content:space-between; margin:0 0 10px; }
   .section-heading h2 { margin:0; color:#f2f2f4; font-size:16px; font-weight:650; }
-  .section-heading button { padding:4px 8px; border:0; border-radius:6px; background:transparent; color:rgb(255 255 255 / 66%); font:inherit; font-size:12px; font-weight:500; cursor:pointer; }
-  .section-heading button:hover { background:rgb(255 255 255 / 8%); color:#fff; }
-  .hero-section { display:grid; grid-template-columns:minmax(0, 1fr); align-items:center; gap:12px 16px; padding:16px; border:1px solid rgb(255 255 255 / 8%); border-radius:14px; background:rgb(255 255 255 / 4%); }
-  .hero-section.has-related { grid-template-columns:minmax(0, 1fr) minmax(0, 1.05fr); }
-  .hero-heading { margin:0 0 10px; color:#f2f2f4; font-size:16px; font-weight:650; }
-  .hero-card { display:flex; min-width:0; align-items:center; gap:16px; }
-  .hero-art { display:grid; width:80px; height:80px; flex:none; place-items:center; overflow:hidden; padding:0; border:0; border-radius:12px; background:rgb(255 255 255 / 7%); color:rgb(255 255 255 / 55%); font-size:28px; cursor:pointer; }
-  .hero-art.artist { border-radius:50%; }
-  .hero-art img { width:100%; height:100%; object-fit:cover; }
-  .hero-person-icon { width:36px; height:36px; fill:none; stroke:currentColor; stroke-width:1.5; stroke-linecap:round; }
-  .hero-copy { display:flex; min-width:0; flex:1; flex-direction:column; align-items:flex-start; gap:4px; }
-  .eyebrow { color:rgb(255 255 255 / 52%); font-size:10px; font-weight:700; letter-spacing:.7px; }
-  .hero-title { max-width:100%; overflow:hidden; padding:0; border:0; background:transparent; color:#f7f7f8; font-size:18px; font-weight:650; text-align:left; text-overflow:ellipsis; white-space:nowrap; cursor:pointer; }
-  .hero-subtitle { max-width:100%; overflow:hidden; color:rgb(255 255 255 / 64%); font-size:13px; text-overflow:ellipsis; white-space:nowrap; }
-  .hero-helper { color:rgb(255 255 255 / 51%); font-size:11.5px; }
-  .badges { display:flex; align-items:center; gap:5px; }
-  .tag { display:inline-flex; align-items:center; padding:2px 6px; border-radius:4px; background:rgb(255 255 255 / 10%); color:rgb(255 255 255 / 70%); font-size:9px; font-weight:700; }
-  .hero-action { display:grid; width:36px; height:36px; flex:none; place-items:center; border:0; border-radius:50%; background:rgb(255 255 255 / 12%); color:#fff; cursor:pointer; }
-  .hero-action svg { width:36px; height:36px; fill:none; stroke:currentColor; stroke-width:1.5; stroke-linecap:round; stroke-linejoin:round; }
-  .hero-action .play-icon { width:17px; height:17px; fill:currentColor; stroke:none; }
-  .hero-action:disabled { opacity:.45; cursor:not-allowed; }
-  .hero-action:hover { background:rgb(255 255 255 / 22%); }
-  .hero-related { min-width:0; }
-  .hero-related h3 { margin:0 0 5px 10px; color:rgb(255 255 255 / 67%); font-size:11px; font-weight:600; }
+
+
+  .principal-result {max-width:760px;margin-bottom:24px;}
+  .principal-result :global(.compact){box-sizing:border-box;min-height:58px;padding:7px 10px;height:58px;}
+  .principal-result :global(.compact h3){font-size:14px;}
+  .original-context{margin:0 0 12px;color:#b6b6bf;font-size:12px;}
+  .correction{display:flex;flex-wrap:wrap;gap:8px 16px;margin-bottom:16px;color:#b6b6bf;font-size:13px;}
+  .correction button{padding:0;border:0;background:transparent;color:#eee;font:inherit;cursor:pointer;}
+  .correction button:hover{filter:brightness(1.2);}
   .song-list { display:flex; min-width:0; flex-direction:column; gap:2px; }
   .card-shelf { display:flex; gap:16px; overflow-x:auto; padding:2px 2px 8px; scrollbar-width:thin; scrollbar-color:rgb(255 255 255 / 20%) transparent; }
   .state { display:flex; min-height:220px; flex-direction:column; align-items:center; justify-content:center; gap:10px; color:rgb(255 255 255 / 62%); text-align:center; }
   .state strong { color:rgb(255 255 255 / 86%); font-size:15px; font-weight:600; }
   .state span { font-size:12px; }
   .empty-icon { width:40px; height:40px; fill:none; stroke:currentColor; stroke-width:1.6; opacity:.5; }
-  .retry-button { padding:7px 12px; border:0; border-radius:7px; background:var(--sideb-accent, #a33d45); color:#fff; cursor:pointer; }
+
   .spinner { width:26px; height:26px; border:2px solid rgb(255 255 255 / 12%); border-top-color:#d06c70; border-radius:50%; animation:spin .75s linear infinite; }
   @keyframes spin { to { transform:rotate(360deg); } }
   .partial-error { margin:0 0 16px; padding:9px 12px; border:1px solid rgb(211 103 110 / 38%); border-radius:8px; background:rgb(120 45 50 / 16%); color:#e6babc; font-size:12px; }
-  .partial-error button { margin-left:5px; padding:0; border:0; background:transparent; color:#fff; cursor:pointer; }
+
   button:focus-visible { outline:2px solid var(--sideb-highlight, #d06c70); outline-offset:2px; }
-  @media (max-width:720px) { .hero-section,.hero-section.has-related { grid-template-columns:1fr; }.hero-related { padding-top:8px; border-top:1px solid rgb(255 255 255 / 8%); } }
-  @media (max-width:560px) { .search-header { padding-inline:14px; }.results-scroll { padding-inline:14px; }.hero-art { width:64px; height:64px; } }
+  @media (max-width:560px) { .search-header { padding-inline:14px; }.results-scroll { padding-inline:14px; } }
 </style>

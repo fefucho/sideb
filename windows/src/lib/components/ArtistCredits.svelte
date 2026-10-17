@@ -1,7 +1,10 @@
 <script lang="ts">
+  import FeaturedArtistLink from './FeaturedArtistLink.svelte';
+  import type { FeaturedTrack } from '$lib/featured/artists';
   import type { HomeArtistRunDto } from '$lib/types';
 
   interface Props {
+    track?: FeaturedTrack;
     artistRuns?: HomeArtistRunDto[] | null;
     artists?: string | null;
     artistId?: string | null;
@@ -13,6 +16,7 @@
   }
 
   let {
+    track,
     artistRuns: suppliedRuns,
     artists = null,
     artistId = null,
@@ -42,7 +46,9 @@
     {#if runs.length}<span class="artist-group">
       {#each runs as run, index (`${run.text}:${run.id ?? ''}:${index}`)}
         {#if index > 0}<span class="artist-separator" aria-hidden="true">, </span>{/if}
-        {#if run.id && onOpenArtist}
+        {#if track && onOpenArtist}
+          <FeaturedArtistLink {track} name={run.text} id={run.id} {onOpenArtist} />
+        {:else if run.id && onOpenArtist}
           <button class="credit-link artist-name" type="button" title={run.text} onclick={() => onOpenArtist?.(run.id!)}>{run.text}</button>
         {:else}
           <span class="artist-name" title={run.text}>{run.text}</span>

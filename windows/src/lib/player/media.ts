@@ -31,7 +31,17 @@ export function occurrenceActive(state: PlaybackStateDto, song: SongDto, index: 
   if (!sourceActive(state, kind, id)) return false;
   const current = state.queue.items[state.queue.currentIndex ?? -1];
   if (!current) return false;
-  return collectionEntryId({ kind, id, title: null }, song, index) === current.entryId;
+  const expectedEntryId = collectionEntryId({ kind, id, title: null }, song, index);
+  if (current.sourceOccurrenceId) return expectedEntryId === current.sourceOccurrenceId;
+  if (current.entryId.startsWith('collection|')) {
+    return expectedEntryId === current.entryId;
+  }
+  if (!state.isShuffle && state.queue.currentIndex !== null) {
+    return state.queue.currentIndex === index && current.videoId === song.videoId;
+  }
+  // Legacy native snapshots have no source identity. A shuffled queue index or
+  // repeated video ID cannot identify the original row safely.
+  return false;
 }
 export function songCard(song: SongDto): BrowseCardDto {
   return { ...song, kind: song.isVideo ? 'video' : 'song', id: song.videoId, subtitle: song.artists };

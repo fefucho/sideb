@@ -7,7 +7,7 @@ const source = await readFile(new URL('../src/lib/search/preview.ts', import.met
 const output = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText;
 const { SearchPreviewController } = await import(`data:text/javascript;base64,${Buffer.from(output).toString('base64')}`);
 const card = id => ({ kind: 'artist', id, title: id, subtitle: null, thumbnail: null, duration: null });
-const result = id => ({ top: [card(id)], songs: [], albums: [], artists: [], playlists: [] });
+const result = id => ({ queries:[id+' suggestion'],results:{ top: [card(id)], songs: [], albums: [], artists: [], playlists: [] } });
 function deferred() { let resolve; const promise = new Promise(done => resolve = done); return { promise, resolve }; }
 function clock() {
   let now = 0; let nextId = 0; const timers = new Map();
@@ -26,18 +26,18 @@ function clock() {
 const tick = () => new Promise(resolve => setTimeout(resolve, 0));
 function create(invoke) { let data; const time = clock(); const controller = new SearchPreviewController(invoke, next => data = next, time.scheduler); return { controller, advance: ms => time.advance(ms), get data() { return data; } }; }
 
-test('debounces 250ms, requests only search_all without recording history, and clears on empty query', async () => {
+test('debounces 250ms, requests only provider suggestions without recording history, and clears on empty query', async () => {
   const calls = [];
   const ctx = create(async (command, args) => { calls.push({ command, args }); return result(args.query); });
   ctx.controller.setQuery(' Radiohead ');
   ctx.advance(249);
   assert.equal(calls.length, 0);
   ctx.advance(1); await tick();
-  assert.deepEqual(calls, [{ command: 'search_all', args: { query: 'Radiohead', recordHistory: false } }]);
+  assert.deepEqual(calls, [{ command: 'search_suggestions', args: { query: 'Radiohead' } }]);
   assert.equal(ctx.data.associatedQuery, 'Radiohead');
   assert.equal(ctx.data.results.top[0].id, 'Radiohead');
   ctx.controller.setQuery('');
-  assert.deepEqual(ctx.data, { query: '', associatedQuery: '', results: null, isLoading: false, error: null });
+  assert.deepEqual(ctx.data, { query: '', associatedQuery: '', results: null, queries: [], isLoading: false, error: null });
   ctx.controller.setQuery('will clear'); ctx.controller.setQuery(''); ctx.advance(250);
   assert.equal(calls.length, 1);
   ctx.controller.dispose();
@@ -131,4 +131,15 @@ test('default scheduler calls browser timers with globalThis as receiver', async
     globalThis.setTimeout = originalSetTimeout;
     globalThis.clearTimeout = originalClearTimeout;
   }
+});
+
+test('provider may return text only, retains query order and caches expire or clear with account',async()=>{
+ const originalNow=Date.now;let now=10_000,calls=0;Date.now=()=>now;
+ try {
+  const ctx=create(async()=>{calls++;return {queries:['second','first'],results:{top:[],topSongs:[],songs:[],artists:[],albums:[],playlists:[]}};});
+  ctx.controller.setQuery('q');ctx.advance(250);await tick();assert.deepEqual(ctx.data.queries,['second','first']);assert.equal(ctx.data.results.top.length,0);
+  ctx.controller.setQuery('');ctx.controller.setQuery('q');assert.equal(calls,1);assert.deepEqual(ctx.data.queries,['second','first']);
+  now+=30_001;ctx.controller.setQuery('q');ctx.advance(250);await tick();assert.equal(calls,2);
+  ctx.controller.reset();ctx.controller.setQuery('q');ctx.advance(250);await tick();assert.equal(calls,3);ctx.controller.dispose();
+ }finally{Date.now=originalNow;}
 });

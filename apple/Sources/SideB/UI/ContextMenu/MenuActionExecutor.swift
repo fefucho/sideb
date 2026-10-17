@@ -12,15 +12,18 @@ final class MenuActionExecutor {
     private weak var player: PlayerViewModel?
     private weak var router: NavigationRouter?
     private let core: SideBCore?
+    private let origin: MenuOrigin?
 
     init(
         player: PlayerViewModel?,
         router: NavigationRouter?,
-        core: SideBCore?
+        core: SideBCore?,
+        origin: MenuOrigin? = nil
     ) {
         self.player = player
         self.router = router
         self.core = core
+        self.origin = origin
     }
 
     // MARK: - Ejecución Central
@@ -34,10 +37,18 @@ final class MenuActionExecutor {
         switch action {
         // --- 1. Reproducción ---
         case .play:
+            if origin == .searchSpotlight, case .song(let song) = target {
+                player?.activateSearchMediaRadio(song, restart: true)
+                return
+            }
             executePlay(target: target)
         case .shuffle:
             executeShuffle(target: target)
         case .startMix:
+            if origin == .searchSpotlight, case .song(let song) = target {
+                player?.activateSearchMediaRadio(song, restart: true)
+                return
+            }
             executeStartMix(target: target)
         case .playNext:
             executePlayNext(target: target)

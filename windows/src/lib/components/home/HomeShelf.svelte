@@ -1,4 +1,5 @@
 <script lang="ts">
+  import ControlButton from '$lib/components/common/ControlButton.svelte';
   import { t, language } from '$lib/i18n';
   import { providerHeading } from '$lib/i18n/presentation';
   import { onMount } from 'svelte';
@@ -19,7 +20,7 @@
   onMount(()=>{track.scrollLeft=initialScroll;sync();const observer=new ResizeObserver(sync);observer.observe(track);return()=>observer.disconnect();});
 </script>
 <section class="shelf" aria-label={providerHeading(section.title, $language)}>
-  <header><h2>{providerHeading(section.title, $language)}</h2>{#if section.moreBrowseId&&!section.moreBrowseId.startsWith('FE')&&onOpenCatalog}<button type="button" onclick={()=>onOpenCatalog?.(section.moreBrowseId!,section.moreParams,section.title)}>{$t('detail.viewAll')}</button>{/if}</header>
+  <header><h2>{providerHeading(section.title, $language)}</h2>{#if section.moreBrowseId&&!section.moreBrowseId.startsWith('FE')&&onOpenCatalog}<ControlButton emphasis="quiet" size="utility"  type="button" onclick={()=>onOpenCatalog?.(section.moreBrowseId!,section.moreParams,section.title)}>{$t('detail.viewAll')}</ControlButton>{/if}</header>
   <!-- Keyboard scrolling is available independently of individual cards. -->
   <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
   <div class="track" class:compact bind:this={track} onscroll={sync} role="region" aria-label={providerHeading(section.title, $language)} tabindex="0">
@@ -31,8 +32,8 @@
   </div>
 </section>
 <style>
-  .shelf{width:100%;padding:0 0 24px;}header{box-sizing:border-box;height:46px;padding:0 28px;display:flex;align-items:center;justify-content:space-between;gap:12px;}h2{min-width:0;overflow:hidden;margin:0;font-size:19px;line-height:24px;font-weight:700;text-overflow:ellipsis;white-space:nowrap;}header button{flex:none;padding:5px 0;border:0;background:transparent;color:inherit;font:inherit;font-size:13px;font-weight:600;cursor:pointer;}
+  .shelf{width:100%;padding:0 0 24px;}header{box-sizing:border-box;height:46px;padding:0 28px;display:flex;align-items:center;justify-content:space-between;gap:12px;}h2{min-width:0;overflow:hidden;margin:0;font-size:19px;line-height:24px;font-weight:700;text-overflow:ellipsis;white-space:nowrap;}
   .track{box-sizing:border-box;width:100%;height:254px;padding:0 28px;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;} .track::-webkit-scrollbar{display:none;width:0;height:0;} .track.compact{height:230px;}.track-space{position:relative;height:100%;}.window{position:absolute;top:0;display:flex;gap:16px;}.window.compact{display:grid;grid-auto-flow:column;grid-template-rows:repeat(4,56px);grid-auto-columns:var(--item-width);column-gap:16px;row-gap:1px;}
-  button:focus-visible,.track:focus-visible{outline:2px solid var(--sideb-highlight);outline-offset:-2px;}
+  .track:focus-visible{outline:2px solid var(--sideb-highlight);outline-offset:-2px;}
   @container home-content (width<760px){.track:not(.compact){height:234px;}}
 </style>

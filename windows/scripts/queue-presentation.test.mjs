@@ -62,8 +62,8 @@ function buttonClasses(html) {
 test('queue renders controls in visual and keyboard DOM order for distinct duplicate occurrences', () => {
   const html = panel();
   assert.deepEqual(buttonClasses(html), [
-    'queue-select', 'track-artwork', 'credit-link', 'credit-link', 'queue-action', 'queue-action', 'reorder-handle',
-    'queue-select', 'track-artwork', 'credit-link', 'credit-link', 'queue-action', 'queue-action', 'reorder-handle',
+    'queue-select', 'track-artwork', 'title-text', 'featured-link', 'credit-link', 'queue-action', 'queue-action', 'reorder-handle',
+    'queue-select', 'track-artwork', 'title-text', 'featured-link', 'credit-link', 'queue-action', 'queue-action', 'reorder-handle',
   ]);
   const first = html.slice(html.indexOf('data-entry-id="first"'), html.indexOf('data-entry-id="duplicate"'));
   assert.ok(!html.includes('row-menu'));
@@ -71,6 +71,8 @@ test('queue renders controls in visual and keyboard DOM order for distinct dupli
   assert.ok(first.indexOf('like-action') < first.indexOf('queue-timing'));
   assert.ok(first.includes('aria-current="true"'));
   assert.ok(!html.includes('play-control'));
+  assert.ok(!/<button\b[^>]*>(?:(?!<\/button>).)*<button\b/s.test(html), 'all artist and playback controls are siblings');
+  assert.ok(html.includes('role="link"'), 'artist remains independently keyboard accessible');
   assert.ok(html.includes('speaker'));
   assert.ok(html.includes('4:15'));
 });
@@ -108,6 +110,8 @@ test('pending playback and likes retain disabled controls and accessible loading
   assert.ok(buttons.filter(button => button.includes('like-action')).every(button => button.includes('disabled')));
   assert.ok(buttons.filter(button => button.includes('dislike-action')).every(button => button.includes('disabled')));
   assert.ok(!html.includes('play-control'));
+  assert.ok(!/<button\b[^>]*>(?:(?!<\/button>).)*<button\b/s.test(html), 'all artist and playback controls are siblings');
+  assert.ok(html.includes('role="link"'), 'artist remains independently keyboard accessible');
 });
 
 test('queue variants are opt-in and preserve the default shared artwork and activity presentation', () => {

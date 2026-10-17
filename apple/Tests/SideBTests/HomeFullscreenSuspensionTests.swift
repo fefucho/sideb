@@ -167,6 +167,47 @@ final class HomeFullscreenSuspensionTests: XCTestCase {
         XCTAssertNil(host.window)
     }
 
+    func testRetainedHomeKeepsLeadingEdgeAcrossSidebarAndPageChanges() async throws {
+        let player = PlayerViewModel()
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let home = HomeViewModel(cacheStore: HomeFeedCacheStore(directory: directory),
+            preferences: UserDefaults(suiteName: UUID().uuidString)!)
+        home.prepareSession(identity: UUID().uuidString)
+        await home.loadHomeFeed(core: ShellHomeCoreStub())
+        func shell(_ page: PageDestination, reserve: CGFloat) -> some View {
+            HStack(spacing: 0) {
+                if reserve > 0 { Color.clear.frame(width: reserve) }
+                RetainedMainPages(page: page, isCovered: player.isFullscreenPresented,
+                    home: { HomeView(playerViewModel: player, homeViewModel: home,
+                        sessionRevision: 0, accountName: "fefucho") },
+                    explore: { _ in ShellFrameProbe(name: "explore") },
+                    library: { ShellFrameProbe(name: "library") },
+                    detail: { EmptyView() })
+            }
+        }
+        let host = NSHostingView(rootView: shell(.home, reserve: 242))
+        host.sizingOptions = []
+        host.frame = NSRect(x: 0, y: 0, width: 960, height: 680)
+        host.layoutSubtreeIfNeeded()
+        let scroll = try XCTUnwrap(descendants(host).compactMap { $0 as? HomeFeedScrollView }.first)
+        for (page, reserve): (PageDestination, CGFloat) in [
+            (.explore(.discover), 242), (.library, 242), (.home, 242),
+            (.home, 0), (.home, 242), (.home, 0)
+        ] {
+            host.rootView = shell(page, reserve: reserve)
+            host.layoutSubtreeIfNeeded()
+            guard page == .home else { continue }
+            let frame = scroll.convert(scroll.bounds, to: host)
+            XCTAssertEqual(frame.minX, reserve, accuracy: 0.5)
+            XCTAssertEqual(frame.width, 960-reserve, accuracy: 0.5)
+            let table = try XCTUnwrap(scroll.documentView as? NSTableView)
+            let featured = try XCTUnwrap(table.view(atColumn: 0, row: 0, makeIfNecessary: true))
+            XCTAssertEqual(featured.convert(featured.bounds, to: host).minX, reserve, accuracy: 0.5)
+            XCTAssertEqual(featured.frame.width, frame.width, accuracy: 0.5)
+        }
+    }
+
     private func descendants(_ view: NSView) -> [NSView] {
         [view] + view.subviews.flatMap(descendants)
     }

@@ -8,7 +8,7 @@ on:
       release_tag:
         description: Release tag matching version.env
         required: true
-        default: v1.2.0
+        default: v1.2.1
         type: string
 
 permissions:
@@ -55,7 +55,7 @@ jobs:
           PRERELEASE: ${{ steps.config.outputs.prerelease }}
           NOTES: ${{ steps.config.outputs.notes }}
         run: |
-          title="Side B $VERSION — macOS & Windows Feature Parity"
+          title="Side B $VERSION"
           flags=()
           if [ "$PRERELEASE" = true ]; then
             flags+=(--prerelease)
@@ -178,8 +178,8 @@ jobs:
           if ($installers.Count -ne 1) { throw 'Expected exactly one NSIS installer' }
           Copy-Item -LiteralPath $installers[0].FullName -Destination "$buildDir/SideB-Windows-x64-setup.exe"
           $runtime = @('sideb-windows.exe', 'libmpv-2.dll', 'vulkan-1.dll', 'VulkanRT-License.txt') | ForEach-Object { Join-Path $buildDir $_ }
-          Compress-Archive -LiteralPath $runtime -DestinationPath "$buildDir/SideB-Windows-x64.zip"
-          $lines = @('SideB-Windows-x64-setup.exe', 'SideB-Windows-x64.zip') | ForEach-Object {
+          Compress-Archive -LiteralPath $runtime -DestinationPath "$buildDir/SideB-windows-x64.zip"
+          $lines = @('SideB-Windows-x64-setup.exe', 'SideB-windows-x64.zip') | ForEach-Object {
             $hash = (Get-FileHash -LiteralPath (Join-Path $buildDir $_) -Algorithm SHA256).Hash.ToLowerInvariant()
             "$hash  $_"
           }
@@ -190,7 +190,7 @@ jobs:
           if-no-files-found: error
           path: |
             builds/windows/build-*/SideB-Windows-x64-setup.exe
-            builds/windows/build-*/SideB-Windows-x64.zip
+            builds/windows/build-*/SideB-windows-x64.zip
             builds/windows/build-*/SideB-Windows-x64-SHA256.txt
       - uses: actions/upload-artifact@v4
         if: always()
@@ -225,7 +225,7 @@ jobs:
         run: |
           test -s SideB-macOS.zip
           test -s SideB-Windows-x64-setup.exe
-          test -s SideB-Windows-x64.zip
+          test -s SideB-windows-x64.zip
           sha256sum -c SideB-macOS-SHA256.txt
           sha256sum -c SideB-Windows-x64-SHA256.txt
       - name: Upload both platforms and publish

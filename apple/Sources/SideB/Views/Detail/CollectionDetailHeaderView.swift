@@ -55,7 +55,7 @@ struct CollectionDetailHeaderView: View {
                 HStack(spacing: 12) {
                     Text(catalogError).font(.system(size: 14.4)).foregroundStyle(.secondary)
                     if let onRetryCatalog {
-                        Button(L10n.text("common.retry"), action: onRetryCatalog).buttonStyle(.plain)
+                        Button(L10n.text("common.retry"), action: onRetryCatalog).buttonStyle(SideBControlStyle())
                     }
                 }
             }
@@ -174,7 +174,7 @@ struct CollectionDetailHeaderView: View {
     }
 
     private func actions(compact: Bool) -> some View {
-        HStack(spacing: 12) {
+        HStack(spacing: SideBControlMetrics.actionSpacing) {
             actionButton(L10n.text("player.play"), symbol: "play.fill", compact: compact, action: onPlay)
                 .disabled(isPlaybackUnavailable)
             actionButton(L10n.text("player.shuffle"), symbol: "shuffle", compact: compact, action: onShuffle)
@@ -182,27 +182,19 @@ struct CollectionDetailHeaderView: View {
             if showsSave, let onSave {
                 actionButton(L10n.text(isSaved ? "detail.collection.inLibrary" : "detail.collection.save"),
                              symbol: isSaved ? "bookmark.fill" : "bookmark",
-                             compact: compact, action: onSave)
+                             compact: compact, selected: isSaved, action: onSave)
             }
             additionalActions
         }
         .fixedSize()
     }
 
-    private func actionButton(_ title: String, symbol: String, compact: Bool,
+    private func actionButton(_ title: String, symbol: String, compact: Bool, selected: Bool = false,
                               action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            HStack(spacing: 7.2) {
-                Image(systemName: symbol)
-                if !compact { Text(title) }
-            }
-            .font(.system(size: 15.6, weight: .semibold))
-            .padding(.horizontal, compact ? 14.4 : 19.2)
-            .padding(.vertical, 9.6)
-            .foregroundStyle(.primary)
-            .compatGlass(interactive: true, in: Capsule())
+            SideBControlLabel(title: title, symbol: symbol, iconOnly: compact)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(SideBControlStyle(selected: selected, iconOnly: compact))
         .accessibilityLabel(title)
         .help(title)
     }
@@ -215,7 +207,7 @@ struct CollectionDetailHeaderView: View {
             }
             .font(.system(size: 14.4))
             .padding(.horizontal, 12)
-            .padding(.vertical, 9.6)
+            .frame(height: SideBControlMetrics.actionHeight)
             .frame(minWidth: 100, idealWidth: 220, maxWidth: 220)
             .compatGlass(interactive: true, in: Capsule())
             if let selectedOrder, let onSelectOrder {
@@ -233,9 +225,7 @@ struct CollectionDetailHeaderView: View {
                     }
                 } label: {
                     Image(systemName: "arrow.up.arrow.down")
-                        .font(.system(size: 15.6, weight: .medium))
-                        .frame(width: 36, height: 36)
-                        .compatGlass(interactive: true, in: Capsule())
+                        .sidebControlLabel(iconOnly: true)
                 }
                 .menuStyle(.borderlessButton)
                 .menuIndicator(.hidden)

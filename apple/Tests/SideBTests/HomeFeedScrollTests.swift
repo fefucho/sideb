@@ -192,6 +192,29 @@ final class HomeFeedScrollTests: XCTestCase {
         XCTAssertNil(scroll.window)
     }
 
+    func testFeaturedColumnFillsViewportAcrossSidebarWidths() throws {
+        let base = makeFeed(hasHeader: false)
+        let feed = HomeFeedTableView(featuredContent: { width in
+                AnyView(Color.clear.frame(width: width, height: 120))
+            }, featuredHeight: { _ in 120 }, sections: base.sections, isObscured: false,
+            revision: 1, selectedChip: nil, hasMore: false, isLoadingMore: false,
+            currentTrackID: nil, isPlaying: false, player: base.player, router: nil,
+            onNavigate: { _ in }, onLoadMore: {})
+        let coordinator = feed.makeCoordinator()
+        let scroll = feed.makeNativeScrollView(coordinator: coordinator)
+        defer { HomeFeedTableView.dismantleNSView(scroll, coordinator: coordinator) }
+        let table = try XCTUnwrap(scroll.documentView as? NSTableView)
+        for width: CGFloat in [718, 960, 718, 1100, 858, 960] {
+            scroll.frame = NSRect(x: 0, y: 0, width: width, height: 640)
+            scroll.layoutSubtreeIfNeeded()
+            table.layoutSubtreeIfNeeded()
+            XCTAssertEqual(table.tableColumns[0].width, scroll.contentView.bounds.width, accuracy: 0.5)
+            let featured = try XCTUnwrap(table.view(atColumn: 0, row: 0, makeIfNecessary: true))
+            XCTAssertEqual(featured.frame.width, scroll.contentView.bounds.width, accuracy: 0.5)
+            XCTAssertEqual(featured.convert(featured.bounds, to: scroll).minX, 0, accuracy: 0.5)
+        }
+    }
+
     func testRemountReconcilesCachedHeightEvenWhenDelegateBuiltAtNewWidthFirst() throws {
         let base = makeFeed(hasHeader: false)
         let feed = HomeFeedTableView(

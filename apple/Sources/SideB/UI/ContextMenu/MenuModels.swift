@@ -76,6 +76,7 @@ public enum MenuIDNormalizer {
 public enum MenuOrigin: Equatable, Sendable {
     case home
     case search
+    case searchSpotlight
     case album(browseId: String)
     case playlist(id: String)
     case artist(channelId: String)

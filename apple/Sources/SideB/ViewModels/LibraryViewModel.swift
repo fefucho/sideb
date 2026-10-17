@@ -27,6 +27,7 @@ enum LibraryTab: String, CaseIterable, Identifiable {
 }
 
 enum LibraryPageTab: String, CaseIterable, Identifiable {
+    case all = "Todo"
     case songs = "Canciones"
     case playlists = "Playlists"
     case albums = "Álbumes"
@@ -35,6 +36,7 @@ enum LibraryPageTab: String, CaseIterable, Identifiable {
     var id: String { rawValue }
     var displayTitle: String {
         switch self {
+        case .all: return L10n.text("library.tab.all")
         case .songs: return L10n.text("search.filter.songs")
         case .playlists: return L10n.text("library.tab.playlists")
         case .albums: return L10n.text("library.tab.albums")
@@ -48,6 +50,8 @@ enum LibraryPageTab: String, CaseIterable, Identifiable {
 final class LibraryViewModel {
     var playlists: [BrowseCardRecord] = []
     var albums: [BrowseCardRecord] = []
+    var originalAlbums: [BrowseCardRecord] = []
+    var providerAlbums: [BrowseCardRecord] { originalAlbums.isEmpty ? albums : originalAlbums }
     var artists: [BrowseCardRecord] = []
     var songs: [SongItemRecord] = []
     var songsContinuation: String?
@@ -76,7 +80,103 @@ final class LibraryViewModel {
     }
     var historyGroups: [HistoryGroupRecord] = []
     var selectedTab: LibraryTab = .playlists
-    var selectedPageTab: LibraryPageTab = .songs
+    var selectedPageTab: LibraryPageTab = .all { didSet { savePreferences() } }
+    var collectionList = false { didSet { savePreferences() } }
+    var libraryOrder = "original" { didSet { savePreferences() } }
+    var effectiveLibraryOrder: String {
+        libraryOrder == "artist" && selectedPageTab != .songs && selectedPageTab != .albums ? "original" : libraryOrder
+    }
+    var hasLibraryQuery: Bool { !libraryQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    var libraryQuery = ""
+    var pins: [LibraryPin] = []
+    @ObservationIgnored var collectionScrollOffsets: [String: CGFloat] = [:]
+    var accountRevision: UInt = 0
+    var isSearchingRest = false
+    var searchedPages = 0
+    @ObservationIgnored private let preferences: UserDefaults
+    @ObservationIgnored private var loadedSections: Set<LibraryPageTab> = []
+    @ObservationIgnored private var songsGeneration: UInt = 0
+    @ObservationIgnored private var preferenceAccount = "guest"
+    @ObservationIgnored private var restoringPreferences = false
+    @ObservationIgnored private var searchGeneration: UInt = 0
+    @ObservationIgnored private var songTokens: Set<String> = []
+
+    func configureAccount(identity: String) {
+        guard identity != preferenceAccount else { return }
+        clear()
+        preferenceAccount = identity
+        restoringPreferences = true
+        let saved = preferences.data(forKey: "sideb.library.v1:\(identity)")
+            .flatMap { try? JSONDecoder().decode(LibraryPreferences.self, from: $0) }
+            .flatMap { $0.version == 1 ? $0 : nil }
+        selectedPageTab = LibraryPageTab(rawValue: saved?.tab ?? "") ?? .all
+        collectionList = saved?.list ?? false
+        libraryOrder = ["original", "name", "artist"].contains(saved?.order ?? "") ? saved!.order : "original"
+        var seen: Set<String> = []
+        pins = Array((saved?.pins ?? []).filter { ["playlist", "album", "artist", "mix"].contains($0.kind) && !$0.id.isEmpty && seen.insert($0.key).inserted }.prefix(50))
+        libraryQuery = ""
+        collectionScrollOffsets = [:]
+        restoringPreferences = false
+    }
+    private func savePreferences() {
+        guard !restoringPreferences, preferenceAccount != "guest" else { return }
+        let value = LibraryPreferences(version: 1, tab: selectedPageTab.rawValue, list: collectionList, order: libraryOrder, pins: pins)
+        if let data = try? JSONEncoder().encode(value) { preferences.set(data, forKey: "sideb.library.v1:\(preferenceAccount)") }
+    }
+    func togglePin(_ card: BrowseCardRecord) {
+        let key = LibraryPin.key(card)
+        if pins.contains(where: { $0.key == key }) { pins.removeAll { $0.key == key } }
+        else if pins.count < 50 { pins.append(LibraryPin(card)) }
+        savePreferences()
+    }
+    func movePin(_ card: BrowseCardRecord, by delta: Int) {
+        guard let index = pins.firstIndex(where: { $0.key == LibraryPin.key(card) }), pins.indices.contains(index + delta) else { return }
+        pins.swapAt(index, index + delta); savePreferences()
+    }
+    var pinnedCards: [BrowseCardRecord] {
+        let current = playlists + albums + artists
+        return pins.map { pin in current.first(where: { LibraryPin.key($0) == pin.key }) ?? pin.card }
+    }
+    func matches(_ values: String?...) -> Bool {
+        let query = libraryQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        return query.isEmpty || values.contains { $0?.localizedCaseInsensitiveContains(query) == true }
+    }
+    func presentedCards(_ cards: [BrowseCardRecord]) -> [BrowseCardRecord] {
+        let filtered = cards.filter { matches($0.title, $0.subtitle) }
+        guard effectiveLibraryOrder != "original" else { return filtered }
+        return filtered.enumerated().sorted {
+            let left = effectiveLibraryOrder == "artist" ? $0.element.subtitle ?? "" : $0.element.title
+            let right = effectiveLibraryOrder == "artist" ? $1.element.subtitle ?? "" : $1.element.title
+            let order = left.localizedStandardCompare(right)
+            return order == .orderedSame ? $0.offset < $1.offset : order == .orderedAscending
+        }.map(\.element)
+    }
+    var presentedSongs: [SongItemRecord] {
+        let filtered = songs.filter { matches($0.title, $0.artists, $0.album) }
+        guard libraryOrder != "original" else { return filtered }
+        return filtered.enumerated().sorted {
+            let left = libraryOrder == "artist" ? $0.element.artists : $0.element.title
+            let right = libraryOrder == "artist" ? $1.element.artists : $1.element.title
+            let order = left.localizedStandardCompare(right)
+            return order == .orderedSame ? $0.offset < $1.offset : order == .orderedAscending
+        }.map(\.element)
+    }
+    func cancelLibrarySearch() { searchGeneration &+= 1; isSearchingRest = false }
+    func searchRemainingSongs(core: SideBCore) async {
+        guard !isSearchingRest, !isSongsLoading, !isSongsLoadingMore else { return }
+        searchGeneration &+= 1
+        let generation = searchGeneration
+        isSearchingRest = true; searchedPages = 0
+        for _ in 0..<8 {
+            guard generation == searchGeneration, let token = songsContinuation, songsErrorMessage == nil else { break }
+            await loadMoreSongs(core: core, batchPages: 1)
+            guard generation == searchGeneration else { return }
+            if songsErrorMessage != nil { break }
+            searchedPages += 1
+            if songsContinuation == token { break }
+        }
+        if generation == searchGeneration { isSearchingRest = false }
+    }
     var isLoading: Bool = false
     private var libraryLoadFailures: [LibraryLoadFailure] = []
     private var manualErrorDescriptor: AppMessage?
@@ -101,8 +201,27 @@ final class LibraryViewModel {
     @ObservationIgnored private var sessionGeneration: UInt = 0
     @ObservationIgnored private var libraryGeneration: UInt = 0
 
-    init() {
+    init(preferences: UserDefaults = .standard) {
+        self.preferences = preferences
         setupNotificationObservers()
+    }
+
+    func ensureSelectedPageTab(core: SideBCore) async {
+        if selectedPageTab == .all {
+            async let collections: Void = ensureCollections(core: core)
+            async let people: Void = ensureArtists(core: core)
+            _ = await (collections, people)
+        } else if !loadedSections.contains(selectedPageTab) {
+            await reloadSelectedPageTab(core: core)
+        }
+    }
+    private func ensureCollections(core: SideBCore) async {
+        guard !isLoading, !loadedSections.contains(.playlists) || !loadedSections.contains(.albums) else { return }
+        await loadLibrary(core: core, includesHistory: false)
+    }
+    private func ensureArtists(core: SideBCore) async {
+        guard !isArtistsLoading, !loadedSections.contains(.artists) else { return }
+        await loadArtists(core: core)
     }
 
     static func aggregateLoadErrorDescriptor(_ failures: [LibraryLoadFailure]) -> AppMessage? {
@@ -165,7 +284,9 @@ final class LibraryViewModel {
             if !self.albums.contains(where: { $0.id == browseId }) {
                 let newCard = card ?? BrowseCardRecord(kind: "album", id: browseId, title: "", subtitle: nil, thumbnail: nil, duration: nil)
                 self.albums.append(newCard)
+                self.originalAlbums.append(newCard)
                 self.albums.sort { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+
             }
             if let newTracks = tracks, !newTracks.isEmpty {
                 let existingIds = Set(self.songs.map { $0.videoId })
@@ -174,6 +295,7 @@ final class LibraryViewModel {
             }
         } else {
             self.albums.removeAll(where: { $0.id == browseId })
+            self.originalAlbums.removeAll(where: { $0.id == browseId })
             if let removedTracks = tracks, !removedTracks.isEmpty {
                 let idsToRemove = Set(removedTracks.map { $0.videoId })
                 self.songs.removeAll(where: { idsToRemove.contains($0.videoId) || $0.albumId == browseId })
@@ -205,6 +327,7 @@ final class LibraryViewModel {
 
     /// Alterna el guardado de un álbum desde la biblioteca con rollback en caso de fallo
     func toggleAlbumLibrary(core: SideBCore, browseId: String, playlistId: String?, title: String, subtitle: String?, thumbnail: String?, inLibrary: Bool) async {
+        let session = sessionGeneration
         let newStatus = !inLibrary
         let card = BrowseCardRecord(kind: "album", id: browseId, title: title, subtitle: subtitle, thumbnail: thumbnail, duration: nil)
         handleAlbumToggled(browseId: browseId, inLibrary: newStatus, card: card)
@@ -216,8 +339,10 @@ final class LibraryViewModel {
         do {
             let pid = playlistId ?? browseId
             try await core.likePlaylist(playlistId: pid, like: newStatus)
+            guard session == sessionGeneration else { return }
             NotificationCenter.default.post(name: .sideBSongLibraryChanged, object: nil)
         } catch {
+            guard session == sessionGeneration else { return }
             print("[LibraryViewModel] Error al alternar álbum en biblioteca: \(error)")
             handleAlbumToggled(browseId: browseId, inLibrary: inLibrary, card: card)
             NotificationCenter.default.post(
@@ -231,17 +356,22 @@ final class LibraryViewModel {
     /// Recarga la pestaña seleccionada actualmente de la biblioteca
     func reloadSelectedPageTab(core: SideBCore) async {
         switch selectedPageTab {
+        case .all:
+            async let collections: Void = loadLibrary(core: core, includesHistory: false)
+            async let people: Void = loadArtists(core: core)
+            _ = await (collections, people)
         case .songs:
             await loadSongs(core: core)
         case .artists:
             await loadArtists(core: core)
         case .playlists, .albums:
-            await loadLibrary(core: core)
+            await loadLibrary(core: core, includesHistory: false)
         }
     }
 
     /// Alterna el guardado de una playlist desde la biblioteca con rollback en caso de fallo
     func togglePlaylistLibrary(core: SideBCore, playlistId: String, title: String, subtitle: String?, thumbnail: String?, inLibrary: Bool) async {
+        let session = sessionGeneration
         let newStatus = !inLibrary
         let card = BrowseCardRecord(kind: "playlist", id: playlistId, title: title, subtitle: subtitle, thumbnail: thumbnail, duration: nil)
         handlePlaylistToggled(playlistId: playlistId, inLibrary: newStatus, card: card)
@@ -253,6 +383,7 @@ final class LibraryViewModel {
         do {
             try await core.likePlaylist(playlistId: playlistId, like: newStatus)
         } catch {
+            guard session == sessionGeneration else { return }
             print("[LibraryViewModel] Error al alternar playlist en biblioteca: \(error)")
             handlePlaylistToggled(playlistId: playlistId, inLibrary: inLibrary, card: card)
             NotificationCenter.default.post(
@@ -264,7 +395,7 @@ final class LibraryViewModel {
     }
 
     /// Carga la biblioteca completa (playlists, álbumes e historial) desde Rust Core de forma desacoplada.
-    func loadLibrary(core: SideBCore) async {
+    func loadLibrary(core: SideBCore, includesHistory: Bool = true) async {
         guard core.isLoggedIn() else {
             self.clear()
             return
@@ -285,7 +416,9 @@ final class LibraryViewModel {
             do { return .success(try await core.getLibraryAlbums()) }
             catch { return .failure(error) }
         }()
+        let existingHistory = historyGroups
         async let fetchedHistory: Result<[HistoryGroupRecord], Error> = {
+            if !includesHistory { return .success(existingHistory) }
             do { return .success(try await core.getHistory()) }
             catch { return .failure(error) }
         }()
@@ -297,6 +430,7 @@ final class LibraryViewModel {
         switch pRes {
         case .success(let p):
             self.playlists = p
+            loadedSections.insert(.playlists)
             self.playlistsErrorMessage = nil
             AppContextMenuFactory.cachedUserPlaylists = p
         case .failure(let err):
@@ -307,8 +441,10 @@ final class LibraryViewModel {
 
         switch aRes {
         case .success(let a):
+            self.originalAlbums = a
             let sortedAlbums = a.sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
             self.albums = sortedAlbums
+            loadedSections.insert(.albums)
             self.albumsErrorMessage = nil
             AppContextMenuFactory.cachedUserAlbums = sortedAlbums
         case .failure(let err):
@@ -317,7 +453,7 @@ final class LibraryViewModel {
             failures.append(LibraryLoadFailure(section: .albums, detail: err.localizedDescription))
         }
 
-        switch hRes {
+        if includesHistory { switch hRes {
         case .success(let h):
             self.historyGroups = h
             self.historyErrorMessage = nil
@@ -327,6 +463,7 @@ final class LibraryViewModel {
             failures.append(LibraryLoadFailure(section: .history, detail: err.localizedDescription))
         }
 
+        }
         libraryLoadFailures = failures
         manualErrorDescriptor = nil
         self.isLoading = false
@@ -351,15 +488,21 @@ final class LibraryViewModel {
 
     func loadSongs(core: SideBCore, targetInitialCount: Int = 100) async {
         guard core.isLoggedIn(), !isSongsLoading else { return }
+        cancelLibrarySearch()
+        songsGeneration &+= 1
+        let request = songsGeneration
         let generation = sessionGeneration
         isSongsLoading = true
+        isSongsLoadingMore = false
         songsErrorMessage = nil
         do {
             let page = try await core.getLibrarySongs()
-            guard generation == sessionGeneration, core.isLoggedIn() else { return }
+            guard request == songsGeneration, generation == sessionGeneration, core.isLoggedIn() else { return }
             
             var accumulated = page.items
             var currentContinuation = page.continuation
+            songTokens = []
+            var pages = 0
 
             // Si la lista estaba vacía, mostramos la primera página (25) de inmediato sin demoras
             if songs.isEmpty {
@@ -370,20 +513,18 @@ final class LibraryViewModel {
             // Cargar automáticamente en segundo plano hasta alcanzar targetInitialCount (100 canciones, igual que Likeadas)
             // o preservar la cantidad que el usuario ya hubiera cargado haciendo scroll.
             let minTarget = max(targetInitialCount, songs.count)
-            while accumulated.count < minTarget,
+            while accumulated.count < minTarget, pages < 10,
                   let token = currentContinuation,
                   !token.isEmpty {
                 do {
+                    pages += 1
                     let nextPage = try await core.getPlaylistContinuation(token: token)
-                    guard generation == sessionGeneration, core.isLoggedIn() else { return }
+                    guard request == songsGeneration, generation == sessionGeneration, core.isLoggedIn() else { return }
                     let seen = Set(accumulated.map { $0.setVideoId ?? $0.videoId })
                     let newItems = nextPage.items.filter { !seen.contains($0.setVideoId ?? $0.videoId) }
-                    if newItems.isEmpty {
-                        currentContinuation = nil
-                        break
-                    }
+                    songTokens.insert(token)
                     accumulated.append(contentsOf: newItems)
-                    currentContinuation = nextPage.continuation == token ? nil : nextPage.continuation
+                    currentContinuation = nextPage.continuation.flatMap { songTokens.contains($0) ? nil : $0 }
                     
                     // Si partió de lista vacía, ir actualizando progresivamente
                     if songs.count < accumulated.count {
@@ -391,48 +532,49 @@ final class LibraryViewModel {
                         songsContinuation = currentContinuation
                     }
                 } catch {
+                    guard request == songsGeneration, generation == sessionGeneration else { return }
+                    songsErrorMessage = error.localizedDescription
                     break
                 }
             }
 
+            loadedSections.insert(.songs)
             songs = accumulated
             songsContinuation = currentContinuation
         } catch {
-            guard generation == sessionGeneration else { return }
+            guard request == songsGeneration, generation == sessionGeneration else { return }
             songsErrorMessage = error.localizedDescription
         }
         isSongsLoading = false
     }
 
     func loadMoreSongs(core: SideBCore, batchPages: Int = 2) async {
-        guard core.isLoggedIn(), !isSongsLoadingMore,
+        guard core.isLoggedIn(), !isSongsLoading, !isSongsLoadingMore,
               var continuation = songsContinuation, !continuation.isEmpty else { return }
         let generation = sessionGeneration
+        let request = songsGeneration
         isSongsLoadingMore = true
         for _ in 0..<batchPages {
             guard !continuation.isEmpty else { break }
             do {
                 let page = try await core.getPlaylistContinuation(token: continuation)
-                guard generation == sessionGeneration, core.isLoggedIn(),
+                guard request == songsGeneration, generation == sessionGeneration, core.isLoggedIn(),
                       songsContinuation == continuation else { break }
                 let seen = Set(songs.map { $0.setVideoId ?? $0.videoId })
                 let newItems = page.items.filter { !seen.contains($0.setVideoId ?? $0.videoId) }
-                if newItems.isEmpty {
-                    songsContinuation = nil
-                    break
-                }
                 songs.append(contentsOf: newItems)
-                let nextToken = page.continuation == continuation ? nil : page.continuation
+                songTokens.insert(continuation)
+                let nextToken = page.continuation.flatMap { songTokens.contains($0) ? nil : $0 }
                 songsContinuation = nextToken
                 continuation = nextToken ?? ""
                 songsErrorMessage = nil
             } catch {
-                guard generation == sessionGeneration else { break }
+                guard request == songsGeneration, generation == sessionGeneration else { break }
                 songsErrorMessage = error.localizedDescription
                 break
             }
         }
-        isSongsLoadingMore = false
+        if request == songsGeneration, generation == sessionGeneration { isSongsLoadingMore = false }
     }
 
     func loadArtists(core: SideBCore) async {
@@ -444,6 +586,7 @@ final class LibraryViewModel {
             let result = try await core.getLibraryArtists()
             guard generation == sessionGeneration, core.isLoggedIn() else { return }
             artists = result
+            loadedSections.insert(.artists)
         } catch {
             guard generation == sessionGeneration else { return }
             artistsErrorMessage = error.localizedDescription
@@ -469,9 +612,23 @@ final class LibraryViewModel {
     /// Limpia los datos locales de la biblioteca al cerrar sesión.
     func clear() {
         sessionGeneration &+= 1
+        accountRevision &+= 1
+        songsGeneration &+= 1
+        loadedSections = []
+        preferenceAccount = "guest"
+        selectedPageTab = .all
+        collectionList = false
+        libraryOrder = "original"
+        searchedPages = 0
+        cancelLibrarySearch()
+        songTokens = []
+        libraryQuery = ""
+        pins = []
+        collectionScrollOffsets = [:]
         libraryGeneration &+= 1
         self.playlists = []
         self.albums = []
+        self.originalAlbums = []
         self.artists = []
         self.songs = []
         self.songsContinuation = nil
@@ -490,4 +647,23 @@ final class LibraryViewModel {
         AppContextMenuFactory.cachedUserPlaylists = []
         AppContextMenuFactory.cachedUserAlbums = []
     }
+}
+
+struct LibraryPin: Codable, Equatable {
+    let kind: String; let id: String; let title: String; let subtitle: String?; let thumbnail: String?
+    var key: String { Self.key(card) }
+    static func key(_ card: BrowseCardRecord) -> String {
+        let kind = card.kind == "mix" ? "playlist" : card.kind
+        let id = kind == "playlist" ? MenuIDNormalizer.canonicalPlaylistId(card.id) : card.id.trimmingCharacters(in: .whitespacesAndNewlines)
+        return "\(kind):\(id)"
+    }
+    init(_ card: BrowseCardRecord) {
+        kind = card.kind == "mix" ? "playlist" : card.kind
+        id = kind == "playlist" ? MenuIDNormalizer.canonicalPlaylistId(card.id) : card.id.trimmingCharacters(in: .whitespacesAndNewlines)
+        title = card.title; subtitle = card.subtitle; thumbnail = card.thumbnail
+    }
+    var card: BrowseCardRecord { BrowseCardRecord(kind: kind == "mix" ? "playlist" : kind, id: id, title: title, subtitle: subtitle, thumbnail: thumbnail, duration: nil) }
+}
+private struct LibraryPreferences: Codable {
+    let version: Int; let tab: String; let list: Bool; let order: String; let pins: [LibraryPin]
 }

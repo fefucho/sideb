@@ -1,0 +1,26 @@
+{
+  "search.recents.title": {
+    "es": "Recientes de Side B",
+    "en": "Side B recents"
+  },
+  "search.recents.clear": {
+    "es": "Borrar recientes de Side B",
+    "en": "Clear Side B recents"
+  },
+  "search.recents.remove": {
+    "es": "Quitar de recientes",
+    "en": "Remove from recents"
+  },
+  "common.undo": {
+    "es": "Deshacer",
+    "en": "Undo"
+  },
+  "search.recents.unavailable": {
+    "es": "No se pudo reproducir esta canción. Podés buscarla de nuevo o quitarla de recientes.",
+    "en": "This song could not be played. Search for it again or remove it from recents."
+  },
+  "search.recents.search_track": {
+    "es": "Buscar la canción",
+    "en": "Search for this song"
+  }
+}

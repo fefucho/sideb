@@ -5,6 +5,7 @@
   import PlayerIcon from "./PlayerIcon.svelte";
   import type { PlaybackStateDto } from "$lib/types";
   import ArtistCredits from "$lib/components/ArtistCredits.svelte";
+  import FeaturedTrackTitle from "$lib/components/FeaturedTrackTitle.svelte";
   type Panel = "queue" | "lyrics" | "genius" | "related";
 
   interface Props {
@@ -15,6 +16,7 @@
     onNext: () => void;
     onSeek: (seconds: number) => void;
     onVolumeChange: (volume: number) => void;
+    onVolumeSurfaceChange?: () => void;
     onSetMuted?: (muted: boolean) => void;
     onSetShuffle: (enabled: boolean) => Promise<void>;
     onSetRepeat: (enabled: boolean) => Promise<void>;
@@ -33,11 +35,11 @@
     onOpenMenu?: (event: MouseEvent) => void;
   }
 
-  let { playback, onTogglePlayback, onRetryPlayback, onPrevious, onNext, onSeek, onVolumeChange, onSetMuted, onSetShuffle, onSetRepeat, fullscreenOpen, onToggleFullscreen, loggedIn = false, liked = false, likePending = false, onToggleLike, likeError = null, selectedPanel, lyricsMode = 'synced', onSelectPanel, onOpenArtist, onOpenAlbum, onOpenMenu }: Props = $props();
+  let { playback, onTogglePlayback, onRetryPlayback, onPrevious, onNext, onSeek, onVolumeChange, onVolumeSurfaceChange, onSetMuted, onSetShuffle, onSetRepeat, fullscreenOpen, onToggleFullscreen, loggedIn = false, liked = false, likePending = false, onToggleLike, likeError = null, selectedPanel, lyricsMode = 'synced', onSelectPanel, onOpenArtist, onOpenAlbum, onOpenMenu }: Props = $props();
   let seekDraft = $state<{ generation: number; value: number } | null>(null);
   let failedArtworkUrl = $state<string | null>(null);
   let volumeOpen = $state(false);
-  let volumeDragging = false;
+  let volumeDragging = $state(false);
   let volumeHovered = false;
   let lastAudibleVolume = 100;
   let volumeRoot: HTMLDivElement;
@@ -60,10 +62,12 @@
   }
 
   async function toggleVolume() {
+    onVolumeSurfaceChange?.();
     volumeOpen = !volumeOpen;
     if (volumeOpen) { await tick(); volumeSlider?.focus(); }
   }
   function closeVolume(restoreFocus = false) {
+    if(volumeOpen)onVolumeSurfaceChange?.();
     volumeOpen = false;
     if (restoreFocus) volumeButton?.focus({ preventScroll: true });
   }
@@ -207,7 +211,7 @@
       <div class="metadata">
         <div class="title-line">
         <span class="title" title={playback.currentTrack?.title ?? $t('player.noPlayback')}>
-          {playback.currentTrack?.title ?? $t('player.noPlayback')}
+          {#if playback.currentTrack}<FeaturedTrackTitle track={playback.currentTrack} {onOpenArtist} prefetch />{:else}{$t('player.noPlayback')}{/if}
         </span>
         <button class="like-toggle" type="button" class:liked disabled={!loggedIn || !hasTrack || !onToggleLike || likePending || playback.isLoading} onclick={onToggleLike} aria-pressed={liked} aria-label={liked ? $t('windows.ui.removeLike') : $t('windows.ui.like')} title={!loggedIn ? $t('windows.ui.signInToUseLike') : likeError ?? (likePending ? $t('windows.ui.updatingLike') : liked ? $t('windows.ui.removeLike') : $t('windows.ui.like'))}>
           {#if likePending}<span class="like-spinner" aria-hidden="true"></span>{:else}<svg viewBox="0 0 24 24" aria-hidden="true" fill={liked ? "currentColor" : "none"} stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.8 8.7c0 4.2-6.4 9.1-8.8 11-2.4-1.9-8.8-6.8-8.8-11a4.9 4.9 0 0 1 8.8-3.1 4.9 4.9 0 0 1 8.8 3.1Z" /></svg>{/if}
@@ -220,7 +224,7 @@
         {:else}
           <div class="artist-line">
             {#if playback.currentTrack}
-              <ArtistCredits artistRuns={playback.currentTrack.artistRuns} artists={playback.currentTrack.artists} artistId={playback.currentTrack.artistId} {onOpenArtist} album={playback.currentTrack.album} albumId={playback.currentTrack.albumId} {onOpenAlbum} />
+              <ArtistCredits track={playback.currentTrack} artistRuns={playback.currentTrack.artistRuns} artists={playback.currentTrack.artists} artistId={playback.currentTrack.artistId} {onOpenArtist} album={playback.currentTrack.album} albumId={playback.currentTrack.albumId} {onOpenAlbum} />
             {:else}<span class="artist">{$t('player.selectTrack')}</span>{/if}
           </div>
         {/if}
@@ -246,11 +250,12 @@
         </button>
       {/if}
       </div>
-      <div class="volume" class:open={volumeOpen} bind:this={volumeRoot} role="group" aria-label={$t('windows.ui.volume')} onpointerenter={() => volumeHovered = true} onpointerleave={leaveVolume} onfocusout={handleVolumeFocusOut}>
+      <div class="volume" data-volume-dragging={volumeDragging ? '' : undefined} class:open={volumeOpen} bind:this={volumeRoot} role="group" aria-label={$t('windows.ui.volume')} onpointerenter={() => volumeHovered = true} onpointerleave={leaveVolume} onfocusout={handleVolumeFocusOut}>
         <button bind:this={volumeButton} type="button" class="volume-toggle" aria-label={$t('windows.ui.showVolume')} title={$t('windows.player.volumeValue', [Math.round(volume)])} aria-expanded={volumeOpen} aria-controls="player-volume" aria-hidden={volumeOpen} tabindex={volumeOpen ? -1 : 0} onclick={toggleVolume}>
           <svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><path d="M3 9v6h4l5 5V4L7 9zm12.5 3a4 4 0 0 0-2-3.46v6.92a4 4 0 0 0 2-3.46" /></svg>
         </button>
-        <div id="player-volume" class="volume-popover" data-volume-popover={volumeOpen ? '' : undefined} inert={!volumeOpen} aria-hidden={!volumeOpen} role="group" aria-label={$t('windows.ui.volumeControl')}>
+        <div id="player-volume" class="volume-popover" data-volume-scroll={volumeOpen ? 'bar' : undefined} title={$t('windows.player.volumeScrollHint')} data-volume-popover={volumeOpen ? '' : undefined} inert={!volumeOpen} aria-hidden={!volumeOpen} role="group" aria-label={$t('windows.ui.volumeControl')}>
+        <span id="player-volume-scroll-hint" class="volume-hint">{$t('windows.player.volumeScrollHint')}</span>
         <input bind:this={volumeSlider}
           type="range"
           min="0"
@@ -261,7 +266,8 @@
           oninput={handleVolumeInput}
           onpointerdown={() => volumeDragging = true}
           aria-label={$t('windows.ui.volume')}
-          aria-valuetext={`${Math.round(volume)}%`}
+          aria-valuetext={$t('windows.player.volumeValue', [Math.round(volume)])}
+          aria-describedby="player-volume-scroll-hint"
         />
         <button type="button" class="volume-mute" aria-label={volume > 0 ? $t('player.mute') : $t('player.unmute')} title={`${volume > 0 ? $t('player.mute') : $t('player.unmute')} · ${Math.round(volume)}%`} onclick={toggleMute}>
           <svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><path d="M3 9v6h4l5 5V4L7 9" />
@@ -482,6 +488,7 @@
     .volume-popover { background: var(--sideb-acrylic-surface); backdrop-filter: var(--sideb-acrylic-blur); -webkit-backdrop-filter: var(--sideb-acrylic-blur); }
   }
   .volume.open .volume-popover { opacity: 1; transform: scale(1); visibility: visible; pointer-events: auto; transition-delay: 0s; }
+  .volume-hint { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }
   .volume input { flex: 1; height: 11px; border-radius: 999px; background: linear-gradient(to right, #fff 0 var(--fill), rgb(255 255 255 / 16%) var(--fill) 100%); }
   .volume input::-webkit-slider-thumb { width: 1px; height: 18px; border-radius: 0; background: transparent; box-shadow: none; }
   .volume input::-moz-range-thumb { width: 1px; height: 18px; border-radius: 0; background: transparent; }

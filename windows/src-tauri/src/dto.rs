@@ -302,6 +302,8 @@ pub struct PlaybackStateDto {
     pub duration: f64,
     pub volume: f64,
     #[serde(default)]
+    pub audio_revision: u64,
+    #[serde(default)]
     pub exponential_volume: bool,
     pub current_track: Option<PlaybackTrackDto>,
     pub error: Option<String>,
@@ -330,6 +332,7 @@ mod playback_state_tests {
         ).unwrap();
         assert!(!dto.is_shuffle);
         assert!(!dto.is_repeat);
+        assert_eq!(dto.audio_revision, 0);
     }
 }
 

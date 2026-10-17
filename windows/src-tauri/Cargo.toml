@@ -1,6 +1,6 @@
 [package]
 name = "sideb-windows"
-version = "1.2.0"
+version = "1.2.1"
 description = "Side B Windows - Native Music Client"
 authors = ["Side B Team"]
 edition = "2021"

@@ -47,6 +47,7 @@ public final class PlayerViewModel {
     // MARK: - Estado de Pista y Stream
     public var currentTrack: SongItemRecord? {
         didSet {
+            if currentTrack?.videoId != oldValue?.videoId { volumeScroll.cancel() }
             schedulePlaybackSave()
             if currentTrack == nil { genius.reset() }
         }
@@ -64,7 +65,10 @@ public final class PlayerViewModel {
     private var hasRecordedHistoryForCurrentTrack: Bool = false
 
     // MARK: - Modo Fullscreen y Cola
-    public var isFullscreenPresented: Bool = false
+    let volumeScroll = VolumeScrollFeedback()
+    public var isFullscreenPresented: Bool = false {
+        didSet { if oldValue != isFullscreenPresented { volumeScroll.cancel() } }
+    }
     public var selectedFullscreenPanel: FullscreenPanel = .queue
     public var isShowingGeniusLyrics: Bool = false
     public var queueManager: QueueManager = QueueManager()
@@ -143,7 +147,10 @@ public final class PlayerViewModel {
     private var playlistRequest = UUID()
     private var playlistContinuationTask: Task<Void, Never>?
     public private(set) var isLoadingPlaylistContinuation: Bool = false
-    private var currentPlaybackToken: UUID = UUID()
+    private var currentPlaybackToken: UUID = UUID() {
+        didSet { if oldValue != currentPlaybackToken { volumeScroll.cancel() } }
+    }
+    private var searchRecentIntent: (id: UUID, playbackID: UUID, videoID: String)?
     private var pendingTailSkipToken: UUID?
     private var currentRadioToken: UUID = UUID()
     private var currentAutomixToken: UUID = UUID()
@@ -157,6 +164,7 @@ public final class PlayerViewModel {
         }
     }
     public let audioService: AudioPlayerService
+    private let searchRecents: SearchRecentStore
     private let playbackStore: PlaybackStateStore
     private let playlistCatalog: PlaylistCatalog
     private var currentPlaybackIdentity: String?
@@ -167,14 +175,26 @@ public final class PlayerViewModel {
     }
 
     init(rustCore: SideBCore?, audioService: AudioPlayerService, playbackStore: PlaybackStateStore,
-         playlistCatalog: PlaylistCatalog? = nil) {
+         playlistCatalog: PlaylistCatalog? = nil, searchRecents: SearchRecentStore? = nil) {
         self.rustCore = rustCore
         self.audioService = audioService
         self.playbackStore = playbackStore
+        self.searchRecents = searchRecents ?? .shared
         self.playlistCatalog = playlistCatalog ?? .shared
         setupRemoteCommands()
         setupTrackEndListener()
         setupPlaybackProgressListener()
+        audioService.onPlaybackStarted = { [weak self] playbackID in
+            guard let self, let intent = self.searchRecentIntent,
+                  intent.playbackID == playbackID, self.currentPlaybackToken == playbackID,
+                  self.currentTrack?.videoId == intent.videoID else { return }
+            self.searchRecents.confirmTrack(intent.id, videoId: intent.videoID)
+            self.searchRecentIntent = nil
+        }
+        audioService.onPlaybackFailed = { [weak self] playbackID in
+            guard let self, self.searchRecentIntent?.playbackID == playbackID else { return }
+            self.failSearchRecentIntent()
+        }
         queueManager.onStateChange = { [weak self] in self?.schedulePlaybackSave() }
         if rustCore != nil {
             hydrateLikedSongs()
@@ -209,6 +229,8 @@ public final class PlayerViewModel {
 
     public func switchPlaybackSession(to identity: String) {
         guard currentPlaybackIdentity != identity else { return }
+        searchRecents.setAccount(identity)
+        cancelSearchRecentIntent()
         if currentPlaybackIdentity != nil { flushPlaybackState() }
         isSwitchingPlaybackSession = true
         defer {
@@ -390,6 +412,7 @@ public final class PlayerViewModel {
     // MARK: - Acciones de Reproducción de Alto Nivel
 
     private func cancelInFlightRadioTasks() {
+        cancelSearchRecentIntent()
         recommendedCollectionRequest = UUID()
         recommendedCollectionPlaybackTask?.cancel()
         recommendedCollectionPlaybackTask = nil
@@ -440,6 +463,40 @@ public final class PlayerViewModel {
         } else {
             playWithRadio(song)
         }
+    }
+
+    /// Spotlight remembers the selected recording only after the accepted item starts.
+    func activateSearchMediaRadio(_ song: SongItemRecord, restart: Bool = false) {
+        cancelSearchRecentIntent()
+        if !restart, currentTrack?.videoId == song.videoId, errorMessage == nil,
+           isLoadingStream || audioService.isPlaying {
+            let intent = searchRecents.beginTrack(song)
+            if audioService.isPlayingItem(playbackID: currentPlaybackToken) {
+                searchRecents.confirmTrack(intent, videoId: song.videoId)
+            } else {
+                searchRecentIntent = (intent, currentPlaybackToken, song.videoId)
+            }
+            return
+        }
+        if !restart, currentTrack?.videoId == song.videoId,
+           MediaPlaybackIdentity.isRadioOrigin(videoID: song.videoId, context: queueManager.context) {
+            activateMediaRadio(song)
+        } else {
+            playWithRadio(song)
+        }
+        guard currentTrack?.videoId == song.videoId, errorMessage == nil,
+              isLoadingStream || audioService.isPlaying else { return }
+        searchRecentIntent = (searchRecents.beginTrack(song), currentPlaybackToken, song.videoId)
+    }
+
+    private func cancelSearchRecentIntent() {
+        if let intent = searchRecentIntent { searchRecents.cancelTrack(intent.id) }
+        searchRecentIntent = nil
+    }
+
+    private func failSearchRecentIntent() {
+        if let intent = searchRecentIntent { searchRecents.failTrack(intent.id) }
+        searchRecentIntent = nil
     }
 
     /// All cards use the same collection identity and guarded catalog loading path.
@@ -763,6 +820,7 @@ public final class PlayerViewModel {
         overrideArtistBrowseId: String? = nil,
         deferStreamResolution: Bool = false
     ) {
+        cancelSearchRecentIntent()
         // 1. Cancelar tareas en vuelo previas para evitar carreras al skipear
         resolveStreamTask?.cancel()
         lyricsTask?.cancel()
@@ -853,13 +911,15 @@ public final class PlayerViewModel {
                 self.audioService.play(
                     urlString: playbackInfo.streamUrl,
                     headers: playbackInfo.headers,
-                    expectedDuration: expectedSecs
+                    expectedDuration: expectedSecs,
+                    playbackID: token
                 )
                 self.rememberCurrentTrackDuration(self.audioService.duration)
                 self.genius.playbackStarted(identity: token)
                 self.updateNowPlayingInfo()
             } catch {
                 guard !Task.isCancelled, self.currentPlaybackToken == token else { return }
+                self.failSearchRecentIntent()
                 self.isLoadingStream = false
                 self.errorDescriptor = AppMessage(key: "player.error.resolveStream", args: [error.localizedDescription])
                 print("[PlayerViewModel] ❌ Error: \(error)")

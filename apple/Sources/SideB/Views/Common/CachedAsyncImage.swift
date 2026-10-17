@@ -4,6 +4,7 @@ import AppKit
 private struct CachedImageRequest: Equatable {
     let url: URL?
     let targetSize: CGSize
+    let active: Bool
 }
 
 /// Vista de imagen asíncrona respaldada por `ImageCache`.
@@ -18,6 +19,7 @@ struct CachedAsyncImage<Content: View, Placeholder: View>: View {
 
     @State private var loadedUrl: URL?
     @State private var loadedImage: NSImage?
+    @Environment(\.sideBPageIsActive) private var pageIsActive
 
     init(
         url: URL?,
@@ -43,7 +45,7 @@ struct CachedAsyncImage<Content: View, Placeholder: View>: View {
     }
 
     private var request: CachedImageRequest {
-        CachedImageRequest(url: self.url, targetSize: self.targetSize)
+        CachedImageRequest(url: self.url, targetSize: self.targetSize, active: pageIsActive)
     }
 
     var body: some View {
@@ -66,6 +68,7 @@ struct CachedAsyncImage<Content: View, Placeholder: View>: View {
         }
         .task(id: self.request) {
             let req = self.request
+            guard req.active else { return }
             guard let url = req.url else {
                 self.loadedImage = nil
                 self.loadedUrl = nil

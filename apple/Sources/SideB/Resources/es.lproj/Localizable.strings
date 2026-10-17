@@ -88,6 +88,8 @@
 	<string>Guardar</string>
 	<key>common.search</key>
 	<string>Buscar</string>
+	<key>common.undo</key>
+	<string>Deshacer</string>
 	<key>common.untitled</key>
 	<string>Sin título</string>
 	<key>destination.album</key>
@@ -448,6 +450,20 @@
 	<string>Lo nuevo en YouTube Music, listo para descubrir.</string>
 	<key>explore.title.discover</key>
 	<string>Algo nuevo para escuchar.</string>
+	<key>featured.change</key>
+	<string>Cambiar coincidencia…</string>
+	<key>featured.noMatches</key>
+	<string>No encontramos artistas compatibles.</string>
+	<key>featured.open</key>
+	<string>Abrir %@</string>
+	<key>featured.reset</key>
+	<string>Restablecer coincidencia automática</string>
+	<key>featured.search</key>
+	<string>Buscar este nombre</string>
+	<key>featured.searching</key>
+	<string>Buscando artista…</string>
+	<key>featured.suggested</key>
+	<string>Abrir %@ · coincidencia sugerida</string>
 	<key>fullscreen.backToArtwork</key>
 	<string>Volver a la carátula</string>
 	<key>fullscreen.fansAlsoLike</key>
@@ -726,6 +742,8 @@
 	<string>Crear una lista</string>
 	<key>library.empty.albums</key>
 	<string>No tenés álbumes guardados</string>
+	<key>library.empty.all</key>
+	<string>Tus colecciones guardadas aparecerán aquí</string>
 	<key>library.empty.artists</key>
 	<string>No tenés artistas en tu biblioteca</string>
 	<key>library.empty.playlists</key>
@@ -767,16 +785,64 @@ Historial: %@</string>
 	<string>Nueva lista</string>
 	<key>library.open_card</key>
 	<string>Abrir %@</string>
+	<key>library.pin</key>
+	<string>Fijar %@</string>
+	<key>library.pin.down</key>
+	<string>Mover %@ abajo</string>
+	<key>library.pin.up</key>
+	<string>Mover %@ arriba</string>
+	<key>library.pinned</key>
+	<string>Fijados</string>
 	<key>library.refresh</key>
 	<string>Actualizar biblioteca</string>
 	<key>library.retry</key>
 	<string>Reintentar</string>
+	<key>library.search.cancel</key>
+	<string>Cancelar</string>
+	<key>library.search.collections</key>
+	<string>Filtra las colecciones disponibles del proveedor.</string>
+	<key>library.search.complete</key>
+	<string>Buscando en %@ canciones disponibles</string>
+	<key>library.search.continue</key>
+	<string>Continuar búsqueda</string>
+	<key>library.search.empty</key>
+	<string>Sin coincidencias en lo cargado</string>
+	<key>library.search.loaded</key>
+	<string>Buscando en %@ canciones cargadas</string>
+	<key>library.search.pending</key>
+	<string>Todavía quedan canciones por cargar.</string>
+	<key>library.search.placeholder</key>
+	<string>Buscar en tu biblioteca</string>
+	<key>library.search.progress</key>
+	<string>%@ páginas recorridas</string>
+	<key>library.search.rest</key>
+	<string>Buscar en el resto</string>
+	<key>library.see_all</key>
+	<string>Ver todos</string>
+	<key>library.sort.artist</key>
+	<string>Artista</string>
+	<key>library.sort.label</key>
+	<string>Ordenar biblioteca</string>
+	<key>library.sort.name</key>
+	<string>Nombre</string>
+	<key>library.sort.original</key>
+	<string>Orden original</string>
+	<key>library.subtitle</key>
+	<string>Tu música, tus colecciones y tus favoritos a mano.</string>
 	<key>library.tab.albums</key>
 	<string>Álbumes</string>
+	<key>library.tab.all</key>
+	<string>Todo</string>
 	<key>library.tab.playlists</key>
 	<string>Listas</string>
 	<key>library.title</key>
 	<string>Biblioteca</string>
+	<key>library.unpin</key>
+	<string>Desfijar %@</string>
+	<key>library.view.grid</key>
+	<string>Vista de cuadrícula</string>
+	<key>library.view.list</key>
+	<string>Vista de lista</string>
 	<key>login.heading</key>
 	<string>Iniciar sesión en YouTube Music</string>
 	<key>login.passkey_unavailable</key>
@@ -1055,6 +1121,14 @@ Historial: %@</string>
 	<string>Activar sonido</string>
 	<key>player.viewAlbum</key>
 	<string>Ver álbum: %@</string>
+	<key>player.volume</key>
+	<string>Volumen</string>
+	<key>player.volumePercentage</key>
+	<string>%@ %%</string>
+	<key>player.volumeScrollHelp</key>
+	<string>Volumen: %@. Desplázate para ajustar un punto porcentual.</string>
+	<key>player.volumeValue</key>
+	<string>Volumen: %@</string>
 	<key>provider.chip.commute</key>
 	<string>En camino</string>
 	<key>provider.chip.energize</key>
@@ -1127,6 +1201,16 @@ Historial: %@</string>
 	<string>Arrastrar para reordenar la canción</string>
 	<key>search.category.top_result</key>
 	<string>Mejor resultado</string>
+	<key>search.correction.original</key>
+	<string>Buscar el texto original</string>
+	<key>search.correction.original_results</key>
+	<string>Resultados de la búsqueda original</string>
+	<key>search.correction.search</key>
+	<string>Buscar esta sugerencia</string>
+	<key>search.correction.showing</key>
+	<string>Resultados de “%@”</string>
+	<key>search.correction.suggested</key>
+	<string>¿Quisiste decir “%@”?</string>
 	<key>search.empty.prompt_description</key>
 	<string>Escribí en la barra superior para buscar canciones, artistas o álbumes.</string>
 	<key>search.empty.prompt_title</key>
@@ -1175,6 +1259,16 @@ Historial: %@</string>
 	<string>Reproducir %@</string>
 	<key>search.play_now</key>
 	<string>Reproducir ahora</string>
+	<key>search.recents.clear</key>
+	<string>Borrar recientes de Side B</string>
+	<key>search.recents.remove</key>
+	<string>Quitar de recientes</string>
+	<key>search.recents.search_track</key>
+	<string>Buscar la canción</string>
+	<key>search.recents.title</key>
+	<string>Recientes de Side B</string>
+	<key>search.recents.unavailable</key>
+	<string>No se pudo reproducir esta canción. Podés buscarla de nuevo o quitarla de recientes.</string>
 	<key>search.see_all.feminine</key>
 	<string>Ver todas</string>
 	<key>search.see_all.masculine</key>
@@ -1184,13 +1278,17 @@ Historial: %@</string>
 	<key>search.spotlight.placeholder</key>
 	<string>Buscar canciones, álbumes, artistas y listas…</string>
 	<key>search.spotlight.prompt_description</key>
-	<string>Escribí para ver resultados rápidos por categoría en tiempo real</string>
+	<string>Aquí aparecerán las búsquedas enviadas y las canciones que reproduzcas desde este buscador.</string>
 	<key>search.spotlight.prompt_title</key>
-	<string>Buscá artistas, canciones, álbumes y más</string>
+	<string>Tus búsquedas, a mano</string>
 	<key>search.spotlight.submit_hint</key>
 	<string>Presioná Enter para buscar en todo el catálogo</string>
 	<key>search.submit.full_results</key>
 	<string>Presioná Enter para ver todos los resultados</string>
+	<key>search.suggestions.title</key>
+	<string>Sugerencias de búsqueda</string>
+	<key>search.title</key>
+	<string>Buscar</string>
 	<key>settings.albums</key>
 	<string>Álbumes</string>
 	<key>settings.categories</key>

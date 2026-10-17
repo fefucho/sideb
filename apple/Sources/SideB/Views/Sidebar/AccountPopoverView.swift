@@ -3,6 +3,7 @@ import SideBCore
 
 struct AccountPopoverView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.sideBMenuContext) private var menuContext
     let account: AccountInfoRecord?
     var onLogout: () -> Void
 
@@ -75,6 +76,31 @@ struct AccountPopoverView: View {
 
             Divider()
                 .opacity(0.2)
+
+            Button {
+                dismiss()
+                menuContext?.onOpenSettings?()
+            } label: {
+                Label(L10n.text("settings.title"), systemImage: "gearshape")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(menuContext?.onOpenSettings == nil)
+
+            Button {
+                dismiss()
+                Task { await UpdateService.shared.checkForUpdates(manual: true) }
+            } label: {
+                Label(L10n.text("menu.check_updates"), systemImage: "arrow.triangle.2.circlepath")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
 
             // Logout Button
             Button(role: .destructive) {

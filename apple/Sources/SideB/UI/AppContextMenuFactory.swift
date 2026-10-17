@@ -107,7 +107,7 @@ final class AppContextMenuFactory {
             }
         }
 
-        let executor = MenuActionExecutor(player: player, router: router, core: core)
+        let executor = MenuActionExecutor(player: player, router: router, core: core, origin: resolvedOrigin)
         let target = MenuTarget.song(song)
         let sections = MenuPolicy.resolveSections(target: target, origin: resolvedOrigin, facts: facts)
         return AppKitMenuAdapter.buildNSMenu(sections: sections, target: target, facts: facts, executor: executor)
@@ -151,7 +151,7 @@ final class AppContextMenuFactory {
             artistId: nil,
             thumbnail: thumbnail
         )
-        let executor = MenuActionExecutor(player: player, router: router, core: core)
+        let executor = MenuActionExecutor(player: player, router: router, core: core, origin: resolvedOrigin)
         let sections = MenuPolicy.resolveSections(target: target, origin: resolvedOrigin, facts: facts)
         return AppKitMenuAdapter.buildNSMenu(sections: sections, target: target, facts: facts, executor: executor)
     }
@@ -210,7 +210,7 @@ final class AppContextMenuFactory {
             thumbnail: thumbnail,
             isRadioMix: isMix
         )
-        let executor = MenuActionExecutor(player: player, router: router, core: core)
+        let executor = MenuActionExecutor(player: player, router: router, core: core, origin: resolvedOrigin)
         let sections = MenuPolicy.resolveSections(target: target, origin: resolvedOrigin, facts: facts)
         return AppKitMenuAdapter.buildNSMenu(sections: sections, target: target, facts: facts, executor: executor)
     }
@@ -248,7 +248,7 @@ final class AppContextMenuFactory {
             thumbnail: thumbnail,
             radioPlaylistId: radioPlaylistId
         )
-        let executor = MenuActionExecutor(player: player, router: router, core: core)
+        let executor = MenuActionExecutor(player: player, router: router, core: core, origin: resolvedOrigin)
         let sections = MenuPolicy.resolveSections(target: target, origin: resolvedOrigin, facts: facts)
         return AppKitMenuAdapter.buildNSMenu(sections: sections, target: target, facts: facts, executor: executor)
     }
@@ -391,7 +391,7 @@ struct SongMenuItems: View {
             onRemoveFromPlaylist: onRemoveFromPlaylist
         )
 
-        let executor = MenuActionExecutor(player: player, router: router, core: core)
+        let executor = MenuActionExecutor(player: player, router: router, core: core, origin: resolvedOrigin)
         let sections = MenuPolicy.resolveSections(target: .song(song), origin: resolvedOrigin, facts: facts)
         MenuSectionContentView(
             sections: sections,

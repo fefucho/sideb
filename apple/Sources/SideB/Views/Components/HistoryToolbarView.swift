@@ -32,9 +32,13 @@ struct HistoryToolbarView: NSViewRepresentable {
     func updateNativeContainer(_ view: WindowAlignedToolbarContainer, coordinator: Coordinator,
                                reduceTransparency: Bool) {
         coordinator.parent = self
+        let previousSize = view.contentView.fittingSize
         if let bar = coordinator.bar { update(bar) }
         coordinator.surface?.update(reduceTransparency: reduceTransparency)
         view.refreshNaturalSize()
+        if view.contentView.fittingSize != previousSize {
+            view.superview?.needsLayout = true
+        }
     }
 
     func updateNSView(_ view: WindowAlignedToolbarContainer, context: Context) {
@@ -84,26 +88,35 @@ final class NativeHistoryBar: NSView {
     let settings = NSButton()
     private let divider = NSBox()
     private let settingsDivider = NSBox()
-    private var showsRefresh = true
-    private var showsSettings = true
+    private var localizationRevision: Int?
+    private var configuration: Configuration?
+
+    private struct Configuration: Equatable {
+        let showsRefresh: Bool
+        let showsSettings: Bool
+        let isSettingsPresented: Bool
+        let canGoBack: Bool
+        let canGoForward: Bool
+        let isDisabled: Bool
+    }
+
     override var fittingSize: NSSize {
-        NSSize(width: 62 + (showsRefresh ? 34 : 0) + (showsSettings ? 36 : 0), height: 34)
+        NSSize(width: ShellLayout.historySurfaceWidth, height: ShellLayout.navigationSurfaceHeight)
     }
     override var intrinsicContentSize: NSSize { fittingSize }
 
     init(target: HistoryToolbarView.Coordinator) {
-        super.init(frame: NSRect(x: 0, y: 0, width: 132, height: 34))
+        super.init(frame: NSRect(x: 0, y: 0, width: ShellLayout.historySurfaceWidth,
+                                 height: ShellLayout.navigationSurfaceHeight))
         wantsLayer = true
-        let specs: [(NSButton, String, String, String, Selector)] = [
-            (refresh, "arrow.clockwise", "navigation.refresh", "r", #selector(HistoryToolbarView.Coordinator.refresh(_:))),
-            (back, "chevron.left", "navigation.back", "[", #selector(HistoryToolbarView.Coordinator.back(_:))),
-            (forward, "chevron.right", "navigation.forward", "]", #selector(HistoryToolbarView.Coordinator.forward(_:))),
-            (settings, "gearshape", "navigation.home_settings", "", #selector(HistoryToolbarView.Coordinator.homeSettings(_:)))
+        let specs: [(NSButton, String, Selector)] = [
+            (refresh, "r", #selector(HistoryToolbarView.Coordinator.refresh(_:))),
+            (back, "[", #selector(HistoryToolbarView.Coordinator.back(_:))),
+            (forward, "]", #selector(HistoryToolbarView.Coordinator.forward(_:))),
+            (settings, "", #selector(HistoryToolbarView.Coordinator.homeSettings(_:)))
         ]
-        for (button, symbol, titleKey, key, action) in specs {
-            let title = L10n.text(titleKey)
-            button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: title)?
-                .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 13, weight: .medium))
+        for (button, key, action) in specs {
+            // Images and translated accessibility text are configured together below.
             button.isBordered = false
             button.imagePosition = .imageOnly
             button.contentTintColor = .labelColor
@@ -111,15 +124,26 @@ final class NativeHistoryBar: NSView {
             button.action = action
             button.keyEquivalent = key
             button.keyEquivalentModifierMask = key.isEmpty ? [] : .command
-            button.toolTip = title
-            button.setAccessibilityLabel(title)
             button.wantsLayer = true
             addSubview(button)
         }
+        // Contextual refresh and Home settings remain API-compatible but are not part of this surface.
+        refresh.target = nil
+        refresh.action = nil
+        refresh.keyEquivalent = ""
+        settings.target = nil
+        settings.action = nil
+        settings.keyEquivalent = ""
+        refresh.isHidden = true
+        refresh.setAccessibilityElement(false)
+        settings.isHidden = true
+        settings.setAccessibilityElement(false)
         divider.boxType = .separator
         divider.wantsLayer = true
+        divider.isHidden = false
         addSubview(divider)
         settingsDivider.boxType = .separator
+        settingsDivider.isHidden = true
         addSubview(settingsDivider)
         settings.layer?.cornerRadius = 7
         settings.setAccessibilityIdentifier("home-settings-toggle")
@@ -129,6 +153,9 @@ final class NativeHistoryBar: NSView {
     required init?(coder: NSCoder) { nil }
 
     func updateLocalization() {
+        let revision = L10n.revision
+        guard localizationRevision != revision else { return }
+        localizationRevision = revision
         let labels: [(NSButton, String, String)] = [
             (refresh, "arrow.clockwise", "navigation.refresh"),
             (back, "chevron.left", "navigation.back"),
@@ -137,43 +164,64 @@ final class NativeHistoryBar: NSView {
         ]
         for (button, symbol, key) in labels {
             let title = L10n.text(key)
+            let isHistoryControl = button === back || button === forward
             button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: title)?
-                .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 13, weight: .medium))
+                .withSymbolConfiguration(NSImage.SymbolConfiguration(
+                    pointSize: isHistoryControl ? 15 : 13,
+                    weight: isHistoryControl ? .semibold : .medium
+                ))
             button.toolTip = title
             button.setAccessibilityLabel(title)
         }
+        updateSettingsAccessibilityValue()
     }
 
     func update(showsRefresh: Bool, showsSettings: Bool, isSettingsPresented: Bool,
                 canGoBack: Bool, canGoForward: Bool, isDisabled: Bool) {
-        if self.showsRefresh != showsRefresh || self.showsSettings != showsSettings {
-            self.showsRefresh = showsRefresh
-            self.showsSettings = showsSettings
-            invalidateIntrinsicContentSize()
-            superview?.invalidateIntrinsicContentSize()
-            superview?.needsLayout = true
+        let next = Configuration(showsRefresh: showsRefresh, showsSettings: showsSettings,
+                                 isSettingsPresented: isSettingsPresented, canGoBack: canGoBack,
+                                 canGoForward: canGoForward, isDisabled: isDisabled)
+        guard configuration != next else { return }
+        let settingsChanged = configuration?.isSettingsPresented != isSettingsPresented
+        configuration = next
+        refresh.isHidden = true
+        settings.isHidden = true
+        refresh.setAccessibilityElement(false)
+        settings.setAccessibilityElement(false)
+        refresh.isEnabled = false
+        settings.isEnabled = false
+        if settingsChanged {
+            settings.state = isSettingsPresented ? .on : .off
+            updateSettingsAppearance()
+            updateSettingsAccessibilityValue()
         }
-        refresh.isHidden = !showsRefresh
-        divider.isHidden = !showsRefresh
-        settings.isHidden = !showsSettings
-        settingsDivider.isHidden = !showsSettings
-        refresh.isEnabled = showsRefresh && !isDisabled
-        settings.isEnabled = showsSettings && !isDisabled
-        settings.state = isSettingsPresented ? .on : .off
-        settings.layer?.backgroundColor = isSettingsPresented
-            ? NSColor.labelColor.withAlphaComponent(0.12).cgColor : nil
-        settings.setAccessibilityValue(L10n.text(isSettingsPresented ? "navigation.open" : "navigation.closed"))
         back.isEnabled = canGoBack && !isDisabled
         forward.isEnabled = canGoForward && !isDisabled
-        needsLayout = true
     }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        updateSettingsAppearance()
+    }
+
+    private func updateSettingsAppearance() {
+        settings.layer?.backgroundColor = configuration?.isSettingsPresented == true
+            ? NSColor.labelColor.withAlphaComponent(0.12).cgColor : nil
+    }
+
+    private func updateSettingsAccessibilityValue() {
+        settings.setAccessibilityValue(L10n.text(configuration?.isSettingsPresented == true
+                                                ? "navigation.open" : "navigation.closed"))
+    }
+
     override func layout() {
         super.layout()
-        refresh.frame = NSRect(x: 3, y: 3, width: 28, height: 28)
-        divider.frame = NSRect(x: 34, y: 10, width: 1, height: 14)
-        back.frame = NSRect(x: showsRefresh ? 38 : 3, y: 3, width: 28, height: 28)
-        forward.frame = NSRect(x: showsRefresh ? 65 : 31, y: 3, width: 28, height: 28)
-        settingsDivider.frame = NSRect(x: forward.frame.maxX + 3, y: 10, width: 1, height: 14)
-        settings.frame = NSRect(x: forward.frame.maxX + 7, y: 3, width: 28, height: 28)
+        refresh.frame = .zero
+        divider.frame = .zero
+        settings.frame = .zero
+        settingsDivider.frame = .zero
+        back.frame = NSRect(x: 3, y: 3, width: 34, height: 36)
+        forward.frame = NSRect(x: 39, y: 3, width: 34, height: 36)
+        divider.frame = NSRect(x: 37.5, y: 13, width: 1, height: 16)
     }
 }

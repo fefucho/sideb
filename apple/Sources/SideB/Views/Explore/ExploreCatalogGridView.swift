@@ -51,6 +51,7 @@ struct ExploreCatalogGridView: NSViewRepresentable {
         scroll.automaticallyAdjustsContentInsets = false
         scroll.contentInsets = NSEdgeInsets(top: 0, left: 0, bottom: axis == .vertical ? 140 : 0, right: 0)
         scroll.isHidden = isObscured && !gesturePreviewVisible
+        scroll.setAccessibilityHidden(isObscured)
 
         let layout = NSCollectionViewFlowLayout()
         layout.scrollDirection = axis == .vertical ? .vertical : .horizontal
@@ -96,12 +97,26 @@ struct ExploreCatalogGridView: NSViewRepresentable {
     }
 
     func updateScrollView(_ scroll: NSScrollView, coordinator: Coordinator) {
+        scroll.setAccessibilityHidden(isObscured)
+        if isObscured {
+            if !coordinator.isSuspended {
+                coordinator.updateHover(at: nil)
+                for case let item as HomeCollectionItem in coordinator.collection?.visibleItems() ?? [] {
+                    item.content.setFeedVisible(false)
+                }
+            }
+            coordinator.isSuspended = true
+            scroll.isHidden = !gesturePreviewVisible
+            return
+        }
+        let resumed = coordinator.isSuspended
+        coordinator.isSuspended = false
         let old = coordinator.parent
         coordinator.parent = self
         guard let collection = coordinator.collection else { return }
         let reset = old.route != route || old.sessionRevision != sessionRevision
         scroll.isHidden = isObscured && !gesturePreviewVisible
-        if old.isObscured != isObscured {
+        if resumed || old.isObscured != isObscured {
             coordinator.updateHover(at: nil)
             for case let item as HomeCollectionItem in collection.visibleItems() { item.content.setFeedVisible(!isObscured) }
         }
@@ -144,6 +159,7 @@ struct ExploreCatalogGridView: NSViewRepresentable {
     }
 
     @MainActor final class Coordinator: NSObject, NSCollectionViewDataSource, NSCollectionViewDelegate {
+        var isSuspended = false
         var parent: ExploreCatalogGridView
         var localizationRevision = -1
         weak var collection: HomeNativeCollectionView?
@@ -181,7 +197,7 @@ struct ExploreCatalogGridView: NSViewRepresentable {
                             forRepresentedObjectAt indexPath: IndexPath) {
             guard let item = item as? HomeCollectionItem else { return }
             configure(item, at: indexPath)
-            item.content.setFeedVisible(!parent.isObscured)
+            item.content.setFeedVisible(!isSuspended && !parent.isObscured)
         }
 
         func collectionView(_ collectionView: NSCollectionView, didEndDisplaying item: NSCollectionViewItem,
@@ -211,17 +227,17 @@ struct ExploreCatalogGridView: NSViewRepresentable {
                 onTitle: { [weak self] in self?.open(card) },
                 onArtist: {}, onAlbum: {},
                 onDirectPlay: { [weak self] in
-                    guard let self, !self.parent.isObscured, !self.isLoading(card) else { return }
+                    guard let self, !self.isSuspended && !self.parent.isObscured, !self.isLoading(card) else { return }
                     self.parent.onPlay(card)
                 }, menuProvider: { [weak self] in
-                    guard let self, !self.parent.isObscured else { return nil }
+                    guard let self, !self.isSuspended && !self.parent.isObscured else { return nil }
                     return self.parent.menuProvider(card)
                 })
             item.content.setLoading(isLoading(card))
-            item.content.setFeedVisible(!parent.isObscured)
+            item.content.setFeedVisible(!isSuspended && !parent.isObscured)
         }
 
-        private func open(_ card: BrowseCardRecord) { if !parent.isObscured { parent.onOpen(card) } }
+        private func open(_ card: BrowseCardRecord) { if !isSuspended && !parent.isObscured { parent.onOpen(card) } }
         func open(at indexPath: IndexPath) { if let card = card(at: indexPath) { open(card) } }
 
         func configureVisibleItems() {
@@ -276,6 +292,7 @@ struct ExploreCatalogGridView: NSViewRepresentable {
         }
 
         func updateGeometry() {
+            guard !isSuspended else { return }
             guard let scroll, let collection, let layout else { return }
             let width = max(1, scroll.contentView.bounds.width)
             guard abs(lastWidth - width) > 0.5 else { return }
@@ -299,6 +316,7 @@ struct ExploreCatalogGridView: NSViewRepresentable {
         }
 
         @objc func boundsChanged(_ notification: Notification) {
+            guard !isSuspended else { return }
             updateGeometry()
             scheduleHoverUpdate()
         }
@@ -310,7 +328,7 @@ struct ExploreCatalogGridView: NSViewRepresentable {
                 await Task.yield()
                 guard let self else { return }
                 self.hoverUpdateScheduled = false
-                guard let collection = self.collection, let window = collection.window, !self.parent.isObscured else {
+                guard let collection = self.collection, let window = collection.window, !self.isSuspended && !self.parent.isObscured else {
                     self.updateHover(at: nil); return
                 }
                 self.updateHover(at: collection.convert(window.mouseLocationOutsideOfEventStream, from: nil))
@@ -318,7 +336,7 @@ struct ExploreCatalogGridView: NSViewRepresentable {
         }
 
         func updateHover(at point: NSPoint?) {
-            guard let collection, let point, !parent.isObscured,
+            guard let collection, let point, !isSuspended && !parent.isObscured,
                   collection.visibleRect.contains(point), let index = collection.indexPathForItem(at: point),
                   let item = collection.item(at: index) as? HomeCollectionItem else {
                 hoveredItem?.content.setHovered(false)

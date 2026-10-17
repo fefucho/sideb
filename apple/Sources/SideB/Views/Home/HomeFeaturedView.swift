@@ -87,7 +87,6 @@ struct HomeFeaturedView: View {
     private var wide: Bool { layout.wide }
     private var leftWidth: CGFloat { layout.songWidth }
     private var albumWidth: CGFloat { layout.albumWidth }
-    private var tileSize: CGFloat { layout.tile }
     private var songPages: [[HomeItemRecord]] { Self.pages(songs, size: 9, limit: 3) }
     private var collectionPages: [[HomeItemRecord]] { Self.pages(collections, size: layout.albumsPerPage, limit: 6) }
     private var collectionPage: Int { min(collectionAnchor / layout.albumsPerPage, max(0, collectionPages.count - 1)) }
@@ -106,8 +105,13 @@ struct HomeFeaturedView: View {
             : AnyLayout(VStackLayout(alignment: .leading, spacing: HomeFeaturedLayout.stackGap))
         panelLayout {
             if !songs.isEmpty {
-                songsPanel.frame(width: wide && !collections.isEmpty ? leftWidth : nil,
-                                 alignment: .leading)
+                HomeSpeedDialPanel(songs: songs, page: $songPage,
+                    tileSize: layout.tile, gridHeight: layout.songGridHeight, panelHeight: layout.songPanelHeight,
+                    playbackContext: playbackContext, isPlaying: isPlaying,
+                    onSong: onSong, menuProvider: menuProvider) { record, tileSize in
+                        HomeSpeedDialSongArtwork(record: record, tileSize: tileSize)
+                    }
+                    .frame(width: wide && !collections.isEmpty ? leftWidth : nil, alignment: .leading)
             }
             if !collections.isEmpty { collectionsPanel }
         }
@@ -133,48 +137,6 @@ struct HomeFeaturedView: View {
         .onChange(of: songPages.count) { _, count in songPage = min(songPage, max(0, count - 1)) }
     }
 
-    @ViewBuilder private var songsPanel: some View {
-        if !songs.isEmpty {
-            VStack(spacing: 0) {
-                sectionHeader(L10n.text("app.home.speedDial"))
-                ZStack(alignment: .topLeading) {
-                    LazyVGrid(columns: Array(repeating: GridItem(.fixed(tileSize), spacing: 8), count: 3), spacing: 8) {
-                        ForEach(currentSongPage.map(FeaturedItem.init), id: \.id) { item in
-                            let record = item.record
-                            let isRadioOrigin = MediaPlaybackIdentity.isRadioOrigin(videoID: record.id, context: playbackContext)
-                            MediaArtworkControls(
-                                isCollection: false,
-                                isActive: isRadioOrigin,
-                                isPlaying: isPlaying, showsIndicator: true,
-                                accessibilityTitle: record.title,
-                                onOpen: { onSong(record) }, onPlay: { onSong(record) },
-                                menuProvider: menuProvider.map { provider in { provider(record) } }
-                            ) {
-                                songTile(record)
-                            }
-                            .frame(width: tileSize, height: tileSize)
-                            .help(isRadioOrigin
-                                ? L10n.text(isPlaying ? "home.radio.pause" : "home.radio.resume", args: [record.title])
-                                : L10n.text("home.radio.start", args: [record.title]))
-                        }
-                    }
-                    .frame(width: 3 * tileSize + 16, alignment: .leading)
-                    .id(songPage)
-                    .transition(.opacity)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .frame(height: layout.songGridHeight, alignment: .topLeading)
-                .clipped()
-                .overlay { HomeFeaturedPageWheel(enabled: songPages.count > 1) { delta in move($songPage, by: delta, count: songPages.count) } }
-                .padding(.top, HomeFeaturedLayout.contentGap)
-                pageControls(page: $songPage, count: songPages.count, label: L10n.text("search.filter.songs"))
-                    .padding(.top, 8)
-            }
-            .padding(.bottom, 16)
-            .frame(height: layout.songPanelHeight, alignment: .top)
-        }
-    }
-
     @ViewBuilder private var collectionsPanel: some View {
         if !collections.isEmpty {
             VStack(spacing: 0) {
@@ -193,7 +155,7 @@ struct HomeFeaturedView: View {
                 .clipped()
                 .overlay { HomeFeaturedPageWheel(enabled: collectionPages.count > 1) { delta in move(collectionPageBinding, by: delta, count: collectionPages.count) } }
                 .padding(.top, HomeFeaturedLayout.contentGap)
-                pageControls(page: collectionPageBinding, count: collectionPages.count, label: collectionKind.title)
+                HomeFeaturedPageControls(page: collectionPageBinding, count: collectionPages.count, label: collectionKind.title)
                     .padding(.top, 8)
             }
             .padding(.bottom, 16)
@@ -211,31 +173,8 @@ struct HomeFeaturedView: View {
         MetadataRequest(session: metadataSessionKey ?? resetKey, collectionIDs: currentCollectionPage.map(\.id), kind: collectionKind, coreIdentity: core.map(ObjectIdentifier.init))
     }
 
-    private var currentSongPage: [HomeItemRecord] { songPages.indices.contains(songPage) ? songPages[songPage] : [] }
     private var currentCollectionPage: [HomeItemRecord] { collectionPages.indices.contains(collectionPage) ? collectionPages[collectionPage] : [] }
     private var albumCardHeight: CGFloat { layout.albumCardHeight }
-
-    private func songTile(_ record: HomeItemRecord) -> some View {
-        ZStack(alignment: .bottomLeading) {
-            artwork(record.thumbnail, radius: 5)
-            LinearGradient(colors: [.clear, .black.opacity(0.78)], startPoint: .center, endPoint: .bottom)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(record.title)
-                    .font(.system(size: 12, weight: .semibold))
-                    .lineLimit(1)
-                if tileSize >= 110, let artist = record.artists, !artist.isEmpty {
-                    Text(artist).font(.system(size: 10)).foregroundStyle(.white.opacity(0.76)).lineLimit(1)
-                }
-            }
-            .multilineTextAlignment(.leading)
-            .foregroundStyle(.white)
-            .padding(.horizontal, 8)
-            .padding(.bottom, 7)
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .clipShape(RoundedRectangle(cornerRadius: 5))
-        .contentShape(RoundedRectangle(cornerRadius: 5))
-    }
 
     private var collectionName: String { collectionKind == .albums ? L10n.text("metadata.album").lowercased() : L10n.text("metadata.playlist").lowercased() }
     private var collectionBadge: String { collectionKind == .albums ? L10n.text("metadata.album").uppercased() : L10n.text("metadata.playlist.short").uppercased() }
@@ -339,36 +278,6 @@ struct HomeFeaturedView: View {
         .frame(height: HomeFeaturedLayout.headerHeight)
     }
 
-    private func pageControls(page: Binding<Int>, count: Int, label: String) -> some View {
-        HStack(spacing: 7) {
-            Button { move(page, by: -1, count: count) } label: {
-                Image(systemName: "chevron.left").font(.system(size: 10, weight: .semibold)).frame(width: 20, height: 24)
-            }
-            .disabled(count < 2 || page.wrappedValue == 0)
-            .accessibilityLabel(L10n.text("home.page.previous", args: [label]))
-            HStack(spacing: 5) {
-                ForEach(0..<count, id: \.self) { index in
-                    Button { changePage(page, to: index) } label: {
-                        Circle().fill(index == page.wrappedValue ? Color.primary.opacity(0.8) : Color.secondary.opacity(0.35))
-                            .frame(width: 7, height: 7).frame(width: 14, height: 24)
-                    }
-                    .buttonStyle(.plain)
-                .accessibilityLabel(L10n.text("home.page.position", args: [label, String(index + 1), String(count)]))
-                    .accessibilityAddTraits(index == page.wrappedValue ? .isSelected : [])
-                }
-            }
-            Button { move(page, by: 1, count: count) } label: {
-                Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold)).frame(width: 20, height: 24)
-            }
-            .disabled(count < 2 || page.wrappedValue >= count - 1)
-            .accessibilityLabel(L10n.text("home.page.next", args: [label]))
-        }
-        .buttonStyle(.plain)
-        .foregroundStyle(.secondary)
-        .frame(height: 24)
-        .frame(maxWidth: .infinity)
-    }
-
     private func move(_ page: Binding<Int>, by delta: Int, count: Int) {
         changePage(page, to: min(max(page.wrappedValue + delta, 0), max(0, count - 1)))
     }
@@ -388,6 +297,160 @@ struct HomeFeaturedView: View {
         stride(from: 0, to: min(records.count, size * limit), by: size).map { start in
             Array(records[start..<min(start + size, records.count)])
         }
+    }
+}
+
+/// Speed Dial only depends on its own geometry. At wide sidebar widths the
+/// tiles stay fixed while the album panel changes width beside them.
+struct HomeSpeedDialPanel<Tile: View>: View {
+    let songs: [HomeItemRecord]
+    @Binding var page: Int
+    let tileSize: CGFloat
+    let gridHeight: CGFloat
+    let panelHeight: CGFloat
+    let playbackContext: QueueContext?
+    let isPlaying: Bool
+    let onSong: (HomeItemRecord) -> Void
+    var menuProvider: ((HomeItemRecord) -> NSMenu?)?
+    @ViewBuilder let tile: (HomeItemRecord, CGFloat) -> Tile
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var pages: [[HomeItemRecord]] {
+        stride(from: 0, to: min(songs.count, 27), by: 9).map { start in
+            Array(songs[start..<min(start + 9, songs.count)])
+        }
+    }
+    private var currentPage: [HomeItemRecord] { pages.indices.contains(page) ? pages[page] : [] }
+
+    var body: some View {
+        let _ = L10n.revision
+        VStack(spacing: 0) {
+            HStack {
+                Text(L10n.text("app.home.speedDial")).font(.system(size: 20, weight: .semibold))
+                Spacer()
+            }
+            .frame(height: HomeFeaturedLayout.headerHeight)
+            ZStack(alignment: .topLeading) {
+                LazyVGrid(columns: Array(repeating: GridItem(.fixed(tileSize), spacing: 8), count: 3), spacing: 8) {
+                    ForEach(currentPage.map(SongItem.init), id: \.id) { item in
+                        let record = item.record
+                        let isRadioOrigin = MediaPlaybackIdentity.isRadioOrigin(videoID: record.id, context: playbackContext)
+                        MediaArtworkControls(
+                            isCollection: false, isActive: isRadioOrigin, isPlaying: isPlaying, showsIndicator: true,
+                            accessibilityTitle: record.title,
+                            onOpen: { onSong(record) }, onPlay: { onSong(record) },
+                            menuProvider: menuProvider.map { provider in { provider(record) } }
+                        ) {
+                            tile(record, tileSize)
+                        }
+                        .frame(width: tileSize, height: tileSize)
+                        .help(isRadioOrigin
+                            ? L10n.text(isPlaying ? "home.radio.pause" : "home.radio.resume", args: [record.title])
+                            : L10n.text("home.radio.start", args: [record.title]))
+                    }
+                }
+                .frame(width: 3 * tileSize + 16, alignment: .leading)
+                .id(page)
+                .transition(.opacity)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(height: gridHeight, alignment: .topLeading)
+            .clipped()
+            .overlay { HomeFeaturedPageWheel(enabled: pages.count > 1) { delta in
+                let next = min(max(page + delta, 0), max(0, pages.count - 1))
+                guard next != page else { return }
+                if reduceMotion { page = next }
+                else { withAnimation(.easeInOut(duration: 0.14)) { page = next } }
+            } }
+            .padding(.top, HomeFeaturedLayout.contentGap)
+            HomeFeaturedPageControls(page: $page, count: pages.count, label: L10n.text("search.filter.songs"))
+                .padding(.top, 8)
+        }
+        .padding(.bottom, 16)
+        .frame(height: panelHeight, alignment: .top)
+    }
+
+    private struct SongItem: Identifiable {
+        let record: HomeItemRecord
+        var id: String { "\(record.kind):\(record.id)" }
+    }
+}
+
+private struct HomeSpeedDialSongArtwork: View {
+    let record: HomeItemRecord
+    let tileSize: CGFloat
+
+    var body: some View {
+        ZStack(alignment: .bottomLeading) {
+            CachedAsyncImage(url: ImageURLHelper.optimizedThumbnailURL(from: record.thumbnail, targetPixelSize: 480),
+                             targetSize: CGSize(width: 240, height: 240)) { image in
+                image.resizable().aspectRatio(contentMode: .fill)
+            } placeholder: {
+                Rectangle().fill(.white.opacity(0.06)).overlay(Image(systemName: "music.note").foregroundStyle(.tertiary))
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 5))
+            .clipped()
+            LinearGradient(colors: [.clear, .black.opacity(0.78)], startPoint: .center, endPoint: .bottom)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(record.title).font(.system(size: 12, weight: .semibold)).lineLimit(1)
+                if tileSize >= 110, let artist = record.artists, !artist.isEmpty {
+                    Text(artist).font(.system(size: 10)).foregroundStyle(.white.opacity(0.76)).lineLimit(1)
+                }
+            }
+            .multilineTextAlignment(.leading)
+            .foregroundStyle(.white)
+            .padding(.horizontal, 8)
+            .padding(.bottom, 7)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 5))
+        .contentShape(RoundedRectangle(cornerRadius: 5))
+    }
+}
+
+private struct HomeFeaturedPageControls: View {
+    @Binding var page: Int
+    let count: Int
+    let label: String
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        HStack(spacing: 7) {
+            Button { move(by: -1, count: count) } label: {
+                Image(systemName: "chevron.left").font(.system(size: 10, weight: .semibold)).frame(width: 20, height: 24)
+            }
+            .disabled(count < 2 || page == 0)
+            .accessibilityLabel(L10n.text("home.page.previous", args: [label]))
+            HStack(spacing: 5) {
+                ForEach(0..<count, id: \.self) { index in
+                    Button { changePage(to: index) } label: {
+                        Circle().fill(index == page ? Color.primary.opacity(0.8) : Color.secondary.opacity(0.35))
+                            .frame(width: 7, height: 7).frame(width: 14, height: 24)
+                    }
+                    .buttonStyle(.plain)
+                .accessibilityLabel(L10n.text("home.page.position", args: [label, String(index + 1), String(count)]))
+                    .accessibilityAddTraits(index == page ? .isSelected : [])
+                }
+            }
+            Button { move(by: 1, count: count) } label: {
+                Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold)).frame(width: 20, height: 24)
+            }
+            .disabled(count < 2 || page >= count - 1)
+            .accessibilityLabel(L10n.text("home.page.next", args: [label]))
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(.secondary)
+        .frame(height: 24)
+        .frame(maxWidth: .infinity)
+    }
+
+    private func move(by delta: Int, count: Int) {
+        changePage(to: min(max(page + delta, 0), max(0, count - 1)))
+    }
+    private func changePage(to value: Int) {
+        guard value != page else { return }
+        if reduceMotion { page = value }
+        else { withAnimation(.easeInOut(duration: 0.14)) { page = value } }
     }
 }
 
@@ -440,7 +503,7 @@ struct HomeFeaturedWheelInput {
     }
 }
 
-private final class HomeFeaturedWheelView: NSView, HorizontalNavigationGestureOwner {
+final class HomeFeaturedWheelView: NSView, HorizontalNavigationGestureOwner {
     var ownsHorizontalNavigationGesture = false
     var onPage: ((Int) -> Void)?
     private var input = HomeFeaturedWheelInput()

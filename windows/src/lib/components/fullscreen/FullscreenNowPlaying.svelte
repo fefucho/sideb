@@ -1,4 +1,6 @@
 <script lang="ts">
+  import ControlSegments from '$lib/components/common/ControlSegments.svelte';
+
   import { fade } from 'svelte/transition';
   import { onMount } from 'svelte';
   import { t } from '$lib/i18n';
@@ -9,6 +11,7 @@
   import PlayerIcon from "../player/PlayerIcon.svelte";
   import type { PlaybackStateDto, QueueEntryDto, SongDto, BrowseCardDto } from "$lib/types";
   import ArtistCredits from "$lib/components/ArtistCredits.svelte";
+  import FeaturedTrackTitle from "$lib/components/FeaturedTrackTitle.svelte";
   import QueuePanel from './QueuePanel.svelte';
   import LyricsPanel from './LyricsPanel.svelte';
   import RecommendedPanel from './RecommendedPanel.svelte';
@@ -20,6 +23,8 @@
   type Panel = "queue" | "lyrics" | "related";
   interface Props {
     pullDistance?:number; pulling?:boolean;
+    confirmedVolume?:number; volumeFeedback?:boolean; volumeAnnouncement?:string;
+    onVolumeSurfaceChange?:()=>void;
     playback: PlaybackStateDto; geniusState:GeniusState;geniusController:GeniusController;onOpenExternal:(url:string)=>void;
     onSelectQueue: (index: number) => void;
     onTogglePlayback: () => void;
@@ -56,7 +61,7 @@
   }
 
   let {
-    pullDistance=0,pulling=false,geniusState,geniusController,onOpenExternal,playback, onSelectQueue, onTogglePlayback, onClose, selectedPanel, lyricsMode='synced', onShowGenius, onSelectPanel, onOpenArtist, onOpenAlbum,
+    pullDistance=0,pulling=false,confirmedVolume=100,volumeFeedback=false,volumeAnnouncement='',onVolumeSurfaceChange,geniusState,geniusController,onOpenExternal,playback, onSelectQueue, onTogglePlayback, onClose, selectedPanel, lyricsMode='synced', onShowGenius, onSelectPanel, onOpenArtist, onOpenAlbum,
     onOpenMenu, onQueueContextMenu, loggedIn = false, liked = false, likePending = false,
     onToggleLike, onRetryRadio, onRetrySource, likedIds = new Set<string>(), pendingIds = new Set<string>(), likesLoading = false,
     onToggleQueueLike, onDislikeQueueEntry,
@@ -66,7 +71,7 @@
   }: Props = $props();
   let showInformation=$state(false);
   let informationButton: HTMLButtonElement;
-  function closeInformation() { showInformation=false; informationButton?.focus({preventScroll:true}); }
+  function closeInformation() { onVolumeSurfaceChange?.(); showInformation=false; informationButton?.focus({preventScroll:true}); }
   let reduced=$state(false);
   onMount(()=>{const media=window.matchMedia('(prefers-reduced-motion:reduce)');const sync=()=>reduced=media.matches;sync();media.addEventListener('change',sync);return()=>media.removeEventListener('change',sync);});
   const informationTrackKey=$derived(JSON.stringify([playback.currentTrack?.videoId,playback.generation]));
@@ -125,7 +130,7 @@
       <div class="art-block">
         <div class="artwork-flip" class:flipped={showInformation}>
           <div class="artwork-front" inert={showInformation} aria-hidden={showInformation} oncontextmenu={(event)=>{if(onOpenMenu&&currentTrack){event.preventDefault();onOpenMenu(event);}}} role="group">
-        <button type="button" class="artwork" onkeydown={trackMenuKey} disabled={!currentTrack || playback.isLoading}
+        <button type="button" class="artwork" data-volume-scroll="fullscreen" data-volume-scroll-control class:volume-feedback={volumeFeedback} onkeydown={trackMenuKey} disabled={!currentTrack || playback.isLoading}
           aria-label={`${playback.isPlaying ? $t('player.pause') : $t('player.play')} ${currentTrack?.title ?? 'canción'}`}
           title={playback.isPlaying ? $t('player.pause') : $t('player.play')} onclick={onTogglePlayback}>
           {#if selectedArtworkUrl && currentTrack}
@@ -136,45 +141,43 @@
             <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M10 5v12.1a4 4 0 1 1-2-3.46V3l12-2v14.1a4 4 0 1 1-2-3.46V4.4z" /></svg>
           {/if}
           <span class="artwork-shade" aria-hidden="true"></span>
+          <span class="artwork-percentage" aria-hidden="true">{$t('player.volumePercentage',[Math.round(confirmedVolume)])}</span>
           <span class="artwork-control" aria-hidden="true">
             <svg viewBox="0 0 24 24" fill="currentColor">{#if playback.isPlaying}<path d="M6 4h4v16H6zM14 4h4v16h-4z"/>{:else}<path d="m7 3 15 9-15 9z"/>{/if}</svg>
           </span>
         </button>
           </div>
-          <div id="track-information-card" class="information artwork-back" inert={!showInformation} aria-hidden={!showInformation}>
+          <div id="track-information-card" class="information artwork-back" data-volume-excluded inert={!showInformation} aria-hidden={!showInformation}>
             <TrackInformation song={geniusState.resolution?.song??null} title={currentTrack?.title??''} artists={currentTrack?.artists??''} album={currentTrack?.album??''} loading={geniusState.phase==='loading'} onClose={closeInformation} {onShowGenius} {onOpenExternal} />
           </div>
         </div>
-        <div class="track-info" role="group" aria-label={$t('windows.ui.currentSong')} oncontextmenu={(event) => { if (onOpenMenu && currentTrack) { event.preventDefault(); onOpenMenu(event); } }}>
+        <span class="volume-adjacent" class:visible={volumeFeedback && showInformation} aria-hidden="true">{$t('player.volumePercentage',[Math.round(confirmedVolume)])}</span>
+        <div class="track-info" data-volume-excluded role="group" aria-label={$t('windows.ui.currentSong')} oncontextmenu={(event) => { if (onOpenMenu && currentTrack) { event.preventDefault(); onOpenMenu(event); } }}>
           <div class="title-line">
-            <h1 title={currentTrack?.title ?? $t('player.noPlayback')}>{currentTrack?.title ?? $t('player.noPlayback')}</h1>
+            <h1 title={currentTrack?.title ?? $t('player.noPlayback')}>{#if currentTrack}<FeaturedTrackTitle track={currentTrack} {onOpenArtist} prefetch />{:else}{$t('player.noPlayback')}{/if}</h1>
             {#if loggedIn && onToggleLike && currentTrack}
               <button class="like-button" onkeydown={trackMenuKey} type="button" class:liked disabled={likePending || playback.isLoading} aria-pressed={liked} aria-label={$t(liked ? 'detail.track.unlike' : 'detail.track.like')} title={$t(liked ? 'detail.track.unlike' : 'detail.track.like')} onclick={onToggleLike}>
                 <svg viewBox="2 1.68 20 20" aria-hidden="true" fill={liked ? "currentColor" : "none"} stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.8 8.7c0 4.2-6.4 9.1-8.8 11-2.4-1.9-8.8-6.8-8.8-11a4.9 4.9 0 0 1 8.8-3.1 4.9 4.9 0 0 1 8.8 3.1Z" /></svg>
               </button>
             {/if}
-            <button bind:this={informationButton} class="information-button" onkeydown={trackMenuKey} type="button" disabled={!currentTrack} aria-pressed={showInformation} aria-controls="track-information-card" aria-label={$t(showInformation ? 'fullscreen.backToArtwork' : 'fullscreen.songInformation')} title={$t(showInformation ? 'fullscreen.backToArtwork' : 'fullscreen.songInformation')} onclick={()=>{showInformation=!showInformation;if(showInformation)void geniusController.ensureNow();}}>
+            <button bind:this={informationButton} class="information-button" onkeydown={trackMenuKey} type="button" disabled={!currentTrack} aria-pressed={showInformation} aria-controls="track-information-card" aria-label={$t(showInformation ? 'fullscreen.backToArtwork' : 'fullscreen.songInformation')} title={$t(showInformation ? 'fullscreen.backToArtwork' : 'fullscreen.songInformation')} onclick={()=>{onVolumeSurfaceChange?.();showInformation=!showInformation;if(showInformation)void geniusController.ensureNow();}}>
               <svg viewBox="1.5 1.5 21 21" aria-hidden="true" fill="none"><circle cx="12" cy="12" r="9.3" stroke="currentColor" stroke-width="1.8" fill={showInformation?'currentColor':'none'}/><path d="M12 10.5v6.2" stroke={showInformation?'#1a1a1f':'currentColor'} stroke-width="1.9" stroke-linecap="round"/><circle cx="12" cy="7.3" r="1.15" fill={showInformation?'#1a1a1f':'currentColor'}/></svg>
             </button>
           </div>
           <div class="artist-line">
-            <ArtistCredits artistRuns={currentTrack?.artistRuns} artists={currentTrack?.artists ?? $t('player.selectTrack')} artistId={currentTrack?.artistId} {onOpenArtist} album={currentTrack?.album} albumId={currentTrack?.albumId} {onOpenAlbum} />
+            <ArtistCredits track={currentTrack ?? undefined} artistRuns={currentTrack?.artistRuns} artists={currentTrack?.artists ?? $t('player.selectTrack')} artistId={currentTrack?.artistId} {onOpenArtist} album={currentTrack?.album} albumId={currentTrack?.albumId} {onOpenAlbum} />
           </div>
         </div>
       </div>
     </div>
 
-    <div class="side-column">
-      <div class="tablist" role="tablist" aria-label={$t('windows.fullscreen.panel')}>
-        {#each panels as item (item.id)}
-          <button type="button" id={`fullscreen-tab-${item.id}`} role="tab" aria-selected={panel === item.id} aria-controls="fullscreen-panel" class:active={panel === item.id} onclick={() => selectPanel(item.id)}>
-            <PlayerIcon name={item.id} size={14} />
-            {item.label}
-          </button>
-        {/each}
-      </div>
+    <div class="side-column" data-volume-excluded>
+      <ControlSegments appearance="toolbar" id="fullscreen-tab" panelId="fullscreen-panel" label={$t('windows.fullscreen.panel')}
+        options={panels} value={panel} onChange={selectPanel} collapseLabels>
+        {#snippet icon(id)}<PlayerIcon name={id} size={14} />{/snippet}
+      </ControlSegments>
 
-      <div id="fullscreen-panel" class="panel" role="tabpanel" aria-labelledby={`fullscreen-tab-${panel}`}>
+      <div id="fullscreen-panel" class="panel" role="tabpanel" tabindex="0" aria-labelledby={`fullscreen-tab-${panel}`}>
         {#if panel === "queue"}
           <QueuePanel {playback} {onSelectQueue} {onTogglePlayback} {onOpenArtist} {onOpenAlbum} {onMoveQueue} {onQueueContextMenu} {onRetryRadio} {onRetrySource} {loggedIn} {likedIds} {pendingIds} {likesLoading} onToggleLike={onToggleQueueLike} onDislike={onDislikeQueueEntry} />
         {:else if panel === "lyrics"}
@@ -191,6 +194,7 @@
       </div>
     </div>
   </div>
+  <span class="volume-announcement" role="status" aria-live="polite" aria-atomic="true">{volumeAnnouncement}</span>
 </section>
 
 <style>
@@ -234,17 +238,24 @@
     overflow: hidden;
   }
   .art-column { display: grid; place-items: center; min-width: 0; min-height: 0; overflow: hidden; }
-  .art-block { container-type:inline-size; width: min(90%, max(100px, calc(100dvh - 264px))); max-width: 100%; min-width: 0; max-height: 100%; }
+  .art-block { position:relative; container-type:inline-size; width: min(90%, max(100px, calc(100dvh - 264px))); max-width: 100%; min-width: 0; max-height: 100%; }
   .artwork { display:grid; position:relative; container-type:inline-size; place-items:center; width:100%; aspect-ratio:1; max-height:calc(100dvh - 264px); padding:0; border:0; overflow:hidden; border-radius:8px; color:rgb(255 255 255 / 42%); background:rgb(255 255 255 / 8%); box-shadow:0 10px 30px rgb(0 0 0 / 42%); cursor:pointer; }
   .artwork:disabled { cursor:default; }
   .artwork img { display:block; width:100%; height:100%; object-fit:cover; }.artwork > svg { width:22%; max-width:80px; }
   .artwork-shade { position:absolute; inset:0; background:rgb(0 0 0 / 22%); opacity:0; pointer-events:none; transition:opacity 180ms ease-in-out; }
   .artwork-control { position:absolute; inset:0; display:grid; place-items:center; color:rgb(255 255 255 / 92%); opacity:0; pointer-events:none; transition:opacity 180ms ease-in-out; }
   .artwork-control svg { width:max(28px,14cqw); height:max(28px,14cqw); filter:drop-shadow(0 2px 8px rgb(0 0 0 / 50%)); }
-  .artwork:is(:hover,:focus-visible):not(:disabled) .artwork-shade,.artwork:is(:hover,:focus-visible):not(:disabled) .artwork-control { opacity:1; }
+  .artwork:is(:hover,:focus-visible):not(:disabled):not(.volume-feedback) .artwork-shade,.artwork:is(:hover,:focus-visible):not(:disabled):not(.volume-feedback) .artwork-control { opacity:1; }
+  .artwork-percentage { position:absolute; inset:0; display:grid; place-items:center; font-size:clamp(28px,14cqw,96px); font-weight:600; font-variant-numeric:tabular-nums; color:white; text-shadow:0 2px 8px #0008; pointer-events:none; opacity:0; }
+  .artwork.volume-feedback .artwork-shade,.artwork.volume-feedback .artwork-percentage { opacity:1; }
+  .artwork.volume-feedback .artwork-control { opacity:0; }
+  .volume-adjacent { position:absolute; z-index:2; right:0; bottom:68px; padding:0 6px; line-height:16px; border-radius:4px; background:#1a1a1fe6; color:white; font-size:12px; font-weight:600; font-variant-numeric:tabular-nums; opacity:0; pointer-events:none; }
+  .volume-adjacent.visible { opacity:1; }
+  .volume-announcement { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }
+  @media (forced-colors:active) { .artwork-percentage,.volume-adjacent { color:CanvasText; background:Canvas; text-shadow:none; } }
   .artwork:focus-visible { outline:2px solid var(--sideb-highlight); outline-offset:3px; }
   @media (prefers-reduced-motion:reduce) { .artwork-shade,.artwork-control { transition:none; } }
-  .track-info { box-sizing: border-box; display: flex; width: 100%; height: 68px; flex-direction: column; justify-content: flex-start; gap: 4px; margin-top: 16px; }
+  .track-info { box-sizing: border-box; display: flex; width: 100%; height: 84px; padding-top:16px; flex-direction: column; justify-content: flex-start; gap: 4px; margin-top: 0; }
   .title-line { display: flex; min-width: 0; align-items: center; gap: 8px; }.title-line h1 { flex: 1; min-width: 0; overflow: hidden; margin: 0; font-size: 28px; font-weight: 700; line-height: 1.2; text-overflow: ellipsis; white-space: nowrap; }
   .artist-line { display: flex; min-width: 0; align-items: center; overflow: hidden; color: rgb(255 255 255 / 78%); font-size: 17.5px; font-weight: 500; line-height: normal; white-space: nowrap;
     --credit-artist-weight: 600;
@@ -261,14 +272,14 @@
   .like-button, .information-button { display: grid; box-sizing: border-box; flex: 0 0 36px; place-items: center; width: 36px; height: 36px; padding: 0; border: 0; border-radius: 50%; color: rgb(255 255 255 / 70%); background: transparent; cursor: pointer; }
   .like-button svg, .information-button svg { display:block; width:clamp(20px,calc(20px + (100cqw - 300px) * .01),22px); height:clamp(20px,calc(20px + (100cqw - 300px) * .01),22px); }
   .information-button[aria-pressed=true] {color:white;} .information-button:disabled{opacity:.5;cursor:default;}.like-button:hover, .information-button:hover { color: white; background: rgb(255 255 255 / 10%); }.like-button.liked { color: #d06c70; }.like-button:disabled { opacity: .5; cursor: wait; }
-  .side-column { display: flex; min-width: 0; min-height: 0; height: 100%; flex-direction: column; align-items: center; gap: 14px; overflow: hidden; }
-  .tablist { box-sizing: border-box; display: flex; flex: 0 0 40px; height: 40px; align-items: center; gap: 0; max-width: 100%; padding: 4px; border-radius: 999px; background: #343437; box-shadow: inset 0 0 0 1px rgb(255 255 255 / 12%); }
-  .tablist button { display: inline-flex; flex: none; align-items: center; justify-content: center; gap: 7px; height: 32px; padding: 8px 16px; border: 0; border-radius: 999px; color: rgb(255 255 255 / 65%); background: transparent; font: inherit; font-size: 13px; font-weight: 500; line-height: 16px; white-space: nowrap; cursor: pointer; }.tablist button.active { color: #fff; background: #a33d45; font-weight: 650; }.tablist button:hover:not(.active) { color: #fff; }
+  .side-column { container-type:inline-size; container-name:panel-column; display: flex; min-width: 0; min-height: 0; height: 100%; flex-direction: column; align-items: center; gap: 14px; overflow: hidden; }
+
+
   .panel { box-sizing: border-box; display: flex; width: 100%; min-width: 0; min-height: 0; flex: 1; overflow: hidden; }
   button:focus-visible { outline: 2px solid #d06c70; outline-offset: 3px; }
 
   .title-line h1 {font-size:clamp(21px,calc(21px + (100cqw - 300px) * .035),28px);}
   .artist-line {font-size:clamp(14.5px,calc(14.5px + (100cqw - 300px) * .015),17.5px);}
-  @container(max-width:700px){.tablist button{gap:4px;padding:8px 9px;font-size:12px;}.side-column{gap:10px;}}
+  @container(max-width:700px){.side-column{gap:10px;}}
 
 </style>

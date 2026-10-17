@@ -32,7 +32,7 @@ test('exponential volume is native state and keeps slider percent and mute comma
   assert.equal(player.snapshot.state.exponentialVolume,true);assert.equal(player.snapshot.state.volume,13);
   await player.setVolume(7);assert.equal(calls.at(-1).args.volume,7);
   assert.equal(player.snapshot.state.exponentialVolume,true);
-  await player.setMuted(true);assert.equal(calls.at(-1).command,'set_playback_muted');assert.deepEqual(calls.at(-1).args,{muted:true});
+  await player.setMuted(true);assert.equal(calls.at(-1).command,'set_playback_muted');assert.deepEqual(calls.at(-1).args,{muted:true,expectedGeneration:1});
 });
 
 test('failed exponential volume retains accepted mode and can be retried', async () => {
@@ -295,7 +295,7 @@ test('stale play failure does not publish or reject after a newer play succeeds'
   assert.equal(published.error, null);
 });
 
-test('only latest rapid toggle and volume replies can replace state', async () => {
+test('rapid toggles keep latest reply while volume applications serialize', async () => {
   const calls = []; let published;
   const player = new PlaybackController((command, args) => {
     const wait = deferred(); calls.push({ command, args, ...wait }); return wait.promise;
@@ -307,9 +307,16 @@ test('only latest rapid toggle and volume replies can replace state', async () =
   assert.equal(published.state.isPlaying, true);
 
   const firstVolume = player.setVolume(10); const secondVolume = player.setVolume(35);
-  calls[3].resolve(state(2, { volume: 35 })); await secondVolume;
-  calls[2].resolve(state(2, { volume: 10 })); await firstVolume;
+  assert.equal(calls.length, 3);
   assert.equal(published.state.volume, 35);
+  assert.equal(published.confirmedVolume, 100);
+  calls[2].resolve(state(2, { volume: 10 }));
+  await new Promise(resolve => setTimeout(resolve, 25));
+  assert.equal(calls[3].args.volume, 35);
+  assert.equal(published.confirmedVolume, 10);
+  calls[3].resolve(state(2, { volume: 35 })); await Promise.all([firstVolume, secondVolume]);
+  assert.equal(published.state.volume, 35);
+  assert.equal(published.confirmedVolume, 35);
 });
 
 test('stale state events cannot overwrite generation or queue revision', () => {
@@ -501,4 +508,193 @@ test('a later full playback event beats a stale mode response, and mode failures
   failRepeat = true;
   await assert.rejects(player.setRepeat(true), /repeat unavailable/);
   assert.equal(published.error, 'repeat unavailable');
+});
+
+test('radio accepted generation callback ignores replaced requests and precedes actual playback', async () => {
+  const first=deferred(),second=deferred();let calls=0;const accepted=[];
+  const player=new PlaybackController(async()=>++calls===1?first.promise:second.promise,async()=>()=>{},()=>{});
+  const a=player.startRadio(song('first'),generation=>accepted.push(generation));
+  const b=player.startRadio(song('second'),generation=>accepted.push(generation));
+  second.resolve(state(5,{isPlaying:false,isLoading:true,currentTrack:song('second')}));await b;
+  first.resolve(state(4,{isPlaying:false,isLoading:true,currentTrack:song('first')}));await a;
+  assert.deepEqual(accepted,[5]);assert.equal(player.snapshot.state.isPlaying,false);
+});
+
+
+function audioHarness(initial = state(4, { volume: 42.3 })) {
+  const calls = [], listeners = new Map();
+  const player = new PlaybackController((command, args) => {
+    if (command === 'get_playback_state' && !calls.length) return Promise.resolve(initial);
+    const wait = deferred(); calls.push({ command, args, ...wait }); return wait.promise;
+  }, async (name, callback) => { listeners.set(name, callback); return () => {}; }, () => {});
+  return { player, calls, listeners };
+}
+const audioFrame = () => new Promise(resolve => setTimeout(resolve, 25));
+
+test('wheel sums latest intent and coalesces hundreds of samples into the last unsent target', async () => {
+  const { player, calls } = audioHarness(); await player.connect();
+  const draining = player.adjustVolume(1);
+  for (let i = 0; i < 200; i++) player.adjustVolume(0.1);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].args.volume, 43.3);
+  assert.ok(Math.abs(player.snapshot.state.volume - 63.3) < 1e-9);
+  assert.equal(player.snapshot.confirmedVolume, 42.3);
+  calls[0].resolve(state(4, { volume: 43.3 })); await audioFrame();
+  assert.equal(calls.length, 2);
+  assert.ok(Math.abs(calls[1].args.volume - 63.3) < 1e-9);
+  calls[1].resolve(state(4, { volume: calls[1].args.volume })); await draining;
+  assert.equal(player.snapshot.confirmedVolume, calls[1].args.volume);
+});
+
+test('audio ACK merges confirmed volume without replacing interleaved full-state queue and progress', async () => {
+  const { player, calls, listeners } = audioHarness(); await player.connect();
+  const pending = player.adjustVolume(1);
+  listeners.get('playback-state-changed')({ payload: state(4, { volume: 42.3, position: 9, queue: { revision: 2, items: [{ ...song('new'), entryId: 'new' }] } }) });
+  listeners.get('playback-progress')({ payload: { generation: 4, position: 15, duration: 201 } });
+  calls[0].resolve(state(4, { volume: 43.3, position: 0 })); await pending;
+  assert.equal(player.snapshot.confirmedVolume, 43.3);
+  assert.equal(player.snapshot.state.volume, 43.3);
+  assert.equal(player.snapshot.state.position, 15);
+  assert.equal(player.snapshot.state.queue.revision, 2);
+  assert.equal(player.snapshot.state.queue.items[0].entryId, 'new');
+});
+
+test('late unrelated command snapshot cannot rewind accepted audio in the same generation', async () => {
+  const { player, calls } = audioHarness(); await player.connect();
+  const seeking = player.seek(8), volume = player.setVolume(55);
+  calls[1].resolve(state(4, { volume: 55 })); await volume;
+  calls[0].resolve(state(4, { volume: 42.3, position: 8 })); await seeking;
+  assert.equal(player.snapshot.state.position, 8);
+  assert.equal(player.snapshot.confirmedVolume, 55);
+  assert.equal(player.snapshot.state.volume, 55);
+});
+
+test('slider replaces wheel, mute discards pending target, and mode shares the audio lane', async () => {
+  const { player, calls } = audioHarness(); await player.connect();
+  const draining = player.adjustVolume(1);
+  player.adjustVolume(1); player.setVolume(7); player.setExponentialVolume(true); player.setMuted(true);
+  assert.equal(calls.length, 1);
+  calls[0].resolve(state(4, { volume: 43.3 })); await audioFrame();
+  assert.equal(calls[1].command, 'set_exponential_volume');
+  calls[1].resolve(state(4, { volume: 43.3, exponentialVolume: true })); await audioFrame();
+  assert.equal(calls[2].command, 'set_playback_muted');
+  assert.deepEqual(calls[2].args, { muted: true, expectedGeneration: 4 });
+  calls[2].resolve(state(4, { volume: 0, exponentialVolume: true })); await draining;
+  assert.equal(calls.length, 3);
+  assert.equal(player.snapshot.confirmedVolume, 0);
+  assert.equal(player.snapshot.state.exponentialVolume, true);
+});
+
+test('zero is exact and unmute keeps native one-percent restore semantics', async () => {
+  const { player, calls } = audioHarness(state(4, { volume: 1 })); await player.connect();
+  const mute = player.setMuted(true);
+  calls[0].resolve(state(4, { volume: 0 })); await mute;
+  const unmute = player.setMuted(false); await audioFrame();
+  assert.equal(calls[1].command, 'set_playback_muted');
+  assert.equal(calls[1].args.muted, false);
+  calls[1].resolve(state(4, { volume: 1 })); await unmute;
+  assert.equal(player.snapshot.confirmedVolume, 1);
+});
+
+test('failure discards unsent audio, reconciles runtime once and exposes error despite progress', async () => {
+  const { player, calls, listeners } = audioHarness(); await player.connect();
+  const draining = player.adjustVolume(1); player.adjustVolume(1); player.setExponentialVolume(true);
+  listeners.get('playback-progress')({ payload: { generation: 4, position: 15, duration: 201 } });
+  calls[0].reject(new Error('audio rejected')); await settle();
+  assert.equal(calls.length, 2); assert.equal(calls[1].command, 'get_playback_state');
+  assert.equal(player.snapshot.state.volume, 42.3);
+  calls[1].resolve(state(4, { volume: 41, position: 0 })); await draining; await audioFrame();
+  assert.equal(calls.length, 2);
+  assert.equal(player.snapshot.confirmedVolume, 41);
+  assert.equal(player.snapshot.state.volume, 41);
+  assert.equal(player.snapshot.state.position, 15);
+  assert.match(player.snapshot.error, /audio rejected/);
+});
+
+test('account cancellation retains in-flight exclusion and rejects its stale callback', async () => {
+  const { player, calls, listeners } = audioHarness(); await player.connect();
+  const old = player.adjustVolume(1); player.adjustVolume(1);
+  player.invalidatePending();
+  listeners.get('playback-state-changed')({ payload: state(5, { volume: 12 }) });
+  const fresh = player.adjustVolume(1);
+  assert.equal(calls.length, 1);
+  calls[0].resolve(state(4, { volume: 43.3 })); await audioFrame();
+  assert.equal(calls.length, 2);
+  assert.deepEqual(calls[1].args, { volume: 13, expectedGeneration: 5 });
+  assert.equal(player.snapshot.confirmedVolume, 12);
+  calls[1].resolve(state(5, { volume: 13 })); await Promise.all([old, fresh]);
+  assert.equal(player.snapshot.confirmedVolume, 13);
+});
+
+test('new track cancels unsent input and dispose prevents its late error or retry', async () => {
+  const { player, calls, listeners } = audioHarness(); await player.connect();
+  const draining = player.adjustVolume(1); player.adjustVolume(1);
+  listeners.get('playback-state-changed')({ payload: state(5, { volume: 20 }) });
+  await player.dispose(); calls[0].reject(new Error('old account')); await draining; await audioFrame();
+  assert.equal(calls.length, 1);
+  assert.equal(player.snapshot.confirmedVolume, 20);
+  assert.equal(player.snapshot.state.volume, 20);
+  assert.equal(player.snapshot.error, null);
+});
+
+test('nonfinite values never dispatch and saturation creates no debt before reversing', async () => {
+  const { player, calls } = audioHarness(state(4, { volume: 99.3 })); await player.connect();
+  await player.setVolume(NaN); await player.adjustVolume(Infinity); await player.setVolume(-Infinity);
+  assert.equal(calls.length, 0);
+  const draining = player.adjustVolume(1000);
+  player.adjustVolume(1000); player.adjustVolume(-1);
+  assert.equal(calls.length, 1); assert.equal(calls[0].args.volume, 100);
+  calls[0].resolve(state(4, { volume: 100 })); await audioFrame();
+  assert.equal(calls[1].args.volume, 99);
+  calls[1].resolve(state(4, { volume: 99 })); await draining;
+  const zero = player.setVolume(-500); await audioFrame();
+  assert.equal(calls[2].args.volume, 0);
+  calls[2].resolve(state(4, { volume: 0 })); await zero;
+  await player.adjustVolume(-1); assert.equal(calls.length, 3);
+});
+
+test('audio revision rejects stale ACK after a newer native full DTO while keeping its queue and progress', async () => {
+  const { player, calls, listeners } = audioHarness(state(4, { volume: 42, audioRevision: 1 }));
+  await player.connect(); const pending = player.setVolume(43);
+  listeners.get('playback-state-changed')({ payload: state(4, { volume: 44, exponentialVolume: true, audioRevision: 3,
+    position: 20, queue: { revision: 8 } }) });
+  calls[0].resolve(state(4, { volume: 43, audioRevision: 2 })); await pending;
+  assert.equal(player.snapshot.confirmedVolume, 44);
+  assert.equal(player.snapshot.state.volume, 44);
+  assert.equal(player.snapshot.state.exponentialVolume, true);
+  assert.equal(player.snapshot.state.position, 20);
+  assert.equal(player.snapshot.state.queue.revision, 8);
+});
+
+test('old full DTO after audio ACK cannot rewind audio but can update queue and progress', async () => {
+  const { player, calls, listeners } = audioHarness(state(4, { volume: 42, audioRevision: 1 }));
+  await player.connect(); const pending = player.setVolume(43);
+  calls[0].resolve(state(4, { volume: 43, exponentialVolume: true, audioRevision: 2 })); await pending;
+  listeners.get('playback-state-changed')({ payload: state(4, { volume: 42, audioRevision: 1,
+    position: 20, queue: { revision: 8 } }) });
+  assert.equal(player.snapshot.confirmedVolume, 43);
+  assert.equal(player.snapshot.state.volume, 43);
+  assert.equal(player.snapshot.state.exponentialVolume, true);
+  assert.equal(player.snapshot.state.position, 20);
+  assert.equal(player.snapshot.state.queue.revision, 8);
+});
+
+test('audio revision can advance despite an older queue revision and resets with a new owner', async () => {
+  const { player, listeners } = audioHarness(state(4, { volume: 42, audioRevision: 9, queue: { revision: 8 } }));
+  await player.connect();
+  listeners.get('playback-state-changed')({ payload: state(4, { volume: 43, audioRevision: 10, queue: { revision: 7 } }) });
+  assert.equal(player.snapshot.confirmedVolume, 43); assert.equal(player.snapshot.state.queue.revision, 8);
+  listeners.get('playback-state-changed')({ payload: state(5, { volume: 12, audioRevision: 0 }) });
+  assert.equal(player.snapshot.confirmedVolume, 12); assert.equal(player.snapshot.state.audioRevision, 0);
+});
+
+test('input queued between the last ACK and drain completion still flushes its final target', async () => {
+  const { player, calls } = audioHarness(); await player.connect();
+  const pending = player.setVolume(43);
+  calls[0].promise.then(() => { queueMicrotask(() => player.setVolume(44)); });
+  calls[0].resolve(state(4, { volume: 43 }));
+  await audioFrame(); assert.equal(calls.length, 2);
+  assert.equal(calls[1].args.volume, 44);
+  calls[1].resolve(state(4, { volume: 44 })); await pending;
+  assert.equal(player.snapshot.confirmedVolume, 44);
 });

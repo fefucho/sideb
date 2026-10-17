@@ -177,6 +177,33 @@ impl InnerTube {
         Ok(r)
     }
 
+    /// Mixed search with the provider's correction metadata. The opt-out parameter is
+    /// supported by YTM (also used by ytmusicapi), and never changes the visible query here.
+    pub async fn search_catalog(
+        &self, client: &YouTubeClient, query: &str, record_history: bool, ignore_spelling: bool,
+    ) -> Result<(SearchResults, Option<browse::SearchCorrection>), Error> {
+        let params = ignore_spelling.then_some("EhGKAQ4IARABGAEgASgAOAFAAUICCAE%3D");
+        let value = self.search_raw(client, query, params, record_history).await?;
+        let correction = browse::parse_search_correction(&value);
+        let mut results = browse::parse_search_all(&value);
+        self.drop_video_cards(&mut results.top);
+        self.drop_video_cards(&mut results.songs);
+        Ok((results, correction))
+    }
+
+    /// Internal YTM autocomplete endpoint. Always anonymous: unlike explicit search,
+    /// authenticated suggestion/history behavior is not guaranteed by this adapter.
+    pub async fn search_suggestions(
+        &self, client: &YouTubeClient, query: &str,
+    ) -> Result<browse::SearchSuggestions, Error> {
+        if query.trim().is_empty() { return Ok(browse::SearchSuggestions::default()); }
+        let body = serde_json::json!({ "context": self.context_anonymous(client), "input": query });
+        let value = self.post("music/get_search_suggestions", client, &body, false).await?;
+        let mut suggestions = browse::parse_search_suggestions(&value);
+        self.drop_video_cards(&mut suggestions.results.top);
+        Ok(suggestions)
+    }
+
     /// Filtered card search for a "Show more" page. `category` ∈ albums / artists / playlists.
     pub async fn search_cards(
         &self,

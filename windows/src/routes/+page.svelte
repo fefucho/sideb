@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { FEATURED_ARTIST_CONTEXT, FeaturedArtistService } from '$lib/featured/artists';
+  import { SearchRecentStore, type SearchRecent, type SearchOrigin, recordsSearch } from '$lib/search/recents';
   import { onMount, tick, setContext, untrack } from "svelte";
   import { t, language, translateOwnText, resolveMessage } from '$lib/i18n';
   import { captureTrackOccurrence, findTrackOccurrence, projectedPlayback, type TrackOrder } from '$lib/detail/projection';
@@ -8,6 +10,7 @@
   import type { ExploreRoute } from '$lib/explore/catalog';
   import { GeniusController } from '$lib/genius/controller';
   import { emptyGeniusState } from '$lib/genius/types';
+  import { VolumeScrollFeedback } from '$lib/player/volume-scroll';
   import { installNavigationGestures, idleGesture } from '$lib/navigation/gestures';
   import Sidebar from "$lib/components/sidebar/Sidebar.svelte";
   import PlayerBar from "$lib/components/player/PlayerBar.svelte";
@@ -77,6 +80,7 @@
   let shellError = $state<string | null>(null);
   const nativeWindow = new WindowController();
   const updater = new UpdaterController();
+  let updaterModalOpen = $state(false);
   let accountData = $state(emptyAccountData());
   const account = new AccountController((command, args) => invoke(command, args), data => { accountData = data; });
   let lastPlaylistId = $state<string | null>(null);
@@ -103,6 +107,13 @@
   const explore = new ExploreController((command,args)=>invoke(command,args),data=>exploreData=data);
   let geniusState = $state(emptyGeniusState());
   const genius = new GeniusController((command,args)=>invoke(command,args),data=>geniusState=data,typeof localStorage!=='undefined'?localStorage:undefined);
+  let recentEntries = $state<SearchRecent[]>([]);
+  let canUndoRecents = $state(false);
+  let unavailableRecent = $state<SongDto|null>(null);
+  let searchIntentRevision = -1;
+  const recents = new SearchRecentStore(typeof localStorage !== 'undefined' ? localStorage : {getItem:()=>null,setItem:()=>{}}, (entries,canUndo,unavailable)=>{recentEntries=entries;canUndoRecents=canUndo;unavailableRecent=unavailable??null;});
+  const featuredArtists = new FeaturedArtistService({search:query=>invoke<BrowseCardDto[]>('search_cards',{query,category:'artists'}),scope:'guest',onSearch:name=>executeSearch(name,'artists','artistResolution')});
+  setContext(FEATURED_ARTIST_CONTEXT,featuredArtists);
   let searchData = $state(emptySearchData());
   const search = new SearchController((command, args) => invoke(command, args), data => { searchData = data; });
   let previewData = $state(emptySearchPreviewData());
@@ -179,9 +190,21 @@
 
   let playbackState = $state(emptyPlaybackData());
   let playbackError = $state<string | null>(null);
+  let confirmedVolume = $state(100);
+  let volumeFeedbackVisible = $state(false);
+  let volumeAnnouncement = $state('');
+  const volumeFeedback = new VolumeScrollFeedback({
+    value:()=>confirmedVolume,
+    visible:value=>volumeFeedbackVisible=value,
+    announce:value=>volumeAnnouncement=value===null?'':$t('windows.player.volumeAnnouncement',[Math.round(value)]),
+  });
+  $effect(()=>{confirmedVolume;untrack(()=>volumeFeedback.confirmedChanged());});
   const player = new PlaybackController((command, args) => invoke(command, args),
     (name, handler) => listen(name, handler), snapshot => {
+      if (searchIntentRevision !== collectionPlayRevision) recents.cancelTrack();
+      recents.confirmPlayback(snapshot.state);
       playbackState = snapshot.state;
+      confirmedVolume = snapshot.confirmedVolume;
       playbackError = snapshot.error;
     });
   const mediaService: MediaService = {
@@ -222,6 +245,7 @@
 
   let sessionRevision = 0;
   let requestedRecentAlbums = false;
+  $effect(() => { const identity=authStatus.state === 'ready' ? `account:${authStatus.channelId || authStatus.email || authStatus.handle || ''}` : 'guest'; recents.setAccount(identity); featuredArtists.resetScope(identity); });
   const homeSession = $derived(authStatus.state === 'ready' ? `account:${authStatus.channelId || authStatus.email || authStatus.handle || authStatus.name || 'authenticated'}` : 'guest');
   $effect(() => {
     const identity = homeSession;
@@ -265,6 +289,8 @@
       && (authStatus.state !== next.state || authStatus.email !== next.email || authStatus.channelId !== next.channelId || authStatus.handle !== next.handle);
     authStatus = next;
     if (changedAccount) {
+      const identity=next.state==='ready'?`account:${next.channelId||next.email||next.handle||''}`:'guest';
+      recents.setAccount(identity);featuredArtists.resetScope(identity);
       const previousExploreRoute = exploreData.route;
       const wasExploring = activeView === 'explore' || primaryNav === 'explore';
       home.reset();
@@ -275,6 +301,9 @@
       spotlightOpen = false;
       catalog.reset();
       ++sessionRevision;
+      gestureInput?.invalidate();
+      volumeFeedback.cancel();
+      player.cancelVolumeInput();
       player.invalidatePending();
       lyrics.reset();
       recommendations.reset();
@@ -359,15 +388,17 @@
 
   function loadHomePage(chipParams: string | null = null) { return home.load(chipParams); }
   function loadMoreHome() { return home.loadMore(); }
-  function executeSearch(targetQuery: string, mode: SearchMode = searchData.mode, recordHistory = true) {
+  function executeSearch(targetQuery: string, mode: SearchMode = searchData.mode, origin: SearchOrigin | boolean = 'submit') {
     if (!targetQuery.trim()) return;
     const query = targetQuery.trim();
+    const searchOrigin = typeof origin === 'boolean' ? origin ? 'submit' : 'refresh' : origin;
+    if (recordsSearch(searchOrigin)) recents.recordQuery(query);
     setPlayerFullscreen(false);
     draftQuery = query;
     spotlightOpen = false; searchPreview.cancel();
     if (activeView !== 'search_results' || searchData.lastSearchedQuery !== query || searchData.mode !== mode) pushNavigation();
     primaryNav = "search"; activeView = "search_results";
-    void search.execute(query, mode, recordHistory);
+    void search.execute(query, mode, searchOrigin);
     const revision = navigationRevision;
     void tick().then(() => {
       if (revision === navigationRevision && activeView === 'search_results' && searchData.lastSearchedQuery === query) {
@@ -449,9 +480,9 @@
     search.setMode(mode);
   }
   function openSearchSpotlight() {
-    if (!draftQuery) draftQuery = searchData.lastSearchedQuery || searchData.query;
+    draftQuery = '';
+    searchPreview.reset();
     spotlightOpen = true;
-    searchPreview.setQuery(draftQuery);
   }
   function handleDraftChange(query: string) { draftQuery = query; searchPreview.setQuery(query); }
   function dismissSearchPreview() { spotlightOpen = false; searchPreview.cancel(); }
@@ -464,18 +495,17 @@
     else if (card.kind === 'album') void openAlbumDetail(card.id, 'search');
     else if (card.kind === 'playlist' || card.kind === 'mix') void openPlaylist(card.id);
     else if (card.kind === 'song' || card.kind === 'video') {
-      setPlayerFullscreen(false);
-      ++collectionPlayRevision;
-      void player.startRadio({ videoId: card.id, title: card.title, artists: card.artists ?? '',
+      playSearchPreviewSong({ videoId: card.id, title: card.title, artists: card.artists ?? card.subtitle ?? '',
         artistRuns: card.artistRuns, album: card.album ?? null, duration: card.duration, thumbnail: card.thumbnail,
-        isVideo: card.isVideo ?? card.kind === 'video', artistId: card.artistId ?? null, albumId: card.albumId ?? null })
-        .catch(error => shellError = extractErrorMessage(error, 'No se pudo iniciar la radio.'));
-    } else executeSearch(card.title);
+        isVideo: card.isVideo ?? card.kind === 'video', isUpload:card.isUpload, artistId: card.artistId ?? null, albumId: card.albumId ?? null });
+    } else executeSearch(card.title,'all','navigationRestore');
   }
   function playSearchPreviewSong(song: SongDto) {
     setPlayerFullscreen(false);
     dismissSearchPreview(); ++collectionPlayRevision;
-    void player.startRadio(song).catch(error => shellError = extractErrorMessage(error, 'No se pudo iniciar la radio.'));
+    searchIntentRevision = collectionPlayRevision;
+    const intent = recents.beginTrack(song);
+    void player.startRadio(song,generation=>{recents.bindTrack(intent,generation);recents.confirmPlayback(playbackState);}).catch(error => {recents.failTrack(intent);shellError = extractErrorMessage(error, 'No se pudo iniciar la radio.');});
   }
 
   function invalidateDetails() { catalog.invalidate(); }
@@ -615,10 +645,10 @@
     else if (card.kind === 'album' || accountData.tab === 'albums') void openAlbumDetail(card.id);
     else openPlaylist(card.id);
   }
-  async function playLibrarySong(index:number) {
+  async function playLibrarySong(index:number, tracks:SongDto[]=accountData.songs, usesContinuation=true) {
     const revision=++collectionPlayRevision,session=sessionRevision;
-    const continuation=accountData.songContinuation;
-    await playCollection(accountData.songs,index,{kind:'library',id:'FEmusic_liked_videos',title:'Biblioteca'}).catch(()=>{});
+    const continuation=usesContinuation?accountData.songContinuation:null;
+    await playCollection(tracks,index,{kind:'library',id:'FEmusic_liked_videos',title:'Biblioteca'}).catch(()=>{});
     if(revision===collectionPlayRevision&&session===sessionRevision&&continuation)void player.beginProgressiveSource({kind:'library',id:'FEmusic_liked_videos',continuation}).catch(()=>{});
   }
   async function playPlaylistSong(index:number,shuffle=false,order:TrackOrder='custom') {
@@ -780,7 +810,10 @@
     const request = menuRequest; if (!request || menuActionPending) return;
     closeMenu(false); menuActionPending = true; shellError = null; menuNotice = null;
     const revision = sessionRevision;
-    try { await menuExecutor.execute(action, request.target, request.origin); }
+    try {
+      if(request.origin.view==='search_spotlight' && request.target.kind==='song' && (action.type==='play'||action.type==='radio')) playSearchPreviewSong(request.target.song);
+      else await menuExecutor.execute(action, request.target, request.origin);
+    }
     catch (error) { if (revision === sessionRevision) shellError = extractErrorMessage(error, 'No se pudo completar la acción.'); }
     finally {
       menuActionPending = false;
@@ -832,7 +865,11 @@
   }
 
   let unlistenAuth: UnlistenFn | null = null;
-  $effect(()=>{activeView;homeSession;menuRequest;spotlightOpen;editingPlaylist;deletingPlaylist;creatingPlaylist;gestureInput?.invalidate();});
+  const volumeContextRevision = $derived(`${homeSession}:${playbackState.currentTrack?.videoId}:${playbackState.generation}:${isFullscreenOpen}`);
+  const volumeAudioError = $derived(playbackError);
+  const volumeAvailable = $derived(!!backendStatus?.ready && ['guest','ready'].includes(authStatus.state) && (!isFullscreenOpen || !!playbackState.currentTrack && !playbackState.isLoading));
+  $effect(()=>{activeView;menuRequest;spotlightOpen;editingPlaylist;deletingPlaylist;creatingPlaylist;updaterModalOpen;volumeContextRevision;volumeAvailable;untrack(()=>gestureInput?.invalidate());});
+  $effect(()=>{if(volumeAudioError)untrack(()=>gestureInput?.invalidate());});
   let unlistenRecorded:UnlistenFn|null=null;
   let mounted = false;
 
@@ -841,10 +878,26 @@
     mounted = true;
     const reduced=window.matchMedia('(prefers-reduced-motion:reduce)');
     gestureInput=installNavigationGestures(window,{
-      context:()=>({revision:`${navigationRevision}:${sessionRevision}:${activeView}`,enabled:document.hasFocus()&&!document.hidden,blocked:!!menuRequest||spotlightOpen||!!editingPlaylist||!!deletingPlaylist||creatingPlaylist,fullscreen:isFullscreenOpen,reduceMotion:reduced.matches,height:window.innerHeight,backTitle:canBack?$t('navigation.back'):null,forwardTitle:canForward?$t('navigation.forward'):null}),
+      context:()=>({revision:`${navigationRevision}:${sessionRevision}:${activeView}`,enabled:document.hasFocus()&&!document.hidden,blocked:!!menuRequest||spotlightOpen||!!editingPlaylist||!!deletingPlaylist||creatingPlaylist||updaterModalOpen,fullscreen:isFullscreenOpen,reduceMotion:reduced.matches,height:window.innerHeight,backTitle:canBack?$t('navigation.back'):null,forwardTitle:canForward?$t('navigation.forward'):null}),
       progress:state=>gestureProgress=state,
-      commit:action=>{if(action==='back')void goBackFromDetail();else if(action==='forward')void goForward();else setPlayerFullscreen(false);}
+      commit:action=>{if(action==='back')void goBackFromDetail();else if(action==='forward')void goForward();else setPlayerFullscreen(false);},
+      volume:{
+        context:()=>({revision:volumeContextRevision,value:playbackState.volume,
+          enabled:document.hasFocus()&&!document.hidden&&volumeAvailable,
+          blocked:!!menuRequest||spotlightOpen||!!editingPlaylist||!!deletingPlaylist||creatingPlaylist||updater.getSnapshot().isModalOpen||!!document.querySelector('[role="dialog"],[role="menu"]')||
+            !!document.querySelector('[data-volume-dragging]')||(isFullscreenOpen&&(!playbackState.currentTrack||playbackState.isLoading))}),
+        adjust:delta=>{void player.adjustVolume(delta).catch(()=>{gestureInput?.invalidate();});},
+        feedback:()=>{if(isFullscreenOpen)volumeFeedback.input();},
+        cancelFeedback:()=>volumeFeedback.cancel(),
+      }
     });
+    const unlistenUpdater=updater.subscribe(snapshot=>{updaterModalOpen=snapshot.isModalOpen;});
+    // Sidebar dialogs are local to their component. Observe only addition/removal
+    // of dialog/menu subtrees, so progress and percentage text never do extra work.
+    const overlayObserver=new MutationObserver(records=>{
+      if(records.some(record=>[...record.addedNodes,...record.removedNodes].some(node=>node instanceof Element && (node.matches('[role="dialog"],[role="menu"]')||node.querySelector('[role="dialog"],[role="menu"]')))))gestureInput?.invalidate();
+    });
+    overlayObserver.observe(document.body,{childList:true,subtree:true});
     checkBackendStatus();
     invoke<AuthStatusDto>("get_auth_status").then(applyAuthStatus).catch(() => {});
     window.addEventListener("keydown", handleWindowKeydown);
@@ -865,7 +918,7 @@
       .then((unlisten) => { if (mounted) unlistenAuth = unlisten; else unlisten(); });
 
     return () => {
-      mounted = false; gestureInput?.dispose();gestureInput=null;
+      mounted = false;overlayObserver.disconnect();unlistenUpdater();gestureInput?.dispose();gestureInput=null;volumeFeedback.cancel();
       clearTimeout(updateCheckTimeout);
       account.reset(false);
       window.removeEventListener("keydown", handleWindowKeydown);
@@ -951,9 +1004,9 @@
   {#if activeView === 'explore'}
     <ExploreView data={exploreData} onNavigate={navigateExplore} onRefresh={()=>void explore.navigate(exploreData.route,true)} onOpenCard={openExploreCard} onScrollTop={offset=>explore.setScrollTop(offset)} active={!isFullscreenOpen&&!spotlightOpen} />
   {:else if activeView === 'library'}
-    <LibraryView loggedIn={authStatus.state === 'ready'} tab={accountData.tab}
-      songs={accountData.songs} playlists={accountData.playlists} albums={accountData.albums} artists={accountData.artists}
-      loading={accountData.loading[accountData.tab]} loadingMore={accountData.loadingMore} error={accountData.errors[accountData.tab]}
+    <LibraryView accountKey={authStatus.state === 'ready' ? `account:${authStatus.channelId || authStatus.email || authStatus.handle || ''}` : 'guest'} loggedIn={authStatus.state === 'ready'} tab={accountData.tab}
+      songs={accountData.songs} playlists={accountData.playlists} albums={accountData.originalAlbums} artists={accountData.artists}
+      loading={accountData.tab==='all'?(['playlists','albums','artists'] as const).some(channel=>accountData.loading[channel]):accountData.loading[accountData.tab]} loadingMore={accountData.loadingMore} error={accountData.tab==='all'?(['playlists','albums','artists'] as const).map(channel=>accountData.errors[channel]).filter(Boolean).join(' · ')||null:accountData.errors[accountData.tab]}
       continuation={accountData.tab === 'songs' ? accountData.songContinuation : null}
       currentTrackId={playbackState.currentTrack?.videoId ?? null} isPlaying={playbackState.isPlaying}
       likedIds={accountData.likedIds} pendingIds={accountData.pendingIds}
@@ -1046,7 +1099,9 @@
   {:else}
     <SearchView data={searchData} backendReady={backendStatus?.ready ?? false} draftQuery={draftQuery} preview={previewData}
       currentTrackId={playbackState.currentTrack?.videoId ?? null} isPlaying={playbackState.isPlaying}
-      onSubmit={executeSearch} onRetry={(query: string, mode: SearchMode) => executeSearch(query, mode, false)} onDraftChange={handleDraftChange}
+      onRetrySection={block=>void search.retryBlock(block)} onSubmit={executeSearch} onRetry={(query: string, mode: SearchMode) => executeSearch(query, mode, 'refresh')} onDraftChange={handleDraftChange}
+      onSearchOriginal={() => search.execute(searchData.lastSearchedQuery, 'all', 'refresh', true)}
+      onPlayPreviewSong={playSearchPreviewSong}
       onPreviewFocus={focusInlinePreview} onPreviewDismiss={dismissInlinePreview}
       onModeChange={handleSwitchSearchMode}
       onPlaySong={(song: SongDto) => { ++collectionPlayRevision; void player.startRadio(song).catch(error => shellError = extractErrorMessage(error, 'No se pudo iniciar la radio.')); }}
@@ -1057,7 +1112,7 @@
 </main>
 
 <div class="player-dock" inert={spotlightOpen}>
-  <PlayerBar playback={playerBarState} onTogglePlayback={handleTogglePlay} onRetryPlayback={handleRetryPlayback} onPrevious={handlePrevious} onNext={handleNext} onSeek={handleSeek} onVolumeChange={handleVolumeChange} onSetMuted={muted=>void player.setMuted(muted)} onSetShuffle={handleSetShuffle} onSetRepeat={handleSetRepeat} fullscreenOpen={isFullscreenOpen} onToggleFullscreen={() => setPlayerFullscreen(!isFullscreenOpen)}
+  <PlayerBar playback={playerBarState} onTogglePlayback={handleTogglePlay} onRetryPlayback={handleRetryPlayback} onPrevious={handlePrevious} onNext={handleNext} onSeek={handleSeek} onVolumeChange={handleVolumeChange} onVolumeSurfaceChange={()=>gestureInput?.invalidate()} onSetMuted={muted=>void player.setMuted(muted)} onSetShuffle={handleSetShuffle} onSetRepeat={handleSetRepeat} fullscreenOpen={isFullscreenOpen} onToggleFullscreen={() => setPlayerFullscreen(!isFullscreenOpen)}
     {selectedPanel} {lyricsMode} onSelectPanel={openPlayerPanel}
     onOpenArtist={(id) => { void setPlayerFullscreen(false); void openArtistDetail(id); }}
     onOpenAlbum={(id) => { void setPlayerFullscreen(false); void openAlbumDetail(id); }} onOpenMenu={openNowPlayingMenu}
@@ -1069,7 +1124,7 @@
   </div>
   {#if isFullscreenOpen}
     <div class="fullscreen-host" inert={spotlightOpen}>
-    <FullscreenNowPlaying playback={playerBarState} onTogglePlayback={handleTogglePlay} onSelectQueue={playQueueIndex} onClose={() => setPlayerFullscreen(false)}
+    <FullscreenNowPlaying playback={playerBarState} {confirmedVolume} volumeFeedback={volumeFeedbackVisible} {volumeAnnouncement} onVolumeSurfaceChange={()=>gestureInput?.invalidate()} onTogglePlayback={handleTogglePlay} onSelectQueue={playQueueIndex} onClose={() => setPlayerFullscreen(false)}
       pulling={gestureProgress.action==='dismiss-fullscreen'&&(gestureProgress.phase==='tracking'||gestureProgress.phase==='armed')}
       pullDistance={gestureProgress.action==='dismiss-fullscreen'&&(gestureProgress.phase==='tracking'||gestureProgress.phase==='armed')?gestureProgress.distance:0}
       onMoveQueue={(entryId, beforeEntryId) => player.moveQueueEntry(entryId, beforeEntryId)}
@@ -1101,7 +1156,7 @@
     onSave={details => saveCreatedPlaylist(details, creationRevision)} onClose={() => closeNewPlaylist(creationRevision)} />{/if}
   {#if menuNotice}<div class="menu-notice" role="status">{resolveMessage(menuNotice,$language)}<button type="button" aria-label={$t('windows.ui.dismissNotice')} onclick={() => menuNotice = null}>×</button></div>{/if}
   {#if spotlightOpen}
-    <SpotlightSearch preview={previewData} backendReady={backendStatus?.ready ?? false}
+    <SpotlightSearch unavailableTrack={unavailableRecent} recents={recentEntries} canUndo={canUndoRecents} onRecentQuery={query=>executeSearch(query,'all','recentQuery')} onRemoveRecent={key=>recents.remove(key)} onClearRecents={()=>recents.clear()} onUndoRecents={()=>recents.undo()} preview={previewData} backendReady={backendStatus?.ready ?? false}
       onQueryChange={handleDraftChange} onCommit={(query) => executeSearch(query)} onDismiss={dismissSearchPreview}
       onSelectCard={selectSearchCard} onPlaySong={playSearchPreviewSong} />
   {/if}

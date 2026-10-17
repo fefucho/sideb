@@ -545,11 +545,105 @@ pub fn parse_playlist_continuation(root: &Value) -> PlaylistContinuation {
 #[derive(Debug, Clone, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SearchResults {
+    /// Original typed song rows retain library tokens, album credits and editable occurrence IDs.
+    #[serde(skip)]
+    pub song_payloads: Vec<SongItem>,
     pub top: Vec<BrowseItem>,
     pub songs: Vec<BrowseItem>,
     pub albums: Vec<BrowseItem>,
     pub artists: Vec<BrowseItem>,
     pub playlists: Vec<BrowseItem>,
+}
+
+/// Provider correction, never inferred locally. `applied` distinguishes automatic correction
+/// from a "did you mean" proposal which has not changed the results.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchCorrection {
+    pub query: String,
+    pub applied: bool,
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchSuggestions {
+    pub queries: Vec<String>,
+    pub results: SearchResults,
+}
+
+/// The generic playlist subtitle parser can interpret a search play-count as an album.
+/// A linked album column is stronger evidence and must keep its provider title intact.
+fn search_song_payload(node: &Value) -> Option<SongItem> {
+    let mut song = parse_list_item(node)?;
+    if let Some(album_id) = song.album_id.as_deref() {
+        if let Some(columns) = node.get("flexColumns").and_then(Value::as_array) {
+            for column in columns {
+                let Some(runs) = column.pointer("/musicResponsiveListItemFlexColumnRenderer/text/runs").and_then(Value::as_array) else { continue };
+                for run in runs {
+                    if run.pointer("/navigationEndpoint/browseEndpoint/browseId").and_then(Value::as_str) == Some(album_id) {
+                        song.album = run.get("text").and_then(Value::as_str).map(str::to_owned);
+                    }
+                }
+            }
+        }
+    }
+    Some(song)
+}
+
+/// All suggestion sections, including the entity section omitted by text-only adapters.
+/// Walk only display contents: nested menus can embed duplicate media renderers.
+pub fn parse_search_suggestions(root: &Value) -> SearchSuggestions {
+    fn collect(node: &Value, out: &mut SearchSuggestions) {
+        if let Some(items) = node.as_array() {
+            for item in items { collect(item, out); }
+        } else if let Some(object) = node.as_object() {
+            for key in ["searchSuggestionRenderer", "historySuggestionRenderer"] {
+                if let Some(renderer) = object.get(key) {
+                    if let Some(query) = renderer.pointer("/navigationEndpoint/searchEndpoint/query")
+                        .and_then(Value::as_str).filter(|q| !q.trim().is_empty()) {
+                        out.queries.push(query.to_owned());
+                    }
+                    return;
+                }
+            }
+            if let Some(renderer) = object.get("musicResponsiveListItemRenderer") {
+                if let Some(item) = list_item_to_browse_item(renderer) {
+                    if item.kind == "song" {
+                        out.results.song_payloads.extend(search_song_payload(renderer));
+                    }
+                    out.results.top.push(item);
+                }
+                return;
+            }
+            if let Some(renderer) = object.get("musicCardShelfRenderer") {
+                out.results.top.extend(card_shelf_main(renderer));
+                if let Some(contents) = renderer.get("contents") { collect(contents, out); }
+                return;
+            }
+            // Follow known display containers, preserving array/provider order.
+            for key in ["contents", "searchSuggestionsSectionRenderer", "itemSectionRenderer"] {
+                if let Some(contents) = object.get(key) { collect(contents, out); }
+            }
+        }
+    }
+    let mut suggestions = SearchSuggestions::default();
+    collect(root, &mut suggestions);
+    suggestions
+}
+
+pub fn parse_search_correction(root: &Value) -> Option<SearchCorrection> {
+    for (key, applied) in [("showingResultsForRenderer", true), ("didYouMeanRenderer", false)] {
+        for renderer in find_all(root, key) {
+            let query = renderer.pointer("/correctedQueryEndpoint/searchEndpoint/query")
+                .or_else(|| renderer.pointer("/navigationEndpoint/searchEndpoint/query"))
+                .and_then(Value::as_str).map(str::to_owned)
+                .or_else(|| runs_text(renderer.get("correctedQuery")));
+            if let Some(query) = query.filter(|q| !q.trim().is_empty()) {
+                return Some(SearchCorrection { query, applied });
+            }
+        }
+    }
+    None
 }
 
 /// Parse an unfiltered `search` response. The metadata client (WEB_REMIX) returns a **flat** list
@@ -571,12 +665,15 @@ pub fn parse_search_all(root: &Value) -> SearchResults {
             }
             for c in card.get("contents").and_then(Value::as_array).into_iter().flatten() {
                 if let Some(li) = c.get("musicResponsiveListItemRenderer") {
-                    r.top.extend(list_item_to_browse_item(li));
+                    if let Some(item) = list_item_to_browse_item(li) {
+                        if item.kind == "song" { r.song_payloads.extend(search_song_payload(li)); }
+                        r.top.push(item);
+                    }
                 }
             }
         } else {
             // A flat result row (usually wrapped in an itemSectionRenderer) → bucket by its kind.
-            for li in find_all(node, "musicResponsiveListItemRenderer") {
+            for li in find_all_shallow(node, "musicResponsiveListItemRenderer") {
                 bucket_item(li, &mut r);
             }
         }
@@ -587,6 +684,7 @@ pub fn parse_search_all(root: &Value) -> SearchResults {
 /// Route a search row into its category bucket by the kind its navigation implies.
 fn bucket_item(li: &Value, r: &mut SearchResults) {
     let Some(bi) = list_item_to_browse_item(li) else { return };
+    if bi.kind == "song" { r.song_payloads.extend(search_song_payload(li)); }
     match bi.kind {
         "album" => r.albums.push(bi),
         "artist" => r.artists.push(bi),
@@ -2303,5 +2401,78 @@ mod tests {
         let root = json!({ "musicPlaylistShelfRenderer": { "contents": [] } });
         assert!(sort_menu(&root).is_none());
         assert!(parse_playlist(&root).sort_menu.is_none());
+    }
+}
+
+#[cfg(test)]
+mod provider_search_tests {
+    use super::*;
+    use serde_json::json;
+
+    fn suggestions_fixture() -> Value {
+        serde_json::from_str(include_str!("../../tests/fixtures/search-suggestions-anonymous.json")).unwrap()
+    }
+
+    #[test]
+    fn anonymous_live_suggestions_keep_text_and_entity_order_and_song_payload() {
+        let parsed = parse_search_suggestions(&suggestions_fixture());
+        assert_eq!(parsed.queries, ["kanye west", "kanye", "kanye west runaway", "kanye west power", "kanye west god is", "kanye west stronger"]);
+        assert_eq!(parsed.results.top.iter().map(|item| (item.kind, item.title.as_str())).collect::<Vec<_>>(),
+            [("artist", "Kanye West"), ("song", "Runaway (feat. Pusha T)"), ("song", "Stronger")]);
+        assert_eq!(parsed.results.song_payloads.len(), 2);
+        let song = &parsed.results.song_payloads[0];
+        assert_eq!(song.video_id, "VhEoCOWUtcU");
+        assert_eq!(song.album.as_deref(), Some("My Beautiful Dark Twisted Fantasy"));
+        assert_eq!(song.album_id.as_deref(), Some("MPREb_TeXtApchIhq"));
+        assert_eq!(song.artist_id.as_deref(), Some("UCRY5dYsbIN5TylSbd7gVnZg"));
+    }
+
+    #[test]
+    fn suggestions_ignore_nested_menu_copies_and_keep_multiple_sections() {
+        let mut root = suggestions_fixture();
+        let duplicate = root["contents"][1]["searchSuggestionsSectionRenderer"]["contents"][1].clone();
+        root["contents"][1]["searchSuggestionsSectionRenderer"]["contents"][1]["musicResponsiveListItemRenderer"]["menu"] = duplicate;
+        root["contents"].as_array_mut().unwrap().push(json!({"searchSuggestionsSectionRenderer":{"contents":[
+            {"historySuggestionRenderer":{"navigationEndpoint":{"searchEndpoint":{"query":"provider history query"}}}},
+            {"searchSuggestionRenderer":{"navigationEndpoint":{"searchEndpoint":{"query":""}}}}
+        ]}}));
+        let parsed = parse_search_suggestions(&root);
+        assert_eq!(parsed.results.top.len(), 3);
+        assert_eq!(parsed.queries.last().unwrap(), "provider history query");
+    }
+
+    #[test]
+    fn mixed_search_keeps_original_song_rows_and_ignores_nested_copies() {
+        let source = suggestions_fixture();
+        let mut rows = source["contents"][1]["searchSuggestionsSectionRenderer"]["contents"].clone();
+        let duplicate = rows[1].clone();
+        rows[1]["musicResponsiveListItemRenderer"]["menu"] = duplicate;
+        let root = json!({"sectionListRenderer":{"contents":[{"itemSectionRenderer":{"contents":rows}}]}});
+        let parsed = parse_search_all(&root);
+        assert_eq!(parsed.artists.len(), 1);
+        assert_eq!(parsed.songs.iter().map(|item| item.id.as_str()).collect::<Vec<_>>(), ["VhEoCOWUtcU", "2ulp_AMut14"]);
+        assert_eq!(parsed.song_payloads.len(), 2);
+        assert_eq!(parsed.song_payloads[0].album.as_deref(), Some("My Beautiful Dark Twisted Fantasy"));
+    }
+
+    #[test]
+    fn suggestions_empty_never_invent_entities() {
+        for root in [json!({}), json!({"contents":[]}), json!({"contents":[{"searchSuggestionsSectionRenderer":{"contents":[{"searchSuggestionRenderer":{"suggestion":{"runs":[{"text":"unlinked"}]}}}]}}]})] {
+            let parsed = parse_search_suggestions(&root);
+            assert!(parsed.queries.is_empty());
+            assert!(parsed.results.top.is_empty());
+        }
+    }
+
+    #[test]
+    fn correction_uses_real_provider_query_and_distinguishes_proposal() {
+        let root: Value = serde_json::from_str(include_str!("../../tests/fixtures/search-correction-anonymous.json")).unwrap();
+        let parsed = parse_search_correction(&root).unwrap();
+        assert_eq!(parsed.query, "kanye west runaway");
+        assert!(parsed.applied);
+        let proposal = json!({"didYouMeanRenderer":{"correctedQuery":{"runs":[{"text":"Rare "},{"text":"Artist"}]},"navigationEndpoint":{"searchEndpoint":{"query":"Rare Artist"}}}});
+        assert!(!parse_search_correction(&proposal).unwrap().applied);
+        assert!(parse_search_correction(&json!({"didYouMeanRenderer":{}})).is_none());
+        assert!(parse_search_correction(&json!({})).is_none());
     }
 }

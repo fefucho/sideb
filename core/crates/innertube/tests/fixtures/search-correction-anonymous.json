@@ -1,0 +1,47 @@
+{
+  "showingResultsForRenderer": {
+    "showingResultsFor": {
+      "runs": [
+        {
+          "text": "Showing results for"
+        }
+      ]
+    },
+    "correctedQuery": {
+      "runs": [
+        {
+          "text": "kanye",
+          "italics": true
+        },
+        {
+          "text": " west runaway"
+        }
+      ]
+    },
+    "correctedQueryEndpoint": {
+      "searchEndpoint": {
+        "query": "kanye west runaway"
+      }
+    },
+    "searchInsteadFor": {
+      "runs": [
+        {
+          "text": "Search instead for"
+        }
+      ]
+    },
+    "originalQuery": {
+      "runs": [
+        {
+          "text": "kany west runaway"
+        }
+      ]
+    },
+    "originalQueryEndpoint": {
+      "searchEndpoint": {
+        "query": "kany west runaway",
+        "params": "QgIIAQ%3D%3D"
+      }
+    }
+  }
+}

@@ -196,8 +196,8 @@ struct AlbumDetailView: View {
                 executor: executor
             )
         } label: {
-            SideBEllipsisLabel(iconSize: 15.6)
-                .frame(width: 33.6, height: 33.6)
+            Image(systemName: "ellipsis")
+                .sidebControlLabel(iconOnly: true)
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)

@@ -11,7 +11,10 @@ struct SearchView: View {
     @Bindable var router: NavigationRouter
     @Bindable var searchViewModel: SearchViewModel
     @FocusState private var isSearchBarFocused: Bool
+    @State private var selectedSuggestion: String?
     @State private var hoveredRelatedSongID: String?
+    @State private var lastPagePreviewQuery: String?
+    @State private var previewOwner = UUID()
     
     init(
         initialQuery: String,
@@ -30,38 +33,39 @@ struct SearchView: View {
     var body: some View {
         let _ = L10n.revision
         ZStack(alignment: .top) {
-            // Fondo oscuro uniforme de Side B
-            Color.sidebDarkBackground
-                .ignoresSafeArea()
+            // The shell owns the background, including the titlebar and sidebar.
+            Color.clear
+                .contentShape(Rectangle())
                 .onTapGesture {
                     // Cerrar dropdown topdown y retirar foco si se hace clic en el fondo
                     isSearchBarFocused = false
-                    searchViewModel.isTopdownVisible = false
+                    releasePagePreview()
                 }
             
             VStack(spacing: 0) {
                 // MARK: - 1. Cabecera Fija con Barra Superior y Chips
-                VStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 16) {
+                    Text(L10n.text("search.title"))
+                        .font(.system(size: 38.4, weight: .bold))
                     topSearchBar
                         .zIndex(20)
                     
                     filterChipsBar
+                    if searchViewModel.isOriginalSearch {
+                        Text(L10n.text("search.correction.original_results")).font(.system(size: 12)).foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
                 }
-                .padding(.horizontal, 24)
-                .padding(.top, 18)
+                .padding(.horizontal, 38.4)
+                .padding(.top, 28)
                 .padding(.bottom, 12)
-                .background(
-                    Color.sidebDarkBackground.opacity(0.85)
-                        .background(.ultraThinMaterial)
-                )
-                .overlay(alignment: .bottom) {
-                    Divider().opacity(0.15)
-                }
                 .zIndex(10)
                 
                 // MARK: - 2. Contenido de la Página de Búsqueda
                 ZStack {
-                    if searchViewModel.isCommittedLoading || searchViewModel.isFilterLoading {
+                    if (searchViewModel.isCommittedLoading && searchViewModel.committedResults == nil && searchViewModel.committedSongs.isEmpty && searchViewModel.committedVideos.isEmpty) || searchViewModel.isFilterLoading
+                        || (searchViewModel.selectedFilter == .songs && searchViewModel.isSongsLoading && searchViewModel.filteredSongs.isEmpty)
+                        || (searchViewModel.selectedFilter == .videos && searchViewModel.isVideosLoading && searchViewModel.committedVideos.isEmpty) {
                         loadingStateView
                     } else {
                         switch searchViewModel.selectedFilter {
@@ -94,20 +98,16 @@ struct SearchView: View {
             }
         }
         .onAppear {
-            if !initialQuery.isEmpty {
-                if searchViewModel.committedQuery != initialQuery || searchViewModel.committedResults == nil {
-                    searchViewModel.query = initialQuery
-                    searchViewModel.commitSearch(query: initialQuery, core: rustCore)
-                }
-            }
+            restoreRouteQuery()
         }
+        .onChange(of: initialQuery) { _, _ in restoreRouteQuery() }
         .onReceive(NotificationCenter.default.publisher(for: .sideBSongLibraryChanged)) { _ in
             if !searchViewModel.committedQuery.isEmpty {
-                searchViewModel.commitSearch(query: searchViewModel.committedQuery, core: rustCore, force: true)
+                searchViewModel.commitSearch(query: searchViewModel.committedQuery, core: rustCore, force: true, preservingPreview: true)
             }
         }
         .onDisappear {
-            searchViewModel.cancelPreview()
+            releasePagePreview()
         }
     }
     
@@ -123,31 +123,36 @@ struct SearchView: View {
                 .font(.system(size: 14))
                 .textFieldStyle(.plain)
                 .focused($isSearchBarFocused)
-                .onSubmit {
-                    isSearchBarFocused = false
-                    searchViewModel.isTopdownVisible = false
-                    searchViewModel.commitSearch(query: searchViewModel.query, core: rustCore, force: true)
-                }
+                .accessibilityIdentifier("search-page-field")
+                .accessibilityLabel(L10n.text("navigation.search"))
+                .onSubmit { commitPageQuery(selectedSuggestion ?? searchViewModel.query) }
                 .onChange(of: searchViewModel.query) { _, newText in
                     // Solo disparar debounce rápido si el usuario está interactuando activamente con el campo
+                    selectedSuggestion = nil
                     if isSearchBarFocused {
-                        searchViewModel.onQueryChanged(newText, core: rustCore)
+                        requestPagePreview(newText)
                     }
                 }
                 .onChange(of: isSearchBarFocused) { _, isFocused in
                     if isFocused {
-                        let trimmed = searchViewModel.query.trimmingCharacters(in: .whitespacesAndNewlines)
-                        if !trimmed.isEmpty {
-                            searchViewModel.onQueryChanged(trimmed, core: rustCore)
-                        }
+                        requestPagePreview(searchViewModel.query)
                     } else {
-                        searchViewModel.isTopdownVisible = false
-                        searchViewModel.cancelPreview()
+                        selectedSuggestion = nil
+                        releasePagePreview()
                     }
                 }
+                .onKeyPress(.upArrow) {
+                    moveSuggestion(-1)
+                    return .handled
+                }
+                .onKeyPress(.downArrow) {
+                    moveSuggestion(1)
+                    return .handled
+                }
                 .onKeyPress(.escape) {
+                    selectedSuggestion = nil
                     isSearchBarFocused = false
-                    searchViewModel.isTopdownVisible = false
+                    releasePagePreview()
                     return .handled
                 }
             
@@ -157,7 +162,9 @@ struct SearchView: View {
                     .frame(width: 16, height: 16)
             } else if !searchViewModel.query.isEmpty {
                 Button {
-                    searchViewModel.clear()
+                    searchViewModel.query = ""
+                    isSearchBarFocused = true
+                    requestPagePreview("")
                 } label: {
                     Image(systemName: "xmark.circle.fill")
                         .font(.system(size: 13))
@@ -167,23 +174,23 @@ struct SearchView: View {
             }
         }
         .padding(.horizontal, 14)
-        .padding(.vertical, 8)
+        .frame(height: SideBControlMetrics.actionHeight)
         .compatGlass(interactive: true, in: Capsule())
-        .frame(maxWidth: 520)
+        .frame(maxWidth: 640)
         // MARK: - Topdown Dropdown Flotante Anclado Debajo de la Barra
         .overlay(alignment: .top) {
             if isSearchBarFocused && searchViewModel.isTopdownVisible && !searchViewModel.query.isEmpty {
                 if let results = searchViewModel.quickResults,
                    searchViewModel.associatedQuickQuery == searchViewModel.query.trimmingCharacters(in: .whitespacesAndNewlines) {
                     topdownDropdownView(results: results)
-                        .padding(.top, 42)
+                        .padding(.top, SideBControlMetrics.actionHeight + 8)
                 } else if searchViewModel.isQuickSearching {
                     topdownLoadingView
-                        .padding(.top, 42)
+                        .padding(.top, SideBControlMetrics.actionHeight + 8)
                 } else if let message = searchViewModel.quickErrorMessage {
                     searchErrorBanner(message)
-                        .frame(width: 520)
-                        .padding(.top, 42)
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, SideBControlMetrics.actionHeight + 8)
                 }
             }
         }
@@ -202,7 +209,7 @@ struct SearchView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 14)
-        .frame(width: 520)
+        .frame(maxWidth: .infinity)
         .compatGlass(interactive: true, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .shadow(color: Color.black.opacity(0.35), radius: 18, x: 0, y: 8)
         .transition(.opacity.combined(with: .scale(scale: 0.98)))
@@ -211,10 +218,9 @@ struct SearchView: View {
     // MARK: - Dropdown Topdown de Resultados Rápidos
     
     private func topdownDropdownView(results: SearchResultsRecord) -> some View {
+        let results = SearchProjection.suggestions(results, budget: 8)
         let categories = searchViewModel.dynamicCategories(for: results)
-        let relatedSongs = searchViewModel.relatedSongs(for: results)
-        let totalItems = (results.top.isEmpty ? 0 : 1)
-            + relatedSongs.count
+        let totalItems = results.top.count
             + min(results.artists.count, 2)
             + min(results.songs.count, 3)
             + min(results.albums.count, 2)
@@ -222,10 +228,28 @@ struct SearchView: View {
         
         let calculatedHeight: CGFloat = categories.isEmpty 
             ? 44 
-            : min(CGFloat(totalItems * 48 + categories.count * 26 + 12), 340)
+            : min(CGFloat(totalItems * 58 + categories.count * 26 + 12), 340)
         
         return VStack(alignment: .leading, spacing: 8) {
-            if categories.isEmpty {
+            if !searchViewModel.querySuggestions.isEmpty {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(L10n.text("search.suggestions.title")).font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary).padding(.horizontal, 10)
+                    ForEach(searchViewModel.querySuggestions, id: \.self) { text in
+                        Button {
+                            commitPageQuery(text)
+                        } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: "magnifyingglass").foregroundStyle(.secondary).frame(width: 42)
+                                Text(text).font(.system(size: 15)).lineLimit(1)
+                                Spacer()
+                            }.padding(.horizontal, 10).frame(minHeight: 48).contentShape(Rectangle())
+                        }.buttonStyle(.plain)
+                        .background(selectedSuggestion == text ? Color.white.opacity(0.12) : Color.clear, in: RoundedRectangle(cornerRadius: 8))
+                        .accessibilityAddTraits(selectedSuggestion == text ? .isSelected : [])
+                    }
+                }.padding(.horizontal, 8).padding(.top, 8)
+            }
+            if categories.isEmpty && searchViewModel.querySuggestions.isEmpty {
                 HStack(spacing: 8) {
                     Image(systemName: "magnifyingglass")
                         .font(.system(size: 13))
@@ -237,26 +261,28 @@ struct SearchView: View {
                 }
                 .padding(.horizontal, 14)
                 .padding(.vertical, 12)
-            } else {
+            } else if !categories.isEmpty {
                 ScrollView(.vertical, showsIndicators: true) {
                     VStack(alignment: .leading, spacing: 10) {
                         ForEach(categories) { category in
                             VStack(alignment: .leading, spacing: 3) {
-                                HStack(spacing: 5) {
-                                    Image(systemName: category.icon)
-                                        .font(.system(size: 10, weight: .bold))
-                                        .foregroundStyle(category == .topResult ? .primary : .secondary)
-                                    
-                                    Text(category.displayTitle.uppercased())
-                                        .font(.system(size: 10, weight: .bold))
-                                        .foregroundStyle(category == .topResult ? .primary : .secondary)
-                                        .tracking(0.5)
+                                if category != .topResult {
+                                    Text(category.displayTitle).font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary).padding(.horizontal, 10)
                                 }
-                                .padding(.horizontal, 8)
-                                
+
                                 switch category {
                                 case .topResult:
-                                    if let hero = results.top.first {
+                                    ForEach(results.top, id: \.searchEntityKey) { hero in
+                                        if ["song", "video"].contains(hero.kind.lowercased()) {
+                                            let song = searchViewModel.song(for: hero, in: results)
+                                            QuickResultSongRow(song: song, onFeatured: openQuickArtist,
+                                                onArtist: quickArtistAction(song), onAlbum: quickAlbumAction(song),
+                                                menuProvider: { quickSongMenu(song, origin: .searchSpotlight) }) {
+                                                    isSearchBarFocused = false
+                                                    searchViewModel.isTopdownVisible = false
+                                                    playerViewModel.activateSearchMediaRadio(song)
+                                                }.songContextMenu(song: song, player: playerViewModel, router: router, core: rustCore, origin: .searchSpotlight)
+                                        } else {
                                         let row = QuickResultCardRow(
                                             card: hero,
                                             isHero: true,
@@ -266,7 +292,7 @@ struct SearchView: View {
                                             onPlay: quickCardPlayAction(hero, results: results),
                                             menuProvider: {
                                                 ["song", "video"].contains(hero.kind.lowercased())
-                                                    ? quickSongMenu(searchViewModel.song(for: hero, in: results))
+                                                    ? quickSongMenu(searchViewModel.song(for: hero, in: results), origin: .searchSpotlight)
                                                     : browseCardMenu(hero)
                                             }
                                         ) {
@@ -274,24 +300,12 @@ struct SearchView: View {
                                             handleQuickSelect(hero, results: results)
                                         }
                                         if hero.kind.lowercased() == "song" {
-                                            row.songContextMenu(song: searchViewModel.song(for: hero, in: results), player: playerViewModel, router: router, core: rustCore, origin: .search)
+                                            row.songContextMenu(song: searchViewModel.song(for: hero, in: results), player: playerViewModel, router: router, core: rustCore, origin: .searchSpotlight)
                                         } else {
-                                            row.browseCardContextMenu(card: hero, player: playerViewModel, router: router, core: rustCore, origin: .search)
+                                            row.browseCardContextMenu(card: hero, player: playerViewModel, router: router, core: rustCore, origin: .searchSpotlight)
                                         }
-                                        ForEach(relatedSongs, id: \.videoId) { song in
-                                            QuickResultSongRow(
-                                            song: song,
-                                                onArtist: quickArtistAction(song),
-                                                onAlbum: quickAlbumAction(song),
-                                                menuProvider: { quickSongMenu(song) },
-                                                onSelect: {
-                                                    isSearchBarFocused = false
-                                                    searchViewModel.isTopdownVisible = false
-                                                    playerViewModel.activateMediaRadio(song)
-                                                }
-                                            )
-                                            .songContextMenu(song: song, player: playerViewModel, router: router, core: rustCore, origin: .search)
                                         }
+
                                     }
                                 case .artists:
                                     ForEach(Array(results.artists.prefix(2)), id: \.id) { a in
@@ -300,22 +314,23 @@ struct SearchView: View {
                                             searchViewModel.isTopdownVisible = false
                                             router.navigate(to: .artist(browseId: a.id))
                                         }
-                                        .browseCardContextMenu(card: a, player: playerViewModel, router: router, core: rustCore, origin: .search)
+                                        .browseCardContextMenu(card: a, player: playerViewModel, router: router, core: rustCore, origin: .searchSpotlight)
                                     }
                                 case .songs:
                                     ForEach(Array(results.songs.prefix(3)), id: \.videoId) { s in
                                         QuickResultSongRow(
                                             song: s,
+                                            onFeatured: openQuickArtist,
                                             onArtist: quickArtistAction(s),
                                             onAlbum: quickAlbumAction(s),
-                                            menuProvider: { quickSongMenu(s) },
+                                            menuProvider: { quickSongMenu(s, origin: .searchSpotlight) },
                                             onSelect: {
                                                 isSearchBarFocused = false
                                                 searchViewModel.isTopdownVisible = false
-                                                playerViewModel.activateMediaRadio(s)
+                                                playerViewModel.activateSearchMediaRadio(s)
                                             }
                                         )
-                                        .songContextMenu(song: s, player: playerViewModel, router: router, core: rustCore, origin: .search)
+                                        .songContextMenu(song: s, player: playerViewModel, router: router, core: rustCore, origin: .searchSpotlight)
                                     }
                                 case .albums:
                                     ForEach(Array(results.albums.prefix(2)), id: \.id) { alb in
@@ -331,7 +346,7 @@ struct SearchView: View {
                                             searchViewModel.isTopdownVisible = false
                                             router.navigate(to: .album(browseId: alb.id))
                                         }
-                                        .browseCardContextMenu(card: alb, player: playerViewModel, router: router, core: rustCore, origin: .search)
+                                        .browseCardContextMenu(card: alb, player: playerViewModel, router: router, core: rustCore, origin: .searchSpotlight)
                                     }
                                 case .playlists:
                                     ForEach(Array(results.playlists.prefix(2)), id: \.id) { pl in
@@ -347,7 +362,7 @@ struct SearchView: View {
                                             searchViewModel.isTopdownVisible = false
                                             router.navigate(to: .playlist(browseId: pl.id))
                                         }
-                                        .browseCardContextMenu(card: pl, player: playerViewModel, router: router, core: rustCore, origin: .search)
+                                        .browseCardContextMenu(card: pl, player: playerViewModel, router: router, core: rustCore, origin: .searchSpotlight)
                                     }
                                 }
                             }
@@ -367,9 +382,7 @@ struct SearchView: View {
             
             // Botón para Confirmar y Actualizar la Página Completa
             Button {
-                isSearchBarFocused = false
-                searchViewModel.isTopdownVisible = false
-                searchViewModel.commitSearch(query: searchViewModel.query, core: rustCore, force: true)
+                commitPageQuery(searchViewModel.query)
             } label: {
                 HStack(spacing: 8) {
                     Image(systemName: "return")
@@ -388,13 +401,21 @@ struct SearchView: View {
             }
             .buttonStyle(.plain)
         }
-        .frame(width: 520)
+        .frame(maxWidth: .infinity)
         .fixedSize(horizontal: false, vertical: true)
         .compatGlass(interactive: true, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .shadow(color: Color.black.opacity(0.35), radius: 18, x: 0, y: 8)
         .transition(.opacity.combined(with: .scale(scale: 0.98)))
     }
     
+    private func moveSuggestion(_ delta: Int) {
+        let suggestions = searchViewModel.querySuggestions
+        guard !suggestions.isEmpty else { selectedSuggestion = nil; return }
+        let current = selectedSuggestion.flatMap { suggestions.firstIndex(of: $0) } ?? -1
+        let index = min(max(current + delta, -1), suggestions.count - 1)
+        selectedSuggestion = index < 0 ? nil : suggestions[index]
+    }
+
     private func handleQuickSelect(_ card: BrowseCardRecord, results: SearchResultsRecord) {
         searchViewModel.isTopdownVisible = false
         switch card.kind.lowercased() {
@@ -405,59 +426,92 @@ struct SearchView: View {
         case "playlist":
             router.navigate(to: .playlist(browseId: card.id))
         case "song", "video":
-            playerViewModel.activateMediaRadio(searchViewModel.song(for: card, in: results))
+            playerViewModel.activateSearchMediaRadio(searchViewModel.song(for: card, in: results))
         default:
-            searchViewModel.commitSearch(query: card.title, core: rustCore, force: true)
+            commitPageQuery(card.title)
         }
+    }
+
+    private func restoreRouteQuery() {
+        guard !initialQuery.isEmpty else { return }
+        if searchViewModel.committedQuery != initialQuery
+            || (searchViewModel.committedResults == nil && !searchViewModel.isCommittedLoading) {
+            searchViewModel.commitSearch(query: initialQuery, core: rustCore)
+        }
+    }
+
+    private func requestPagePreview(_ text: String) {
+        guard isSearchBarFocused, lastPagePreviewQuery != text else { return }
+        lastPagePreviewQuery = text
+        searchViewModel.claimPreview(owner: previewOwner)
+        searchViewModel.onQueryChanged(text, core: rustCore, owner: previewOwner)
+    }
+
+    private func releasePagePreview() {
+        lastPagePreviewQuery = nil
+        searchViewModel.cancelPreview(owner: previewOwner)
+    }
+
+    private func commitPageQuery(_ text: String, origin: SearchOrigin = .submit) {
+        let query = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return }
+        isSearchBarFocused = false
+        selectedSuggestion = nil
+        releasePagePreview()
+        searchViewModel.commitSearch(query: query, core: rustCore, origin: origin)
+        router.navigate(to: .search(query: query))
     }
     
     // MARK: - Barra de Chips de Filtro
     
     private var filterChipsBar: some View {
-        HStack(spacing: 8) {
-            ForEach(SearchFilter.allCases) { filter in
-                Button {
-                    withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: SideBControlMetrics.categorySpacing) {
+                ForEach(SearchFilter.allCases) { filter in
+                    Button {
                         searchViewModel.selectFilter(filter, core: rustCore)
+                    } label: {
+                        SideBControlLabel(title: filter.displayTitle, symbol: filter.icon)
                     }
-                } label: {
-                    HStack(spacing: 5) {
-                        Image(systemName: filter.icon)
-                            .font(.system(size: 11, weight: .semibold))
-                        
-                        Text(filter.displayTitle)
-                            .font(.system(size: 11.5, weight: searchViewModel.selectedFilter == filter ? .semibold : .medium))
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 5)
-                    .background(
-                        searchViewModel.selectedFilter == filter
-                            ? Color.sidebAccent
-                            : Color.white.opacity(0.08),
-                        in: Capsule()
-                    )
-                    .foregroundStyle(searchViewModel.selectedFilter == filter ? Color.white : Color.primary.opacity(0.85))
+                    .buttonStyle(SideBControlStyle(size: .category, selected: searchViewModel.selectedFilter == filter))
+                    .accessibilityAddTraits(searchViewModel.selectedFilter == filter ? .isSelected : [])
                 }
-                .buttonStyle(.plain)
             }
-            
-            Spacer()
+            .padding(.vertical, 4)
         }
+        .windowGestureRegion(.horizontalContent, active: !playerViewModel.isFullscreenPresented)
+        .frame(height: SideBControlMetrics.categoryHeight + 8)
     }
-    
+
     // MARK: - Vista "Todo" (Resultados Mixtos)
     
     private var allResultsView: some View {
         ScrollView(.vertical, showsIndicators: false) {
             VStack(alignment: .leading, spacing: 24) {
                 if !searchViewModel.committedQuery.isEmpty {
-                    let results = searchViewModel.committedResults
+                    if let correction = searchViewModel.correction {
+                        HStack(spacing: 10) {
+                            Text(L10n.text(correction.applied ? "search.correction.showing" : "search.correction.suggested", args: [correction.query]))
+                            Button(L10n.text(correction.applied ? "search.correction.original" : "search.correction.search")) {
+                                searchViewModel.commitSearch(query: correction.applied ? searchViewModel.committedQuery : correction.query,
+                                    core: rustCore, force: true, origin: correction.applied ? .navigationRestore : .submit,
+                                    ignoreSpelling: correction.applied)
+                            }.buttonStyle(.plain).foregroundStyle(.primary)
+                        }.font(.system(size: 12)).foregroundStyle(.secondary)
+                    }
+                    let results = searchViewModel.committedResults.map { SearchProjection.make($0) }
+                    if searchViewModel.isMixedLoading {
+                        RoundedRectangle(cornerRadius: 14).fill(Color.white.opacity(0.04)).frame(height: 58)
+                            .overlay(ProgressView().controlSize(.small)).accessibilityLabel(L10n.text("search.loading.catalog"))
+                    }
                     if let results, let hero = results.top.first {
                         topResultSection(hero, results: results)
                     }
 
                     // Las canciones filtradas son la fuente principal; las del resultado mixto quedan como respaldo.
-                    let todoSongs = searchViewModel.committedSongs
+                    let occupied = Set((results?.top.filter { ["song", "video"].contains($0.kind) }.map { $0.kind + ":" + $0.id } ?? []) + (results?.topSongs.map { ($0.isVideo ? "video:" : "song:") + $0.videoId } ?? []))
+                    var seenSongs = occupied
+                    let todoSongs = (results?.songs.filter { !$0.isVideo } ?? []).filter { seenSongs.insert(($0.isVideo ? "video:" : "song:") + $0.videoId).inserted }
                     if !todoSongs.isEmpty {
                         VStack(alignment: .leading, spacing: 10) {
                             HStack {
@@ -484,7 +538,19 @@ struct SearchView: View {
                         }
                     }
 
-                    if !searchViewModel.committedVideos.isEmpty {
+                    if let results {
+                        if !results.artists.isEmpty {
+                            cardsSection(title: L10n.text("search.filter.artists"), cards: results.artists, kind: "artist")
+                        }
+                        if !results.albums.isEmpty {
+                            cardsSection(title: L10n.text("search.filter.albums"), cards: results.albums, kind: "album")
+                        }
+                        if !results.playlists.isEmpty {
+                            cardsSection(title: L10n.text("search.filter.playlists"), cards: results.playlists, kind: "playlist")
+                        }
+                    }
+                    let todoVideos = searchViewModel.displayVideos(excluding: results)
+                    if !todoVideos.isEmpty {
                         VStack(alignment: .leading, spacing: 10) {
                             HStack {
                                 Text(L10n.text("search.filter.videos"))
@@ -499,27 +565,16 @@ struct SearchView: View {
                                 .buttonStyle(.plain)
                             }
                             VStack(spacing: 4) {
-                                ForEach(Array(searchViewModel.committedVideos.prefix(4)), id: \.videoId) { video in
+                                ForEach(Array(todoVideos.prefix(4)), id: \.videoId) { video in
                                     songInlineRow(song: video)
                                 }
                             }
                         }
                     }
                     
-                    if let results {
-                        if !results.albums.isEmpty {
-                            cardsSection(title: L10n.text("search.filter.albums"), cards: results.albums, kind: "album")
-                        }
-                        if !results.artists.isEmpty {
-                            cardsSection(title: L10n.text("search.filter.artists"), cards: results.artists, kind: "artist")
-                        }
-                        if !results.playlists.isEmpty {
-                            cardsSection(title: L10n.text("search.filter.playlists"), cards: results.playlists, kind: "playlist")
-                        }
-                    }
-                    ForEach(Array(searchViewModel.partialErrors.keys), id: \.self) { error in
+                    ForEach([SearchPartialError.global, .songs, .categories, .videos], id: \.self) { error in
                         if let message = searchViewModel.partialErrors[error] {
-                            searchErrorBanner(message)
+                            searchErrorBanner(message, retry: { searchViewModel.retryBlock(error, core: rustCore) })
                         }
                     }
                     let hasMixedResults = results.map {
@@ -535,325 +590,30 @@ struct SearchView: View {
                     initialEmptyStateView
                 }
             }
-            .padding(.horizontal, 24)
+            .padding(.horizontal, 38.4)
             .padding(.vertical, 20)
             .padding(.bottom, 120) // Margen para la PlayerBar flotante
         }
     }
     
-    // MARK: - Tarjeta Hero / Top Result
-    
-    @ViewBuilder
-    private func heroCardView(_ card: BrowseCardRecord, results: SearchResultsRecord) -> some View {
-        if ["album", "playlist"].contains(card.kind.lowercased()) {
-            collectionHeroCard(card, results: results)
-        } else if ["song", "video"].contains(card.kind.lowercased()) {
-            songHeroCard(card, results: results)
-        } else {
-            standardHeroCard(card, results: results)
-        }
-    }
-
-    private func standardHeroCard(_ card: BrowseCardRecord, results: SearchResultsRecord) -> some View {
-        let isArtist = card.kind.lowercased() == "artist"
-        let subtitle = card.subtitle.flatMap { value in
-            value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : value
-        } ?? (isArtist ? L10n.text("search.filter.artists") : displayKind(card.kind))
-        
-        let actionButton = Button {
-            handleCardClick(card, results: results)
-        } label: {
-            HStack(spacing: 16) {
-                if let thumb = card.thumbnail,
-                   let url = ImageURLHelper.optimizedThumbnailURL(from: thumb, targetPixelSize: 180) {
-                    CachedAsyncImage(url: url, targetSize: CGSize(width: 80, height: 80)) { img in
-                        img.resizable().aspectRatio(contentMode: .fill)
-                    } placeholder: {
-                        Color.secondary.opacity(0.12)
-                    }
-                    .frame(width: 80, height: 80)
-                    .clipShape(isArtist ? AnyShape(Circle()) : AnyShape(RoundedRectangle(cornerRadius: AppTheme.artworkHeroRadius, style: .continuous)))
-                    .shadow(color: Color.black.opacity(0.2), radius: 8, x: 0, y: 4)
-                }
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(card.title)
-                        .font(.system(size: 18, weight: .bold))
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
-                    Text(subtitle)
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
-                    Text(isArtist ? L10n.text("search.full_discography") : L10n.text("search.play_now"))
-                        .font(.system(size: 11.5))
-                        .foregroundStyle(.secondary)
-                        .padding(.top, 2)
-                }
-                Spacer()
-                Image(systemName: isArtist ? "arrow.right.circle.fill" : "play.circle.fill")
-                    .font(.system(size: 36))
-                    .foregroundStyle(.primary)
-                    .padding(.trailing, 8)
-            }
-            .padding(16)
-            .compatGlass(interactive: true, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        }
-        .buttonStyle(.plain)
-
-        return VStack(alignment: .leading, spacing: 8) {
-            Text(L10n.text("search.category.top_result"))
-                .font(.system(size: 16, weight: .bold))
-                .foregroundStyle(.primary)
-            
-            if card.kind.lowercased() == "song" {
-                actionButton.songContextMenu(song: searchViewModel.song(for: card, in: results), player: playerViewModel, router: router, core: rustCore, origin: .search)
-            } else {
-                actionButton.browseCardContextMenu(card: card, player: playerViewModel, router: router, core: rustCore, origin: .search)
-            }
-        }
-    }
-
-    private func collectionHeroCard(_ card: BrowseCardRecord, results: SearchResultsRecord) -> some View {
-        let isActive = isActiveCollection(card)
-        let artwork = Group {
-            if let thumb = card.thumbnail,
-               let url = ImageURLHelper.optimizedThumbnailURL(from: thumb, targetPixelSize: 180) {
-                CachedAsyncImage(url: url, targetSize: CGSize(width: 80, height: 80)) { image in
-                    image.resizable().aspectRatio(contentMode: .fill)
-                } placeholder: {
-                    Color.secondary.opacity(0.12)
-                }
-                .frame(width: 80, height: 80)
-                .clipShape(RoundedRectangle(cornerRadius: AppTheme.artworkHeroRadius, style: .continuous))
-            } else {
-                RoundedRectangle(cornerRadius: AppTheme.artworkHeroRadius, style: .continuous)
-                    .fill(Color.secondary.opacity(0.12))
-                    .frame(width: 80, height: 80)
-                    .overlay(Image(systemName: "music.note").foregroundStyle(.secondary))
-            }
-        }
-
-        let hero = HStack(spacing: 16) {
-            MediaArtworkControls(
-                isCollection: true,
-                isActive: isActive,
-                isPlaying: isActive && playerViewModel.isPlaying,
-                isLoading: isCollectionLoading(card),
-                showsIndicator: isActive,
-                accessibilityTitle: card.title,
-                onOpen: { handleCardClick(card, results: results) },
-                onPlay: { playerViewModel.activateMediaCollection(id: card.id, kind: card.kind) },
-                menuProvider: { browseCardMenu(card) }
-            ) { artwork }
-                .frame(width: 80, height: 80)
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text(card.title)
-                    .font(.system(size: 18, weight: .bold))
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
-                    .allowsHitTesting(false)
-                Text(card.subtitle?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
-                     ? card.subtitle! : card.kind.capitalized)
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
-                    .allowsHitTesting(false)
-                Text(L10n.text("search.open_detail"))
-                    .font(.system(size: 11.5))
-                    .foregroundStyle(.secondary)
-                    .padding(.top, 2)
-                    .allowsHitTesting(false)
-            }
-            Spacer()
-        }
-        .padding(16)
-        .compatGlass(interactive: true, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .mediaCardActivation(label: L10n.text("search.open_card", args: [card.title])) { handleCardClick(card, results: results) }
-        .mediaCardSurface()
-
-        return VStack(alignment: .leading, spacing: 8) {
-            Text(L10n.text("search.category.top_result"))
-                .font(.system(size: 16, weight: .bold))
-                .foregroundStyle(.primary)
-            hero.browseCardContextMenu(card: card, player: playerViewModel, router: router, core: rustCore, origin: .search)
-        }
-    }
-
-    private func songHeroCard(_ card: BrowseCardRecord, results: SearchResultsRecord) -> some View {
-        let song = searchViewModel.song(for: card, in: results)
-        let artwork = Group {
-            if let thumb = card.thumbnail,
-               let url = ImageURLHelper.optimizedThumbnailURL(from: thumb, targetPixelSize: 180) {
-                CachedAsyncImage(url: url, targetSize: CGSize(width: 80, height: 80)) { image in
-                    image.resizable().aspectRatio(contentMode: .fill)
-                } placeholder: {
-                    RoundedRectangle(cornerRadius: AppTheme.artworkHeroRadius).fill(Color.white.opacity(0.08))
-                }
-                .frame(width: 80, height: 80)
-                .clipShape(RoundedRectangle(cornerRadius: AppTheme.artworkHeroRadius, style: .continuous))
-            } else {
-                RoundedRectangle(cornerRadius: AppTheme.artworkHeroRadius)
-                    .fill(Color.white.opacity(0.08)).frame(width: 80, height: 80)
-                    .overlay(Image(systemName: card.kind.lowercased() == "video" ? "play.rectangle" : "music.note")
-                        .foregroundStyle(.secondary))
-            }
-        }
-
-        let hero = HStack(spacing: 16) {
-            MediaArtworkControls(
-                isCollection: false,
-                accessibilityTitle: card.title,
-                onOpen: { playerViewModel.activateMediaRadio(song) },
-                onPlay: { playerViewModel.activateMediaRadio(song) },
-                menuProvider: { quickSongMenu(song) }
-            ) { artwork }
-                .frame(width: 80, height: 80)
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text(card.title)
-                    .font(.system(size: 18, weight: .bold))
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
-                    .allowsHitTesting(false)
-                HStack(spacing: 4) {
-                    Text(displayKind(card.kind))
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(.primary)
-                        .allowsHitTesting(false)
-                    if !song.artists.isEmpty {
-                        Text("·").font(.system(size: 12)).foregroundStyle(.secondary)
-                        if let onArtist = quickArtistAction(song) {
-                            Button(action: onArtist) {
-                                Text(song.artists).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
-                            }
-                            .buttonStyle(.plain)
-                            .mediaCardFocusControl()
-                        } else {
-                            Text(song.artists).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
-                                .allowsHitTesting(false)
-                        }
-                    }
-                }
-                if let album = song.album, !album.isEmpty, let onAlbum = quickAlbumAction(song) {
-                    Button(action: onAlbum) { Text(album).font(.system(size: 11.5)).foregroundStyle(.tertiary).lineLimit(1) }
-                        .buttonStyle(.plain)
-                        .mediaCardFocusControl()
-                }
-            }
-            Spacer()
-        }
-        .padding(16)
-        .compatGlass(interactive: true, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .mediaCardActivation(label: L10n.text("app.playNamed", args: [song.title])) { playerViewModel.activateMediaRadio(song) }
-        .mediaCardSurface()
-
-        return VStack(alignment: .leading, spacing: 8) {
-            Text(L10n.text("search.category.top_result"))
-                .font(.system(size: 16, weight: .bold))
-                .foregroundStyle(.primary)
-            hero.songContextMenu(song: song, player: playerViewModel, router: router, core: rustCore, origin: .search)
-        }
-    }
-
+    // The primary result uses the same density and actions as its surrounding rows.
     @ViewBuilder
     private func topResultSection(_ card: BrowseCardRecord, results: SearchResultsRecord) -> some View {
-        let relatedSongs = searchViewModel.relatedSongs(for: results)
-        if card.kind.lowercased() == "artist", !relatedSongs.isEmpty {
-            VStack(alignment: .leading, spacing: 8) {
-                Text(L10n.text("search.category.top_result"))
-                    .font(.system(size: 16, weight: .bold))
-                    .foregroundStyle(.primary)
-
-                ViewThatFits(in: .horizontal) {
-                    HStack(alignment: .center, spacing: 16) {
-                        artistHeroCard(card, results: results, artworkSize: 104)
-                            .frame(minWidth: 300, maxWidth: .infinity, alignment: .leading)
-                        relatedSongRows(relatedSongs)
-                            .frame(minWidth: 315, maxWidth: .infinity, alignment: .leading)
-                    }
-                    .frame(minWidth: 631)
-
-                    VStack(alignment: .leading, spacing: 12) {
-                        artistHeroCard(card, results: results, artworkSize: 84)
-                        relatedSongRows(relatedSongs)
-                    }
-                }
-                .padding(14)
-                .background(Color.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .stroke(Color.white.opacity(0.08), lineWidth: 0.7)
-                }
+        VStack(alignment: .leading, spacing: 4) {
+            if ["song", "video"].contains(card.kind.lowercased()) {
+                songInlineRow(song: searchViewModel.song(for: card, in: results))
+            } else {
+                QuickResultCardRow(card: card, isHero: true,
+                    isActive: isActiveCollection(card), isPlaying: playerViewModel.isPlaying,
+                    isLoading: isCollectionLoading(card),
+                    onPlay: card.kind.lowercased() == "artist" ? nil : { playerViewModel.activateMediaCollection(id: card.id, kind: card.kind) },
+                    menuProvider: { browseCardMenu(card) }) { handleCardClick(card, results: results) }
+                    .browseCardContextMenu(card: card, player: playerViewModel, router: router, core: rustCore, origin: .search)
             }
-        } else if !relatedSongs.isEmpty {
-            VStack(alignment: .leading, spacing: 24) {
-                heroCardView(card, results: results)
-                ForEach(relatedSongs, id: \.videoId) { song in
-                    songInlineRow(song: song)
-                }
+            ForEach(searchViewModel.relatedSongs(for: results), id: \.videoId) { song in
+                songInlineRow(song: song)
             }
-        } else {
-            heroCardView(card, results: results)
         }
-    }
-
-    private func artistHeroCard(_ card: BrowseCardRecord, results: SearchResultsRecord, artworkSize: CGFloat) -> some View {
-        let actionButton = Button {
-            handleCardClick(card, results: results)
-        } label: {
-            HStack(spacing: 14) {
-                if let thumb = card.thumbnail,
-                   let url = ImageURLHelper.optimizedThumbnailURL(from: thumb, targetPixelSize: Int(artworkSize * 2)) {
-                    CachedAsyncImage(url: url, targetSize: CGSize(width: artworkSize, height: artworkSize)) { image in
-                        image.resizable().aspectRatio(contentMode: .fill)
-                    } placeholder: {
-                        Circle().fill(Color.white.opacity(0.08))
-                    }
-                    .frame(width: artworkSize, height: artworkSize)
-                    .clipShape(Circle())
-                } else {
-                    Circle()
-                        .fill(Color.white.opacity(0.08))
-                        .frame(width: artworkSize, height: artworkSize)
-                        .overlay {
-                            Image(systemName: "person.crop.circle")
-                                .font(.system(size: artworkSize * 0.36))
-                                .foregroundStyle(.secondary)
-                        }
-                }
-
-                VStack(alignment: .leading, spacing: 5) {
-                    Text(card.title)
-                        .font(.system(size: artworkSize >= 100 ? 24 : 20, weight: .bold))
-                        .foregroundStyle(.primary)
-                        .lineLimit(2)
-                        .multilineTextAlignment(.leading)
-                    if let subtitle = card.subtitle, !subtitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        Text(subtitle)
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundStyle(.secondary)
-                            .lineLimit(2)
-                            .multilineTextAlignment(.leading)
-                    }
-                    Text(L10n.text("search.full_discography"))
-                        .font(.system(size: 11.5))
-                        .foregroundStyle(.tertiary)
-                }
-
-                Spacer(minLength: 4)
-                Image(systemName: "arrow.right.circle.fill")
-                    .font(.system(size: 30))
-                    .foregroundStyle(.primary)
-            }
-            .contentShape(Rectangle())
-            .padding(.vertical, 8)
-        }
-        .buttonStyle(.plain)
-
-        return actionButton
-            .frame(maxWidth: .infinity, minHeight: 90, alignment: .leading)
-            .browseCardContextMenu(card: card, player: playerViewModel, router: router, core: rustCore, origin: .search)
     }
 
     private func relatedSongRows(_ songs: [SongItemRecord]) -> some View {
@@ -896,11 +656,10 @@ struct SearchView: View {
             .frame(width: 52, height: 52)
 
             VStack(alignment: .leading, spacing: 3) {
-                Text(song.title)
-                    .font(.system(size: 14, weight: playerViewModel.currentTrack?.videoId == song.videoId ? .semibold : .medium))
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
-                    .allowsHitTesting(false)
+                FeaturedTrackTitle(track: song, font: .system(size: 14, weight: playerViewModel.currentTrack?.videoId == song.videoId ? .semibold : .medium), color: .primary) { id, name in
+                    if let id { router.navigate(to: .artist(browseId: id)) }
+                    else { searchViewModel.commitSearch(query: name, core: rustCore, origin: .artistResolution); router.navigate(to: .search(query: name)) }
+                }
                 HStack(spacing: 4) {
                     Text(typeText).font(.system(size: 12)).foregroundStyle(.secondary).allowsHitTesting(false)
                     if !artistText.isEmpty {
@@ -1038,7 +797,7 @@ struct SearchView: View {
                         browseCardItem(card: card)
                     }
                 }
-                .padding(.horizontal, 24)
+                .padding(.horizontal, 38.4)
                 .padding(.vertical, 20)
                 .padding(.bottom, 120)
             }
@@ -1170,55 +929,54 @@ struct SearchView: View {
             ) {
                 if let thumb = song.thumbnail,
                    let url = ImageURLHelper.optimizedThumbnailURL(from: thumb, targetPixelSize: 96) {
-                    CachedAsyncImage(url: url, targetSize: CGSize(width: 40, height: 40)) { image in
+                    CachedAsyncImage(url: url, targetSize: CGSize(width: 42, height: 42)) { image in
                         image.resizable().aspectRatio(contentMode: .fill)
                     } placeholder: {
                         RoundedRectangle(cornerRadius: AppTheme.artworkThumbnailRadius, style: .continuous).fill(Color.white.opacity(0.06))
                     }
-                    .frame(width: 40, height: 40)
+                    .frame(width: 42, height: 42)
                     .clipShape(RoundedRectangle(cornerRadius: AppTheme.artworkThumbnailRadius, style: .continuous))
                 } else {
                     RoundedRectangle(cornerRadius: AppTheme.artworkThumbnailRadius, style: .continuous)
-                        .fill(Color.white.opacity(0.06)).frame(width: 40, height: 40)
+                        .fill(Color.white.opacity(0.06)).frame(width: 42, height: 42)
                 }
             }
-            .frame(width: 40, height: 40)
+            .frame(width: 42, height: 42)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(song.title)
-                    .font(.system(size: 13, weight: playerViewModel.currentTrack?.videoId == song.videoId ? .semibold : .medium))
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
-                    .allowsHitTesting(false)
+                FeaturedTrackTitle(track: song, font: .system(size: 15, weight: playerViewModel.currentTrack?.videoId == song.videoId ? .semibold : .medium), color: .primary) { id, name in
+                    if let id { router.navigate(to: .artist(browseId: id)) }
+                    else { searchViewModel.commitSearch(query: name, core: rustCore, origin: .artistResolution); router.navigate(to: .search(query: name)) }
+                }
                 HStack(spacing: 4) {
                     if let onArtist = quickArtistAction(song) {
-                        Button(action: onArtist) { Text(song.artists).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1) }
+                        Button(action: onArtist) { Text(song.artists).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1) }
                             .buttonStyle(.plain)
                             .mediaCardFocusControl()
                     } else {
-                        Text(song.artists).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
+                        Text(song.artists).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
                             .allowsHitTesting(false)
                     }
                     if let album = song.album, !album.isEmpty, let onAlbum = quickAlbumAction(song) {
-                        Text("·").font(.system(size: 11)).foregroundStyle(.tertiary)
-                        Button(action: onAlbum) { Text(album).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1) }
+                        Text("·").font(.system(size: 12)).foregroundStyle(.tertiary)
+                        Button(action: onAlbum) { Text(album).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1) }
                             .buttonStyle(.plain)
                             .mediaCardFocusControl()
                     }
                     if let album = song.album, !album.isEmpty, quickAlbumAction(song) == nil {
-                        Text("·").font(.system(size: 11)).foregroundStyle(.tertiary).allowsHitTesting(false)
-                        Text(album).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1).allowsHitTesting(false)
+                        Text("·").font(.system(size: 12)).foregroundStyle(.tertiary).allowsHitTesting(false)
+                        Text(album).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1).allowsHitTesting(false)
                     }
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
             if let dur = song.duration {
-                Text(dur).font(.system(size: 11)).foregroundStyle(.tertiary).allowsHitTesting(false)
+                Text(dur).font(.system(size: 12)).foregroundStyle(.tertiary).allowsHitTesting(false)
             }
         }
         .padding(.horizontal, 10)
-        .padding(.vertical, 6)
+        .frame(minHeight: 58)
         .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color.white.opacity(0.04)))
         .contentShape(Rectangle())
         .mediaCardActivation(label: L10n.text("app.playNamed", args: [song.title])) { playerViewModel.activateMediaRadio(song) }
@@ -1280,10 +1038,20 @@ struct SearchView: View {
             return {
                 isSearchBarFocused = false
                 searchViewModel.isTopdownVisible = false
-                playerViewModel.activateMediaRadio(searchViewModel.song(for: card, in: results))
+                playerViewModel.activateSearchMediaRadio(searchViewModel.song(for: card, in: results))
             }
         default:
             return nil
+        }
+    }
+
+    private func openQuickArtist(id: String?, name: String) {
+        isSearchBarFocused = false
+        searchViewModel.isTopdownVisible = false
+        if let id { router.navigate(to: .artist(browseId: id)) }
+        else {
+            searchViewModel.commitSearch(query: name, core: rustCore, origin: .artistResolution)
+            router.navigate(to: .search(query: name))
         }
     }
 
@@ -1305,14 +1073,18 @@ struct SearchView: View {
         }
     }
 
-    private func quickSongMenu(_ song: SongItemRecord) -> NSMenu? {
+    private func quickSongMenu(_ song: SongItemRecord, origin: MenuOrigin = .search) -> NSMenu? {
         AppContextMenuFactory.shared.buildSongNSMenu(
-            song: song, player: playerViewModel, router: router, core: rustCore, origin: .search
+            song: song, player: playerViewModel, router: router, core: rustCore, origin: origin
         )
     }
 
-    private func searchErrorBanner(_ message: String) -> some View {
-        Label(message, systemImage: "exclamationmark.circle")
+    private func searchErrorBanner(_ message: String, retry: (() -> Void)? = nil) -> some View {
+        HStack {
+            Label(message, systemImage: "exclamationmark.circle")
+            Spacer()
+            if let retry { Button(L10n.text("common.retry"), action: retry).buttonStyle(SideBControlStyle()) }
+        }
             .font(.system(size: 12))
             .foregroundStyle(.secondary)
             .padding(12)
@@ -1323,8 +1095,11 @@ struct SearchView: View {
     private func filteredResultsView<Content: View>(error: String?, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             if let error {
-                searchErrorBanner(error)
-                    .padding(.horizontal, 24)
+                searchErrorBanner(error, retry: {
+                    let block: SearchPartialError = searchViewModel.selectedFilter == .songs ? .songs : searchViewModel.selectedFilter == .videos ? .videos : .categories
+                    searchViewModel.retryBlock(block, core: rustCore)
+                })
+                    .padding(.horizontal, 38.4)
                     .padding(.top, 10)
             }
             content()

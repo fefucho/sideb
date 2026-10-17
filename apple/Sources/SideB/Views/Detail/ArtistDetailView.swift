@@ -70,7 +70,7 @@ struct ArtistDetailView: View {
                                 await viewModel.loadArtist(core: rustCore, browseId: browseId)
                             }
                         }
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(SideBControlStyle(prominent: true))
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.top, 60)
@@ -175,102 +175,69 @@ struct ArtistDetailView: View {
 
                 Spacer(minLength: 8)
 
-                // Botones de acción principales
-                HStack(spacing: 12) {
-                    // Iniciar mix
-                    Button {
-                        viewModel.startRadio(core: rustCore, player: playerViewModel)
-                    } label: {
-                        HStack(spacing: 6) {
-                            Image(systemName: "dot.radiowaves.left.and.right")
-                                .font(.system(size: 13, weight: .semibold))
-                            Text(L10n.text("detail.artist.startMix"))
-                                .font(.system(size: 13, weight: .semibold))
-                        }
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 8)
-                        .background(Color.white.opacity(0.16))
-                        .foregroundStyle(.white)
-                        .clipShape(Capsule())
-                    }
-                    .buttonStyle(.plain)
-
-                    // Aleatorio
-                    if !artist.topSongs.isEmpty {
-                        Button {
-                            viewModel.shuffleTopSongs(player: playerViewModel)
-                        } label: {
-                            HStack(spacing: 6) {
-                                Image(systemName: "shuffle")
-                                    .font(.system(size: 13, weight: .medium))
-                                Text(L10n.text("player.shuffle"))
-                                    .font(.system(size: 13, weight: .medium))
-                            }
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 8)
-                            .background(Color.white.opacity(0.1))
-                            .foregroundStyle(.primary)
-                            .clipShape(Capsule())
-                        }
-                        .buttonStyle(.plain)
-                    }
-
-                    // Suscribirse / Suscrito
-                    Button {
-                        Task {
-                            await viewModel.toggleSubscription(core: rustCore)
-                        }
-                    } label: {
-                        HStack(spacing: 6) {
-                            Image(systemName: artist.subscribed ? "bell.fill" : "bell")
-                                .font(.system(size: 13, weight: .medium))
-                            Text(L10n.text(artist.subscribed ? "detail.artist.subscribed" : "detail.artist.subscribe"))
-                                .font(.system(size: 13, weight: .medium))
-                        }
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 8)
-                        .background(artist.subscribed ? Color.white.opacity(0.18) : Color.white.opacity(0.1))
-                        .foregroundStyle(.primary)
-                        .clipShape(Capsule())
-                    }
-                    .buttonStyle(.plain)
-
-                    // Botón de más opciones (•••)
-                    Menu {
-                        let target = MenuTarget.artist(
-                            channelId: artist.channelId,
-                            name: artist.name,
-                            thumbnail: artist.thumbnail,
-                            radioPlaylistId: nil
-                        )
-                        let facts = MenuFacts(
-                            isLoggedIn: rustCore.isLoggedIn(),
-                            isSubscribed: .known(artist.subscribed),
-                            userPlaylists: AppContextMenuFactory.cachedUserPlaylists
-                        )
-                        let executor = MenuActionExecutor(player: playerViewModel, router: router, core: rustCore)
-                        let sections = MenuPolicy.resolveSections(
-                            target: target,
-                            origin: .artist(channelId: artist.channelId),
-                            facts: facts
-                        )
-                        MenuSectionContentView(
-                            sections: sections,
-                            target: target,
-                            facts: facts,
-                            executor: executor
-                        )
-                    } label: {
-                        SideBEllipsisLabel()
-                    }
-                    .menuStyle(.borderlessButton)
-                    .menuIndicator(.hidden)
-                    .accessibilityLabel(L10n.text("common.moreOptions"))
+                ViewThatFits(in: .horizontal) {
+                    artistActions(artist, compact: false)
+                    artistActions(artist, compact: true)
                 }
             }
-            .frame(height: 180, alignment: .leading)
+            .frame(minHeight: 180, alignment: .leading)
             Spacer()
         }
+    }
+
+    private func artistActions(_ artist: ArtistDetailRecord, compact: Bool) -> some View {
+        HStack(spacing: SideBControlMetrics.actionSpacing) {
+            Button { viewModel.startRadio(core: rustCore, player: playerViewModel) } label: {
+                SideBControlLabel(title: L10n.text("detail.artist.startMix"), symbol: "dot.radiowaves.left.and.right", iconOnly: compact)
+            }
+            .buttonStyle(SideBControlStyle(iconOnly: compact))
+            .help(L10n.text("detail.artist.startMix"))
+            if !artist.topSongs.isEmpty {
+                Button { viewModel.shuffleTopSongs(player: playerViewModel) } label: {
+                    SideBControlLabel(title: L10n.text("player.shuffle"), symbol: "shuffle", iconOnly: compact)
+                }
+                .buttonStyle(SideBControlStyle(iconOnly: compact))
+                .help(L10n.text("player.shuffle"))
+            }
+            Button { Task { await viewModel.toggleSubscription(core: rustCore) } } label: {
+                SideBControlLabel(title: L10n.text(artist.subscribed ? "detail.artist.subscribed" : "detail.artist.subscribe"),
+                    symbol: artist.subscribed ? "bell.fill" : "bell", iconOnly: compact)
+            }
+            .buttonStyle(SideBControlStyle(selected: artist.subscribed, iconOnly: compact))
+            .help(L10n.text(artist.subscribed ? "detail.artist.subscribed" : "detail.artist.subscribe"))
+            // Botón de más opciones (•••)
+            Menu {
+                let target = MenuTarget.artist(
+                    channelId: artist.channelId,
+                    name: artist.name,
+                    thumbnail: artist.thumbnail,
+                    radioPlaylistId: nil
+                )
+                let facts = MenuFacts(
+                    isLoggedIn: rustCore.isLoggedIn(),
+                    isSubscribed: .known(artist.subscribed),
+                    userPlaylists: AppContextMenuFactory.cachedUserPlaylists
+                )
+                let executor = MenuActionExecutor(player: playerViewModel, router: router, core: rustCore)
+                let sections = MenuPolicy.resolveSections(
+                    target: target,
+                    origin: .artist(channelId: artist.channelId),
+                    facts: facts
+                )
+                MenuSectionContentView(
+                    sections: sections,
+                    target: target,
+                    facts: facts,
+                    executor: executor
+                )
+            } label: {
+                Image(systemName: "ellipsis").sidebControlLabel(iconOnly: true)
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .accessibilityLabel(L10n.text("common.moreOptions"))
+        }
+        .fixedSize()
     }
 
     // MARK: - Top Canciones

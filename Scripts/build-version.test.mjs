@@ -155,6 +155,13 @@ test('Mac packaging handles paths with spaces and refuses overwrite/signing fail
   mkdirSync(tools); mkdirSync(bin); mkdirSync(join(root, 'Scripts')); mkdirSync(join(root, 'apple', 'SideBCore.xcframework'));
   writeFileSync(join(bin, 'SideB'), 'native binary');
   copyFileSync(join(scripts, 'build-macos.sh'), join(root, 'Scripts', 'build-macos.sh'));
+  // Localization generation has its own checks; this fixture exercises packaging.
+  writeFileSync(join(root, 'Scripts', 'sync-localizations.mjs'), "if (process.argv[2] !== '--check') process.exit(1);\n");
+  for (const language of ['es', 'en']) {
+    const resources = join(bin, 'SideB_SideB.bundle', `${language}.lproj`);
+    mkdirSync(resources, { recursive: true });
+    for (const name of ['Localizable.strings', 'Localizable.stringsdict']) writeFileSync(join(resources, name), `${language}/${name}`);
+  }
   const commands = {
     swift: '#!/bin/bash\nif [[ "$*" == *"--show-bin-path"* ]]; then printf "%s\\n" "$TEST_MAC_BIN"; fi\n',
     xcrun: '#!/bin/bash\nif [ "$1" = vtool ]; then echo "sdk 27.0"; else echo "27.0"; fi\n',
@@ -164,8 +171,10 @@ test('Mac packaging handles paths with spaces and refuses overwrite/signing fail
   const app = join(root, 'version one', 'Side B.app');
   const env = { ...process.env, PATH: `${tools}:${process.env.PATH}`, TEST_MAC_BIN: bin };
   const run = (path, extra = {}) => spawnSync('bash', [join(root, 'Scripts', 'build-macos.sh'), 'release', path], { env: { ...env, ...extra }, encoding: 'utf8' });
-  assert.equal(run(app).status, 0);
+  const packaged = run(app);
+  assert.equal(packaged.status, 0, packaged.stdout + packaged.stderr);
   assert.equal(readFileSync(join(app, 'Contents', 'MacOS', 'Side B'), 'utf8'), 'native binary');
+  assert.equal(readFileSync(join(app, 'Contents', 'Resources', 'SideB_SideB.bundle', 'es.lproj', 'Localizable.strings'), 'utf8'), 'es/Localizable.strings');
   assert.notEqual(run(app).status, 0);
   assert.notEqual(run(join(root, 'unsigned', 'Side B.app'), { TEST_SIGN_FAIL: '1' }).status, 0);
 });

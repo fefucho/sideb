@@ -8,13 +8,42 @@ import SideBCore
 @MainActor @Observable
 final class HomeFeaturedViewport {
     var width: CGFloat = 260
+    var isActive = true
+}
+
+/// Inputs captured by Home's hosted builders that are not already represented by
+/// the table's playback, localization and row configuration. Geometry is excluded.
+struct HomeFeedHostedContentIdentity: Equatable {
+    let revision: UInt64
+    let selectionRevision: UInt64
+    let sessionRevision: Int
+    let greeting: String
+    let accountThumbnail: String?
+    let chips: [HomeChipRecord]
+    let loadingCollectionID: String?
+    let coreIdentity: ObjectIdentifier?
+    let homeIdentity: ObjectIdentifier?
+}
+
+/// Controls already mounted in SwiftUI dispatch through the current native
+/// configuration, even when only their callback changed and their root did not.
+@MainActor
+final class HomeFeedNavigationActions {
+    var onNavigate: ((PageDestination) -> Void)?
+    func navigate(_ destination: PageDestination) { onNavigate?(destination) }
 }
 
 private struct HomeFeaturedHostedContent: View {
     let viewport: HomeFeaturedViewport
+    let contentGeneration: UInt64
     let builder: (CGFloat) -> AnyView
 
-    var body: some View { builder(viewport.width) }
+    var body: some View {
+        let _ = contentGeneration
+        builder(viewport.width)
+            .environment(\.sideBPageIsActive, viewport.isActive)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
 }
 
 /// Maps scrolling intro/featured content, shelves and pagination to native rows.
@@ -41,8 +70,10 @@ struct HomeFeedTableView: NSViewRepresentable {
     let headerContent: AnyView?
     let headerHeight: CGFloat
     let featuredContent: ((CGFloat) -> AnyView)?
+    let featuredNavigationContent: ((CGFloat, HomeFeedNavigationActions) -> AnyView)?
+    let hostedContentIdentity: HomeFeedHostedContentIdentity?
     let featuredHeight: ((CGFloat) -> CGFloat)?
-    var hasFeatured: Bool { featuredContent != nil && featuredHeight != nil }
+    var hasFeatured: Bool { (featuredContent != nil || featuredNavigationContent != nil) && featuredHeight != nil }
     let topContentInset: CGFloat
     let sections: [HomeSectionPresentation]
     let isObscured: Bool
@@ -66,6 +97,8 @@ struct HomeFeedTableView: NSViewRepresentable {
         headerContent: AnyView? = nil,
         headerHeight: CGFloat = 0,
         featuredContent: ((CGFloat) -> AnyView)? = nil,
+        featuredNavigationContent: ((CGFloat, HomeFeedNavigationActions) -> AnyView)? = nil,
+        hostedContentIdentity: HomeFeedHostedContentIdentity? = nil,
         featuredHeight: ((CGFloat) -> CGFloat)? = nil,
         topContentInset: CGFloat = 0,
         sections: [HomeSectionPresentation],
@@ -88,6 +121,8 @@ struct HomeFeedTableView: NSViewRepresentable {
         self.headerContent = headerContent
         self.headerHeight = headerHeight
         self.featuredContent = featuredContent
+        self.featuredNavigationContent = featuredNavigationContent
+        self.hostedContentIdentity = hostedContentIdentity
         self.featuredHeight = featuredHeight
         self.topContentInset = topContentInset
         self.sections = sections
@@ -128,6 +163,7 @@ struct HomeFeedTableView: NSViewRepresentable {
     func makeNativeScrollView(coordinator: Coordinator) -> NSScrollView {
         let scroll = HomeFeedScrollView()
         scroll.isHidden = isObscured && !gesturePreviewVisible
+        scroll.setAccessibilityHidden(isObscured)
         scroll.drawsBackground = false
         scroll.hasVerticalScroller = true
         scroll.hasHorizontalScroller = false
@@ -147,6 +183,7 @@ struct HomeFeedTableView: NSViewRepresentable {
         table.intercellSpacing = .zero
         table.backgroundColor = .clear
         table.selectionHighlightStyle = .none
+        table.autoresizingMask = [.width]
         table.columnAutoresizingStyle = .uniformColumnAutoresizingStyle
         table.delegate = coordinator
         table.dataSource = coordinator
@@ -178,6 +215,7 @@ struct HomeFeedTableView: NSViewRepresentable {
             table.dataSource = nil
         }
         (scroll as? HomeFeedScrollView)?.onViewportLayout = nil
+        coordinator.releaseHostedContent()
         coordinator.table = nil
     }
 
@@ -191,6 +229,7 @@ struct HomeFeedTableView: NSViewRepresentable {
     }
 
     func updateNativeScrollView(_ scroll: NSScrollView, coordinator: Coordinator) {
+        scroll.setAccessibilityHidden(isObscured)
         let wasObscured = coordinator.isObscured
         coordinator.latestParent = self
         if isObscured {
@@ -218,8 +257,11 @@ struct HomeFeedTableView: NSViewRepresentable {
             coordinator.setFeedVisible(true)
         }
         guard let table = scroll.documentView as? NSTableView else { return }
-        coordinator.updateHeader()
-        coordinator.updateFeatured(force: true)
+        // An interpolated viewport must not republish its captured SwiftUI data.
+        // Callers without an explicit identity retain the conservative update path.
+        let hostedContentChanged = wasObscured || hostedContentChanged(from: old)
+        if hostedContentChanged { coordinator.updateHeader() }
+        coordinator.updateFeatured(force: hostedContentChanged)
         let newTopInset = topContentInset + (headerContent == nil && !hasFeatured ? 10 : 0)
         let oldTopInset = scroll.contentInsets.top
         let wasAtTop = abs(scroll.contentView.bounds.minY + oldTopInset) < 0.5
@@ -273,6 +315,16 @@ struct HomeFeedTableView: NSViewRepresentable {
         }
     }
 
+    private func hostedContentChanged(from old: HomeFeedTableView) -> Bool {
+        guard let hostedContentIdentity, let oldIdentity = old.hostedContentIdentity else { return true }
+        return hostedContentIdentity != oldIdentity || localizationRevision != old.localizationRevision ||
+            selectedChip != old.selectedChip || headerHeight != old.headerHeight ||
+            (headerContent == nil) != (old.headerContent == nil) || hasFeatured != old.hasFeatured ||
+            currentTrackID != old.currentTrackID || currentAlbumBrowseId != old.currentAlbumBrowseId ||
+            currentPlaylistBrowseId != old.currentPlaylistBrowseId || isPlaying != old.isPlaying ||
+            queueContext != old.queueContext || player !== old.player || router !== old.router
+    }
+
     @MainActor
     final class Coordinator: NSObject, NSTableViewDataSource, NSTableViewDelegate {
         var parent: HomeFeedTableView
@@ -285,6 +337,12 @@ struct HomeFeedTableView: NSViewRepresentable {
         private var headerHost: NSHostingView<AnyView>?
         private var featuredHost: NSHostingView<AnyView>?
         let featuredViewport = HomeFeaturedViewport()
+        let featuredActions = HomeFeedNavigationActions()
+        // Never read the observed viewport while configuring the representable.
+        // That would subscribe its update to the geometry it publishes itself.
+        private var publishedFeaturedWidth: CGFloat = 260
+        private var publishedFeaturedActivity = true
+        private var hostedContentGeneration: UInt64 = 0
         private var measuredFeaturedHeight: CGFloat = -1
         var rows: HomeFeedRows {
             HomeFeedRows(sectionCount: parent.sections.count, hasHeader: parent.headerContent != nil,
@@ -323,9 +381,9 @@ struct HomeFeedTableView: NSViewRepresentable {
             var transaction = Transaction()
             transaction.disablesAnimations = true
             withTransaction(transaction) {
-                if featuredViewport.width != width { featuredViewport.width = width }
-                if force, let host = featuredHost, let builder = parent.featuredContent {
-                    host.rootView = AnyView(HomeFeaturedHostedContent(viewport: featuredViewport, builder: builder))
+                publishFeaturedWidth(width)
+                if force, let host = featuredHost {
+                    host.rootView = featuredRoot()
                 }
             }
             let loadedRow = table.numberOfRows == rows.count && row < table.numberOfRows
@@ -352,8 +410,43 @@ struct HomeFeedTableView: NSViewRepresentable {
             self.parent = parent
             self.latestParent = parent
             self.isObscured = parent.isObscured
+            self.publishedFeaturedActivity = !parent.isObscured
+            self.featuredViewport.isActive = !parent.isObscured
             self.lastQueueContext = parent.queueContext
+            super.init()
+            featuredActions.onNavigate = { [weak self] destination in
+                guard let self, !self.isObscured else { return }
+                self.parent.onNavigate(destination)
+            }
         }
+        private func publishFeaturedWidth(_ width: CGFloat) {
+            guard publishedFeaturedWidth != width else { return }
+            publishedFeaturedWidth = width
+            featuredViewport.width = width
+        }
+
+        private func featuredRoot() -> AnyView {
+            // A weak dispatcher has stable captures. Give SwiftUI an explicit
+            // value change for semantic updates without replacing view identity.
+            hostedContentGeneration &+= 1
+            return AnyView(HomeFeaturedHostedContent(viewport: featuredViewport,
+                contentGeneration: hostedContentGeneration, builder: { [weak self] width in
+                guard let self else { return AnyView(EmptyView()) }
+                if let builder = self.parent.featuredNavigationContent {
+                    return builder(width, self.featuredActions)
+                }
+                return self.parent.featuredContent?(width) ?? AnyView(EmptyView())
+            }))
+        }
+
+        func releaseHostedContent() {
+            featuredActions.onNavigate = nil
+            featuredHost?.rootView = AnyView(EmptyView())
+            headerHost?.rootView = AnyView(EmptyView())
+            featuredHost = nil
+            headerHost = nil
+        }
+
         deinit { NotificationCenter.default.removeObserver(self) }
 
         func numberOfRows(in tableView: NSTableView) -> Int {
@@ -386,11 +479,10 @@ struct HomeFeedTableView: NSViewRepresentable {
                 headerHost?.rootView = headerContent
                 return headerHost
             }
-            if row == rows.featuredRow, let builder = parent.featuredContent {
-                let width = viewportWidth
-                featuredViewport.width = width
+            if row == rows.featuredRow, parent.hasFeatured {
+                publishFeaturedWidth(viewportWidth)
                 if featuredHost == nil {
-                    featuredHost = NSHostingView(rootView: AnyView(HomeFeaturedHostedContent(viewport: featuredViewport, builder: builder)))
+                    featuredHost = NSHostingView(rootView: featuredRoot())
                     featuredHost?.sizingOptions = []
                 }
                 return featuredHost
@@ -437,6 +529,10 @@ struct HomeFeedTableView: NSViewRepresentable {
         }
 
         func setFeedVisible(_ visible: Bool) {
+            if publishedFeaturedActivity != visible {
+                publishedFeaturedActivity = visible
+                featuredViewport.isActive = visible
+            }
             guard let table else { return }
             let rows = table.rows(in: table.visibleRect)
             guard rows.location != NSNotFound else { return }
@@ -526,6 +622,7 @@ struct HomeFeedTableView: NSViewRepresentable {
                 onCover: { [weak self] in self?.activate(itemID: id, fromCover: true) },
                 onTitle: { [weak self] in self?.activate(itemID: id, fromCover: true) },
                 onArtist: { [weak self] in self?.navigateArtist(itemID: id) },
+                onFeatured: { [weak self] id,name in self?.parent.router?.navigate(to:id.map { .artist(browseId:$0) } ?? .search(query:name)) },
                 onAlbum: { [weak self] in self?.navigateAlbum(itemID: id) },
                 onDirectPlay: { [weak self] in self?.handleDirectPlay(itemID: id) },
                 menuProvider: { [weak self, record = item.record] in self?.menu(record: record) }

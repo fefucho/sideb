@@ -22,8 +22,8 @@
   .credit {min-width:0;max-width:100%;font-size:18px;font-weight:600;} .summary {margin:0;color:#aaaab1;font-size:14px;}
   .description {display:-webkit-box;max-width:min(720px,100%);overflow:hidden;padding:0;border:0;color:#aaaab1;background:transparent;font:inherit;font-size:13px;line-height:18px;text-align:left;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;cursor:pointer;} .description span {color:#f1f1f3;font-weight:600;}
   .toolbar {display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px 20px;width:100%;margin-top:auto;padding-top:12px;}
-  .actions {display:flex;flex-wrap:wrap;align-items:center;gap:9px;} .tools {flex:1 1 380px;max-width:520px;min-width:0;margin-left:auto;}
-  .actions :global(button) {min-height:38px;border-radius:999px;} button:focus-visible {outline:2px solid var(--sideb-highlight);outline-offset:3px;}
+  .actions {display:flex;flex-wrap:wrap;align-items:center;gap:var(--control-action-gap);} .tools {flex:1 1 380px;max-width:520px;min-width:0;margin-left:auto;}
+ button:focus-visible {outline:2px solid var(--sideb-highlight);outline-offset:3px;}
   @media(max-width:680px){.collection-header {gap:16px;padding:22px 18px;}.artwork {width:128px;height:128px;flex-basis:128px;}.metadata {min-height:128px;}h1 {font-size:26px;}.credit {font-size:15px;}.toolbar {margin-top:4px;}.tools {max-width:none;flex-basis:100%;}}
   @media(max-width:480px){.collection-header {flex-direction:column;}.metadata {min-height:0;}}
 </style>

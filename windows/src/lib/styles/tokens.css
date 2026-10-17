@@ -12,13 +12,62 @@
   --sideb-acrylic-blur: blur(20px) saturate(1.4);
   --sideb-acrylic-border: rgb(255 255 255 / 20%);
 
+  /* One control family: categories, actions and grouped panel selectors. */
+  --control-category-height: 48px;
+  --control-category-font: 16px;
+  --control-category-padding: 20px;
+  --control-category-gap: 10px;
+  --control-action-height: 40px;
+  --control-action-font: 14px;
+  --control-action-padding: 16px;
+  --control-action-gap: 8px;
+  --control-utility-height: 32px;
+  /* Group metrics stay independent of individual categories and actions. */
+  --control-group-height: 48px;
+  --control-group-padding: 4px;
+  --control-segment-height: 40px;
+  --control-segment-font: 14px;
+  --control-segment-icon: 18px;
+  --control-segment-padding: 16px;
+  --control-segment-gap: 8px;
+  --control-group-foreground: var(--control-muted);
+  --control-group-selected: var(--control-selected);
+  --control-group-selected-border: var(--control-selected-border);
+  --control-group-hover: rgb(255 255 255 / 8%);
+  --control-group-selected-hover: var(--control-selected-hover);
+  --control-group-pressed: color-mix(in srgb, var(--control-selected), white 11%);
+  /* Fullscreen's compact toolbar selector retains its original proportions. */
+  --control-toolbar-group-height: 40px;
+  --control-toolbar-segment-height: 32px;
+  --control-toolbar-segment-font: 13px;
+  --control-toolbar-segment-icon: 14px;
+  --control-toolbar-segment-padding: 16px;
+  --control-toolbar-segment-gap: 7px;
+  --control-toolbar-foreground: #dedee2;
+  --control-toolbar-selected: rgb(255 255 255 / 14%);
+  --control-toolbar-selected-border: rgb(255 255 255 / 16%);
+  --control-toolbar-hover: rgb(255 255 255 / 10%);
+  --control-toolbar-selected-hover: rgb(255 255 255 / 20%);
+  --control-toolbar-pressed: rgb(255 255 255 / 24%);
+  --control-radius: 999px;
+  --control-surface: var(--sideb-acrylic-fallback);
+  --control-border: var(--sideb-acrylic-border);
+  --control-foreground: #f3f3f6;
+  --control-muted: #c3c3cb;
+  --control-selected: color-mix(in srgb, var(--sideb-accent) 30%, var(--control-surface));
+  --control-selected-border: color-mix(in srgb, var(--sideb-highlight) 65%, var(--control-border));
+  --control-hover: color-mix(in srgb, var(--control-surface), white 7%);
+  --control-selected-hover: color-mix(in srgb, var(--control-selected), white 7%);
+  --control-shadow: inset 0 1px 0 rgb(255 255 255 / 5%), 0 2px 6px rgb(0 0 0 / 10%);
+  --control-transition: 120ms ease-out;
+
   --home-header-inset-inline: 28px;
   --home-header-inset-block-start: 24px;
   --home-header-inset-block-end: 12px;
-  --home-chip-gap: 8px;
-  --home-chip-padding-inline: 14px;
+  --home-chip-gap: var(--control-category-gap);
+  --home-chip-padding-inline: var(--control-category-padding);
   --home-chip-padding-block: 7px;
-  --home-chip-band-height: 42px;
+  --home-chip-band-height: 56px;
   --home-chip-band-margin-block-end: 4px;
   --home-feed-inset-block-start: 10px;
   --home-feed-inset-block-end: 120px;
@@ -44,4 +93,11 @@
   :root {
     --sideb-acrylic-surface: rgb(43 43 49 / 62%);
   }
+}
+
+@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  :root { --control-surface: var(--sideb-acrylic-surface); }
+}
+@media (prefers-reduced-transparency: reduce) {
+  :root { --control-surface: var(--sideb-acrylic-fallback); }
 }

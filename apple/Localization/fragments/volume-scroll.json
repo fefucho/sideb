@@ -1,0 +1,6 @@
+{
+  "player.volume": { "es": "Volumen", "en": "Volume" },
+  "player.volumePercentage": { "es": "%@ %%", "en": "%@%%" },
+  "player.volumeValue": { "es": "Volumen: %@", "en": "Volume: %@" },
+  "player.volumeScrollHelp": { "es": "Volumen: %@. Desplázate para ajustar un punto porcentual.", "en": "Volume: %@. Scroll to adjust by one percentage point." }
+}

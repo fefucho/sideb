@@ -5,6 +5,7 @@
   import { MEDIA_CONTEXT, type MediaService } from '$lib/player/media';
   import { MENU_CONTEXT, type MenuOrigin, type MenuService } from '$lib/menu/types';
   import ArtistCredits from '$lib/components/ArtistCredits.svelte';
+  import FeaturedTrackTitle from '$lib/components/FeaturedTrackTitle.svelte';
   import MoreIcon from './MoreIcon.svelte';
   import TrackArtwork from './TrackArtwork.svelte';
   import TrackActivity from './TrackActivity.svelte';
@@ -44,6 +45,10 @@
   const focusedIndex = $derived(focusedKey === null ? -1 : keys.indexOf(focusedKey));
   const draggingIndex = $derived(draggingKey === null ? -1 : keys.indexOf(draggingKey));
   const fallbackActiveIndex = $derived(items.findIndex(track => track.videoId === currentTrackId));
+  function rowActive(index: number) {
+    // An explicit occurrence decision takes precedence over the ID-only fallback.
+    return media ? media.rowActive(items[index], sourceIndex(index), source) : index === fallbackActiveIndex;
+  }
   const virtual = $derived(items.length > 160);
   const segments = $derived(trackSegments(items.length, virtual ? range : [0, items.length], [focusedIndex, draggingIndex]));
   const hasAlbum = $derived(!hideAlbumColumn && !showAlbumInSubtitle && items.some(track => Boolean(track.album)));
@@ -54,10 +59,11 @@
 
   function activate(index: number, event: MouseEvent) {
     const selection = selectionFor(keys, selected, index, anchor, event.shiftKey, event.ctrlKey || event.metaKey);
-    selected = selection.selected; anchorKey = keys[selection.anchor];
+    selected = selection.activate ? new Set() : selection.selected; anchorKey = keys[selection.anchor];
     if (!selection.activate) return;
-    if (media?.rowActive(items[index], sourceIndex(index), source) && media.state().isLoading) return;
-    if (media?.rowActive(items[index], sourceIndex(index), source)) media.toggle(); else onPlay(index);
+    const isRowActive = rowActive(index);
+    if (isRowActive && media?.state().isLoading) return;
+    if (isRowActive && media) media.toggle(); else onPlay(index);
     if (event.detail > 0) root.focus();
   }
   function rowClick(event: MouseEvent, index: number) {
@@ -111,7 +117,7 @@
     if (event.shiftKey) selected = selectionFor(keys, selected, next, anchor, true, false).selected;
     const nextKey = keys[next]; focusedKey = nextKey;
     await tick();
-    const button = findRow(nextKey)?.querySelector<HTMLButtonElement>('.song-title');
+    const button = findRow(nextKey)?.querySelector<HTMLButtonElement>('button.song-title');
     button?.focus({ preventScroll: true }); button?.scrollIntoView({ block: 'nearest' });
   }
   function findRow(key: string) {
@@ -140,6 +146,7 @@
     return { destroy() { cancelAnimationFrame(frame); resize.disconnect(); target.removeEventListener('scroll', schedule); window.removeEventListener('resize', schedule); measure = () => {}; } };
   }
   $effect(() => { items; rowHeight; measure(); });
+  $effect(() => { currentTrackId; selected = new Set(); });
   onMount(() => {
     const sync = () => awake = !document.hidden && document.hasFocus(); sync();
     document.addEventListener('visibilitychange', sync); window.addEventListener('focus', sync); window.addEventListener('blur', sync);
@@ -160,19 +167,19 @@
           {@const index = entry.index}
           {@const track = items[index]}
           {#if entry.gap > 0}<tr class="spacer" aria-hidden="true"><td colspan={hasAlbum ? 5 : 4} style={`height:${entry.gap * rowHeight}px`}></td></tr>{/if}
-          {@const active = media?.rowActive(track, sourceIndex(index), source) ?? index === fallbackActiveIndex}
+          {@const active = rowActive(index)}
           <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
           <tr class="track-row" class:active class:selected={selected.has(keys[index])} class:dragging={draggingSetVideoId !== null && draggingSetVideoId === track.setVideoId}
             data-index={index} data-occurrence-key={keys[index]} aria-rowindex={index + 1} onclick={event => rowClick(event, index)} onkeydown={event => keydown(event, index)}
             oncontextmenu={event => openMenu(event, track)} draggable={canReorder && Boolean(track.setVideoId) && !mutationPending}
-            ondragstart={event => { if (!canReorder || !track.setVideoId || mutationPending) { event.preventDefault(); return; } draggingKey = keys[index]; draggingSetVideoId = track.setVideoId; event.dataTransfer?.setData('text/plain', track.setVideoId); if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move'; }}
+            ondragstart={event => { if ((event.target as HTMLElement).closest('[role=link]') || !canReorder || !track.setVideoId || mutationPending) { event.preventDefault(); return; } draggingKey = keys[index]; draggingSetVideoId = track.setVideoId; event.dataTransfer?.setData('text/plain', track.setVideoId); if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move'; }}
             ondragend={() => { draggingKey = null; draggingSetVideoId = null; }}
             ondragover={event => { if (draggingSetVideoId) { event.preventDefault(); if (event.dataTransfer) event.dataTransfer.dropEffect = 'move'; } }} ondrop={event => dropOn(event, index)}>
             <td class="index"><TrackActivity {active} playing={isPlaying} number={numbered ? index + 1 : undefined} awake={awake && index >= visibleRange[0] && index < visibleRange[1]} /></td>
             <td class="track-cell"><div class="track-content">
               <TrackArtwork title={track.title} thumbnail={track.thumbnail} size={detail ? 44 : 40} {active} playing={isPlaying} pending={Boolean(active && media?.state().isLoading)} onPlay={event => activate(index, event)} />
-              <div class="song-meta"><button class="song-title" type="button" onclick={event => activate(index, event)} title={track.title}>{track.title}</button>
-                <div class="artist-line"><ArtistCredits artistRuns={track.artistRuns} artists={track.artists} artistId={track.artistId} {onOpenArtist} album={showAlbumInSubtitle ? track.album : null} albumId={track.albumId} {onOpenAlbum} /></div>
+              <div class="song-meta"><div class="song-title"><FeaturedTrackTitle {track} {onOpenArtist} onPlay={event => activate(index, event)} /></div>
+                <div class="artist-line"><ArtistCredits {track} artistRuns={track.artistRuns} artists={track.artists} artistId={track.artistId} {onOpenArtist} album={showAlbumInSubtitle ? track.album : null} albumId={track.albumId} {onOpenAlbum} /></div>
               </div>
             </div></td>
             {#if hasAlbum}<td class="album-cell">{#if track.albumId && onOpenAlbum}<button class="metadata-link" type="button" onclick={() => onOpenAlbum?.(track.albumId!)} title={track.album ?? ''}>{track.album}</button>{:else}<span title={track.album ?? ''}>{track.album}</span>{/if}</td>{/if}

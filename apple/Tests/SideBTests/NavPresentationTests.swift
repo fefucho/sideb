@@ -8,9 +8,11 @@ final class NavPresentationTests: XCTestCase {
         XCTAssertEqual(MainNavigationDestination.selected(history: history, currentIndex: 0, searchPresented: false), .home)
     }
 
-    func testSearchModalOverridesSelectionAndHistoryBelongsToLibrary() {
+    func testSearchRouteDoesNotReplaceLastVisitedMainDestination() {
         XCTAssertEqual(MainNavigationDestination.selected(history: [.home, .history], currentIndex: 1, searchPresented: false), .library)
-        XCTAssertEqual(MainNavigationDestination.selected(history: [.library], currentIndex: 0, searchPresented: true), .search)
+        XCTAssertEqual(MainNavigationDestination.selected(history: [.library, .search(query: "future")], currentIndex: 1, searchPresented: true), .library)
+        XCTAssertEqual(MainNavigationDestination.selected(history: [.home, .explore(.discover), .search(query: "future")], currentIndex: 2), .explore)
+        XCTAssertEqual(MainNavigationDestination.selected(history: [.library, .search(query: "future")], currentIndex: 0), .library)
     }
 
     func testFullscreenSuppressesCollapsedNavigation() {
@@ -31,6 +33,6 @@ final class NavPresentationTests: XCTestCase {
         XCTAssertEqual(router.currentPage, .explore(.discover))
         router.goForward()
         XCTAssertEqual(router.currentPage, .explore(.category("rock")))
-        XCTAssertEqual(MainNavigationDestination.selected(history: router.history, currentIndex: router.currentIndex, searchPresented: true), .search)
+        XCTAssertEqual(MainNavigationDestination.selected(history: router.history, currentIndex: router.currentIndex, searchPresented: true), .explore)
     }
 }

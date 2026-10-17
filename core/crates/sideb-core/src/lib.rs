@@ -407,6 +407,46 @@ pub struct SearchResultsRecord {
     pub playlists: Vec<BrowseCardRecord>,
 }
 
+#[derive(Clone, Debug, uniffi::Record)]
+pub struct SearchSuggestionsRecord {
+    pub queries: Vec<String>,
+    pub results: SearchResultsRecord,
+}
+
+#[derive(Clone, Debug, uniffi::Record)]
+pub struct SearchCorrectionRecord {
+    pub query: String,
+    pub applied: bool,
+}
+
+#[derive(Clone, Debug, uniffi::Record)]
+pub struct SearchCatalogRecord {
+    pub results: SearchResultsRecord,
+    pub correction: Option<SearchCorrectionRecord>,
+}
+
+impl From<innertube::SearchResults> for SearchResultsRecord {
+    fn from(results: innertube::SearchResults) -> Self {
+        // Match original provider payloads by identity without changing display order. A hero
+        // card has no list row and keeps the existing BrowseItem conversion as its fallback.
+        let song = |item: innertube::BrowseItem| {
+            results.song_payloads.iter().find(|row| row.video_id == item.id)
+                .cloned().map(SongItemRecord::from).unwrap_or_else(|| item.into())
+        };
+        let top_songs = results.top.iter().filter(|item| item.kind == "song").cloned().map(&song).collect();
+        let songs = results.songs.into_iter().map(song).collect();
+        Self {
+            top_songs,
+            top: results.top.into_iter().map(BrowseCardRecord::from).collect(),
+            songs,
+            albums: results.albums.into_iter().map(BrowseCardRecord::from).collect(),
+            artists: results.artists.into_iter().map(BrowseCardRecord::from).collect(),
+            playlists: results.playlists.into_iter().map(BrowseCardRecord::from).collect(),
+        }
+    }
+}
+
+#[cfg(test)]
 fn search_top_songs(items: &[innertube::BrowseItem]) -> Vec<SongItemRecord> {
     items.iter().filter(|item| item.kind == "song").cloned().map(SongItemRecord::from).collect()
 }
@@ -1562,33 +1602,29 @@ impl SideBCore {
                 message: "Metadata client missing".into(),
             })?;
         let results = self.it.search_all(client, &query, record_history).await?;
-        Ok(SearchResultsRecord {
-            top_songs: search_top_songs(&results.top),
-            top: results
-                .top
-                .into_iter()
-                .map(BrowseCardRecord::from)
-                .collect(),
-            songs: results
-                .songs
-                .into_iter()
-                .map(SongItemRecord::from)
-                .collect(),
-            albums: results
-                .albums
-                .into_iter()
-                .map(BrowseCardRecord::from)
-                .collect(),
-            artists: results
-                .artists
-                .into_iter()
-                .map(BrowseCardRecord::from)
-                .collect(),
-            playlists: results
-                .playlists
-                .into_iter()
-                .map(BrowseCardRecord::from)
-                .collect(),
+        Ok(results.into())
+    }
+
+    /// Anonymous provider autocomplete. Does not submit a search or write local recents.
+    pub async fn search_suggestions(&self, query: String) -> Result<SearchSuggestionsRecord, SideBError> {
+        let client = self.clients.get(METADATA_CLIENT).ok_or_else(|| SideBError::Other {
+            message: "Metadata client missing".into(),
+        })?;
+        let suggestions = self.it.search_suggestions(client, &query).await?;
+        Ok(SearchSuggestionsRecord { queries: suggestions.queries, results: suggestions.results.into() })
+    }
+
+    /// Explicit mixed search, with reversible provider spelling correction.
+    pub async fn search_catalog(
+        &self, query: String, record_history: bool, ignore_spelling: bool,
+    ) -> Result<SearchCatalogRecord, SideBError> {
+        let client = self.clients.get(METADATA_CLIENT).ok_or_else(|| SideBError::Other {
+            message: "Metadata client missing".into(),
+        })?;
+        let (results, correction) = self.it.search_catalog(client, &query, record_history, ignore_spelling).await?;
+        Ok(SearchCatalogRecord {
+            results: results.into(),
+            correction: correction.map(|c| SearchCorrectionRecord { query: c.query, applied: c.applied }),
         })
     }
 
@@ -2350,5 +2386,23 @@ mod tests {
         );
         drop(core);
         let _ = std::fs::remove_dir_all(data_dir);
+    }
+}
+
+#[cfg(test)]
+mod provider_search_record_tests {
+    use super::*;
+
+    #[test]
+    fn suggestion_records_preserve_provider_entity_order_and_original_song_album() {
+        let value = serde_json::from_str(include_str!("../../innertube/tests/fixtures/search-suggestions-anonymous.json")).unwrap();
+        let suggestions = innertube::models::browse::parse_search_suggestions(&value);
+        let record = SearchResultsRecord::from(suggestions.results);
+        assert_eq!(record.top.iter().map(|item| item.id.as_str()).collect::<Vec<_>>(),
+            ["UCRY5dYsbIN5TylSbd7gVnZg", "VhEoCOWUtcU", "2ulp_AMut14"]);
+        assert_eq!(record.top_songs.iter().map(|item| item.video_id.as_str()).collect::<Vec<_>>(),
+            ["VhEoCOWUtcU", "2ulp_AMut14"]);
+        assert_eq!(record.top_songs[0].album.as_deref(), Some("My Beautiful Dark Twisted Fantasy"));
+        assert_eq!(record.top_songs[0].album_id.as_deref(), Some("MPREb_TeXtApchIhq"));
     }
 }

@@ -26,10 +26,18 @@ final class WindowNavigationCoordinator: NSObject {
     private var onDismissFullscreen: (() -> Void)?
     private nonisolated(unsafe) var eventMonitor: Any?
     private nonisolated(unsafe) var observers: [NSObjectProtocol] = []
+    private var volumePolicy = VolumeScrollPolicy()
+    private weak var volumePlayer: PlayerViewModel?
+    private var volumeRevision = 0
+    private var pendingVolume: Float?
+    private var pendingVolumeBaseRevision = 0
+    private var lastVolumeApplication = -Double.infinity
+    private nonisolated(unsafe) var volumeFrameTimer: Timer?
     private var machine = WindowGestureStateMachine()
     private var sequenceContext = WindowGestureStateMachine.Context(mode: .history)
     private var candidateHistory: [PageDestination] = []
     private var candidateIndex = 0
+    private var previousAcceptsMouseMovedEvents = false
     private var menuIsTracking = false
     private var sessionRevision = 0
     private var diagnosticTask: Task<Void, Never>?
@@ -47,7 +55,7 @@ final class WindowNavigationCoordinator: NSObject {
     func setup(router: NavigationRouter, presentation: WindowGesturePresentation,
                isFullscreenPresented: Bool, canHandleGestures: Bool,
                reduceMotion: Bool, sessionRevision: Int = 0,
-               onDismissFullscreen: @escaping () -> Void) {
+               volumePlayer: PlayerViewModel? = nil, onDismissFullscreen: @escaping () -> Void) {
         // NSViewRepresentable must observe navigation even while idle. Route
         // content can update in a child without rebuilding this background host.
         let history = router.history
@@ -55,10 +63,17 @@ final class WindowNavigationCoordinator: NSObject {
         let candidateIsCurrent = candidateIndex == index && candidateHistory == history
         let changed = self.router !== router || self.presentation !== presentation ||
             self.isFullscreenPresented != isFullscreenPresented ||
-            self.canHandleGestures != canHandleGestures || self.sessionRevision != sessionRevision
+            self.canHandleGestures != canHandleGestures || self.sessionRevision != sessionRevision ||
+            self.volumePlayer !== volumePlayer
         if changed || ((machine.isTracking || presentation.fullscreenIsBusy) && !candidateIsCurrent) {
             invalidate()
+        } else if self.volumeRevision != (volumePlayer?.volumeScroll.contextRevision ?? 0) {
+            // Moving the fullscreen under the pointer can end its hover during
+            // a pull or settlement. Cancel volume ownership without resetting navigation.
+            invalidateVolume()
         }
+        self.volumePlayer = volumePlayer
+        self.volumeRevision = volumePlayer?.volumeScroll.contextRevision ?? 0
         self.router = router
         self.presentation = presentation
         self.isFullscreenPresented = isFullscreenPresented
@@ -76,7 +91,9 @@ final class WindowNavigationCoordinator: NSObject {
         guard self.window !== window || eventMonitor == nil else { return }
         detach()
         self.window = window
-        eventMonitor = NSEvent.addLocalMonitorForEvents(matching: [.scrollWheel, .otherMouseUp]) { [weak self] event in
+        previousAcceptsMouseMovedEvents = window.acceptsMouseMovedEvents
+        window.acceptsMouseMovedEvents = true
+        eventMonitor = NSEvent.addLocalMonitorForEvents(matching: [.scrollWheel, .otherMouseUp, .mouseMoved, .flagsChanged]) { [weak self] event in
             guard let self else { return event }
             return self.handleEvent(event)
         }
@@ -118,19 +135,29 @@ final class WindowNavigationCoordinator: NSObject {
         observers.removeAll()
         invalidate()
         machine.reset()
+        volumePolicy.reset()
+        window?.acceptsMouseMovedEvents = previousAcceptsMouseMovedEvents
         window = nil
         menuIsTracking = false
     }
 
     deinit {
+        volumeFrameTimer?.invalidate()
         if let eventMonitor { NSEvent.removeMonitor(eventMonitor) }
         observers.forEach(NotificationCenter.default.removeObserver)
     }
 
     func invalidate() {
+        invalidateVolume()
         _ = machine.invalidate()
         presentation?.resetHorizontal()
         presentation?.resetFullscreen()
+    }
+
+    private func invalidateVolume() {
+        flushVolume()
+        volumePolicy.invalidate()
+        volumePlayer?.volumeScroll.clear()
     }
 
     private func historyCandidateIsCurrent(_ router: NavigationRouter) -> Bool {
@@ -139,7 +166,7 @@ final class WindowNavigationCoordinator: NSObject {
 
     private var windowAllowsInteraction: Bool {
         guard let window else { return false }
-        return window.isKeyWindow && window.attachedSheet == nil && NSApp.modalWindow == nil &&
+        return NSApp.isActive && window.isKeyWindow && window.attachedSheet == nil && NSApp.modalWindow == nil &&
             !menuIsTracking && canHandleGestures
     }
 
@@ -155,7 +182,28 @@ final class WindowNavigationCoordinator: NSObject {
             default: return event
             }
         }
+        if event.type == .mouseMoved || event.type == .flagsChanged {
+            if let root = window.contentView, volumePlayer?.volumeScroll.isVisible == true || volumePolicy.requiresPointerValidation(at: event.timestamp) {
+                let zone = WindowGestureRegions.volumeZone(at: root.convert(event.locationInWindow, from: nil), in: root)
+                if !enabled || zone == nil || (volumePolicy.ownedZone != nil && zone != volumePolicy.ownedZone) ||
+                    !event.modifierFlags.intersection([.shift, .command, .option, .control]).isEmpty {
+                    flushVolume(); volumePolicy.invalidate(); volumePlayer?.volumeScroll.clear()
+                }
+            }
+            return event
+        }
         guard event.type == .scrollWheel else { return event }
+        let hasVolumeSurface = volumePlayer?.volumeScroll.isCapsuleOpen == true ||
+            (isFullscreenPresented && volumePlayer?.currentTrack != nil)
+        let volumeZone = hasVolumeSurface ? window.contentView.flatMap { root in
+            WindowGestureRegions.volumeZone(at: root.convert(event.locationInWindow, from: nil), in: root)
+        } : nil
+        let volumeInput = VolumeScrollPolicy.Input(x: Double(event.scrollingDeltaX), y: Double(event.scrollingDeltaY),
+            precise: event.hasPreciseScrollingDeltas, phase: Self.phase(event.phase),
+            momentum: Self.phase(event.momentumPhase),
+            modified: !event.modifierFlags.intersection([.shift, .command, .option, .control]).isEmpty,
+            timestamp: event.timestamp)
+        if handleVolumeInput(volumeInput, zone: volumeZone, enabled: enabled) { return nil }
         let sign: CGFloat = event.isDirectionInvertedFromDevice ? 1 : -1
         let input = WindowGestureStateMachine.Event(deltaX: event.scrollingDeltaX * sign,
             deltaY: event.scrollingDeltaY * sign, phase: Self.phase(event.phase),
@@ -171,6 +219,59 @@ final class WindowNavigationCoordinator: NSObject {
         return output.disposition == .consume ? nil : event
     }
 
+    /// Real monitor arbitration, also exposed to deterministic routing tests.
+    @discardableResult
+    func handleVolumeInput(_ input: VolumeScrollPolicy.Input, zone: VolumeScrollPolicy.Zone?, enabled: Bool) -> Bool {
+        guard let player = volumePlayer else { return false }
+        if let ownedZone = volumePolicy.ownedZone, ownedZone != zone {
+            flushVolume(); player.volumeScroll.clear()
+        }
+        let eligible = enabled && !player.volumeScroll.isDragging &&
+            (zone != .fullscreen || (isFullscreenPresented && player.currentTrack != nil))
+        if volumeRevision != player.volumeScroll.contextRevision || !eligible {
+            flushVolume(); volumePolicy.invalidate(); player.volumeScroll.clear()
+            volumeRevision = player.volumeScroll.contextRevision
+        }
+        if pendingVolume != nil && pendingVolumeBaseRevision != player.audioService.volumeAssignmentRevision {
+            pendingVolume = nil
+        }
+        let output = volumePolicy.handle(input, zone: eligible ? zone : nil, value: pendingVolume ?? player.volume)
+        if output.consume {
+            _ = machine.invalidate()
+            presentation?.resetHorizontal()
+            presentation?.resetFullscreen()
+        }
+        if output.steps != 0 {
+            if pendingVolume == nil { pendingVolumeBaseRevision = player.audioService.volumeAssignmentRevision }
+            pendingVolume = VolumeScrollPolicy.adjusting(pendingVolume ?? player.volume, by: output.steps)
+            if !input.precise || input.timestamp - lastVolumeApplication >= 1.0 / 60 {
+                flushVolume(timestamp: input.timestamp)
+            } else if volumeFrameTimer == nil {
+                volumeFrameTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60, repeats: false) { [weak self] _ in
+                    MainActor.assumeIsolated { self?.flushVolume() }
+                }
+            }
+        }
+        if output.finished { flushVolume(timestamp: input.timestamp) }
+        if let feedback = output.feedback {
+            let displayZone: VolumeScrollPolicy.Zone = isFullscreenPresented && player.currentTrack != nil ? .fullscreen : feedback
+            player.volumeScroll.receivedInput(in: displayZone, value: player.volume)
+        }
+        return output.consume
+    }
+
+    private func flushVolume(timestamp: TimeInterval = ProcessInfo.processInfo.systemUptime) {
+        volumeFrameTimer?.invalidate(); volumeFrameTimer = nil
+        guard let value = pendingVolume, let player = volumePlayer else { pendingVolume = nil; return }
+        pendingVolume = nil
+        // A later slider, mute or AX assignment wins over this coalesced frame,
+        // including an explicit assignment of the currently effective value.
+        guard pendingVolumeBaseRevision == player.audioService.volumeAssignmentRevision else { return }
+        player.volume = value
+        player.volumeScroll.updateValue(player.volume)
+        lastVolumeApplication = timestamp
+    }
+
     /// Home explicitly reserves its horizontal viewports. Everywhere else keeps
     /// window-wide history; fullscreen dismissal uses separate panel routing.
     func scrollContext(at point: NSPoint, in root: NSView, enabled: Bool) -> WindowGestureStateMachine.Context {
@@ -179,11 +280,13 @@ final class WindowNavigationCoordinator: NSObject {
             HorizontalNavigationGestureRouting.contentOwnsGesture(at: point, in: root)
         let routing = isFullscreenPresented
             ? WindowGestureRegions.routing(at: point, in: root, includeNativeFallback: false) : nil
+        let volumeReplacesDismissal = isFullscreenPresented && volumePlayer?.currentTrack != nil &&
+            WindowGestureRegions.volumeZone(at: point, in: root) == .fullscreen
         return .init(
             mode: isFullscreenPresented ? .fullscreen : .history,
             allowsHorizontalNavigation: available && !isFullscreenPresented && !homeContentOwnsGesture &&
                 WindowGestureRegions.allowsHistory(at: point, in: root),
-            allowsFullscreenDismissal: available && isFullscreenPresented && routing?.allowsFullscreenDismissal == true,
+            allowsFullscreenDismissal: available && isFullscreenPresented && !volumeReplacesDismissal && routing?.allowsFullscreenDismissal == true,
             verticalContentOwnsGesture: routing?.ownsVertical ?? false,
             canGoBack: router?.canGoBack == true, canGoForward: router?.canGoForward == true,
             fullscreenHeight: root.bounds.height
@@ -284,6 +387,7 @@ struct WindowNavigationGestureBridge: NSViewRepresentable {
     let canHandleGestures: Bool
     let reduceMotion: Bool
     let sessionRevision: Int
+    var volumePlayer: PlayerViewModel? = nil
     let onDismissFullscreen: () -> Void
     func makeCoordinator() -> WindowNavigationCoordinator { WindowNavigationCoordinator() }
     func makeNSView(context: Context) -> WindowNavigationHostingView {
@@ -298,7 +402,7 @@ struct WindowNavigationGestureBridge: NSViewRepresentable {
         }
         context.coordinator.setup(router: router, presentation: presentation,
             isFullscreenPresented: isFullscreenPresented, canHandleGestures: canHandleGestures,
-            reduceMotion: reduceMotion, sessionRevision: sessionRevision, onDismissFullscreen: onDismissFullscreen)
+            reduceMotion: reduceMotion, sessionRevision: sessionRevision, volumePlayer: volumePlayer, onDismissFullscreen: onDismissFullscreen)
     }
     static func dismantleNSView(_ view: WindowNavigationHostingView, coordinator: WindowNavigationCoordinator) {
         coordinator.detach()

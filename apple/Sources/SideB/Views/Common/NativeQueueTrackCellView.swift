@@ -5,8 +5,8 @@ final class NativeQueueTrackCellView: NSTableCellView, NativeTrackCellPresenting
     private let indexLabel = NSTextField(labelWithString: "")
     private let playingIconView = NSImageView()
     private let artworkImageView = NSImageView()
-    private let titleLabel = NSTextField(labelWithString: "")
-    private let subtitleLabel = NSTextField(labelWithString: "")
+    private let titleLabel = NativeTrackActionField(frame:.zero)
+    private let subtitleLabel = NativeTrackActionField(frame:.zero)
     private let albumLabel = NSTextField(labelWithString: "")
     private let durationLabel = NSTextField(labelWithString: "")
     private let reorderHandleImageView = NSImageView()
@@ -25,6 +25,7 @@ final class NativeQueueTrackCellView: NSTableCellView, NativeTrackCellPresenting
     private var isPointerHovered = false
     private var isCreditFocused = false
 
+    var onArtistDestination: ((String?,String)->Void)?
     var onLike: ((SongItemRecord) -> Void)?
     var onDislike: ((SongItemRecord) -> Void)?
 
@@ -60,6 +61,7 @@ final class NativeQueueTrackCellView: NSTableCellView, NativeTrackCellPresenting
         imageRequestID = nil
         currentVideoId = nil
         boundTrack = nil
+        titleLabel.clearFeatured(); subtitleLabel.clearFeatured(); onArtistDestination = nil
         artworkImageView.image = nil
         isLiked = false
         isCurrentTrack = false
@@ -311,11 +313,8 @@ final class NativeQueueTrackCellView: NSTableCellView, NativeTrackCellPresenting
 
     func refreshLocalization() {
         if let track = boundTrack, track.artists.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            if includesAlbumInSubtitle, let album = track.displayAlbum, !album.isEmpty {
-                subtitleLabel.stringValue = "\(track.displayArtist) • \(album)"
-            } else {
-                subtitleLabel.stringValue = track.displayArtist
-            }
+            let suffix = includesAlbumInSubtitle ? track.displayAlbum.map { " • \($0)" } ?? "" : ""
+            subtitleLabel.configureFeatured(track:track,isTitle:false,suffix:suffix) { [weak self] id,name in self?.onArtistDestination?(id,name) }
             subtitleLabel.setAccessibilityLabel(subtitleLabel.stringValue)
         }
         let like = L10n.text(isLiked ? "detail.track.unlike" : "detail.track.like")
@@ -398,13 +397,10 @@ final class NativeQueueTrackCellView: NSTableCellView, NativeTrackCellPresenting
         }
 
         // 2. Metadatos
-        titleLabel.stringValue = track.title
+        titleLabel.configureFeatured(track:track,isTitle:true) { [weak self] id,name in self?.onArtistDestination?(id,name) }
 
-        if showAlbumInSubtitle, let album = track.displayAlbum, !album.isEmpty {
-            subtitleLabel.stringValue = "\(track.displayArtist) • \(album)"
-        } else {
-            subtitleLabel.stringValue = track.displayArtist
-        }
+        let suffix = showAlbumInSubtitle ? track.displayAlbum.map { " • \($0)" } ?? "" : ""
+        subtitleLabel.configureFeatured(track:track,isTitle:false,suffix:suffix) { [weak self] id,name in self?.onArtistDestination?(id,name) }
         subtitleLabel.setAccessibilityLabel(subtitleLabel.stringValue)
         subtitleLabel.font = .systemFont(ofSize: subtitleFontSize, weight: .regular)
         subtitleLabel.textColor = .secondaryLabelColor

@@ -1,12 +1,12 @@
 <script lang="ts">
   import {onMount,type Snippet} from 'svelte';
   import type {BrowseCardDto} from '$lib/types';
-  interface Props {items:BrowseCardDto[];children:Snippet<[BrowseCardDto]>;horizontal?:boolean;active?:boolean;scrollSelector?:string}
-  let {items,children,horizontal=false,active=true,scrollSelector='.explore-scroll'}:Props=$props();
+  interface Props {items:BrowseCardDto[];children:Snippet<[BrowseCardDto]>;horizontal?:boolean;active?:boolean;scrollSelector?:string;rowExtra?:number}
+  let {items,children,horizontal=false,active=true,scrollSelector='.explore-scroll',rowExtra=78}:Props=$props();
   let host:HTMLDivElement; let width=$state(800);let top=$state(0);let viewport=$state(600);let left=$state(0); let measure=()=>{};
   const gap=18; const columns=$derived(Math.max(1,Math.floor((width+gap)/178)));
   const cellWidth=$derived(horizontal?162:(width-gap*(columns-1))/columns);
-  const rowHeight=$derived(cellWidth+78);
+  const rowHeight=$derived(cellWidth+rowExtra);
   const count=$derived(horizontal?items.length:Math.ceil(items.length/columns));
   const start=$derived(horizontal?Math.max(0,Math.floor(left/180)-1):Math.max(0,Math.floor(top/rowHeight)-1));
   const end=$derived(Math.min(count,horizontal?Math.ceil((left+width)/180)+1:Math.ceil((top+viewport)/rowHeight)+1));

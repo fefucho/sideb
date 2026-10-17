@@ -17,7 +17,8 @@ struct PlayerBarView: View {
     @State private var isDraggingVolume: Bool = false
     @State private var isHoveringAlbum: Bool = false
 
-    init(viewModel: PlayerViewModel, router: NavigationRouter? = nil) {
+    init(viewModel: PlayerViewModel, router: NavigationRouter? = nil, isVolumeExpanded: Bool = false) {
+        _isVolumeExpanded = State(initialValue: isVolumeExpanded)
         self.viewModel = viewModel
         self.router = router
     }
@@ -268,7 +269,11 @@ struct PlayerBarView: View {
             // Título con Corazón y Subtítulo Artista • Álbum (sin subrayado)
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 7) {
-                    ScrollingTrackTitle(title: viewModel.currentTrack?.title ?? L10n.text("player.noPlayback"))
+                    Group {
+                        if let track = viewModel.currentTrack {
+                            FeaturedTrackTitle(track:track,font:.system(size:14,weight:.semibold),color:.primary) { id,name in navigateToArtist(track:track,artistId:id,name:name) }
+                        } else { ScrollingTrackTitle(title:L10n.text("player.noPlayback")) }
+                    }
                         .frame(maxWidth: .infinity)
                         .layoutPriority(1)
 
@@ -483,6 +488,8 @@ struct PlayerBarView: View {
                 .buttonStyle(.plain)
                 .help(L10n.text("player.showVolume"))
                 .accessibilityLabel(L10n.text("player.showVolume"))
+                .accessibilityValue(VolumeScrollFeedback.percentage(viewModel.volume))
+                .accessibilityAdjustableAction(adjustVolume)
                 .transition(.opacity)
             }
         }
@@ -525,11 +532,13 @@ struct PlayerBarView: View {
                     DragGesture(minimumDistance: 0)
                         .onChanged { value in
                             isDraggingVolume = true
+                            viewModel.volumeScroll.isDragging = true
                             let fraction = max(0.0, min(1.0, value.location.x / sliderWidth))
                             viewModel.volume = Float(fraction)
                         }
                         .onEnded { _ in
                             isDraggingVolume = false
+                            viewModel.volumeScroll.isDragging = false
                             if !isHoveringVolumeCapsule {
                                 withAnimation(.spring(response: 0.28, dampingFraction: 0.84)) {
                                     isVolumeExpanded = false
@@ -539,6 +548,8 @@ struct PlayerBarView: View {
                 )
             }
             .frame(height: 18)
+            .accessibilityHidden(true)
+            .background(VolumeAccessibilityControl(player: viewModel))
 
             // Icono de altavoz blanco nítido dentro de la cápsula
             Button {
@@ -551,8 +562,8 @@ struct PlayerBarView: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .help(L10n.text(viewModel.volume <= 0.01 ? "player.unmute" : "player.mute"))
-            .accessibilityLabel(L10n.text(viewModel.volume <= 0.01 ? "player.unmute" : "player.mute"))
+            .help(L10n.text(PlayerVolumePresentation.muteAction(volume: viewModel.volume)))
+            .accessibilityLabel(L10n.text(PlayerVolumePresentation.muteAction(volume: viewModel.volume)))
 
         }
         .padding(.leading, 14)
@@ -570,12 +581,23 @@ struct PlayerBarView: View {
         }
         .shadow(color: .black.opacity(0.35), radius: 10, x: 0, y: 4)
         .contentShape(Capsule())
+        .windowGestureRegion(.volumeCapsule)
+        .onAppear { viewModel.volumeScroll.isCapsuleOpen = true }
+        .onDisappear { viewModel.volumeScroll.isCapsuleOpen = false; viewModel.volumeScroll.isDragging = false; viewModel.volumeScroll.cancel() }
         .onHover { hovering in
             isHoveringVolumeCapsule = hovering
             guard !hovering, !isDraggingVolume else { return }
             withAnimation(.spring(response: 0.28, dampingFraction: 0.84)) {
                 isVolumeExpanded = false
             }
+        }
+    }
+
+    private func adjustVolume(_ direction: AccessibilityAdjustmentDirection) {
+        switch direction {
+        case .increment: viewModel.volume = VolumeScrollPolicy.adjusting(viewModel.volume, by: 1)
+        case .decrement: viewModel.volume = VolumeScrollPolicy.adjusting(viewModel.volume, by: -1)
+        @unknown default: break
         }
     }
 
@@ -637,17 +659,7 @@ struct PlayerBarView: View {
             .shadow(color: .black.opacity(0.2), radius: 4, y: 1)
     }
 
-    private var volumeIcon: String {
-        if viewModel.volume <= 0.01 {
-            return "speaker.slash.fill"
-        } else if viewModel.volume < 0.33 {
-            return "speaker.wave.1.fill"
-        } else if viewModel.volume < 0.66 {
-            return "speaker.wave.2.fill"
-        } else {
-            return "speaker.wave.3.fill"
-        }
-    }
+    private var volumeIcon: String { PlayerVolumePresentation.icon(volume: viewModel.volume) }
 }
 
 private struct TrackTitleWidthKey: PreferenceKey {

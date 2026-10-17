@@ -1,0 +1,30 @@
+{
+  "search.suggestions.title": {
+    "es": "Sugerencias de búsqueda",
+    "en": "Search suggestions"
+  },
+  "search.correction.showing": {
+    "es": "Resultados de “%@”",
+    "en": "Showing results for “%@”"
+  },
+  "search.correction.suggested": {
+    "es": "¿Quisiste decir “%@”?",
+    "en": "Did you mean “%@”?"
+  },
+  "search.correction.original": {
+    "es": "Buscar el texto original",
+    "en": "Search the original text"
+  },
+  "search.correction.search": {
+    "es": "Buscar esta sugerencia",
+    "en": "Search this suggestion"
+  },
+  "search.title": {
+    "es": "Buscar",
+    "en": "Search"
+  },
+  "search.correction.original_results": {
+    "es": "Resultados de la búsqueda original",
+    "en": "Results from the original search"
+  }
+}

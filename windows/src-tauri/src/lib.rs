@@ -25,6 +25,27 @@ use queue::{next_owner_epoch, QueueStateDto};
 
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
+pub(crate) struct SearchSuggestionsDto {
+    pub queries: Vec<String>,
+    pub results: SearchResultsDto,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct SearchCorrectionDto {
+    pub query: String,
+    pub applied: bool,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct SearchCatalogDto {
+    pub results: SearchResultsDto,
+    pub correction: Option<SearchCorrectionDto>,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct SearchResultsDto {
     pub top: Vec<SearchTopCardDto>,
     pub top_songs: Vec<SongDto>,
@@ -112,6 +133,7 @@ pub struct PlaybackManager {
     pub position: f64,
     pub duration: f64,
     pub volume: f64,
+    pub audio_revision: u64,
     pub current_track: Option<PlaybackTrackDto>,
     pub error: Option<String>,
     pub generation: u64,
@@ -137,6 +159,7 @@ impl PlaybackManager {
             position: 0.0,
             duration: 0.0,
             volume: 100.0,
+            audio_revision: 0,
             current_track: None,
             error: None,
             generation: 0,
@@ -200,6 +223,7 @@ impl PlaybackManager {
             position: self.position,
             duration: self.duration,
             volume: self.volume,
+            audio_revision: self.audio_revision,
             exponential_volume: self.runtime.exponential_volume,
             current_track: self.current_track.clone(),
             error: self.error.clone(),
@@ -928,6 +952,8 @@ pub fn run() {
             commands::playback::set_playback_muted,
             commands::playback::filter_disliked_recommendations,
             commands::catalog::search_all,
+            commands::catalog::search_suggestions,
+            commands::catalog::search_catalog,
             commands::catalog::search_videos,
             commands::catalog::search_cards,
             commands::catalog::search_songs,

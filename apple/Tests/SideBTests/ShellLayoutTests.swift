@@ -2,6 +2,10 @@ import XCTest
 @testable import SideB
 
 final class ShellLayoutTests: XCTestCase {
+    func testNavigationKeepsBottomClearanceWithoutMovingCapsulesDown() {
+        XCTAssertEqual(ShellLayout.navigationRowCenter - ShellLayout.navigationSurfaceHeight / 2, 18)
+        XCTAssertEqual(ShellLayout.toolbarHostHeight - ShellLayout.navigationRowCenter - ShellLayout.navigationSurfaceHeight / 2, 18)
+    }
     func testFlippedContentClearanceWithNonzeroOrigin() {
         XCTAssertEqual(ShellLayout.topClearance(
             bounds: CGRect(x: 20, y: 100, width: 800, height: 600),

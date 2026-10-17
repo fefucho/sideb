@@ -191,6 +191,10 @@
       "other": "%lld tracks"
     }
   },
+  "common.undo": {
+    "es": "Deshacer",
+    "en": "Undo"
+  },
   "common.untitled": {
     "es": "Sin título",
     "en": "Untitled"
@@ -911,6 +915,34 @@
     "es": "Algo nuevo para escuchar.",
     "en": "Something new to listen to."
   },
+  "featured.change": {
+    "es": "Cambiar coincidencia…",
+    "en": "Change match…"
+  },
+  "featured.noMatches": {
+    "es": "No encontramos artistas compatibles.",
+    "en": "No matching artists found."
+  },
+  "featured.open": {
+    "es": "Abrir %@",
+    "en": "Open %@"
+  },
+  "featured.reset": {
+    "es": "Restablecer coincidencia automática",
+    "en": "Reset automatic match"
+  },
+  "featured.search": {
+    "es": "Buscar este nombre",
+    "en": "Search this name"
+  },
+  "featured.searching": {
+    "es": "Buscando artista…",
+    "en": "Finding artist…"
+  },
+  "featured.suggested": {
+    "es": "Abrir %@ · coincidencia sugerida",
+    "en": "Open %@ · suggested match"
+  },
   "fullscreen.backToArtwork": {
     "es": "Volver a la carátula",
     "en": "Back to artwork"
@@ -1467,6 +1499,10 @@
     "es": "No tenés álbumes guardados",
     "en": "No saved albums"
   },
+  "library.empty.all": {
+    "es": "Tus colecciones guardadas aparecerán aquí",
+    "en": "Your saved collections will appear here"
+  },
   "library.empty.artists": {
     "es": "No tenés artistas en tu biblioteca",
     "en": "No artists in your library"
@@ -1539,6 +1575,22 @@
     "es": "Abrir %@",
     "en": "Open %@"
   },
+  "library.pin": {
+    "es": "Fijar %@",
+    "en": "Pin %@"
+  },
+  "library.pin.down": {
+    "es": "Mover %@ abajo",
+    "en": "Move %@ down"
+  },
+  "library.pin.up": {
+    "es": "Mover %@ arriba",
+    "en": "Move %@ up"
+  },
+  "library.pinned": {
+    "es": "Fijados",
+    "en": "Pinned"
+  },
   "library.refresh": {
     "es": "Actualizar biblioteca",
     "en": "Refresh library"
@@ -1547,9 +1599,77 @@
     "es": "Reintentar",
     "en": "Try again"
   },
+  "library.search.cancel": {
+    "es": "Cancelar",
+    "en": "Cancel"
+  },
+  "library.search.collections": {
+    "es": "Filtra las colecciones disponibles del proveedor.",
+    "en": "Filters collections available from the provider."
+  },
+  "library.search.complete": {
+    "es": "Buscando en %@ canciones disponibles",
+    "en": "Searching %@ available songs"
+  },
+  "library.search.continue": {
+    "es": "Continuar búsqueda",
+    "en": "Continue searching"
+  },
+  "library.search.empty": {
+    "es": "Sin coincidencias en lo cargado",
+    "en": "No matches in loaded items"
+  },
+  "library.search.loaded": {
+    "es": "Buscando en %@ canciones cargadas",
+    "en": "Searching %@ loaded songs"
+  },
+  "library.search.pending": {
+    "es": "Todavía quedan canciones por cargar.",
+    "en": "There are still songs to load."
+  },
+  "library.search.placeholder": {
+    "es": "Buscar en tu biblioteca",
+    "en": "Search your library"
+  },
+  "library.search.progress": {
+    "es": "%@ páginas recorridas",
+    "en": "%@ pages searched"
+  },
+  "library.search.rest": {
+    "es": "Buscar en el resto",
+    "en": "Search remaining songs"
+  },
+  "library.see_all": {
+    "es": "Ver todos",
+    "en": "See all"
+  },
+  "library.sort.artist": {
+    "es": "Artista",
+    "en": "Artist"
+  },
+  "library.sort.label": {
+    "es": "Ordenar biblioteca",
+    "en": "Sort library"
+  },
+  "library.sort.name": {
+    "es": "Nombre",
+    "en": "Name"
+  },
+  "library.sort.original": {
+    "es": "Orden original",
+    "en": "Original order"
+  },
+  "library.subtitle": {
+    "es": "Tu música, tus colecciones y tus favoritos a mano.",
+    "en": "Your music, collections and favorites within reach."
+  },
   "library.tab.albums": {
     "es": "Álbumes",
     "en": "Albums"
+  },
+  "library.tab.all": {
+    "es": "Todo",
+    "en": "All"
   },
   "library.tab.playlists": {
     "es": "Listas",
@@ -1558,6 +1678,18 @@
   "library.title": {
     "es": "Biblioteca",
     "en": "Library"
+  },
+  "library.unpin": {
+    "es": "Desfijar %@",
+    "en": "Unpin %@"
+  },
+  "library.view.grid": {
+    "es": "Vista de cuadrícula",
+    "en": "Grid view"
+  },
+  "library.view.list": {
+    "es": "Vista de lista",
+    "en": "List view"
   },
   "login.heading": {
     "es": "Iniciar sesión en YouTube Music",
@@ -2115,6 +2247,22 @@
     "es": "Ver álbum: %@",
     "en": "View album: %@"
   },
+  "player.volume": {
+    "es": "Volumen",
+    "en": "Volume"
+  },
+  "player.volumePercentage": {
+    "es": "%@ %%",
+    "en": "%@%%"
+  },
+  "player.volumeScrollHelp": {
+    "es": "Volumen: %@. Desplázate para ajustar un punto porcentual.",
+    "en": "Volume: %@. Scroll to adjust by one percentage point."
+  },
+  "player.volumeValue": {
+    "es": "Volumen: %@",
+    "en": "Volume: %@"
+  },
   "provider.chip.commute": {
     "es": "En camino",
     "en": "Commute"
@@ -2259,6 +2407,26 @@
     "es": "Mejor resultado",
     "en": "Top result"
   },
+  "search.correction.original": {
+    "es": "Buscar el texto original",
+    "en": "Search the original text"
+  },
+  "search.correction.original_results": {
+    "es": "Resultados de la búsqueda original",
+    "en": "Results from the original search"
+  },
+  "search.correction.search": {
+    "es": "Buscar esta sugerencia",
+    "en": "Search this suggestion"
+  },
+  "search.correction.showing": {
+    "es": "Resultados de “%@”",
+    "en": "Showing results for “%@”"
+  },
+  "search.correction.suggested": {
+    "es": "¿Quisiste decir “%@”?",
+    "en": "Did you mean “%@”?"
+  },
   "search.empty.prompt_description": {
     "es": "Escribí en la barra superior para buscar canciones, artistas o álbumes.",
     "en": "Type in the top bar to search for songs, artists, or albums."
@@ -2355,6 +2523,26 @@
     "es": "Reproducir ahora",
     "en": "Play now"
   },
+  "search.recents.clear": {
+    "es": "Borrar recientes de Side B",
+    "en": "Clear Side B recents"
+  },
+  "search.recents.remove": {
+    "es": "Quitar de recientes",
+    "en": "Remove from recents"
+  },
+  "search.recents.search_track": {
+    "es": "Buscar la canción",
+    "en": "Search for this song"
+  },
+  "search.recents.title": {
+    "es": "Recientes de Side B",
+    "en": "Side B recents"
+  },
+  "search.recents.unavailable": {
+    "es": "No se pudo reproducir esta canción. Podés buscarla de nuevo o quitarla de recientes.",
+    "en": "This song could not be played. Search for it again or remove it from recents."
+  },
   "search.see_all.feminine": {
     "es": "Ver todas",
     "en": "See all"
@@ -2372,12 +2560,12 @@
     "en": "Search songs, albums, artists, and playlists…"
   },
   "search.spotlight.prompt_description": {
-    "es": "Escribí para ver resultados rápidos por categoría en tiempo real",
-    "en": "Type to see quick results by category as you go"
+    "es": "Aquí aparecerán las búsquedas enviadas y las canciones que reproduzcas desde este buscador.",
+    "en": "Searches you submit and songs you play from here will appear here."
   },
   "search.spotlight.prompt_title": {
-    "es": "Buscá artistas, canciones, álbumes y más",
-    "en": "Find artists, songs, albums, and more"
+    "es": "Tus búsquedas, a mano",
+    "en": "Your searches, close at hand"
   },
   "search.spotlight.submit_hint": {
     "es": "Presioná Enter para buscar en todo el catálogo",
@@ -2386,6 +2574,14 @@
   "search.submit.full_results": {
     "es": "Presioná Enter para ver todos los resultados",
     "en": "Press Enter to see all results"
+  },
+  "search.suggestions.title": {
+    "es": "Sugerencias de búsqueda",
+    "en": "Search suggestions"
+  },
+  "search.title": {
+    "es": "Buscar",
+    "en": "Search"
   },
   "settings.albums": {
     "es": "Álbumes",
