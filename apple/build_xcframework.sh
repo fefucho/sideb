@@ -24,10 +24,12 @@ cargo build --locked --release --target $MAC_TARGET --package sideb-core
 
 # 3. Generar los bindings de UniFFI
 # uniffi-bindgen extrae las interfaces de lib.rs y genera .swift y .h
+# Mantener la salida idéntica aunque el host tenga SwiftFormat instalado.
 echo "Generando bindings para Swift..."
 cargo run --locked --bin uniffi-bindgen -- generate \
   --library target/$MAC_TARGET/release/libsideb_core.dylib \
   --language swift \
+  --no-format \
   --out-dir ../apple/$OUTPUT_DIR
 
 # Fix Swift 6 Strict Concurrency warnings/errors in generated file

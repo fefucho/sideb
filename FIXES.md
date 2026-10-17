@@ -4,21 +4,34 @@ Memoria de cambios de Side B para investigar problemas y regresiones. Buscar aqu
 
 Tags de ámbito: `[Apple]`, `[Windows]`, `[Compartido]`. Core y herramientas comunes usan Compartido, detallando el componente. El tag indica dónde se hizo el cambio; no demuestra que ambas plataformas hayan sido verificadas. Estados, fechas, componentes y relaciones se conservan dentro de cada entrada.
 
-Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-206**. Se conservaron los FIX/FEAT históricos. Dos números antiguos repetidos se distinguen como `FIX-027-2` y `FIX-028-2`, anotando el ID original; al citar FIX-027/028 comprobar título y entrada exacta.
+Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-207**. Se conservaron los FIX/FEAT históricos. Dos números antiguos repetidos se distinguen como `FIX-027-2` y `FIX-028-2`, anotando el ID original; al citar FIX-027/028 comprobar título y entrada exacta.
 
 ## Cambios recientes
+
+<a id="fix-206"></a>
+
+### [FIX-206] [Apple] - Generar bindings iguales con y sin SwiftFormat instalado
+
+- Fecha: 2026-10-17 (America/Montevideo).
+- Componente / estado: generación UniFFI y entrega 1.2.1; corrección implementada, verificación de generación y build final en preparación.
+- Problema / causa: run39071362949 aprueba compilación y pruebas Mac, pero la validación rechaza `sourceChangedDuringBuild=true`; únicamente cambia `apple/SideBCore/Sources/SideBCore/sideb_core.swift`. UniFFI0.28.3 invoca SwiftFormat si está disponible; la imagen xcode-27-arm64/20261012.0260 incluye SwiftFormat0.63.1, mientras este Mac no lo tiene. La regeneración local sin ese formato coincide exactamente con los bindings versionados.
+- Cambio / motivo: pasar `--no-format` a UniFFI para producir el mismo archivo independientemente de herramientas opcionales del host. Se conservan los ajustes Swift6 existentes y todas las guardas de revisión, fuentes estables, firma y hashes; sin edición manual de bindings ni cambios Rust. La procedencia por plataforma se publicará en `SideB-build-info.json` para recuperar el paquete Windows ya aprobado, siempre que fuentes y dependencias sigan idénticas.
+- Archivos: `apple/build_xcframework.sh`, `release-notes/1.2.1.md`, registros de entrega.
+- Verificación / límites: generación real local idéntica al archivo versionado. Regresión con UniFFI real y SwiftFormat simulado: el modo automático invoca el formateador y cambia el archivo; `--no-format` no lo invoca y conserva exactamente el binding versionado (SHA256 1ec4374597dfb8cc5f428d5cfc14f595ffa2d21e38e8093eb842eeae5df0cfff).17 pruebas runner/release, preflight v1.2.1, sintaxis shell y diffcheck aprobados; build numerada y publicación pendientes. Sin instalación, apertura de app ni validación física de cuenta/audio/trackpad.
+- Antecedentes / plan: FIX-152/162/202/204/205; [release1.2.1](plans/RELEASE-1.2.1.md).
+- Paridad: no aplica; sólo generación de la integración Swift. Windows no genera estos bindings; core y fuentes Windows conservados.
 
 <a id="fix-205"></a>
 
 ### [FIX-205] [Windows] - Retener handle libmpv hasta terminar el hilo de eventos
 
 - Fecha: 2026-10-17 (America/Montevideo).
-- Componente / estado: wrapper nativo Rust player; corrección de vida útil implementada, verificación exacta/regresión nativa en preparación. La investigación serial previa no reproduce de forma determinista el acceso inválido de CI; no se le atribuye el crash sin stack nativo.
+- Componente / estado: wrapper nativo Rust player; corrección de vida útil implementada, regresión nativa y105 ejecuciones aprobadas en Windows; CI completo pendiente. La investigación serial previa no reproduce de forma determinista el acceso inválido de CI; no se le atribuye el crash sin stack nativo.
 - Problema comprobado por código: EventContext copia el handle de Mpv y corre en otro hilo sin retener Arc<Mpv>. Liberar Player puede ejecutar mpv_terminate_destroy mientras el worker todavía entra en mpv_wait_event. Además, sin eventos nuevos el worker sólo comprobaba cierre del receptor al intentar enviar, por lo que una retención simple podría dejarlo vivo indefinidamente.
 - Cambio: el worker retiene Arc<Mpv> hasta que retorna event_loop y se libera EventContext. El loop comprueba tx.is_closed antes de cada espera acotada de1s. Regresión con libmpv real conserva el receptor al soltar Player, verifica handle vivo y liberación acotada tras cerrar receptor. Los dos tests nativos comparten mutex por el estado global de filtros.
 - Archivo: `core/crates/player/src/lib.rs`; workflow manual `.github/workflows/player-diagnostic.yml` comprueba regresión roja en copia temporal sin dueño, suite exacta de producción y20 repeticiones, sin relajar tests de release.
 - Alcance / autorización: el pedido vigente autoriza verificar/arreglar lo necesario y terminar la release de ambas apps. Se limita esta excepción al core protegido al wrapper requerido por el fallo nativo Windows, sin modificar proveedor, persistencia, contratos, curva, audio AVPlayer ni bindings Apple. El defecto de propiedad del handle es independiente del SO que use este wrapper; la app Apple usa AVPlayer y no comparte ese flujo. No se afirma un síntoma Apple equivalente.
-- Antecedentes / paridad / planes: FIX-197/202 y PAR-024/PAR-032; [plan1.2.1](plans/RELEASE-1.2.1.md). Se conserva evidencia de los intentos: run39070749039 original serial instrumentado4+variante4/20 aprobadas;39070910401 original con receptor5+variante5/20 aprobadas, sin repro determinista del acceso inválido. La prueba nueva verifica la propiedad de seguridad y ausencia de retención indefinida. CI completo y audio físico pendientes.
+- Antecedentes / paridad / planes: FIX-197/202 y PAR-024/PAR-032; [plan1.2.1](plans/RELEASE-1.2.1.md). Se conserva evidencia de los intentos: run39070749039 original serial instrumentado4+variante4/20 aprobadas;39070910401 original con receptor5+variante5/20 aprobadas, sin repro determinista del acceso inválido. La prueba nueva verifica la propiedad de seguridad y ausencia de retención indefinida. Run39071355691 verifica copia sin dueño con0xc0000005 y producción5 tests por21 suites (105 ejecuciones aprobadas), incluyendo liberación del handle al cerrar receptor. CI completo y audio físico pendientes.
 
 <a id="fix-204"></a>
 

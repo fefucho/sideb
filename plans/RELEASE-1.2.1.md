@@ -46,3 +46,20 @@ Investigación libmpv: workflow diagnóstico manual en copia temporal de player;
 ### Vida útil nativa detectada durante investigación — FIX-205
 
 El diagnóstico39070910401 aprueba ambas variantes con receptor retenido; no confirma por sí solo el origen del acceso inválido. La inspección comprueba que EventContext usa el raw handle sin dueño. Bajo el pedido explícito de reparar lo necesario para terminar la entrega, se acota una excepción al wrapper Rust nativo: Arc retenido por worker y fin acotado al cerrar receptor, sin cambios a proveedor/ABI/curva/AVPlayer. Nueva regresión nativa verifica ambas condiciones. Workflow focal comprueba roja en copia sin dueño y5 tests exactos/20 repeticiones de producción antes de volver a release completa.
+
+### Regresión de vida útil y tercer intento de release
+
+Run39071204981 reproduce la regresión nueva en la copia sin Arc: native_handle_outlives_player_until_event_receiver_closes falla con «the live event stream must retain its native handle», exit101. El paso negativo requería reconocer ese exit esperado en pwsh; corregido sin alterar aserción. [Run focal39071355691](https://github.com/fefucho/sideb/actions/runs/39071355691) verifica la producción5 tests/20 repeticiones. [Release39071362949](https://github.com/fefucho/sideb/actions/runs/39071362949) se despacha al commit c123b59678b2538c9d3c2e155f366f7905c67d97, con FIX-204/205. Se reemplaza sólo el segundo borrador vacío/tag no publicado tras finalizar ese run fallido; Latest1.2.0 no se modifica. Resultados finales pendientes.
+
+Run focal39071355691 aprobado: la copia sin dueño falla con0xc0000005/STATUS_ACCESS_VIOLATION (la ejecución anterior39071204981 había fallado con aserción/exit101) y el producto actual aprueba5 tests más20 repeticiones completas:105 ejecuciones aprobadas con libmpv real, sin omisiones ni cambio de condiciones de release. No se afirma que esto pruebe audio audible ni que reproduzca determinísticamente el acceso inválido inicial.
+
+### Cierre del tercer intento y recuperación de entrega — FIX-206
+
+Run39071362949 terminó con Windows aprobado (32min, incluyendo23min33 de verificación/build y6min11 de caché); artefactos release-windows12116106628 y diagnósticos12116445077 conservados. Mac aprueba Rust/Swift, compila y firma, pero rechaza la entrega por cambios del binding Swift generado. Publicación conjunta omitida; v1.2.1 sigue como borrador vacío y Latest1.2.0 permanece publicada.
+
+La imagen hospedada incluye SwiftFormat0.63.1; UniFFI0.28.3 lo ejecuta automáticamente y este Mac no lo tiene. FIX-206 fija `--no-format` sin cambiar código Rust ni los bindings versionados. Pedido actual: reparar Mac y completar la subida; optimización de caché diferida. Se verificará generación real con formateador presente/ausente, se compilará Mac mediante el runner numerado y se recuperarán los paquetes Windows aprobados tras comparar íntegramente sus fuentes/dependencias con el commit de origen. Se conservará procedencia por plataforma y hashes públicos. No se reutilizará un paquete con fuentes Windows/core divergentes.
+
+- [x] Aprobar la regresión de generación independiente de SwiftFormat y los checks de release: UniFFI real con formateador simulado reproduce cambio en modo automático; `--no-format` conserva exactamente el binding versionado.17 pruebas runner/release, preflight y shell/diffcheck aprobados.
+- [ ] Guardar/subir FIX-206 y producir una build Mac estable, firmada y verificada de esa revisión.
+- [ ] Recuperar y verificar los paquetes Windows del run39071362949; comprobar igualdad de fuentes/dependencias.
+- [ ] Publicar ambos sistemas, checksums y procedencia; comprobar Latest y descargas remotas.
