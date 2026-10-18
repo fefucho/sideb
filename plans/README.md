@@ -4,6 +4,8 @@ Herramientas compartidas o fixes para ambas plataformas. [Formato](../.agents/WO
 
 | Plan | Estado |
 |---|---|
+| [Release 1.2.3](RELEASE-1.2.3.md) | FIX-211/212; parche Windows para cancelación lateral de volumen, preparación de versión/build16; verificación y publicación conjunta pendientes |
+| [Release 1.2.2](RELEASE-1.2.2.md) | FIX-207/208/209/210; Latest publicada y cinco descargas públicas verificadas; antecedentes del parche de rueda y layouts Mac |
 | [Release 1.2.1](RELEASE-1.2.1.md) | FIX-199–202; fuentes y verificaciones locales listas, CI nativo/publicación conjunta pendientes |
 | [Motor e interfaz de búsqueda](PLAN-008-search-engine-ui.md) | Implementado: sugerencias/correcciones YouTube Music, UI compacta e historial por intención; FIX-178/PAR-027. Mac build-0089 estable, 646 pruebas ejecutadas y Spotlight/Play/reciente comprobados; Windows frontend364/check/build, nativo pendiente. FIX-179 corrige cabecera/fondo Mac, build0090/646 pruebas y página/desplegable/colapso de sidebar nativos comprobados; port visual Windows pendiente. Ranking propio diferido (2026-10-12) |
 | [Controles homogéneos en macOS y Windows](PLAN-007-unified-controls.md) | Implementado Apple/Windows: categorías48/acciones40/utilidades32 y fullscreen compacto40; FIX-176 elimina doble bezel del preview rechazado, cuatro focales y clic/arrastre nativo verificados,FIX-177 engrosa bezel Mac28→36 sin cambiar host40, 640pruebas/build-0087 Mac y clic/arrastre normal/compacto verificados;354frontend Windows previas; aceptación en apps completas pendiente, FIX-174/175/176/177 y PAR-030 |

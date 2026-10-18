@@ -44,6 +44,7 @@ const {installNavigationGestures}=await import(await moduleFor(path.join(root,'s
 const {PlaybackController,emptyPlaybackData}=await import(await moduleFor(path.join(root,'src/lib/player/controller.ts')));
 const sample=(extra={})=>({x:0,y:-100,mode:0,at:1,surface:'fullscreen',cancelable:true,defaultPrevented:false,modified:false,...extra});
 const context=(extra={})=>({revision:'account:track:generation:scene',enabled:true,blocked:false,value:42.3,...extra});
+const mixedAxisTrace=JSON.parse(await readFile(path.join(root,'scripts/fixtures/volume-wheel-mixed-axis.json'),'utf8'));
 
 test('distance accumulation is invariant under sample subdivision in every deltaMode, preserves fractions and reverses immediately',()=>{
  for(const [mode,total] of [[0,300],[1,9],[2,3]]){
@@ -63,6 +64,23 @@ test('slow small wheel movements retain their distance across quiet transaction 
    assert.equal(output.consume,true);value+=output.delta;
   }
   assert.ok(Math.abs(value-(42.3+expected))<1e-8,`deltaMode ${mode}: slow movement was discarded`);
+ }
+});
+test('an owned vertical gesture retains partial distance through off-axis and zero samples in every deltaMode',()=>{
+ for(const [mode,unit] of [[0,100],[1,3],[2,1]])for(const direction of [-1,1]){
+  const p=new VolumeScrollPolicy();
+  assert.equal(p.wheel(sample({mode,y:direction*unit*.6}),context()).delta,0);
+  for(const extra of [{x:unit,y:0},{x:unit*2,y:direction*unit},{x:0,y:0}]){
+   const out=p.wheel(sample({mode,at:2,...extra}),context());
+   assert.equal(out.consume,true);assert.equal(out.cancelled,false);assert.equal(out.delta,0);assert.equal(out.feedback,false);
+  }
+  assert.equal(p.wheel(sample({mode,y:direction*unit*.4,at:3}),context()).delta,-direction);
+ }
+ // Invalid data still cancels an owned sequence instead of preserving distance.
+ for(const extra of [{x:NaN},{y:Infinity},{mode:7}]){
+  const p=new VolumeScrollPolicy();p.wheel(sample({y:-60}),context());
+  assert.equal(p.wheel(sample({at:2,...extra}),context()).cancelled,true);
+  assert.equal(p.wheel(sample({y:-100,at:3}),context()).delta,0);
  }
 });
 test('a quiet boundary never carries partial volume into a different surface, owner or direction',()=>{
@@ -216,6 +234,39 @@ test('slow wheel on the real cover and open bar reaches the audio RPC and update
  range.value='20';range.dispatchEvent(new dom.Event('input',{bubbles:true}));await player.setVolume(20);
  assert.equal(latest.confirmedVolume,20);assert.equal(calls.at(-1).args.volume,20);
  input.dispose();await player.dispose();await bar.dispose();await fixture.dispose();
+});
+test('recorded Windows mixed-axis wheel reaches audio and confirmed feedback on both real surfaces',async()=>{
+ const calls=[];let native=state(),latest,pending=Promise.resolve();
+ const fixture=attach(Scene,{initialProps:fullscreenProps(),onInvalidated:noop});
+ const player=new PlaybackController(async(command,args)=>{
+  if(command==='set_playback_volume'){
+   calls.push(args.volume);native={...native,volume:args.volume,audioRevision:(native.audioRevision??0)+1};
+  }else assert.equal(command,'get_playback_state');
+  return structuredClone(native);
+ },async()=>()=>{},snapshot=>{latest=snapshot;flushSync(()=>{fixture.instance.progress(snapshot.state);fixture.instance.confirmed(snapshot.confirmedVolume);});});
+ await player.connect();
+ const bar=attach(Bar,{playback:native,onTogglePlayback:noop,onRetryPlayback:noop,onPrevious:noop,onNext:noop,onSeek:noop,onVolumeChange:value=>void player.setVolume(value),onSetShuffle:noop,onSetRepeat:noop,fullscreenOpen:true,onToggleFullscreen:noop});
+ bar.host.querySelector('.volume-toggle').click();flushSync();await tick();
+ const cover=fixture.host.querySelector('.artwork'),range=bar.host.querySelector('#player-volume input[type="range"]');
+ let hit=cover;document.elementFromPoint=()=>hit;
+ const input=installNavigationGestures(dom,{context:()=>({revision:'nav',enabled:true,blocked:false,fullscreen:true,reduceMotion:true,height:600,backTitle:null,forwardTitle:null}),progress:noop,commit:noop,
+  volume:{context:()=>context({value:latest.state.volume}),adjust:delta=>{pending=player.adjustVolume(delta);},feedback:()=>flushSync(()=>fixture.instance.feedback()),cancelFeedback:noop}});
+ try{
+  let base=1;
+  for(const group of mixedAxisTrace.groups){
+   await player.setVolume(group.initialVolume);const before=calls.length;hit=group.surface==='bar'?range:cover;
+   for(const [at,x,y] of group.samples){
+    const event=new dom.WheelEvent('wheel',{bubbles:true,cancelable:true,deltaX:x,deltaY:y,deltaMode:0,clientX:40,clientY:40});
+    for(const name of ['ctrlKey','altKey','metaKey','shiftKey'])Object.defineProperty(event,name,{value:false});
+    Object.defineProperty(event,'timeStamp',{value:base+at});hit.dispatchEvent(event);await pending;
+   }
+   assert.equal(calls.length-before,group.expectedAdjustments,`${group.surface}: unexpected number of audio requests from real wheel trace`);
+   assert.equal(latest.confirmedVolume,group.expectedVolume);
+   assert.equal(latest.confirmedVolume,calls.at(-1));
+   assert.equal(cover.querySelector('.artwork-percentage').textContent,`${Math.round(latest.confirmedVolume)} %`);
+   base+=group.samples.at(-1)[0]+1000;
+  }
+ }finally{input.dispose();await player.dispose();await bar.dispose();await fixture.dispose();}
 });
 test('root scalar routing survives same-track progress; real cover updates confirmed feedback without remount and places reverse feedback outside information',async()=>{
  let invalidations=0;const policy=new VolumeScrollPolicy();const props=fullscreenProps();props.playback.currentTrack.thumbnail='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg"/>';

@@ -4,9 +4,36 @@ Memoria de cambios de Side B para investigar problemas y regresiones. Buscar aqu
 
 Tags de ámbito: `[Apple]`, `[Windows]`, `[Compartido]`. Core y herramientas comunes usan Compartido, detallando el componente. El tag indica dónde se hizo el cambio; no demuestra que ambas plataformas hayan sido verificadas. Estados, fechas, componentes y relaciones se conservan dentro de cada entrada.
 
-Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-211**. Se conservaron los FIX/FEAT históricos. Dos números antiguos repetidos se distinguen como `FIX-027-2` y `FIX-028-2`, anotando el ID original; al citar FIX-027/028 comprobar título y entrada exacta.
+Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-213**. Se conservaron los FIX/FEAT históricos. Dos números antiguos repetidos se distinguen como `FIX-027-2` y `FIX-028-2`, anotando el ID original; al citar FIX-027/028 comprobar título y entrada exacta.
 
 ## Cambios recientes
+
+<a id="fix-212"></a>
+
+### [FIX-212] [Compartido] - Preparar release 1.2.3 con el arreglo de rueda Windows
+
+- Fecha: 2026-10-18 (America/Montevideo).
+- Componente / estado: versiones, fuentes y entrega Mac/Windows; verificación local aprobada, CI/publicación pendientes.
+- Pedido / motivo: el usuario pide actualizar y publicar1.2.3 tras FIX-211, para recibir el arreglo real de cancelación por muestras laterales. El nuevo número permite distinguirlo de la1.2.2 instalada y sus paquetes inmutables.
+- Cambio: version.env1.2.3/build16, manifests Windows y versión del paquete propio en Cargo.lock; default manual del workflow y notas1.2.3. Se reutiliza el publicador corregido por FIX-210, con revisión exacta, fuentes estables y hashes antes de publicar ambos sistemas juntos.
+- Verificación local1.2.3: preflight v1.2.3/build16 y20tests runner/release aprobados;384frontend/1omisión nativa enMac/check0/0/build frontend aprobados. FIX-211 conserva17focales, incluido replay registrado. Nuevo CI hospedado pendiente; no se presenta como un EXE1.2.3 ya compilado ni audio audible.
+- Archivos: `version.env`, `windows/package.json`, `windows/src-tauri/{Cargo.toml,Cargo.lock,tauri.conf.json}`, `.github/workflows/release.yml`, `release-notes/1.2.3.md`, [plan de entrega](plans/RELEASE-1.2.3.md) y registros relacionados.
+- Antecedentes / paridad: FIX-207/209/210/211, PAR-026/PAR-032. Mac conserva fuentes funcionales y se recompila con nueva versión; no se modifica core ni dependencias, ni se afirma validación física por la publicación.
+
+<a id="fix-211"></a>
+
+### [FIX-211] [Windows] - Mantener el scroll de volumen tras una muestra lateral
+
+- Fecha: 2026-10-18 (America/Montevideo).
+- Componente / estado: política de rueda, portada y cápsula de volumen; causa reproducida con captura del usuario, corrección implementada/verificada en frontend; nueva build y prueba física Windows pendientes.
+- Problema / evidencia: el usuario confirma1.2.2 y porcentaje inmóvil con rueda en ambas zonas, slider operativo. La captura del launcher en WebView2 155 corresponde al EXE publicado (SHA256 `2b98235176a0d08c6b5b802d185dbc800c85764f90cfffaeb382da32f6fef80a`); cuenta351eventos y16órdenes, con400registros retenidos. Contiene170muestras en tres grupos completos (69portada/49barra/52portada) y7de un cuarto incompleto. Las16órdenes de arrastre reciben ACK; no hay órdenes durante los grupos de rueda registrados. No se infiere el hardware a partir de estos deltas.
+- Causa reproducida: la política adquiría el primer movimiento vertical, pero ejecutaba `cancel()` ante cualquier muestra posterior no vertical. En el primer grupo, el evento4 entrega x=-23,33/y=13,89 después de sólo30,56px acumulados; borra el remanente y drena el resto de la secuencia hasta180ms de silencio. Los tres grupos completos producen0ajustes al reproducirlos antes del cambio. FIX-207 conserva remanente entre pausas, pero no cubría esta cancelación dentro del mismo grupo.
+- Cambio / motivo: una secuencia ya propia omite muestras laterales/cero sin perder propiedad ni distancia; retoma las verticales siguientes. No suma esas muestras ni renueva feedback por ellas. Inicios horizontales/ambiguos, salida de zona, revisión/modal, modificadores, cancelabilidad y datos inválidos mantienen sus guardas. Sensibilidad, umbral de100px/3líneas/1página, controller, audio nativo, curva y core conservados.
+- Diagnóstico: se añade launcher local PowerShell/CDP y observador acotado de deltas/órdenes/confirmaciones, sin registrar cuenta/canción/URLs/credenciales ni modificar funciones IPC inmutables. Se corrige su lectura posterior de cancelación: schema1 usaba microtarea desde capture y podía observar el evento antes del handler bubble. Sus `wheel-after=false` no se usan como prueba de falta de consumo. Schema2 lee en la tarea siguiente y retira sus timers al terminar. El launcher original ya produjo la captura; la nueva lectura física está pendiente, con prueba de temporización aprobada.
+- Archivos: `windows/src/lib/player/volume-scroll.ts`, `windows/scripts/volume-scroll.test.mjs`, `windows/scripts/fixtures/volume-wheel-mixed-axis.json`, `windows/scripts/diagnose-volume.{ps1,cmd,md,test.mjs}`, PLAN-009 e índice. La fixture conserva sólo tiempos relativos/deltas y valores de volumen; JSON original del usuario fuera de Git.
+- Verificación: dos regresiones fallan antes y pasan después;17focales de volumen aprobadas. Replay con componentes portada/barra, adaptador y PlaybackController reales, RPC simulado:25órdenes,59→56/59→67/50→45, porcentaje confirmado correcto. Tres pruebas del observador aprobadas, incluidas condiciones CDP reales sin pausar ni sustituir IPC/callbacks. `pnpm check`0errores/0avisos, `pnpm test`384aprobadas/1fixture nativa omitida enMac, `pnpm build` frontend aprobado. No demuestra audio audible ni una app Windows nueva.
+- Paridad / antecedentes / plan: FIX-197/198/207, [PAR-032](PARIDAD.md), [PLAN-009](windows/plans/PLAN-009-volume-scroll-feedback.md). Apple revisada en lectura: su `Services/Player/VolumeScrollPolicy.swift` ya omite muestras no verticales tras adquirir volumen, conservando ownership/remanente; no requiere port ni cambios Apple. QA física de ambas plataformas permanece abierta.
+- Entrega / límites: FIX-212 prepara su publicación autorizada en1.2.3/build16; EXE nuevo y comprobación física pendientes. La1.2.2 instalada sigue con el defecto hasta entregar esa build. La captura truncada no permite concluir sobre los174eventos posteriores no retenidos.
 
 <a id="fix-210"></a>
 

@@ -34,7 +34,8 @@ export class VolumeScrollPolicy {
     const previous = this.burst && sample.at-this.burst.at > VOLUME_SCROLL_QUIET_MS ? this.burst : null;
     if(previous) this.burst = null;
     const units = [100, 3, 1][sample.mode];
-    const vertical = Number.isFinite(sample.x) && Number.isFinite(sample.y) && sample.y !== 0 && Math.abs(sample.y) > Math.abs(sample.x)*1.25 && units !== undefined;
+    const valid = Number.isFinite(sample.x) && Number.isFinite(sample.y) && units !== undefined;
+    const vertical = valid && sample.y !== 0 && Math.abs(sample.y) > Math.abs(sample.x)*1.25;
     const eligible = context.enabled && !context.blocked && sample.surface !== null && !sample.modified && vertical && sample.cancelable && !sample.defaultPrevented && sample.momentum !== true;
     if(!this.burst) {
       const carry = eligible && previous?.owned && !previous.draining
@@ -51,7 +52,11 @@ export class VolumeScrollPolicy {
     // Modern runtimes expose momentum; older runtimes process indistinguishable
     // inertia as regular input. false does not signal a new physical contact.
     if(sample.momentum === true) return {consume:true,delta:0,feedback:false,cancelled:false};
-    if(!vertical) { this.cancel(); return {consume:true,delta:0,feedback:false,cancelled:true}; }
+    if(!valid) { this.cancel(); return {consume:true,delta:0,feedback:false,cancelled:true}; }
+    // Once vertical input owns this surface, lateral/zero samples do not revoke
+    // ownership or erase its distance. Ignore them and resume on vertical input;
+    // a horizontal start still cannot claim volume within the same transaction.
+    if(!vertical) return {consume:true,delta:0,feedback:false,cancelled:false};
     const direction = sample.y < 0 ? 1 : -1;
     if(direction !== burst.direction) burst.remainder = 0;
     burst.direction = direction;
