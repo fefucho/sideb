@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { releaseConfig, compiledBuild } from './release-config.mjs';
+import { releaseConfig, compiledBuild, collectReleaseAssets } from './release-config.mjs';
 
 function fixture(t) {
   const root=mkdtempSync(join(tmpdir(),'sideb-release-'));
@@ -30,3 +30,30 @@ test('rejects stale versions, wrong tags and tag injection',t=>{const f=fixture(
 test('requires the exact verified revision and complete runtime',t=>{const f=fixture(t);assert.equal(compiledBuild(f.root,'windows','1.2.0','13','revision'),f.directory);assert.throws(()=>compiledBuild(f.root,'windows','1.2.0','13','another'),/commit mismatch/);delete f.metadata.artifactSHA256['vulkan-1.dll'];f.save();assert.throws(()=>compiledBuild(f.root,'windows','1.2.0','13','revision'),/Required artifact/);});
 test('rejects changed sources, wrong version and corrupted executable',t=>{const f=fixture(t);f.metadata.sourceChangedDuringBuild=true;f.save();assert.throws(()=>compiledBuild(f.root,'windows','1.2.0','13','revision'),/sources changed/);f.metadata.sourceChangedDuringBuild=false;f.save();assert.throws(()=>compiledBuild(f.root,'windows','1.1.8','13','revision'),/version\/platform/);writeFileSync(join(f.directory,'sideb-windows.exe'),'corrupted');assert.throws(()=>compiledBuild(f.root,'windows','1.2.0','13','revision'),/checksum/);});
 test('does not fall back to an older successful build or accept outside artifacts',t=>{const f=fixture(t);f.metadata.artifactSHA256['../outside']='digest';f.save();assert.throws(()=>compiledBuild(f.root,'windows','1.2.0','13','revision'),/escapes/);mkdirSync(join(f.root,'builds/windows/build-0002'));writeFileSync(join(f.root,'builds/windows/build-0002/BUILD.json'),'{"status":"failed"}');assert.throws(()=>compiledBuild(f.root,'windows','1.2.0','13','revision'),/incomplete/);});
+
+function downloadedAssets(t) {
+  const root=mkdtempSync(join(tmpdir(),'sideb-assets-'));t.after(()=>rmSync(root,{recursive:true,force:true}));
+  const source=join(root,'download'),nested=join(source,'build-0001'),destination=join(root,'flat');mkdirSync(nested,{recursive:true});
+  const names=['SideB-macOS.zip','SideB-Windows-x64-setup.exe','SideB-windows-x64.zip'];
+  for(const name of names)writeFileSync(join(nested,name),name);
+  const line=name=>createHash('sha256').update(name).digest('hex')+'  '+name;
+  writeFileSync(join(nested,'SideB-macOS-SHA256.txt'),line(names[0])+'\n');
+  writeFileSync(join(nested,'SideB-Windows-x64-SHA256.txt'),names.slice(1).map(line).join('\r\n')+'\r\n');
+  return {root,source,nested,destination,names};
+}
+test('collects the real numbered artifact layout into a verified flat upload directory',t=>{
+  const f=downloadedAssets(t);assert.equal(existsSync(join(f.source,'SideB-macOS.zip')),false);
+  assert.equal(collectReleaseAssets(f.source,f.destination),f.destination);
+  for(const name of [...f.names,'SideB-macOS-SHA256.txt','SideB-Windows-x64-SHA256.txt'])assert.deepEqual(readFileSync(join(f.destination,name)),readFileSync(join(f.nested,name)));
+});
+test('refuses ambiguous numbered artifacts and missing packages',t=>{
+  const f=downloadedAssets(t);const extra=join(f.source,'build-0002');mkdirSync(extra);writeFileSync(join(extra,f.names[0]),'duplicate');
+  assert.throws(()=>collectReleaseAssets(f.source,f.destination),/Duplicate/);rmSync(extra,{recursive:true});rmSync(join(f.nested,f.names[1]));
+  assert.throws(()=>collectReleaseAssets(f.source,f.destination),/Missing/);assert.equal(existsSync(f.destination),false);
+});
+test('rejects changed packages and checksum paths before creating upload output',t=>{
+  const f=downloadedAssets(t);writeFileSync(join(f.nested,f.names[0]),'corrupted');
+  assert.throws(()=>collectReleaseAssets(f.source,f.destination),/checksum mismatch/);assert.equal(existsSync(f.destination),false);
+  writeFileSync(join(f.nested,f.names[0]),f.names[0]);writeFileSync(join(f.nested,'SideB-macOS-SHA256.txt'),'0'.repeat(64)+'  ../outside\n');
+  assert.throws(()=>collectReleaseAssets(f.source,f.destination),/Invalid release checksums/);
+});

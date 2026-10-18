@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync, readdirSync, appendFileSync } from 'node:fs';
-import { dirname, join, resolve, sep } from 'node:path';
+import { existsSync, readFileSync, readdirSync, appendFileSync, copyFileSync, mkdirSync } from 'node:fs';
+import { basename, dirname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export function releaseConfig(root, tag) {
@@ -43,6 +43,41 @@ export function compiledBuild(root, platform, version, build, commit) {
   return directory;
 }
 
+export function collectReleaseAssets(source, destination) {
+  const required = ['SideB-macOS.zip', 'SideB-macOS-SHA256.txt', 'SideB-Windows-x64-setup.exe', 'SideB-windows-x64.zip', 'SideB-Windows-x64-SHA256.txt'];
+  const found = new Map();
+  function visit(directory) {
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const path = join(directory, entry.name);
+      if (entry.isDirectory()) { visit(path); continue; }
+      if (!entry.isFile() || !required.includes(basename(path))) throw new Error(`Unexpected release asset: ${path}`);
+      if (found.has(entry.name)) throw new Error(`Duplicate release asset: ${entry.name}`);
+      if (!readFileSync(path).length) throw new Error(`Empty release asset: ${entry.name}`);
+      found.set(entry.name, path);
+    }
+  }
+  visit(source);
+  for (const name of required) if (!found.has(name)) throw new Error(`Missing release asset: ${name}`);
+  for (const [checksum, expected] of [
+    ['SideB-macOS-SHA256.txt', ['SideB-macOS.zip']],
+    ['SideB-Windows-x64-SHA256.txt', ['SideB-Windows-x64-setup.exe', 'SideB-windows-x64.zip']],
+  ]) {
+    const checked = new Set();
+    for (const line of readFileSync(found.get(checksum), 'utf8').trim().split(/\r?\n/)) {
+      const match = /^([a-fA-F0-9]{64})\s+\*?([^\r\n]+)$/.exec(line);
+      if (!match || !expected.includes(match[2]) || checked.has(match[2])) throw new Error(`Invalid release checksums: ${checksum}`);
+      const actual = createHash('sha256').update(readFileSync(found.get(match[2]))).digest('hex');
+      if (actual !== match[1].toLowerCase()) throw new Error(`Release checksum mismatch: ${match[2]}`);
+      checked.add(match[2]);
+    }
+    if (checked.size !== expected.length) throw new Error(`Incomplete release checksums: ${checksum}`);
+  }
+  if (existsSync(destination) && readdirSync(destination).length) throw new Error('Release destination must be empty');
+  mkdirSync(destination, { recursive: true });
+  for (const name of required) copyFileSync(found.get(name), join(destination, name));
+  return resolve(destination);
+}
+
 const script = fileURLToPath(import.meta.url);
 if (process.argv[1] && resolve(process.argv[1]) === script) {
   try {
@@ -56,6 +91,8 @@ if (process.argv[1] && resolve(process.argv[1]) === script) {
       const directory = compiledBuild(root, process.argv[3], config.version, config.build, process.env.GITHUB_SHA);
       if (process.env.GITHUB_ENV) appendFileSync(process.env.GITHUB_ENV, `RELEASE_BUILD_DIR=${directory}\n`);
       process.stdout.write(directory+'\n');
-    } else throw new Error('Usage: node Scripts/release-config.mjs preflight|build <platform>');
+    } else if (process.argv[2] === 'assets' && process.argv[3] && process.argv[4]) {
+      process.stdout.write(collectReleaseAssets(resolve(process.argv[3]), resolve(process.argv[4]))+'\n');
+    } else throw new Error('Usage: node Scripts/release-config.mjs preflight|build <platform>|assets <source> <destination>');
   } catch (error) { process.stderr.write(error.message+'\n'); process.exitCode=1; }
 }

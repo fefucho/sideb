@@ -220,8 +220,13 @@ jobs:
           pattern: release-windows
           path: release-assets
           merge-multiple: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Collect and verify assets from numbered build directories
+        run: node Scripts/release-config.mjs assets release-assets release-assets-flat
       - name: Verify checksums and required downloads
-        working-directory: release-assets
+        working-directory: release-assets-flat
         run: |
           test -s SideB-macOS.zip
           test -s SideB-Windows-x64-setup.exe
@@ -236,7 +241,7 @@ jobs:
         run: |
           test "$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft)" = true
           test "$(gh api "repos/$GH_REPO/commits/$RELEASE_TAG" --jq .sha)" = "$GITHUB_SHA"
-          gh release upload "$RELEASE_TAG" release-assets/* --clobber
+          gh release upload "$RELEASE_TAG" release-assets-flat/* --clobber
           if [ "$PRERELEASE" = true ]; then
             gh release edit "$RELEASE_TAG" --draft=false --prerelease --latest=false
           else

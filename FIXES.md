@@ -4,9 +4,21 @@ Memoria de cambios de Side B para investigar problemas y regresiones. Buscar aqu
 
 Tags de ámbito: `[Apple]`, `[Windows]`, `[Compartido]`. Core y herramientas comunes usan Compartido, detallando el componente. El tag indica dónde se hizo el cambio; no demuestra que ambas plataformas hayan sido verificadas. Estados, fechas, componentes y relaciones se conservan dentro de cada entrada.
 
-Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-210**. Se conservaron los FIX/FEAT históricos. Dos números antiguos repetidos se distinguen como `FIX-027-2` y `FIX-028-2`, anotando el ID original; al citar FIX-027/028 comprobar título y entrada exacta.
+Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-211**. Se conservaron los FIX/FEAT históricos. Dos números antiguos repetidos se distinguen como `FIX-027-2` y `FIX-028-2`, anotando el ID original; al citar FIX-027/028 comprobar título y entrada exacta.
 
 ## Cambios recientes
+
+<a id="fix-210"></a>
+
+### [FIX-210] [Compartido] - Reunir paquetes de los directorios numerados antes de publicar
+
+- Fecha: 2026-10-18 (America/Montevideo).
+- Componente / estado: publicación GitHub Actions; causa reproducida con artefactos reales de1.2.2, corrección implementada y verificación/publicación en curso.
+- Problema / causa: run39091299331 aprueba preparación y ambas builds nativas (761pruebas por plataforma), pero el publicador falla en el primer `test -s SideB-macOS.zip`. Upload/download-artifact conserva el directorio build-0001 y merge-multiple sólo combina artefactos; no aplana ese directorio. Los cinco archivos estaban en release-assets/build-0001 y el script los buscaba en release-assets. Los paquetes y hashes ya estaban correctos; no es un fallo de compilación ni de integridad.
+- Cambio / motivo: colector explícito en release-config.mjs recorre los directorios de artefactos, exige exactamente los cinco archivos previstos sin duplicados/archivos ajenos, rechaza vacíos y verifica los dos manifiestos SHA256 antes de copiar bytes a un destino plano vacío. Workflow verifica/sube ese destino. Mantener guardas de revisión/tag/borrador/hash; no modificar app/core/manifests ni recompilar paquetes correctos.
+- Archivos: `Scripts/release-config{,.test}.mjs`, `.github/workflows/release.yml`.
+- Verificación: regresiones para layout numerado real, duplicados/ausencias, bytes corruptos y rutas de checksum. Se conserva el run fallido y se completará el borrador existente usando paquetes de8b8e135 verificados, con el tag en esa revisión exacta. El arreglo de infraestructura queda en main; no se atribuye a ese commit la compilación ya aprobada.
+- Antecedentes / paridad / plan: FIX-162/202/206/209, PAR-026 y [release1.2.2](plans/RELEASE-1.2.2.md). Afecta la colección de ambas plataformas, sin cambios de proveedor, Windows/Core/Apple ni validación física nueva.
 
 <a id="fix-209"></a>
 
