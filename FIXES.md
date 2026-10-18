@@ -10,17 +10,19 @@ Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-216**. Se
 
 <a id="fix-215"></a>
 
-### [FIX-215] [Compartido] - Preparar publicación 1.2.4 del volumen Windows confirmado
+### [FIX-215] [Compartido] - Publicar 1.2.4 del volumen Windows confirmado
 
 - Fecha: 2026-10-18 (America/Montevideo).
-- Componente / tipo / estado: versiones y entrega Mac/Windows; preparación de release, publicación pendiente.
+- Componente / tipo / estado: versiones y entrega Mac/Windows; release1.2.4/build17 publicada como Latest, CI completo y cinco descargas públicas verificados.
 - Pedido / motivo: el usuario confirma «ahora sí anda» y pide subir la build tras FIX-213/214. Se prepara1.2.4/build17 para ofrecer el arreglo mediante el actualizador, conservando la release1.2.3 y el binario0014 probado. Los nuevos paquetes se compilan con metadatos1.2.4; no se relabela0014.
 - Cambio: version.env, manifests Windows, versión del paquete propio en Cargo.lock, default manual del workflow, notas1.2.4 y plan. El workflow existente por tag verifica y publica ambos sistemas juntos. Sin cambios funcionales adicionales Apple/core/dependencias.
 - Archivos: `version.env`, `windows/package.json`, `windows/src-tauri/{Cargo.toml,Cargo.lock,tauri.conf.json}`, `.github/workflows/release.yml`, `release-notes/1.2.4.md`, [plan de entrega](plans/RELEASE-1.2.4.md), registros de FIX-213/214 y paridad.
-- Verificación previa: preflight v1.2.4/build17 aprobado;19pruebas runner/release aprobadas en Windows y1prueba de empaquetado Mac omitida por plataforma; cero fallos. La lógica FIX-213 cuenta con18focales,385frontend/check0/0/build,764pruebas nativas, hashes y prueba en0014 real/confirmación del usuario. CI y hashes de1.2.4 aún pendientes; no se presentan como ya aprobados.
+- Verificación previa: preflight v1.2.4/build17 aprobado;19pruebas runner/release aprobadas en Windows y1prueba de empaquetado Mac omitida por plataforma; cero fallos. La lógica FIX-213 cuenta con18focales,385frontend/check0/0/build,764pruebas nativas, hashes y prueba en0014 real/confirmación del usuario.
+- Fuentes / entrega: c86454edd63550e642e37676e44ee9e228a045ac subido a main/tagv1.2.4. [Actions39157077739](https://github.com/fefucho/sideb/actions/runs/39157077739) success en preparación, macOS, Windows y publicación; verificación/builds, versión/revisión/hashes y empaquetado aprobados según pasos públicos. Sin atribuir recuentos de pruebas nuevos ni lectura de logs autenticados. [Release1.2.4](https://github.com/fefucho/sideb/releases/tag/v1.2.4) publicada2026-10-18 16:38:40 America/Montevideo como Latest.
+- Paquetes: cinco descargas públicas coinciden con digests y manifiestos SHA256; PE x64/version1.2.4, portable de cuatro archivos/runtime conservado, plist Mac1.2.4/build17/mínimo15.0 y Mach-O arm64 verificados. Firma Mac aprobada por CI; no reejecutada desde Windows. Hashes y evidencia en [plan de entrega](plans/RELEASE-1.2.4.md) y `builds/releases/v1.2.4/release-verification.json` ignorado.
 - Autenticación: revisión automática rechazó obtener la credencial Git para la API de releases; no se extrajo ni persistió. Se usa push normal de Git y disparo por tag para que Actions gestione su propia autorización dentro de GitHub. No se requiere conectar plugins ni cambiar permisos.
 - Antecedentes / paridad / plan: FIX-197/198/207/211/212/213/214, PAR-026/PAR-032 y [release1.2.4](plans/RELEASE-1.2.4.md). El defecto de timers es exclusivo WebView2; Apple conserva fuentes funcionales y sólo comparte nuevo número/build. No se cierra QA Apple por compilar.
-- Límites: publicación, paquetes nuevos y CI pendientes; no instalación interactiva ni nueva certificación de audio/dispositivos. Sin modificar releases anteriores ni publicar datos de usuario/diagnósticos locales.
+- Límites: sin instalación interactiva ni nueva certificación de audio/dispositivos; aceptación humana corresponde a la lógica de0014. Sin modificar releases anteriores ni publicar datos de usuario/diagnósticos locales.
 
 <a id="fix-214"></a>
 

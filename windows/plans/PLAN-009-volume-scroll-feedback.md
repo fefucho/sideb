@@ -208,3 +208,9 @@ Detalle de causa: en el primer grupo el evento4 añade x=-23,33/y=13,89 después
 Limitación corregida del diagnóstico: schema1 utilizaba `queueMicrotask` desde capture para leer `defaultPrevented`; puede ejecutarse antes del listener bubble de la app. Sus valores `wheel-after=false` no prueban que faltara consumo. Schema2 difiere esa lectura a la tarea siguiente y retira timers al terminar; prueba de checkpoint/timers aprobada, repetición física del observador revisado pendiente. La causa se sustenta en replay de deltas y órdenes/ACK observadas, sin depender de ese campo.
 
 Apple consultada en lectura: `Services/Player/VolumeScrollPolicy.swift` ya conserva ownership y remanente al recibir una muestra no vertical después de adquirir volumen (`guard vertical else { consume:true }`); no comparte la cancelación Windows. No requiere port de FIX-211 ni cambia su estado físico pendiente de PAR-032. La captura es exclusiva de Windows/WebView2.
+
+## Entrega1.2.4 — FIX-213/214/215
+
+El usuario confirma «ahora sí anda» con0014 y autoriza subir la build. [Release1.2.4](https://github.com/fefucho/sideb/releases/tag/v1.2.4) publicada como Latest el2026-10-18 a16:38:40 America/Montevideo desde c86454edd63550e642e37676e44ee9e228a045ac. Los cuatro jobs de [CI39157077739](https://github.com/fefucho/sideb/actions/runs/39157077739) aprueban preparación, Mac, Windows y publicación. Las cinco descargas públicas coinciden con digests/manifiestos SHA256; portable Windows con cuatro archivos, PE x64/version1.2.4 y runtime conservado. Mac1.2.4/build17/arm64/mínimo15.0 comprobado; firma aprobada por CI.
+
+Los recuentos764/385 y la aceptación del usuario corresponden a0014/FIX-213; no se atribuye lectura de logs autenticados ni escucha/instalación interactiva nueva a esta entrega. Fuentes funcionales Apple/core conservadas y releases anteriores intactas. Véase [plan1.2.4](../../plans/RELEASE-1.2.4.md) para hashes/evidencia y límites.
