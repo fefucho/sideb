@@ -24,17 +24,24 @@ export class VolumeScrollPolicy {
   cancel(): void { if(this.burst) { this.burst.draining = true; this.burst.remainder = 0; } }
   reset(): void { this.burst = null; }
   get tracking(): boolean { return !!this.burst?.owned && !this.burst.draining; }
-  recent(at:number): boolean { return this.tracking && at-this.burst!.at <= VOLUME_FEEDBACK_MS; }
   leave(surface:VolumeScrollSurface|null): boolean {
     if(!this.tracking || surface===this.burst!.surface) return false;
     this.cancel(); return true;
   }
   wheel(sample: VolumeWheelSample, context: VolumeScrollContext): VolumeScrollOutput {
-    if(this.burst && sample.at-this.burst.at > VOLUME_SCROLL_QUIET_MS) this.burst = null;
+    // Quiet starts a new ownership transaction, but must not discard distance:
+    // slow wheel input can stay below one percentage point in every transaction.
+    const previous = this.burst && sample.at-this.burst.at > VOLUME_SCROLL_QUIET_MS ? this.burst : null;
+    if(previous) this.burst = null;
     const units = [100, 3, 1][sample.mode];
     const vertical = Number.isFinite(sample.x) && Number.isFinite(sample.y) && sample.y !== 0 && Math.abs(sample.y) > Math.abs(sample.x)*1.25 && units !== undefined;
     const eligible = context.enabled && !context.blocked && sample.surface !== null && !sample.modified && vertical && sample.cancelable && !sample.defaultPrevented && sample.momentum !== true;
-    if(!this.burst) this.burst = {at:sample.at,revision:context.revision,surface:sample.surface,owned:eligible,draining:false,remainder:0,direction:0};
+    if(!this.burst) {
+      const carry = eligible && previous?.owned && !previous.draining
+        && previous.revision === context.revision && previous.surface === sample.surface;
+      this.burst = {at:sample.at,revision:context.revision,surface:sample.surface,owned:eligible,draining:false,
+        remainder:carry ? previous.remainder : 0,direction:carry ? previous.direction : 0};
+    }
     const burst = this.burst; burst.at = sample.at;
     if(!burst.owned) return idle();
     if(burst.revision !== context.revision || !context.enabled || context.blocked || sample.surface !== burst.surface || sample.modified || sample.defaultPrevented || !sample.cancelable) this.cancel();
@@ -55,7 +62,7 @@ export class VolumeScrollPolicy {
     const room = direction > 0 ? 100-value : value;
     // The controller clamps the actual intent, preserving fractional percentages.
     // Drop remainder/excess at endpoints so reversal never repays old debt.
-    const delta = room <= 0 ? 0 : direction*steps;
+    const delta = room <= 0 || steps === 0 ? 0 : direction*steps;
     if(steps >= room) burst.remainder = 0;
     return {consume:true,delta,feedback:true,cancelled:false};
   }

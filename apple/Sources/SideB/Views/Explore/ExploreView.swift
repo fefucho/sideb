@@ -49,69 +49,47 @@ struct ExploreView: View {
     private var scrollContent: some View {
         ScrollViewReader { scroll in
             ScrollView {
-                VStack(alignment: .leading, spacing: 30) {
-                    header.id("explore-top")
-                    tabs
-                    switch route {
-                    case .discover:
-                        HStack(spacing: 16) {
-                            shortcut(.releases, subtitle: L10n.text("explore.shortcut.new_arrivals"), hue: 0.02)
-                            shortcut(.charts, subtitle: L10n.text("explore.shortcut.global_region"), hue: 0.64)
+                ExplorePageContent(bottomPadding: 140) {
+                    VStack(alignment: .leading, spacing: 30) {
+                        header.id("explore-top")
+                        tabs
+                        switch route {
+                        case .discover:
+                            HStack(spacing: 16) {
+                                shortcut(.releases, subtitle: L10n.text("explore.shortcut.new_arrivals"), hue: 0.02)
+                                shortcut(.charts, subtitle: L10n.text("explore.shortcut.global_region"), hue: 0.64)
+                            }
+                            music(title: L10n.text("explore.section.new_albums_singles"), preview: true)
+                            categories(ExploreCategory.moods, title: L10n.text("explore.section.for_every_moment"), destination: .moods)
+                            categories(Array(ExploreCategory.genres.prefix(8)), title: L10n.text("explore.section.explore_genres"), destination: .genres)
+                        case .releases: music(title: L10n.text("explore.section.new_albums_singles"))
+                        case .charts, .chartCountry: chartContents
+                        case .genres: categories(ExploreCategory.genres, title: L10n.text("explore.section.all_genres"))
+                        case .moods: categories(ExploreCategory.moods, title: L10n.text("explore.section.choose_moment"))
+                        case .category: music(title: L10n.text("explore.section.playlists_to_explore"))
                         }
-                        music(title: L10n.text("explore.section.new_albums_singles"), preview: true)
-                        categories(ExploreCategory.moods, title: L10n.text("explore.section.for_every_moment"), destination: .moods)
-                        categories(Array(ExploreCategory.genres.prefix(8)), title: L10n.text("explore.section.explore_genres"), destination: .genres)
-                    case .releases: music(title: L10n.text("explore.section.new_albums_singles"))
-                    case .charts, .chartCountry: chartContents
-                    case .genres: categories(ExploreCategory.genres, title: L10n.text("explore.section.all_genres"))
-                    case .moods: categories(ExploreCategory.moods, title: L10n.text("explore.section.choose_moment"))
-                    case .category: music(title: L10n.text("explore.section.playlists_to_explore"))
                     }
                 }
-                .padding(.horizontal, 32)
-                .padding(.top, 28)
-                .padding(.bottom, 140)
-                .frame(maxWidth: 1400, alignment: .leading)
-                .frame(maxWidth: .infinity, alignment: .top)
             }
             .onChange(of: route) { _, _ in scroll.scrollTo("explore-top", anchor: .top) }
         }
     }
 
     private var catalogHeader: some View {
-        VStack(alignment: .leading, spacing: 30) {
-            header
-            tabs
-            VStack(alignment: .leading, spacing: 16) {
-                musicHeader(title: route == .releases ? L10n.text("explore.section.new_albums_singles") : L10n.text("explore.section.playlists_to_explore"))
-                musicStatus
+        ExplorePageContent(bottomPadding: 16) {
+            VStack(alignment: .leading, spacing: 30) {
+                header
+                tabs
+                VStack(alignment: .leading, spacing: 16) {
+                    musicHeader(title: route == .releases ? L10n.text("explore.section.new_albums_singles") : L10n.text("explore.section.playlists_to_explore"))
+                    musicStatus
+                }
             }
         }
-        .padding(.horizontal, 32).padding(.top, 28).padding(.bottom, 16)
-        .frame(maxWidth: 1400, alignment: .leading).frame(maxWidth: .infinity, alignment: .top)
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Label(L10n.text("explore.eyebrow").uppercased(), systemImage: "safari")
-                .font(.system(size: 11, weight: .semibold)).tracking(2).foregroundStyle(.secondary)
-            Text(route == .discover ? L10n.text("explore.title.discover") : route.title)
-                .font(.system(size: route == .discover ? 36 : 32, weight: .bold)).accessibilityAddTraits(.isHeader)
-            Text(headerSubtitle).font(.system(size: 14)).foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private var headerSubtitle: String {
-        switch route {
-        case .discover: return L10n.text("explore.subtitle.discover")
-        case .releases: return L10n.text("explore.subtitle.releases")
-        case .charts: return L10n.text("explore.subtitle.charts")
-        case .chartCountry(let code): return L10n.text("explore.subtitle.chart_country", args: [ExploreChartRegion.name(code)])
-        case .genres: return L10n.text("explore.subtitle.genres")
-        case .moods: return L10n.text("explore.subtitle.moods")
-        case .category(let id): return ExploreCategory.find(id)?.displaySubtitle ?? L10n.text("explore.subtitle.category_fallback")
-        }
+        ExplorePageHeading(route: route)
     }
 
     private var tabs: some View {
@@ -350,6 +328,36 @@ struct ExploreView: View {
     }
 
     private func navigate(_ route: ExploreRoute) { router.navigate(to: .explore(route)) }
+}
+
+/// Keep both the SwiftUI feed and the native catalogue header on Home's margins.
+/// A centered maximum width here would narrow Explore on wide windows.
+struct ExplorePageContent<Content: View>: View {
+    let bottomPadding: CGFloat
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        content
+            .padding(.horizontal, 28)
+            .padding(.top, 24)
+            .padding(.bottom, bottomPadding)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+    }
+}
+
+struct ExplorePageHeading: View {
+    let route: ExploreRoute
+
+    var body: some View {
+        let _ = L10n.revision
+        Text(route == .discover ? L10n.text("navigation.explore") : route.title)
+            .font(.system(size: 40, weight: .bold))
+            .lineLimit(1)
+            .minimumScaleFactor(0.7)
+            .accessibilityAddTraits(.isHeader)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(height: 52)
+    }
 }
 
 extension BrowseCardRecord {

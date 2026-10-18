@@ -4,9 +4,51 @@ Memoria de cambios de Side B para investigar problemas y regresiones. Buscar aqu
 
 Tags de ámbito: `[Apple]`, `[Windows]`, `[Compartido]`. Core y herramientas comunes usan Compartido, detallando el componente. El tag indica dónde se hizo el cambio; no demuestra que ambas plataformas hayan sido verificadas. Estados, fechas, componentes y relaciones se conservan dentro de cada entrada.
 
-Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-207**. Se conservaron los FIX/FEAT históricos. Dos números antiguos repetidos se distinguen como `FIX-027-2` y `FIX-028-2`, anotando el ID original; al citar FIX-027/028 comprobar título y entrada exacta.
+Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-210**. Se conservaron los FIX/FEAT históricos. Dos números antiguos repetidos se distinguen como `FIX-027-2` y `FIX-028-2`, anotando el ID original; al citar FIX-027/028 comprobar título y entrada exacta.
 
 ## Cambios recientes
+
+<a id="fix-209"></a>
+
+### [FIX-209] [Compartido] - Preparar y publicar parche 1.2.2
+
+- Fecha: 2026-10-17 (America/Montevideo).
+- Componente / estado: versiones, código publicado y paquetes Mac/Windows; preparación autorizada, CI/publicación pendientes.
+- Pedido / motivo: subir a GitHub y publicar los arreglos de FIX-207/208. Nueva versión1.2.2/build15 para que los actualizadores distingan el parche de1.2.1; notas declaran que Side B sigue beta.
+- Cambio: version.env, manifests Windows y sólo versión del paquete propio en Cargo.lock, default manual del workflow1.2.2 y notas. Se mantienen runtime/dependencias/core/actualizadores y la publicación conjunta con hashes. No se relabela la build0132 ni se reemplazan releases publicadas.
+- Verificación previa: FIX-208 conserva Mac0132/761pruebas, firma/hashes/fuentes estables y QA visible aislada parcial; FIX-207 conserva15 focales. Nueva verificación1.2.2:17 tests runner/release y preflight versionado aprobados;381frontend/1omisión nativa enMac, check0/0/build y diffcheck aprobados. Builds nativas/publicación1.2.2 pendientes; informar resultados finales al terminar.
+- Alcance de Git: fuentes/tests/planes/fixes/versiones/notas de este pedido; prototipos/caché/artefactos/datos locales fuera. No modificar el core protegido.
+- Paridad / límites: [PAR-026/PAR-032/PAR-012/PAR-027/PAR-028](PARIDAD.md), antecedentes FIX-162/202/206/207/208 y [release1.2.2](plans/RELEASE-1.2.2.md). La entrega no cierra cuenta/audio/instalación/VoiceOver/trackpad/FPS físicos.
+
+<a id="fix-208"></a>
+
+### [FIX-208] [Apple] - Explorar con ancho de Inicio y cabeceras que acompañan el scroll
+
+- Fecha: 2026-10-17 (America/Montevideo).
+- Componente / estado: presentación de Explorar y viewport de Biblioteca/Búsqueda; implementación integrada de tres subagentes, focales y build-0132 aprobadas; aceptación física pendiente.
+- Problema / causa: Explorar centraba su contenido con máximo1400pt y32pt laterales, frente al ancho completo/28pt de Inicio. Su cabecera añadía eyebrow, eslogan y descripción. Biblioteca y Búsqueda separaban título/controles del viewport vertical de los resultados, por lo que quedaban fijos al desplazar.
+- Cambio / motivo: Explorar elimina el tope y usa márgenes28pt, inicio24pt y título localizado Explore/Explorar de40pt en caja52pt; conserva títulos de subrutas y alinea el catálogo nativo. Biblioteca/Búsqueda incluyen sus cabeceras en el documento del renderer correspondiente: ScrollView SwiftUI, NSCollectionView o NSTableView, conservando reciclaje y un único viewport vertical. Biblioteca conserva un hosting de cabecera en la colección y offsets por categoría/cuenta. Búsqueda reutiliza la misma tabla entre canciones/videos y durante carga/vacío; conserva editor y sugerencias, reservando su altura dentro de la fila nativa para evitar recorte de clics; Todo/catálogos mantienen sugerencias flotantes.
+- Archivos: `apple/Sources/SideB/Views/Explore/{ExploreView,ExploreCatalogGridView}.swift`, `Views/Library/{LibraryView,LibraryCollectionViewport}.swift`, `Views/Search/SearchView.swift`; pruebas `ExplorePageLayoutTests`, `LibraryScrollingHeaderTests`, `SearchScrollingHeaderTests`.
+- Antecedentes: refina presentación de FIX-120/121/168/179/180, conserva virtualización de FIX-172 y contratos de retención/viewport de FIX-185/186; no modifica el motor de FIX-196. Cambios Windows de FIX-207 preservados.
+- Verificación focal:27XCTest distintas y1SwiftTesting aprobadas entre las últimas corridas coordinadas. Geometría real a730/1100/1512pt, cabecera desplazada en ocho modos Biblioteca y seis filtros Búsqueda; foco/selección/borrador al filtrar/cargar, tabla canciones→videos estable y filas recicladas de5.000 (Explorar máximo15; Biblioteca15grid/10lista). Footer Biblioteca limpio→error→limpio comprobado por bitmap, con query/fuente iguales; sugerencias nativas reservan altura y renderizan dentro de la fila, commit/recientes comprobados mediante el modelo real. Renders aislados revisados en `/tmp/sideb-plan022-layout-review`. El submit de fixture sale del editor igual que la acción de página para no reabrir preview por observación de query. Captura débil del callback de cabecera evita ciclo del hosting.
+- Build final: `node Scripts/build-version.mjs macos` conserva `builds/macos/build-0132/Side B.app`, compiled/sourceChangedDuringBuild=false.761 pruebas ejecutadas aprobadas:188Rust/236XCTest/337SwiftTesting;7Rust ignoradas y7Swift omitidas. Diez hashes de artefactos, firma ad hoc deep/strict, arm64/mínimo15 y versión1.2.1/build14 verificados. `BUILD.json`, `build.log` y `layout-verification.json` conservan evidencia. No se cambió versión pública ni se publicó/instaló/abrió la app.
+- QA visible posterior: copia de build0132 con identificador HomeLab propio y directorio de datos aislado, original intacto. Comparación Inicio/Explorar con sidebar abierta/cerrada confirma título y ancho; búsqueda pública drake→frank ocean confirma scroll de Todo/canciones/álbumes con cabecera fuera de pantalla y consulta/filtros preservados. Sugerencia pulsada desde el header de la tabla nativa confirma consulta nueva, cierra preview y presenta resultados. Biblioteca invitado correcta; sus ocho modos con datos se mantienen comprobados por fixtures. Sin fallos nuevos; no requiere cambio de producto ni nueva build. Copia QA cerrada al terminar, dos versiones anteriores abiertas conservadas; diez hashes originales y342fuentes protegidas revalidados.
+- Límites: recorrido de Biblioteca con cuenta iniciada/clic Reintentar, VoiceOver, trackpad físico y FPS pendientes. Las ventanas ocultas no publican botones SwiftUI por AX; se retiraron los helpers informales de fixtures y se comprueba render/modelo, complementado por el clic de sugerencia en app visible. QA en invitado con consultas públicas, sin cuenta ni reproducción personal. Sólo documentación de cierre editada tras compilar; sin commit/push. La app de entrega original no se abrió ni instaló, sólo su copia aislada de QA.
+- Paridad / plan: [PAR-012/PAR-027/PAR-028](PARIDAD.md), [PLAN-022](apple/plans/PLAN-022-page-width-and-scrolling-headers.md). Windows revisado sólo en lectura: Explorar no tiene el tope1400pt pero conserva eyebrow/eslogan/subtítulo; Búsqueda conserva cabecera sticky separada. Biblioteca requiere comprobar cada modo nativo; port y validación física pendientes en destino.
+
+<a id="fix-207"></a>
+
+### [FIX-207] [Windows] - Conservar giros pequeños de volumen entre pausas
+
+- Fecha: 2026-10-17 (America/Montevideo).
+- Componente / estado: entrada wheel WebView2, portada y cápsula de volumen; implementado y verificado en frontend, comprobación física Windows pendiente.
+- Síntoma: en1.2.1 el usuario informa que el scroll muestra siempre el mismo porcentaje en ambas zonas, mientras arrastrar el slider sí modifica el sonido. No se dispone de una traza de deltas de su dispositivo.
+- Causa reproducida: VolumeScrollPolicy exige100px/3líneas/1página por punto, pero reiniciaba también el remanente tras180ms de silencio. Giros menores al umbral separados por esas pausas mostraban feedback sin emitir nunca un ajuste. Reproducción antes del fix: ocho eventos de60px separados250ms conservan50% y emiten cero deltas. No se atribuye un fallo de libmpv ni de curva a este caso.
+- Cambio / motivo: separar la transacción de propiedad de la distancia pendiente; conservar el remanente entre pausas sólo cuando ambas transacciones son elegibles y siguen en la misma superficie y revisión. Reversión de dirección, salida, modal, foco, cambio de propietario, inercia ajena o cancelación descartan ese resto. Validar salida de superficie incluso después de los900ms del feedback, para no aplicar remanentes al volver. Misma escala, sensibilidad, pasos completos, clamp, porcentaje confirmado y vía serial de audio; no cambia audio nativo, persistencia, Rust ni Apple.
+- Archivos: `windows/src/lib/player/volume-scroll.ts`, `windows/src/lib/navigation/gestures.ts`, `windows/scripts/volume-scroll.test.mjs`.
+- Verificación: regresiones de pausas/salida reproducidas antes y aprobadas después.15 focales de política/DOM/Svelte aprobadas; incluye modos pixel/line/page, aislamiento entre superficies/contextos, inversión, cancelación y salida después del timeout. Integración con portada y barra abiertas reales, adaptador y PlaybackController reales: seis entradas60px/300ms por zona producen tres RPC set_playback_volume de1punto, confirman42,3→39,3→36,3 y actualizan el porcentaje; slider sigue confirmando20. RPC nativo simulado en esta fixture; no demuestra audio audible. `pnpm check`0errores/0avisos, suite global381aprobadas/1fixture nativa omitida enMac (382registradas), `pnpm build` frontend aprobado y diffcheck limpio.
+- Paridad / antecedentes: [PAR-032](PARIDAD.md), FIX-197/198 y [PLAN-009](windows/plans/PLAN-009-volume-scroll-feedback.md). Mac usa fases AppKit y da un paso por evento de ratón no preciso; no comparte el umbral DOM ni esta pérdida de giros discretos. Su rama precisa sin fases también reinicia tras180ms: equivalencia de pausa queda por investigar, sin afirmar defecto físico ni modificar Apple.
+- Límites / entrega: fuentes locales corregidas, sin EXE nuevo, commit/push ni nueva release en este pedido. La1.2.1 publicada conserva sus paquetes. Calibración con deltas reales, runtime WebView2/libmpv y escucha física Windows pendientes; verificación frontend realizada enMac.
 
 <a id="fix-206"></a>
 

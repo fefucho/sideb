@@ -13,33 +13,34 @@ struct LibraryView: View {
     @State private var collectionPosition = ScrollPosition(y: 0)
     @State private var cardProjection = LibraryCardProjectionCache()
     @State private var needsRefresh = false
+    @State private var songsHeaderHeight: CGFloat = 220
     @Environment(\.sideBPageIsActive) private var pageIsActive
     private let columns = [GridItem(.adaptive(minimum: 160, maximum: 220), spacing: 18)]
 
     var body: some View {
         let _ = L10n.revision
-        VStack(alignment: .leading, spacing: 0) {
-            libraryHeader
-            categoryNavigation
-            if accountViewModel.isLoggedIn { libraryToolbar }
-
-            Group {
-                if !accountViewModel.isLoggedIn {
-                    VStack(spacing: 14) {
-                        emptyState(L10n.text("library.login_required"), icon: "person.crop.circle")
-                        Button(L10n.text("account.sign_in")) { menuContext?.loginSheet?.wrappedValue = true }.buttonStyle(SideBControlStyle(prominent: true))
-                    }.padding(.bottom, 130)
-                } else {
-                    switch libraryViewModel.selectedPageTab {
-                    case .all: overviewContent
-                    case .songs: songsContent
-                    case .playlists: cardsContent(libraryViewModel.playlists, icon: "music.note.list", title: L10n.text("library.empty.playlists"))
-                    case .albums: cardsContent(libraryViewModel.providerAlbums, icon: "opticaldisc", title: L10n.text("library.empty.albums"))
-                    case .artists: cardsContent(libraryViewModel.artists, icon: "person.crop.circle", title: L10n.text("library.empty.artists"))
+        Group {
+            if !accountViewModel.isLoggedIn {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 0) {
+                        libraryPageHeader
+                        VStack(spacing: 14) {
+                            emptyState(L10n.text("library.login_required"), icon: "person.crop.circle")
+                            Button(L10n.text("account.sign_in")) { menuContext?.loginSheet?.wrappedValue = true }
+                                .buttonStyle(SideBControlStyle(prominent: true))
+                        }
+                        .frame(maxWidth: .infinity).frame(minHeight: 280).padding(.bottom, 130)
                     }
                 }
+            } else {
+                switch libraryViewModel.selectedPageTab {
+                case .all: overviewContent
+                case .songs: songsContent
+                case .playlists: cardsContent(libraryViewModel.playlists, icon: "music.note.list", title: L10n.text("library.empty.playlists"))
+                case .albums: cardsContent(libraryViewModel.providerAlbums, icon: "opticaldisc", title: L10n.text("library.empty.albums"))
+                case .artists: cardsContent(libraryViewModel.artists, icon: "person.crop.circle", title: L10n.text("library.empty.artists"))
+                }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .task(id: LibraryPageRequest(tab: libraryViewModel.selectedPageTab, active: pageIsActive)) {
@@ -75,139 +76,157 @@ struct LibraryView: View {
         }
     }
 
-    @ViewBuilder
     private var songsContent: some View {
         let tracks = libraryViewModel.presentedSongs
+        return NativeTrackTableView(
+            tracks: tracks,
+            currentTrackVideoId: playerViewModel.currentTrack?.videoId,
+            isPlaying: playerViewModel.isPlaying,
+            playerViewModel: playerViewModel,
+            router: router,
+            rustCore: rustCore,
+            likedVideoIds: playerViewModel.likedVideoIds,
+            menuOrigin: { _ in .library },
+            onPlayTrack: { index in
+                playerViewModel.playPlaylist(
+                    browseId: "FEmusic_liked_videos", title: L10n.text("library.title"),
+                    tracks: tracks, startingAt: index,
+                    continuation: !libraryViewModel.hasLibraryQuery && libraryViewModel.libraryOrder == "original" ? libraryViewModel.songsContinuation : nil
+                )
+            },
+            onLikeTrack: { playerViewModel.toggleTrackLike($0) },
+            onDislikeTrack: { playerViewModel.dislikeTrack($0) },
+            onNearBottom: {
+                if pageIsActive && !libraryViewModel.hasLibraryQuery { Task { await libraryViewModel.loadMoreSongs(core: rustCore) } }
+            },
+            scrollingHeader: AnyView(libraryPageHeader
+                .fixedSize(horizontal: false, vertical: true)
+                .environment(\.sideBPageIsActive, pageIsActive)
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
+                    if height > 0, abs(songsHeaderHeight - height) > 0.5 { songsHeaderHeight = ceil(height) }
+                }),
+            scrollingHeaderHeight: songsHeaderHeight,
+            footer: tracks.isEmpty || libraryViewModel.songsErrorMessage != nil ? AnyView(songsStatus(tracks: tracks)) : nil,
+            footerHeight: tracks.isEmpty ? 300 : 80,
+            scrollOffset: libraryScrollOffset(for: "Canciones")
+        )
+        .id(libraryViewModel.accountRevision)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .overlay(alignment: .bottom) {
+            if libraryViewModel.isSongsLoadingMore {
+                HStack(spacing: 8) {
+                    ProgressView().controlSize(.small)
+                    Text(L10n.text("library.loading_more_songs"))
+                        .font(.system(size: 11, weight: .medium)).foregroundStyle(.secondary)
+                }
+                .padding(.horizontal, 14).padding(.vertical, 8)
+                .background(.ultraThinMaterial, in: Capsule()).padding(.bottom, 110)
+                .transition(.opacity.combined(with: .move(edge: .bottom)))
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func songsStatus(tracks: [SongItemRecord]) -> some View {
         if libraryViewModel.isSongsLoading && libraryViewModel.songs.isEmpty {
             ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if let error = libraryViewModel.songsErrorMessage, libraryViewModel.songs.isEmpty {
             DetailErrorStateView(title: L10n.text("library.error.load_songs"), message: error) {
                 Task { await libraryViewModel.loadSongs(core: rustCore) }
             }
-        } else if libraryViewModel.songs.isEmpty {
+        } else if tracks.isEmpty {
             VStack(spacing: 12) {
-                emptyState(L10n.text(libraryViewModel.songsContinuation == nil ? "library.empty.songs" : "library.search.empty"), icon: "music.note")
+                emptyState(L10n.text(libraryViewModel.songs.isEmpty && libraryViewModel.songsContinuation == nil && !libraryViewModel.hasLibraryQuery ? "library.empty.songs" : "library.search.empty"), icon: "music.note")
                 if libraryViewModel.songsContinuation != nil {
                     Text(L10n.text("library.search.pending")).font(.caption).foregroundStyle(.secondary)
                     Button(L10n.text("library.search.rest")) { Task { await libraryViewModel.searchRemainingSongs(core: rustCore) } }
                 }
-            }
-        } else {
-            VStack(spacing: 0) {
-                if tracks.isEmpty {
-                    Text(L10n.text("library.search.empty")).foregroundStyle(.secondary).padding()
-                    if libraryViewModel.songsContinuation != nil { Text(L10n.text("library.search.pending")).font(.caption).foregroundStyle(.secondary) }
-                } else {
-                NativeTrackTableView(
-                    tracks: tracks,
-                    currentTrackVideoId: playerViewModel.currentTrack?.videoId,
-                    isPlaying: playerViewModel.isPlaying,
-                    playerViewModel: playerViewModel,
-                    router: router,
-                    rustCore: rustCore,
-                    likedVideoIds: playerViewModel.likedVideoIds,
-                    menuOrigin: { _ in .library },
-                    onPlayTrack: { index in
-                        playerViewModel.playPlaylist(
-                            browseId: "FEmusic_liked_videos", title: L10n.text("library.title"),
-                            tracks: tracks, startingAt: index,
-                            continuation: !libraryViewModel.hasLibraryQuery && libraryViewModel.libraryOrder == "original" ? libraryViewModel.songsContinuation : nil
-                        )
-                    },
-                    onLikeTrack: { playerViewModel.toggleTrackLike($0) },
-                    onDislikeTrack: { playerViewModel.dislikeTrack($0) },
-                    onNearBottom: {
-                        if pageIsActive && !libraryViewModel.hasLibraryQuery { Task { await libraryViewModel.loadMoreSongs(core: rustCore) } }
-                    },
-                    scrollOffset: Binding(get: { libraryViewModel.collectionScrollOffsets["Canciones"] ?? 0 }, set: { libraryViewModel.collectionScrollOffsets["Canciones"] = $0 })
-                )
-                }
                 if let error = libraryViewModel.songsErrorMessage {
-                    HStack(spacing: 10) {
-                        Text(L10n.text("library.error.update_songs", args: [error]))
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(2)
-                        Button(L10n.text("library.retry")) {
-                            Task { await libraryViewModel.loadSongs(core: rustCore) }
-                        }
-                        .buttonStyle(SideBControlStyle())
-                    }
-                    .padding(.horizontal, 38.4)
-                    .padding(.vertical, 8)
+                    songsUpdateError(error)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .overlay(alignment: .bottom) {
-                if libraryViewModel.isSongsLoadingMore {
-                    HStack(spacing: 8) {
-                        ProgressView()
-                            .controlSize(.small)
-                        Text(L10n.text("library.loading_more_songs"))
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundStyle(.secondary)
-                    }
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 8)
-                    .background(.ultraThinMaterial, in: Capsule())
-                    .padding(.bottom, 110)
-                    .transition(.opacity.combined(with: .move(edge: .bottom)))
-                }
-            }
+        } else if let error = libraryViewModel.songsErrorMessage {
+            songsUpdateError(error)
         }
     }
 
-    @ViewBuilder
+    private func songsUpdateError(_ error: String) -> some View {
+        HStack(spacing: 10) {
+            Text(L10n.text("library.error.update_songs", args: [error]))
+                .font(.caption).foregroundStyle(.secondary).lineLimit(2)
+            Button(L10n.text("library.retry")) { Task { await libraryViewModel.loadSongs(core: rustCore) } }
+                .buttonStyle(SideBControlStyle())
+        }
+        .padding(.horizontal, 38.4).padding(.vertical, 8)
+    }
+
     private func cardsContent(_ source: [BrowseCardRecord], icon: String, title: String) -> some View {
         let cards = cardProjection.cards(source, query: libraryViewModel.libraryQuery, order: libraryViewModel.effectiveLibraryOrder) {
             libraryViewModel.presentedCards(source)
         }
-        if libraryViewModel.isLoading && source.isEmpty {
-            ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else if libraryViewModel.selectedPageTab == .artists && libraryViewModel.isArtistsLoading && source.isEmpty {
-            ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+        let tab = libraryViewModel.selectedPageTab.rawValue
+        return LibraryCollectionViewport(cards: cards, tab: tab, accountRevision: libraryViewModel.accountRevision,
+            list: libraryViewModel.collectionList,
+            scrollOffset: libraryScrollOffset(for: tab),
+            scrollingHeader: AnyView(VStack(alignment: .leading, spacing: 0) {
+                libraryPageHeader
+                cardsStatus(source: source, cards: cards, icon: icon, title: title)
+            }.environment(\.sideBPageIsActive, pageIsActive)),
+            pinned: Set(libraryViewModel.pins.map(\.key)),
+            isObscured: !pageIsActive || playerViewModel.isFullscreenPresented,
+            queueContext: playerViewModel.queueManager.context, isPlaying: playerViewModel.isPlaying,
+            loadingAlbumID: playerViewModel.loadingRecommendedAlbumID,
+            loadingPlaylistID: playerViewModel.loadingRecommendedPlaylistID,
+            onOpen: openLibraryCard,
+            onPlay: { playerViewModel.activateMediaCollection(id: $0.id, kind: $0.kind) },
+            onPin: { libraryViewModel.togglePin($0) },
+            menuProvider: { card in
+                if card.kind == "artist" {
+                    let menu = AppContextMenuFactory.shared.buildArtistNSMenu(channelId: card.id, name: card.title,
+                        thumbnail: card.thumbnail, radioPlaylistId: nil, origin: .library,
+                        player: playerViewModel, router: router, core: rustCore)
+                    menu.addItem(.separator())
+                    menu.addItem(LibraryPinMenuItem(title: pinTitle(card)) { libraryViewModel.togglePin(card) })
+                    return menu
+                }
+                return libraryCardMenu(card, kind: card.kind)
+            })
+    }
+
+    @ViewBuilder
+    private func cardsStatus(source: [BrowseCardRecord], cards: [BrowseCardRecord], icon: String, title: String) -> some View {
+        if (libraryViewModel.isLoading || libraryViewModel.selectedPageTab == .artists && libraryViewModel.isArtistsLoading) && source.isEmpty {
+            ProgressView().frame(maxWidth: .infinity).frame(height: 280)
         } else if let error = cardError, source.isEmpty {
             DetailErrorStateView(title: L10n.text("library.error.load"), message: error) {
                 Task { await reloadSelectedTab() }
-            }
+            }.frame(height: 300)
         } else if cards.isEmpty {
-            emptyState(!libraryViewModel.hasLibraryQuery ? title : L10n.text("library.search.empty"), icon: icon)
+            emptyState(!libraryViewModel.hasLibraryQuery ? title : L10n.text("library.search.empty"), icon: icon).frame(height: 280)
         } else {
-            VStack(alignment: .leading, spacing: 0) {
-                if libraryViewModel.isLoading || libraryViewModel.isArtistsLoading {
-                    Text(L10n.text("common.loading")).font(.caption).foregroundStyle(.secondary).padding(.horizontal, 38.4)
-                }
-                if let error = cardError {
-                    HStack(spacing: 12) {
-                        Text(error).font(.caption).foregroundStyle(.secondary)
-                        Button(L10n.text("library.retry")) { Task { await reloadSelectedTab() } }.buttonStyle(SideBControlStyle())
-                    }.padding(.horizontal, 38.4)
-                }
-                let tab = libraryViewModel.selectedPageTab.rawValue
-                LibraryCollectionViewport(cards: cards, tab: tab, accountRevision: libraryViewModel.accountRevision,
-                    list: libraryViewModel.collectionList,
-                    scrollOffset: Binding(get: { libraryViewModel.collectionScrollOffsets[tab] ?? 0 }, set: { libraryViewModel.collectionScrollOffsets[tab] = $0 }),
-                    pinned: Set(libraryViewModel.pins.map(\.key)),
-                    isObscured: !pageIsActive || playerViewModel.isFullscreenPresented,
-                    queueContext: playerViewModel.queueManager.context, isPlaying: playerViewModel.isPlaying,
-                    loadingAlbumID: playerViewModel.loadingRecommendedAlbumID,
-                    loadingPlaylistID: playerViewModel.loadingRecommendedPlaylistID,
-                    onOpen: openLibraryCard,
-                    onPlay: { playerViewModel.activateMediaCollection(id: $0.id, kind: $0.kind) },
-                    onPin: { libraryViewModel.togglePin($0) },
-                    menuProvider: { card in
-                        if card.kind == "artist" {
-                            let menu = AppContextMenuFactory.shared.buildArtistNSMenu(channelId: card.id, name: card.title,
-                                thumbnail: card.thumbnail, radioPlaylistId: nil, origin: .library,
-                                player: playerViewModel, router: router, core: rustCore)
-                            menu.addItem(.separator())
-                            menu.addItem(LibraryPinMenuItem(title: pinTitle(card)) { libraryViewModel.togglePin(card) })
-                            return menu
-                        }
-                        return libraryCardMenu(card, kind: card.kind)
-                    })
+            if libraryViewModel.isLoading || libraryViewModel.isArtistsLoading {
+                Text(L10n.text("common.loading")).font(.caption).foregroundStyle(.secondary).padding(.horizontal, 38.4)
+            }
+            if let error = cardError {
+                HStack(spacing: 12) {
+                    Text(error).font(.caption).foregroundStyle(.secondary)
+                    Button(L10n.text("library.retry")) { Task { await reloadSelectedTab() } }.buttonStyle(SideBControlStyle())
+                }.padding(.horizontal, 38.4)
             }
         }
+    }
+
+    private func libraryScrollOffset(for tab: String) -> Binding<CGFloat> {
+        let revision = libraryViewModel.accountRevision
+        return Binding(get: {
+            guard libraryViewModel.accountRevision == revision else { return 0 }
+            return libraryViewModel.collectionScrollOffsets[tab] ?? 0
+        }, set: { offset in
+            // Native table scroll notifications are delivered asynchronously.
+            guard libraryViewModel.accountRevision == revision else { return }
+            libraryViewModel.collectionScrollOffsets[tab] = offset
+        })
     }
 
     private func openLibraryCard(_ card: BrowseCardRecord) {
@@ -326,6 +345,14 @@ private struct LibraryPageRequest: Equatable {
 }
 
 private extension LibraryView {
+    var libraryPageHeader: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            libraryHeader
+            categoryNavigation
+            if accountViewModel.isLoggedIn { libraryToolbar }
+        }
+    }
+
     var isRefreshingSelectedTab: Bool {
         switch libraryViewModel.selectedPageTab {
         case .songs: libraryViewModel.isSongsLoading
@@ -362,7 +389,7 @@ private extension LibraryView {
                 .padding(.vertical, 4)
             }
             .scrollIndicators(.hidden)
-            .windowGestureRegion(.horizontalContent, active: !playerViewModel.isFullscreenPresented)
+            .windowGestureRegion(.horizontalContent, active: pageIsActive && !playerViewModel.isFullscreenPresented)
             .frame(height: SideBControlMetrics.categoryHeight + 8)
 
             if accountViewModel.isLoggedIn {
@@ -510,26 +537,29 @@ private extension LibraryView {
 
     var overviewContent: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
-                if !libraryViewModel.pinnedCards.isEmpty {
-                    VStack(alignment: .leading, spacing: 16) {
-                        Label(L10n.text("library.pinned"), systemImage: "pin.fill").font(.title3.bold())
-                        overviewCardsLayout(libraryViewModel.pinnedCards.filter { libraryViewModel.matches($0.title, $0.subtitle) }, icon: "pin")
+            VStack(alignment: .leading, spacing: 0) {
+                libraryPageHeader
+                VStack(alignment: .leading, spacing: 24) {
+                    if !libraryViewModel.pinnedCards.isEmpty {
+                        VStack(alignment: .leading, spacing: 16) {
+                            Label(L10n.text("library.pinned"), systemImage: "pin.fill").font(.title3.bold())
+                            overviewCardsLayout(libraryViewModel.pinnedCards.filter { libraryViewModel.matches($0.title, $0.subtitle) }, icon: "pin")
+                        }
                     }
-                }
-                overviewSection(.playlists, cards: libraryViewModel.playlists, icon: "music.note.list")
-                overviewSection(.albums, cards: libraryViewModel.providerAlbums, icon: "opticaldisc")
-                overviewSection(.artists, cards: libraryViewModel.artists, icon: "person.crop.circle")
-                if libraryViewModel.isLoading || libraryViewModel.isArtistsLoading { ProgressView() }
-                if let error = libraryViewModel.errorMessage ?? libraryViewModel.artistsErrorMessage {
-                    Text(error).font(.caption).foregroundStyle(.secondary)
-                    Button(L10n.text("library.retry")) { Task { await reloadSelectedTab() } }.buttonStyle(SideBControlStyle())
-                } else if libraryViewModel.playlists.isEmpty && libraryViewModel.providerAlbums.isEmpty && libraryViewModel.artists.isEmpty && !libraryViewModel.isLoading && !libraryViewModel.isArtistsLoading {
-                    Text(L10n.text("library.empty.all")).foregroundStyle(.secondary)
-                } else if libraryViewModel.hasLibraryQuery && libraryViewModel.presentedCards(libraryViewModel.playlists + libraryViewModel.providerAlbums + libraryViewModel.artists).isEmpty {
-                    Text(L10n.text("library.search.empty")).foregroundStyle(.secondary)
-                }
-            }.padding(.horizontal, 38.4).padding(.top, 20).padding(.bottom, 130)
+                    overviewSection(.playlists, cards: libraryViewModel.playlists, icon: "music.note.list")
+                    overviewSection(.albums, cards: libraryViewModel.providerAlbums, icon: "opticaldisc")
+                    overviewSection(.artists, cards: libraryViewModel.artists, icon: "person.crop.circle")
+                    if libraryViewModel.isLoading || libraryViewModel.isArtistsLoading { ProgressView() }
+                    if let error = libraryViewModel.errorMessage ?? libraryViewModel.artistsErrorMessage {
+                        Text(error).font(.caption).foregroundStyle(.secondary)
+                        Button(L10n.text("library.retry")) { Task { await reloadSelectedTab() } }.buttonStyle(SideBControlStyle())
+                    } else if libraryViewModel.playlists.isEmpty && libraryViewModel.providerAlbums.isEmpty && libraryViewModel.artists.isEmpty && !libraryViewModel.isLoading && !libraryViewModel.isArtistsLoading {
+                        Text(L10n.text("library.empty.all")).foregroundStyle(.secondary)
+                    } else if libraryViewModel.hasLibraryQuery && libraryViewModel.presentedCards(libraryViewModel.playlists + libraryViewModel.providerAlbums + libraryViewModel.artists).isEmpty {
+                        Text(L10n.text("library.search.empty")).foregroundStyle(.secondary)
+                    }
+                }.padding(.horizontal, 38.4).padding(.top, 20).padding(.bottom, 130)
+            }
         }
         .scrollPosition($collectionPosition)
         .onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y } action: { _, offset in libraryViewModel.collectionScrollOffsets["Todo"] = offset }
@@ -566,7 +596,7 @@ private extension LibraryView {
                 .padding(.vertical, 4)
             }
             .scrollIndicators(.hidden)
-            .windowGestureRegion(.horizontalContent, active: !playerViewModel.isFullscreenPresented)
+            .windowGestureRegion(.horizontalContent, active: pageIsActive && !playerViewModel.isFullscreenPresented)
         }
     }
     @ViewBuilder func cardsLayout(_ cards: [BrowseCardRecord], icon: String) -> some View {

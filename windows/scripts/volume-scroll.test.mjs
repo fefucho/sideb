@@ -41,7 +41,7 @@ for(const name of ['window','document','navigator','Element','HTMLElement','HTML
 const {mount,unmount,flushSync,tick}=await import('svelte');
 const {VolumeScrollPolicy,VolumeScrollFeedback,volumeScrollSurface}=await import(await moduleFor(path.join(root,'src/lib/player/volume-scroll.ts')));
 const {installNavigationGestures}=await import(await moduleFor(path.join(root,'src/lib/navigation/gestures.ts')));
-const {emptyPlaybackData}=await import(await moduleFor(path.join(root,'src/lib/player/controller.ts')));
+const {PlaybackController,emptyPlaybackData}=await import(await moduleFor(path.join(root,'src/lib/player/controller.ts')));
 const sample=(extra={})=>({x:0,y:-100,mode:0,at:1,surface:'fullscreen',cancelable:true,defaultPrevented:false,modified:false,...extra});
 const context=(extra={})=>({revision:'account:track:generation:scene',enabled:true,blocked:false,value:42.3,...extra});
 
@@ -54,6 +54,29 @@ test('distance accumulation is invariant under sample subdivision in every delta
   }
  }
  const p=new VolumeScrollPolicy();assert.equal(p.wheel(sample({y:-90}),context()).delta,0);assert.equal(p.wheel(sample({y:100,at:2}),context()).delta,-1);
+});
+test('slow small wheel movements retain their distance across quiet transaction boundaries',()=>{
+ for(const [mode,distance,expected] of [[0,60,3],[1,1,2],[2,.5,3]]){
+  const policy=new VolumeScrollPolicy();let value=42.3;
+  for(let i=0;i<6;i++){
+   const output=policy.wheel(sample({mode,y:-distance,at:1+i*300}),context({value}));
+   assert.equal(output.consume,true);value+=output.delta;
+  }
+  assert.ok(Math.abs(value-(42.3+expected))<1e-8,`deltaMode ${mode}: slow movement was discarded`);
+ }
+});
+test('a quiet boundary never carries partial volume into a different surface, owner or direction',()=>{
+ for(const [extra,ctx] of [[{surface:null},{}],[{surface:'bar'},{}],[{}, {revision:'new-owner'}],[{}, {blocked:true}],[{modified:true},{}],[{defaultPrevented:true},{}],[{cancelable:false},{}],[{momentum:true},{}]]){
+  const policy=new VolumeScrollPolicy();policy.wheel(sample({y:-60}),context());
+  assert.equal(policy.wheel(sample({y:-60,at:301,...extra}),context(ctx)).delta,0);
+ }
+ const reversed=new VolumeScrollPolicy();reversed.wheel(sample({y:-60}),context());
+ assert.equal(reversed.wheel(sample({y:60,at:301}),context()).delta,0);
+ assert.equal(reversed.wheel(sample({y:60,at:601}),context()).delta,-1);
+ for(const action of ['cancel','reset']){
+  const policy=new VolumeScrollPolicy();policy.wheel(sample({y:-60}),context());policy[action]();
+  assert.equal(policy.wheel(sample({y:-60,at:301}),context()).delta,0);
+ }
 });
 test('bounds discard excess and unsafe magnitudes never produce nonfinite commands or reversal debt',()=>{
  for(const value of [0,100,Number.NaN,Number.POSITIVE_INFINITY]){
@@ -96,7 +119,14 @@ const fullscreenProps=()=>({playback:state(),confirmedVolume:42.3,geniusState:{p
 function attach(Component,props){const host=document.createElement('div');document.body.append(host);let instance;flushSync(()=>instance=mount(Component,{target:host,props,intro:false}));return{host,instance,dispose:async()=>{await unmount(instance);host.remove();}};}
 function routing(host){let hit=host.querySelector('.artwork')??host;document.elementFromPoint=()=>hit;let value=42.3,feedback=0,cancels=0;const deltas=[];const handle=installNavigationGestures(dom,{context:()=>({revision:'nav',enabled:true,blocked:false,fullscreen:true,reduceMotion:true,height:600,backTitle:'Back',forwardTitle:null}),progress:noop,commit:noop,volume:{context:()=>context({value,blocked:!!document.querySelector('[role="dialog"],[role="menu"]')}),adjust:delta=>{deltas.push(delta);value=Math.max(0,Math.min(100,value+delta));},feedback:()=>feedback++,cancelFeedback:()=>cancels++}});let time=1;return{deltas,setHit:node=>hit=node,get feedback(){return feedback;},get cancels(){return cancels;},wheel:(target=hit,extra={})=>{const event=new dom.WheelEvent('wheel',{bubbles:true,cancelable:true,deltaY:-100,clientX:40,clientY:40,...extra});// happy-dom WheelEvent currently derives from UIEvent; supply browser MouseEvent fields.
 for(const name of ['ctrlKey','altKey','metaKey','shiftKey'])Object.defineProperty(event,name,{value:extra[name]??false});
-Object.defineProperty(event,'timeStamp',{value:time+=10});target.dispatchEvent(event);return event;},quiet:()=>time+=181,handle};}
+Object.defineProperty(event,'timeStamp',{value:time+=10});target.dispatchEvent(event);return event;},quiet:(duration=181)=>time+=duration,handle};}
+test('pointer exit after the feedback timeout clears partial wheel distance before returning',async()=>{
+ const fixture=attach(Fullscreen,fullscreenProps()),r=routing(fixture.host),art=fixture.host.querySelector('.artwork'),panel=fixture.host.querySelector('.side-column');
+ r.wheel(art,{deltaY:-60});r.quiet(1200);r.setHit(panel);
+ const move=new dom.PointerEvent('pointermove',{bubbles:true,clientX:40,clientY:40,pointerId:9});Object.defineProperty(move,'timeStamp',{value:1250});panel.dispatchEvent(move);
+ assert.ok(r.cancels>0);r.setHit(art);r.wheel(art,{deltaY:-60});assert.deepEqual(r.deltas,[]);
+ r.handle.dispose();await fixture.dispose();
+});
 test('real fullscreen volume is limited to cover and bar; background never owns or adopts a volume burst',async()=>{
  const fixture=attach(Fullscreen,fullscreenProps()),r=routing(fixture.host);const art=fixture.host.querySelector('.artwork'),scene=fixture.host.querySelector('.layout'),panel=fixture.host.querySelector('.side-column');
  assert.equal(volumeScrollSurface(art),'fullscreen');
@@ -154,6 +184,39 @@ const harnessSource=`<script lang="ts">
  <Fullscreen {...initialProps} playback={playbackState} {confirmedVolume} volumeFeedback={volumeFeedbackVisible} onVolumeSurfaceChange={()=>gestureInput.invalidate()} />`;
 const harnessFile=path.join(cache,'VolumeSceneHarness.svelte');await writeFile(harnessFile,harnessSource);
 const Scene=(await import(await moduleFor(harnessFile))).default;
+test('slow wheel on the real cover and open bar reaches the audio RPC and updates confirmed percentage',async()=>{
+ const calls=[];let native=state(),latest;const fixture=attach(Scene,{initialProps:fullscreenProps(),onInvalidated:noop});
+ const player=new PlaybackController(async(command,args)=>{
+  if(command==='set_playback_volume'){
+   calls.push({command,args});native={...native,volume:args.volume,audioRevision:(native.audioRevision??0)+1};
+  }else assert.equal(command,'get_playback_state');
+  return structuredClone(native);
+ },async()=>()=>{},snapshot=>{
+  latest=snapshot;flushSync(()=>{fixture.instance.progress(snapshot.state);fixture.instance.confirmed(snapshot.confirmedVolume);});
+ });
+ await player.connect();
+ const bar=attach(Bar,{playback:native,onTogglePlayback:noop,onRetryPlayback:noop,onPrevious:noop,onNext:noop,onSeek:noop,onVolumeChange:value=>void player.setVolume(value),onSetShuffle:noop,onSetRepeat:noop,fullscreenOpen:true,onToggleFullscreen:noop});
+ bar.host.querySelector('.volume-toggle').click();flushSync();await tick();
+ const cover=fixture.host.querySelector('.artwork'),range=bar.host.querySelector('#player-volume input[type="range"]');let hit=cover,pending=Promise.resolve();document.elementFromPoint=()=>hit;
+ const input=installNavigationGestures(dom,{context:()=>({revision:'nav',enabled:true,blocked:false,fullscreen:true,reduceMotion:true,height:600,backTitle:null,forwardTitle:null}),progress:noop,commit:noop,
+  volume:{context:()=>context({value:latest.state.volume}),adjust:delta=>{pending=player.adjustVolume(delta);},feedback:()=>flushSync(()=>fixture.instance.feedback()),cancelFeedback:noop}});
+ let at=1;
+ for(const target of [cover,range]){
+  hit=target;input.invalidate();const before=latest.confirmedVolume,initialCalls=calls.length;
+  for(let i=0;i<6;i++){
+   const event=new dom.WheelEvent('wheel',{bubbles:true,cancelable:true,deltaY:60,deltaMode:0,clientX:40,clientY:40});
+   for(const name of ['ctrlKey','altKey','metaKey','shiftKey'])Object.defineProperty(event,name,{value:false});
+   Object.defineProperty(event,'timeStamp',{value:at+=300});target.dispatchEvent(event);assert.equal(event.defaultPrevented,true);await pending;
+  }
+  assert.equal(calls.length-initialCalls,3);assert.equal(latest.confirmedVolume,before-3);
+  assert.equal(cover.querySelector('.artwork-percentage').textContent,`${Math.round(before-3)} %`);
+  for(const call of calls.slice(initialCalls))assert.equal(call.args.expectedGeneration,4);
+ }
+ // The same controller still accepts the existing slider path after wheel input.
+ range.value='20';range.dispatchEvent(new dom.Event('input',{bubbles:true}));await player.setVolume(20);
+ assert.equal(latest.confirmedVolume,20);assert.equal(calls.at(-1).args.volume,20);
+ input.dispose();await player.dispose();await bar.dispose();await fixture.dispose();
+});
 test('root scalar routing survives same-track progress; real cover updates confirmed feedback without remount and places reverse feedback outside information',async()=>{
  let invalidations=0;const policy=new VolumeScrollPolicy();const props=fullscreenProps();props.playback.currentTrack.thumbnail='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg"/>';
  const fixture=attach(Scene,{initialProps:props,onInvalidated:()=>{invalidations++;policy.cancel();}});

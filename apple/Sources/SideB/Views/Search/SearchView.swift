@@ -15,6 +15,7 @@ struct SearchView: View {
     @State private var hoveredRelatedSongID: String?
     @State private var lastPagePreviewQuery: String?
     @State private var previewOwner = UUID()
+    @State private var scrollingHeaderHeight: CGFloat = 220
     
     init(
         initialQuery: String,
@@ -42,57 +43,30 @@ struct SearchView: View {
                     releasePagePreview()
                 }
             
-            VStack(spacing: 0) {
-                // MARK: - 1. Cabecera Fija con Barra Superior y Chips
-                VStack(alignment: .leading, spacing: 16) {
-                    Text(L10n.text("search.title"))
-                        .font(.system(size: 38.4, weight: .bold))
-                    topSearchBar
-                        .zIndex(20)
-                    
-                    filterChipsBar
-                    if searchViewModel.isOriginalSearch {
-                        Text(L10n.text("search.correction.original_results")).font(.system(size: 12)).foregroundStyle(.secondary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                }
-                .padding(.horizontal, 38.4)
-                .padding(.top, 28)
-                .padding(.bottom, 12)
-                .zIndex(10)
-                
-                // MARK: - 2. Contenido de la Página de Búsqueda
-                ZStack {
-                    if (searchViewModel.isCommittedLoading && searchViewModel.committedResults == nil && searchViewModel.committedSongs.isEmpty && searchViewModel.committedVideos.isEmpty) || searchViewModel.isFilterLoading
-                        || (searchViewModel.selectedFilter == .songs && searchViewModel.isSongsLoading && searchViewModel.filteredSongs.isEmpty)
-                        || (searchViewModel.selectedFilter == .videos && searchViewModel.isVideosLoading && searchViewModel.committedVideos.isEmpty) {
-                        loadingStateView
-                    } else {
-                        switch searchViewModel.selectedFilter {
-                        case .all:
-                            allResultsView
-                        case .songs:
-                            filteredResultsView(error: searchViewModel.partialErrors[.songs]) {
-                                songsFilterView
-                            }
-                        case .videos:
-                            filteredResultsView(error: searchViewModel.partialErrors[.videos]) {
-                                videosFilterView
-                            }
-                        case .albums:
+            // Each presentation owns one vertical viewport, including its header.
+            // Track results keep their bounded NSTableView instead of expanding it
+            // inside another vertical ScrollView.
+            if trackErrorBlock != nil {
+                nativeTrackTableView(tracks: searchViewModel.selectedFilter == .songs
+                    ? searchViewModel.filteredSongs : searchViewModel.committedVideos)
+            } else {
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(spacing: 0) {
+                        pageHeader
+                            .zIndex(10)
+                        if isResultsLoading {
+                            loadingStateView
+                        } else if searchViewModel.selectedFilter == .all {
+                            allResultsContent
+                        } else {
                             filteredResultsView(error: searchViewModel.partialErrors[.categories]) {
-                                cardsGridView(cards: searchViewModel.filteredCards, kind: "album")
-                            }
-                        case .artists:
-                            filteredResultsView(error: searchViewModel.partialErrors[.categories]) {
-                                cardsGridView(cards: searchViewModel.filteredCards, kind: "artist")
-                            }
-                        case .playlists:
-                            filteredResultsView(error: searchViewModel.partialErrors[.categories]) {
-                                cardsGridView(cards: searchViewModel.filteredCards, kind: "playlist")
+                                cardsGridView(cards: searchViewModel.filteredCards,
+                                    kind: searchViewModel.selectedFilter == .artists ? "artist"
+                                        : searchViewModel.selectedFilter == .albums ? "album" : "playlist")
                             }
                         }
                     }
+                    .padding(.bottom, 120)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
@@ -109,6 +83,54 @@ struct SearchView: View {
         .onDisappear {
             releasePagePreview()
         }
+    }
+
+    private var isResultsLoading: Bool {
+        (searchViewModel.isCommittedLoading && searchViewModel.committedResults == nil
+            && searchViewModel.committedSongs.isEmpty && searchViewModel.committedVideos.isEmpty)
+            || searchViewModel.isFilterLoading
+            || (searchViewModel.selectedFilter == .songs && searchViewModel.isSongsLoading && searchViewModel.filteredSongs.isEmpty)
+            || (searchViewModel.selectedFilter == .videos && searchViewModel.isVideosLoading && searchViewModel.committedVideos.isEmpty)
+    }
+
+    private var pageHeader: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text(L10n.text("search.title"))
+                .font(.system(size: 38.4, weight: .bold))
+            VStack(alignment: .leading, spacing: 8) {
+                topSearchBar
+                    .overlay(alignment: .top) {
+                        if trackErrorBlock == nil {
+                            pageSearchPreview
+                                .padding(.top, SideBControlMetrics.actionHeight + 8)
+                        }
+                    }
+                if trackErrorBlock != nil { pageSearchPreview }
+            }
+            .frame(maxWidth: 640, alignment: .leading)
+            .zIndex(20)
+            filterChipsBar
+            if searchViewModel.isOriginalSearch {
+                Text(L10n.text("search.correction.original_results"))
+                    .font(.system(size: 12)).foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            if let block = trackErrorBlock, let message = searchViewModel.partialErrors[block] {
+                searchErrorBanner(message, retry: { searchViewModel.retryBlock(block, core: rustCore) })
+            }
+        }
+        .padding(.horizontal, trackErrorBlock == nil ? 38.4 : 14.4)
+        .padding(.top, 28)
+        .padding(.bottom, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .fixedSize(horizontal: false, vertical: true)
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
+            if abs(scrollingHeaderHeight - height) > 0.5 { scrollingHeaderHeight = height }
+        }
+    }
+
+    private var trackErrorBlock: SearchPartialError? {
+        searchViewModel.selectedFilter == .songs ? .songs : searchViewModel.selectedFilter == .videos ? .videos : nil
     }
     
     // MARK: - Barra Superior de Búsqueda con Topdown Dropdown
@@ -177,21 +199,22 @@ struct SearchView: View {
         .frame(height: SideBControlMetrics.actionHeight)
         .compatGlass(interactive: true, in: Capsule())
         .frame(maxWidth: 640)
-        // MARK: - Topdown Dropdown Flotante Anclado Debajo de la Barra
-        .overlay(alignment: .top) {
-            if isSearchBarFocused && searchViewModel.isTopdownVisible && !searchViewModel.query.isEmpty {
-                if let results = searchViewModel.quickResults,
-                   searchViewModel.associatedQuickQuery == searchViewModel.query.trimmingCharacters(in: .whitespacesAndNewlines) {
-                    topdownDropdownView(results: results)
-                        .padding(.top, SideBControlMetrics.actionHeight + 8)
-                } else if searchViewModel.isQuickSearching {
-                    topdownLoadingView
-                        .padding(.top, SideBControlMetrics.actionHeight + 8)
-                } else if let message = searchViewModel.quickErrorMessage {
-                    searchErrorBanner(message)
-                        .frame(maxWidth: .infinity)
-                        .padding(.top, SideBControlMetrics.actionHeight + 8)
-                }
+    }
+
+    // The native renderer reserves the preview's actual height inside its row:
+    // overlays outside an NSTableView row are clipped and cannot receive clicks.
+    // SwiftUI results retain their floating overlay above chips and results.
+    @ViewBuilder
+    private var pageSearchPreview: some View {
+        if isSearchBarFocused && searchViewModel.isTopdownVisible && !searchViewModel.query.isEmpty {
+            if let results = searchViewModel.quickResults,
+               searchViewModel.associatedQuickQuery == searchViewModel.query.trimmingCharacters(in: .whitespacesAndNewlines) {
+                topdownDropdownView(results: results)
+            } else if searchViewModel.isQuickSearching {
+                topdownLoadingView
+            } else if let message = searchViewModel.quickErrorMessage {
+                searchErrorBanner(message)
+                    .frame(maxWidth: .infinity)
             }
         }
     }
@@ -485,117 +508,114 @@ struct SearchView: View {
 
     // MARK: - Vista "Todo" (Resultados Mixtos)
     
-    private var allResultsView: some View {
-        ScrollView(.vertical, showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 24) {
-                if !searchViewModel.committedQuery.isEmpty {
-                    if let correction = searchViewModel.correction {
-                        HStack(spacing: 10) {
-                            Text(L10n.text(correction.applied ? "search.correction.showing" : "search.correction.suggested", args: [correction.query]))
-                            Button(L10n.text(correction.applied ? "search.correction.original" : "search.correction.search")) {
-                                searchViewModel.commitSearch(query: correction.applied ? searchViewModel.committedQuery : correction.query,
-                                    core: rustCore, force: true, origin: correction.applied ? .navigationRestore : .submit,
-                                    ignoreSpelling: correction.applied)
-                            }.buttonStyle(.plain).foregroundStyle(.primary)
-                        }.font(.system(size: 12)).foregroundStyle(.secondary)
-                    }
-                    let results = searchViewModel.committedResults.map { SearchProjection.make($0) }
-                    if searchViewModel.isMixedLoading {
-                        RoundedRectangle(cornerRadius: 14).fill(Color.white.opacity(0.04)).frame(height: 58)
-                            .overlay(ProgressView().controlSize(.small)).accessibilityLabel(L10n.text("search.loading.catalog"))
-                    }
-                    if let results, let hero = results.top.first {
-                        topResultSection(hero, results: results)
-                    }
-
-                    // Las canciones filtradas son la fuente principal; las del resultado mixto quedan como respaldo.
-                    let occupied = Set((results?.top.filter { ["song", "video"].contains($0.kind) }.map { $0.kind + ":" + $0.id } ?? []) + (results?.topSongs.map { ($0.isVideo ? "video:" : "song:") + $0.videoId } ?? []))
-                    var seenSongs = occupied
-                    let todoSongs = (results?.songs.filter { !$0.isVideo } ?? []).filter { seenSongs.insert(($0.isVideo ? "video:" : "song:") + $0.videoId).inserted }
-                    if !todoSongs.isEmpty {
-                        VStack(alignment: .leading, spacing: 10) {
-                            HStack {
-                                Text(L10n.text("search.filter.songs"))
-                                    .font(.system(size: 16, weight: .bold))
-                                    .foregroundStyle(.primary)
-                                
-                                Spacer()
-                                
-                                Button(L10n.text("search.see_all.feminine")) {
-                                    searchViewModel.selectFilter(.songs, core: rustCore)
-                                }
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundStyle(.primary)
-                                .buttonStyle(.plain)
-                            }
-                            
-                            let topSongs: [SongItemRecord] = Array(todoSongs.prefix(5))
-                            VStack(spacing: 4) {
-                                ForEach(topSongs, id: \.videoId) { song in
-                                    songInlineRow(song: song)
-                                }
-                            }
-                        }
-                    }
-
-                    if let results {
-                        if !results.artists.isEmpty {
-                            cardsSection(title: L10n.text("search.filter.artists"), cards: results.artists, kind: "artist")
-                        }
-                        if !results.albums.isEmpty {
-                            cardsSection(title: L10n.text("search.filter.albums"), cards: results.albums, kind: "album")
-                        }
-                        if !results.playlists.isEmpty {
-                            cardsSection(title: L10n.text("search.filter.playlists"), cards: results.playlists, kind: "playlist")
-                        }
-                    }
-                    let todoVideos = searchViewModel.displayVideos(excluding: results)
-                    if !todoVideos.isEmpty {
-                        VStack(alignment: .leading, spacing: 10) {
-                            HStack {
-                                Text(L10n.text("search.filter.videos"))
-                                    .font(.system(size: 16, weight: .bold))
-                                    .foregroundStyle(.primary)
-                                Spacer()
-                                Button(L10n.text("search.see_all.masculine")) {
-                                    searchViewModel.selectFilter(.videos, core: rustCore)
-                                }
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundStyle(.primary)
-                                .buttonStyle(.plain)
-                            }
-                            VStack(spacing: 4) {
-                                ForEach(Array(todoVideos.prefix(4)), id: \.videoId) { video in
-                                    songInlineRow(song: video)
-                                }
-                            }
-                        }
-                    }
-                    
-                    ForEach([SearchPartialError.global, .songs, .categories, .videos], id: \.self) { error in
-                        if let message = searchViewModel.partialErrors[error] {
-                            searchErrorBanner(message, retry: { searchViewModel.retryBlock(error, core: rustCore) })
-                        }
-                    }
-                    let hasMixedResults = results.map {
-                        !$0.top.isEmpty || !$0.albums.isEmpty || !$0.artists.isEmpty || !$0.playlists.isEmpty
-                    } ?? false
-                    if !hasMixedResults,
-                       searchViewModel.committedSongs.isEmpty,
-                       searchViewModel.committedVideos.isEmpty,
-                       searchViewModel.partialErrors.isEmpty {
-                        noResultsView
-                    }
-                } else {
-                    initialEmptyStateView
+    private var allResultsContent: some View {
+        VStack(alignment: .leading, spacing: 24) {
+            if !searchViewModel.committedQuery.isEmpty {
+                if let correction = searchViewModel.correction {
+                    HStack(spacing: 10) {
+                        Text(L10n.text(correction.applied ? "search.correction.showing" : "search.correction.suggested", args: [correction.query]))
+                        Button(L10n.text(correction.applied ? "search.correction.original" : "search.correction.search")) {
+                            searchViewModel.commitSearch(query: correction.applied ? searchViewModel.committedQuery : correction.query,
+                                core: rustCore, force: true, origin: correction.applied ? .navigationRestore : .submit,
+                                ignoreSpelling: correction.applied)
+                        }.buttonStyle(.plain).foregroundStyle(.primary)
+                    }.font(.system(size: 12)).foregroundStyle(.secondary)
                 }
+                let results = searchViewModel.committedResults.map { SearchProjection.make($0) }
+                if searchViewModel.isMixedLoading {
+                    RoundedRectangle(cornerRadius: 14).fill(Color.white.opacity(0.04)).frame(height: 58)
+                        .overlay(ProgressView().controlSize(.small)).accessibilityLabel(L10n.text("search.loading.catalog"))
+                }
+                if let results, let hero = results.top.first {
+                    topResultSection(hero, results: results)
+                }
+
+                // Las canciones filtradas son la fuente principal; las del resultado mixto quedan como respaldo.
+                let occupied = Set((results?.top.filter { ["song", "video"].contains($0.kind) }.map { $0.kind + ":" + $0.id } ?? []) + (results?.topSongs.map { ($0.isVideo ? "video:" : "song:") + $0.videoId } ?? []))
+                var seenSongs = occupied
+                let todoSongs = (results?.songs.filter { !$0.isVideo } ?? []).filter { seenSongs.insert(($0.isVideo ? "video:" : "song:") + $0.videoId).inserted }
+                if !todoSongs.isEmpty {
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack {
+                            Text(L10n.text("search.filter.songs"))
+                                .font(.system(size: 16, weight: .bold))
+                                .foregroundStyle(.primary)
+
+                            Spacer()
+
+                            Button(L10n.text("search.see_all.feminine")) {
+                                searchViewModel.selectFilter(.songs, core: rustCore)
+                            }
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(.primary)
+                            .buttonStyle(.plain)
+                        }
+
+                        let topSongs: [SongItemRecord] = Array(todoSongs.prefix(5))
+                        VStack(spacing: 4) {
+                            ForEach(topSongs, id: \.videoId) { song in
+                                songInlineRow(song: song)
+                            }
+                        }
+                    }
+                }
+
+                if let results {
+                    if !results.artists.isEmpty {
+                        cardsSection(title: L10n.text("search.filter.artists"), cards: results.artists, kind: "artist")
+                    }
+                    if !results.albums.isEmpty {
+                        cardsSection(title: L10n.text("search.filter.albums"), cards: results.albums, kind: "album")
+                    }
+                    if !results.playlists.isEmpty {
+                        cardsSection(title: L10n.text("search.filter.playlists"), cards: results.playlists, kind: "playlist")
+                    }
+                }
+                let todoVideos = searchViewModel.displayVideos(excluding: results)
+                if !todoVideos.isEmpty {
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack {
+                            Text(L10n.text("search.filter.videos"))
+                                .font(.system(size: 16, weight: .bold))
+                                .foregroundStyle(.primary)
+                            Spacer()
+                            Button(L10n.text("search.see_all.masculine")) {
+                                searchViewModel.selectFilter(.videos, core: rustCore)
+                            }
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(.primary)
+                            .buttonStyle(.plain)
+                        }
+                        VStack(spacing: 4) {
+                            ForEach(Array(todoVideos.prefix(4)), id: \.videoId) { video in
+                                songInlineRow(song: video)
+                            }
+                        }
+                    }
+                }
+
+                ForEach([SearchPartialError.global, .songs, .categories, .videos], id: \.self) { error in
+                    if let message = searchViewModel.partialErrors[error] {
+                        searchErrorBanner(message, retry: { searchViewModel.retryBlock(error, core: rustCore) })
+                    }
+                }
+                let hasMixedResults = results.map {
+                    !$0.top.isEmpty || !$0.albums.isEmpty || !$0.artists.isEmpty || !$0.playlists.isEmpty
+                } ?? false
+                if !hasMixedResults,
+                   searchViewModel.committedSongs.isEmpty,
+                   searchViewModel.committedVideos.isEmpty,
+                   searchViewModel.partialErrors.isEmpty {
+                    noResultsView
+                }
+            } else {
+                initialEmptyStateView
             }
-            .padding(.horizontal, 38.4)
-            .padding(.vertical, 20)
-            .padding(.bottom, 120) // Margen para la PlayerBar flotante
         }
+        .padding(.horizontal, 38.4)
+        .padding(.vertical, 20)
     }
-    
+
     // The primary result uses the same density and actions as its surrounding rows.
     @ViewBuilder
     private func topResultSection(_ card: BrowseCardRecord, results: SearchResultsRecord) -> some View {
@@ -707,48 +727,43 @@ struct SearchView: View {
         return row.songContextMenu(song: song, player: playerViewModel, router: router, core: rustCore, origin: .search)
     }
     
-    // MARK: - Filtro de Canciones (NativeTrackTableView a 120 FPS)
-    
-    private var songsFilterView: some View {
-        nativeTrackTableView(tracks: searchViewModel.filteredSongs)
-    }
-
-    private var videosFilterView: some View {
-        nativeTrackTableView(tracks: searchViewModel.committedVideos)
-    }
+    // MARK: - Canciones y videos con cabecera dentro de la tabla virtualizada
 
     private func nativeTrackTableView(tracks: [SongItemRecord]) -> some View {
-        Group {
-            if tracks.isEmpty {
-                noResultsView
-            } else {
-                NativeTrackTableView(
-                    tracks: tracks,
-                    currentTrackVideoId: playerViewModel.currentTrack?.videoId,
-                    isPlaying: playerViewModel.isPlaying,
-                    playerViewModel: playerViewModel,
-                    router: router,
-                    rustCore: rustCore,
-                    hideAlbumColumn: false,
-                    showAlbumInSubtitle: true,
-                    rowHeight: 52.0,
-                    likedVideoIds: playerViewModel.likedVideoIds,
-                    menuOrigin: { _ in .search },
-                    onPlayTrack: { index in
-                        if index >= 0 && index < tracks.count {
-                            playerViewModel.activateMediaRadio(tracks[index])
-                        }
-                    },
-                    onLikeTrack: { track in
-                        playerViewModel.toggleTrackLike(track)
-                    },
-                    onDislikeTrack: { track in
-                        playerViewModel.dislikeTrack(track)
-                    },
-                    contentInsets: NSEdgeInsets(top: 10, left: 24, bottom: 120, right: 24)
-                )
-            }
-        }
+        let displayedTracks = isResultsLoading ? [] : tracks
+        return NativeTrackTableView(
+            tracks: displayedTracks,
+            currentTrackVideoId: playerViewModel.currentTrack?.videoId,
+            isPlaying: playerViewModel.isPlaying,
+            playerViewModel: playerViewModel,
+            router: router,
+            rustCore: rustCore,
+            hideAlbumColumn: false,
+            showAlbumInSubtitle: true,
+            rowHeight: 52.0,
+            likedVideoIds: playerViewModel.likedVideoIds,
+            menuOrigin: { _ in .search },
+            onPlayTrack: { index in
+                if index >= 0 && index < displayedTracks.count {
+                    playerViewModel.activateMediaRadio(displayedTracks[index])
+                }
+            },
+            onLikeTrack: { track in
+                playerViewModel.toggleTrackLike(track)
+            },
+            onDislikeTrack: { track in
+                playerViewModel.dislikeTrack(track)
+            },
+            contentInsets: NSEdgeInsets(top: 0, left: 24, bottom: 120, right: 24),
+            scrollingHeader: AnyView(pageHeader),
+            scrollingHeaderHeight: scrollingHeaderHeight,
+            footer: displayedTracks.isEmpty ? AnyView(Group {
+                if isResultsLoading { loadingStateView }
+                else { noResultsView }
+            }) : nil,
+            footerHeight: 220
+        )
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
     
     // MARK: - Secciones Horizontales de Tarjetas
@@ -785,7 +800,7 @@ struct SearchView: View {
     // MARK: - Grilla Completa de Tarjetas para Filtros Específicos
     
     private func cardsGridView(cards: [BrowseCardRecord], kind: String) -> some View {
-        ScrollView(.vertical, showsIndicators: false) {
+        Group {
             if cards.isEmpty {
                 noResultsView
             } else {
@@ -799,7 +814,6 @@ struct SearchView: View {
                 }
                 .padding(.horizontal, 38.4)
                 .padding(.vertical, 20)
-                .padding(.bottom, 120)
             }
         }
     }
@@ -1116,7 +1130,7 @@ struct SearchView: View {
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(.secondary)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(maxWidth: .infinity, minHeight: 220)
     }
     
     private var noResultsView: some View {

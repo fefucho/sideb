@@ -298,11 +298,10 @@ struct ExploreCatalogGridView: NSViewRepresentable {
             guard abs(lastWidth - width) > 0.5 else { return }
             lastWidth = width
             if parent.axis == .vertical {
-                let contentWidth = min(1400, width)
-                let available = max(1, contentWidth - 64)
+                let available = max(1, width - 56)
                 let columns = max(1, Int((available + 20) / 180))
                 let itemWidth = min(230, floor((available - CGFloat(columns - 1) * 20) / CGFloat(columns)))
-                let sideInset = max(0, (width - contentWidth) / 2) + 32
+                let sideInset: CGFloat = 28
                 layout.sectionInset = NSEdgeInsets(top: 0, left: sideInset, bottom: 0, right: sideInset)
                 layout.itemSize = NSSize(width: max(1, itemWidth), height: max(1, itemWidth) + HomeItemView.largeCardTextHeight)
                 layout.headerReferenceSize = parent.header == nil ? .zero : NSSize(width: width, height: headerHeight)

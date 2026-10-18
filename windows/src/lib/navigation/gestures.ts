@@ -166,7 +166,7 @@ export function installNavigationGestures(view:Window,hooks:GestureHooks) {
     if(result.consume&&surface){captured=surface;pointerId=event.pointerId;surface.setPointerCapture(event.pointerId);if(event.cancelable)event.preventDefault();apply(result);}
   };
   const move=(event:PointerEvent)=>{
-    if(hooks.volume&&volume.recent(event.timeStamp)&&volume.leave(volumeScrollSurface(view.document.elementFromPoint(event.clientX,event.clientY))))hooks.volume.cancelFeedback();
+    if(hooks.volume&&volume.leave(volumeScrollSurface(view.document.elementFromPoint(event.clientX,event.clientY))))hooks.volume.cancelFeedback();
     if(event.pointerId!==pointerId)return;const result=policy.movePointer(event.pointerId,event.clientX,event.clientY,hooks.context());if(result.consume&&event.cancelable)event.preventDefault();apply(result);};
   const end=(event:PointerEvent)=>{if(event.pointerId!==pointerId)return;const result=policy.endPointer(event.pointerId,hooks.context(),event.type!=='pointerup');const previous=captured;captured=null;pointerId=null;apply(result);if(previous?.hasPointerCapture(event.pointerId))previous.releasePointerCapture(event.pointerId);};
   const visibility=()=>{if(view.document.hidden)resetForFocus();};

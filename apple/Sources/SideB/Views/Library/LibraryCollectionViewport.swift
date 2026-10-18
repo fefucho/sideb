@@ -19,7 +19,7 @@ import SideBCore
 }
 
 /// Flat, recycled cells and an explicitly measured viewport, following Explore/Home.
-/// Header/tools remain SwiftUI; the catalog never creates a hosting view per card.
+/// One SwiftUI header lives in the native document; cards remain recycled.
 struct LibraryCollectionViewport: NSViewRepresentable {
     @Environment(\.sideBGesturePreviewVisible) private var gesturePreviewVisible
     let localizationRevision = L10n.revision
@@ -28,6 +28,7 @@ struct LibraryCollectionViewport: NSViewRepresentable {
     let accountRevision: UInt
     let list: Bool
     @Binding var scrollOffset: CGFloat
+    var scrollingHeader: AnyView? = nil
     var pinned: Set<String> = []
     var isObscured = false
     var queueContext: QueueContext? = nil
@@ -63,6 +64,7 @@ struct LibraryCollectionViewport: NSViewRepresentable {
         collection.onViewportMoved = { [weak coordinator] in coordinator?.scheduleHoverUpdate() }
         scroll.documentView = collection
         coordinator.collection = collection; coordinator.scroll = scroll; coordinator.layout = layout
+        coordinator.updateHeader()
         scroll.onViewportLayout = { [weak coordinator] in coordinator?.updateGeometry() }
         scroll.contentView.postsBoundsChangedNotifications = true
         NotificationCenter.default.addObserver(coordinator, selector: #selector(Coordinator.boundsChanged(_:)), name: NSView.boundsDidChangeNotification, object: scroll.contentView)
@@ -113,6 +115,7 @@ struct LibraryCollectionViewport: NSViewRepresentable {
             coordinator.updateHover(at: nil)
             for case let item as LibraryCollectionItem in collection.visibleItems() { item.cell.setVisible(!isObscured) }
         }
+        coordinator.updateHeader()
         coordinator.updateGeometry()
     }
     static func dismantleNSView(_ scroll: NSScrollView, coordinator: Coordinator) {
@@ -125,6 +128,7 @@ struct LibraryCollectionViewport: NSViewRepresentable {
             collection.onActivateSelection = nil; collection.onHoverPosition = nil; collection.onViewportMoved = nil
         }
         coordinator.collection = nil; coordinator.scroll = nil
+        coordinator.headerView?.removeFromSuperview(); coordinator.headerView = nil
     }
 
     @MainActor final class Coordinator: NSObject, NSCollectionViewDataSource, NSCollectionViewDelegate {
@@ -133,6 +137,8 @@ struct LibraryCollectionViewport: NSViewRepresentable {
         weak var collection: HomeNativeCollectionView?
         weak var scroll: NSScrollView?
         weak var layout: NSCollectionViewFlowLayout?
+        var headerView: LibraryCollectionHeaderView?
+        private var headerHeight: CGFloat = 220
         private weak var hoveredItem: LibraryCollectionItem?
         private var lastWidth: CGFloat = -1
         private var hoverScheduled = false
@@ -200,6 +206,22 @@ struct LibraryCollectionViewport: NSViewRepresentable {
             }
         }
         func invalidateGeometry() { lastWidth = -1 }
+        func updateHeader() {
+            guard let collection else { return }
+            guard let content = parent.scrollingHeader else {
+                if headerView != nil { headerView?.removeFromSuperview(); headerView = nil; invalidateGeometry() }
+                return
+            }
+            // Keep this one host attached across reloadData/filter changes, so
+            // the search field remains first responder even for zero matches.
+            let header = headerView ?? LibraryCollectionHeaderView()
+            if headerView == nil { headerView = header; invalidateGeometry() }
+            if header.superview !== collection { collection.addSubview(header) }
+            header.configure(content: content) { [weak self] height in
+                guard let self, !self.isSuspended, height > 0, abs(self.headerHeight - height) > 0.5 else { return }
+                self.headerHeight = ceil(height); self.invalidateGeometry(); self.updateGeometry()
+            }
+        }
         func updateGeometry() {
             guard !isSuspended else { return }
             guard !adjustingGeometry, let scroll, let collection, let layout else { return }
@@ -212,13 +234,15 @@ struct LibraryCollectionViewport: NSViewRepresentable {
             let columns = max(1, Int((available + 18) / 178))
             let itemWidth = min(220, floor((available - CGFloat(columns - 1) * 18) / CGFloat(columns)))
             layout.minimumLineSpacing = parent.list ? 8 : 24
-            layout.sectionInset = NSEdgeInsets(top: 20, left: 38.4, bottom: 130, right: 38.4)
+            let scrollingHeaderHeight = headerView == nil ? 0 : headerHeight
+            layout.sectionInset = NSEdgeInsets(top: scrollingHeaderHeight + 20, left: 38.4, bottom: 130, right: 38.4)
             layout.itemSize = parent.list ? NSSize(width: available, height: 68) : NSSize(width: max(1, itemWidth), height: max(1, itemWidth) + HomeItemView.largeCardTextHeight + 24)
             collection.frame.size.width = width
             layout.invalidateLayout()
             collection.layoutSubtreeIfNeeded()
-            let height = max(scroll.contentView.bounds.height, layout.collectionViewContentSize.height)
+            let height = max(scroll.contentView.bounds.height, max(layout.collectionViewContentSize.height, scrollingHeaderHeight + 150))
             collection.frame.size.height = height
+            headerView?.frame = NSRect(x: 0, y: 0, width: width, height: scrollingHeaderHeight)
             if let offset = pendingOffset, scroll.contentView.bounds.height > 1, width > 1 {
                 pendingOffset = nil
                 scroll.contentView.scroll(to: NSPoint(x: 0, y: min(max(0, offset), max(0, height - scroll.contentView.bounds.height))))
@@ -247,6 +271,44 @@ struct LibraryCollectionViewport: NSViewRepresentable {
             }
             if hoveredItem !== item { hoveredItem?.cell.setHovered(false); hoveredItem = item }
             item.cell.setHovered(true, point: item.cell.convert(point, from: collection))
+        }
+    }
+}
+
+private struct LibraryHeaderHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat { 0 }
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
+}
+
+/// The header shares the collection's clip view and document coordinates. It is
+/// a single persistent host, independent of the number of catalog items.
+@MainActor final class LibraryCollectionHeaderView: NSView {
+    private let host = NSHostingView<AnyView>(rootView: AnyView(EmptyView()))
+    private var contentGeneration: UInt64 = 0
+    override var isFlipped: Bool { true }
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        host.sizingOptions = []; host.safeAreaRegions = []
+        host.autoresizingMask = [.width, .height]; addSubview(host)
+    }
+    required init?(coder: NSCoder) { fatalError("init(coder:) not used") }
+    override func layout() { super.layout(); host.frame = bounds }
+    func configure(content: AnyView, onHeightChanged: @escaping @MainActor (CGFloat) -> Void) {
+        contentGeneration &+= 1
+        let generation = contentGeneration
+        var transaction = Transaction(); transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            host.rootView = AnyView(content.fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+                .background(GeometryReader { geometry in
+                    Color.clear.preference(key: LibraryHeaderHeightKey.self, value: geometry.size.height)
+                })
+                .onPreferenceChange(LibraryHeaderHeightKey.self) { [weak self] height in
+                    Task { @MainActor [weak self] in
+                        guard self?.contentGeneration == generation else { return }
+                        onHeightChanged(height)
+                    }
+                })
         }
     }
 }

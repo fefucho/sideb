@@ -1,7 +1,7 @@
 # PLAN-009: volumen con rueda y feedback en fullscreen
 
 - Fecha: 2026-10-17 (America/Montevideo).
-- Estado: **FIX-198: alcance corregido, frontend verificado, ejecución nativa pendiente**. Ejecución nativa Windows y calibración con dispositivos pendientes.
+- Estado: **FIX-207: corregida pérdida de giros pequeños entre pausas; frontend aprobado, prueba física Windows pendiente**.1.2.1 se entregó con CI nativo aprobado; este arreglo posterior aún requiere comprobación en destino y calibración con dispositivos.
 - Objetivo: ajustar el volumen en pasos finos desde la cápsula de volumen abierta, el frente de la portada grande de Ahora suena; mostrar temporalmente el porcentaje sobre la portada oscurecida.
 - Relación: complemento Windows de [PLAN-021 Apple](../../apple/plans/PLAN-021-volume-scroll-feedback.md). Comparten intención y presentación, con adaptadores de entrada y audio propios.
 - Alcance: Svelte/TypeScript, arbitraje WebView2, controller de reproducción, integración Tauri/libmpv y pruebas/localización ES/EN. Core protegido, volumen del sistema, cambios de curva, nuevas preferencias, instalación/publicación y fuentes Apple quedan fuera. El pedido posterior autoriza la implementación; validación nativa/publicación se registran por separado.
@@ -49,7 +49,7 @@ Antecedentes de presentación: FIX-121-2, FIX-134 y FIX-143, [PLAN-008](PLAN-008
 
 ### Rueda, trackpad y sensibilidad
 
-**Recomendación:** sumar distancia normalizada y emitir pasos completos de **1 punto porcentual**, conservando el remanente dentro de la secuencia. No usar 1 % por evento general: tanto ratones como trackpads pueden entregar píxeles y muchas muestras por segundo. `deltaMode` expresa unidades, no identifica el hardware. El valor final desde 42 % y un paso ascendente es 43 %.
+**Recomendación:** sumar distancia normalizada y emitir pasos completos de **1 punto porcentual**. FIX-207 conserva el remanente también entre pausas mientras superficie, revisión, dirección y elegibilidad sigan vigentes; los180ms sólo delimitan la propiedad de cada transacción. No usar 1 % por evento general: tanto ratones como trackpads pueden entregar píxeles y muchas muestras por segundo. `deltaMode` expresa unidades, no identifica el hardware. El valor final desde 42 % y un paso ascendente es 43 %.
 
 Defaults iniciales de la app, **pendientes de calibración física en WebView2**:
 
@@ -147,3 +147,15 @@ Entrega técnica registrada en [FIX-197](../../FIXES.md#fix-197)/PAR-032; la app
 ## Revisión de release 1.2.1 — 2026-10-17
 
 FIX-201 completa el marcador/selección de FIX-200 sin cambiar la política de volumen de FIX-198. El DTO de cola conserva identidad visual de origen independiente del entryId nativo, incluido shuffle/restauración. 381 frontend/check0/0/build aprobados;45 pruebas del módulo queue.rs real en harness Mac. CI Tauri/libmpv y verificación física permanecen pendientes en [la entrega1.2.1](../../plans/RELEASE-1.2.1.md).
+
+## Reporte posterior a1.2.1 — FIX-207
+
+El usuario confirma Windows: portada y barra muestran siempre el mismo porcentaje con rueda, pero el slider arrastrado sí cambia el sonido. Se reproduce pérdida permanente de distancia con60px cada250ms: cada evento abre una transacción nueva y elimina el remanente antes de alcanzar100px. Esta reproducción usa entrada sintética; no consta el delta real del dispositivo informado.
+
+- [x] Conservar distancia entre pausas sólo en misma superficie/revisión elegible; descartar al invertir o cancelar, sin adoptar secuencias ajenas.
+- [x] Cancelar al salir incluso después de expirar los900ms del feedback.
+- [x]15 focales aprobadas con política, adaptador, Svelte y PlaybackController reales; RPC simulado registra tres ajustes por seis entradas60px/300ms en cada zona y porcentaje confirmado correcto. Slider20 sigue funcionando; modos/guards/regresiones anteriores conservados.
+- [x] `pnpm check`0/0,381frontend aprobadas/1fixture nativa omitida enMac, build frontend aprobado; sin cambios core, audio nativo ni Apple.
+- [ ] Probar EXE/WebView2 y dispositivo del usuario enWindows, incluyendo escucha; aún no hay build/publicación de FIX-207.
+
+Evaluación Apple en lectura: eventos de ratón no precisos ya producen un paso por evento; entrada precisa sin fases conserva un reset temporal que requiere investigar separadamente si existe un síntoma equivalente. [PAR-032](../../PARIDAD.md) conserva esa limitación sin declarar un port validado.
