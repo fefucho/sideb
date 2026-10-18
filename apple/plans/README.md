@@ -4,7 +4,7 @@
 
 | Plan | Estado | Referencia |
 |---|---|---|
-| [PLAN-022: ancho y cabeceras con scroll](PLAN-022-page-width-and-scrolling-headers.md) | FIX-208/build0132;761 pruebas y firma/hashes aprobados; QA visible aislada parcial completada | Explorar con ancho/título coherentes; Biblioteca y Búsqueda desplazan su cabecera; Biblioteca con cuenta/VoiceOver/trackpad físico pendientes |
+| [PLAN-022: ancho y cabeceras con scroll](PLAN-022-page-width-and-scrolling-headers.md) | FIX-208/build0132 y release1.2.2/FIX-209;761pruebas/firma/hashes aprobados; QA visible aislada parcial | Explorar con ancho/título coherentes; Biblioteca y Búsqueda desplazan su cabecera; Biblioteca con cuenta/VoiceOver/trackpad físico pendientes |
 | [PLAN-021: volumen con scroll](PLAN-021-volume-scroll-feedback.md) | FIX-199/build0130:747 pruebas; QA física pendiente | FIX-198/199: volumen sólo sobre control abierto/carátula, cancelación independiente del descenso, porcentaje sobre portada y arbitraje de gestos; complemento Windows en [PLAN-009](../../windows/plans/PLAN-009-volume-scroll-feedback.md) |
 | [PLAN-020: búsqueda en TopNav](PLAN-020-topnav-search-integration.md) | Implementado0127/FIX-196;728pruebas; QA física diferida | Margen inferior, cierre exterior, acceso a Configuración y plan para integrar Spotlight |
 | [PLAN-019: margen, lente y movimiento](PLAN-019-topnav-spacing-lens-motion.md) | Implementado / build0124 / FIX-194 | Margen18pt, lente7/7pt y traslación en compositor;700pruebas/QA funcional, FPS físicos sin certificar |

@@ -1,7 +1,7 @@
 # PLAN-009: volumen con rueda y feedback en fullscreen
 
 - Fecha: 2026-10-17 (America/Montevideo).
-- Estado: **FIX-207: corregida pérdida de giros pequeños entre pausas; frontend aprobado, prueba física Windows pendiente**.1.2.1 se entregó con CI nativo aprobado; este arreglo posterior aún requiere comprobación en destino y calibración con dispositivos.
+- Estado: **FIX-207 publicado en1.2.2/build15; CI nativo aprobado, prueba física Windows pendiente**.761pruebas Windows,382frontend/check0/0, instalador/portable y checksums verificados. Calibración con dispositivos y escucha física pendientes.
 - Objetivo: ajustar el volumen en pasos finos desde la cápsula de volumen abierta, el frente de la portada grande de Ahora suena; mostrar temporalmente el porcentaje sobre la portada oscurecida.
 - Relación: complemento Windows de [PLAN-021 Apple](../../apple/plans/PLAN-021-volume-scroll-feedback.md). Comparten intención y presentación, con adaptadores de entrada y audio propios.
 - Alcance: Svelte/TypeScript, arbitraje WebView2, controller de reproducción, integración Tauri/libmpv y pruebas/localización ES/EN. Core protegido, volumen del sistema, cambios de curva, nuevas preferencias, instalación/publicación y fuentes Apple quedan fuera. El pedido posterior autoriza la implementación; validación nativa/publicación se registran por separado.
@@ -159,3 +159,7 @@ El usuario confirma Windows: portada y barra muestran siempre el mismo porcentaj
 - [ ] Probar EXE/WebView2 y dispositivo del usuario enWindows, incluyendo escucha; aún no hay build/publicación de FIX-207.
 
 Evaluación Apple en lectura: eventos de ratón no precisos ya producen un paso por evento; entrada precisa sin fases conserva un reset temporal que requiere investigar separadamente si existe un síntoma equivalente. [PAR-032](../../PARIDAD.md) conserva esa limitación sin declarar un port validado.
+
+## Entrega1.2.2 — FIX-209/210
+
+Fuentes8b8e135 subidas a main y [release1.2.2](https://github.com/fefucho/sideb/releases/tag/v1.2.2) publicada como Latest2026-10-18. Windows job117568496842 aprueba761pruebas (382frontend/97InnerTube/91core/93bridge/5player/93Tauri;14Rust ignoradas), check0/0, compiled/sourceChangedDuringBuild=false, versión1.2.2/build15. Portable/instalador y cuatro hashes de runtime aprobados, descargas públicas idénticas a los artefactos CI. FIX-210 corrige sólo la colección de rutas numeradas y completa publicación; no modifica binarios ni se atribuye éxito al publicador original fallido. Véase plans/RELEASE-1.2.2.md. Cuenta/audio/entrada física e instalador interactivo siguen pendientes; no se cambiaron core ni curva.

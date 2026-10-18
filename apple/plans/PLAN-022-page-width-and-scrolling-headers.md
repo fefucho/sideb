@@ -59,3 +59,7 @@ Una build y las pruebas no certifican fluidez física, audio ni aceptación visu
 
 - Bundle: `builds/macos/build-0132/Side B.app`.
 - Evidencia: `builds/macos/build-0132/{BUILD.json,build.log,layout-verification.json}` y renders/diagnósticos de layout en la misma build.
+
+## Publicación posterior1.2.2
+
+Pedido explícito de publicar ambas apps: FIX-209, fuentes8b8e135/tagv1.2.2, versión1.2.2/build15. Mac hospedado aprueba761pruebas (188Rust/236XCTest/337SwiftTesting;7Rust ignoradas/7Swift omitidas), fuentes estables, diez hashes y firma ad hoc; descarga pública verificada. [Release1.2.2](https://github.com/fefucho/sideb/releases/tag/v1.2.2) Latest2026-10-18 incluye ambos sistemas y checksums; FIX-210 resuelve rutas del publicador sin recompilar. Build0132 local previa1.2.1 conservada. No modifica los límites de QA con cuenta/VoiceOver/trackpad físico/FPS de este plan.
