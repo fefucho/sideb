@@ -4,7 +4,7 @@ Herramientas compartidas o fixes para ambas plataformas. [Formato](../.agents/WO
 
 | Plan | Estado |
 |---|---|
-| [Release 1.2.3](RELEASE-1.2.3.md) | FIX-211/212; parche Windows para cancelación lateral de volumen, preparación de versión/build16; verificación y publicación conjunta pendientes |
+| [Release 1.2.3](RELEASE-1.2.3.md) | FIX-211/212; Latest publicada1.2.3/build16, CI completo aprobado (761Mac/764Windows), cinco descargas públicas/checksums y frontend del EXE verificados; entrada física nueva pendiente |
 | [Release 1.2.2](RELEASE-1.2.2.md) | FIX-207/208/209/210; Latest publicada y cinco descargas públicas verificadas; antecedentes del parche de rueda y layouts Mac |
 | [Release 1.2.1](RELEASE-1.2.1.md) | FIX-199–202; fuentes y verificaciones locales listas, CI nativo/publicación conjunta pendientes |
 | [Motor e interfaz de búsqueda](PLAN-008-search-engine-ui.md) | Implementado: sugerencias/correcciones YouTube Music, UI compacta e historial por intención; FIX-178/PAR-027. Mac build-0089 estable, 646 pruebas ejecutadas y Spotlight/Play/reciente comprobados; Windows frontend364/check/build, nativo pendiente. FIX-179 corrige cabecera/fondo Mac, build0090/646 pruebas y página/desplegable/colapso de sidebar nativos comprobados; port visual Windows pendiente. Ranking propio diferido (2026-10-12) |

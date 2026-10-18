@@ -1,6 +1,6 @@
 # Planes Windows
 
-- [PLAN-009: Volumen con rueda y feedback fullscreen](PLAN-009-volume-scroll-feedback.md) — FIX-211 implementado tras reproducir captura Windows1.2.2: una muestra lateral cancelaba la secuencia completa. Replay portada/barra produce25ajustes frente a0anteriores;17focales/384frontend/1omisión/check0/0/build aprobados. Nueva build y comprobación física pendientes. Alcance FIX-198 conservado; complementa PLAN-021 Apple.
+- [PLAN-009: Volumen con rueda y feedback fullscreen](PLAN-009-volume-scroll-feedback.md) — FIX-211 publicado1.2.3/build16 tras reproducir cancelación por muestra lateral en1.2.2. Replay portada/barra produce25ajustes frente a0anteriores; CI764pruebas/385frontend/check0/0 y paquete público/frontend del EXE verificados. Comprobación física del nuevo EXE pendiente. Alcance FIX-198 conservado; complementa PLAN-021 Apple.
 
 - [PLAN-008: Fondo, logo y tipografía fullscreen](PLAN-008-fullscreen-color-logo-type.md) — implementado/revisado; FIX-146/151/PAR-025, build-0012 release con646 pruebas aprobadas e icono PE redondeado verificado; aceptación física pendiente.
 
