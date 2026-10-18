@@ -92,7 +92,9 @@ export class VolumeScrollFeedback {
   private announce: ReturnType<typeof setTimeout> | null = null;
   private visible = false;
   constructor(private hooks: {value:()=>number;visible:(visible:boolean)=>void;announce:(value:number|null)=>void},
-    private clock: {set:typeof setTimeout;clear:typeof clearTimeout} = {set:setTimeout,clear:clearTimeout}) {}
+    // Native Window timers reject the clock object as their receiver. Keep the
+    // browser binding so feedback cannot throw before the adapter applies audio.
+    private clock: {set:typeof setTimeout;clear:typeof clearTimeout} = {set:setTimeout.bind(globalThis),clear:clearTimeout.bind(globalThis)}) {}
   input(): void {
     this.visible = true; this.hooks.visible(true);
     if(this.hide !== null) this.clock.clear(this.hide);

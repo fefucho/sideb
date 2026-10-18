@@ -1,6 +1,6 @@
 # Planes Windows
 
-- [PLAN-009: Volumen con rueda y feedback fullscreen](PLAN-009-volume-scroll-feedback.md) — FIX-211 publicado1.2.3/build16 tras reproducir cancelación por muestra lateral en1.2.2. Replay portada/barra produce25ajustes frente a0anteriores; CI764pruebas/385frontend/check0/0 y paquete público/frontend del EXE verificados. Comprobación física del nuevo EXE pendiente. Alcance FIX-198 conservado; complementa PLAN-021 Apple.
+- [PLAN-009: Volumen con rueda y feedback fullscreen](PLAN-009-volume-scroll-feedback.md) — FIX-213 corrige `Illegal invocation` del indicador que interrumpía rueda en1.2.3. Build local0014 release compiled,764pruebas/check0/0/fuentes estables/cuatro hashes válidos y regresión Chromium antes/después aprobada. FIX-214 retira la instancia de diagnóstico que bloqueaba WebView2: mismo EXE abierto/estable y wheel42→34→42 comprobado en portada/barra; dispositivo/audio pendientes. FIX-207/211 conservan sus correcciones de acumulación y FIX-198 sus zonas; complementa PLAN-021 Apple. Sin nueva release.
 
 - [PLAN-008: Fondo, logo y tipografía fullscreen](PLAN-008-fullscreen-color-logo-type.md) — implementado/revisado; FIX-146/151/PAR-025, build-0012 release con646 pruebas aprobadas e icono PE redondeado verificado; aceptación física pendiente.
 

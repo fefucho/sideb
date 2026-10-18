@@ -122,6 +122,29 @@ test('modern momentum never adjusts or refreshes feedback; absent signal follows
  const fallback=new VolumeScrollPolicy();assert.equal(fallback.wheel(sample(),context()).delta,1);
 });
 function clock(){let now=0,id=0;const timers=new Map();return{timers,set:(fn,delay)=>{timers.set(++id,{fn,at:now+delay});return id;},clear:id=>timers.delete(id),advance:duration=>{now+=duration;for(const [id,t] of [...timers])if(t.at<=now){timers.delete(id);t.fn();}}};}
+test('default feedback timers keep the browser receiver so accepted wheel reaches audio and feedback can renew and cancel',()=>{
+ const originalSet=globalThis.setTimeout,originalClear=globalThis.clearTimeout,c=clock();
+ let value=42,visible=false,announcement=null;
+ // Chromium/WebView2 rejects timers called as methods of a plain clock object.
+ // happy-dom and injected arrow clocks do not enforce this native requirement.
+ globalThis.setTimeout=function(fn,delay){assert.equal(this,globalThis,'setTimeout requires Window');return c.set(fn,delay);};
+ globalThis.clearTimeout=function(id){assert.equal(this,globalThis,'clearTimeout requires Window');c.clear(id);};
+ try {
+  const feedback=new VolumeScrollFeedback({value:()=>value,visible:v=>visible=v,announce:v=>announcement=v});
+  const policy=new VolumeScrollPolicy(),adjustments=[];
+  const wheel=at=>{
+   const output=policy.wheel(sample({y:300,at}),context({value}));
+   if(output.feedback)feedback.input();
+   if(output.delta){adjustments.push(output.delta);value+=output.delta;feedback.confirmedChanged();}
+  };
+  wheel(1);assert.deepEqual(adjustments,[-3]);assert.equal(value,39);assert.equal(visible,true);
+  wheel(301);assert.deepEqual(adjustments,[-3,-3]);assert.equal(value,36);
+  c.advance(180);assert.equal(announcement,36);
+  c.advance(720);assert.equal(visible,false);assert.equal(c.timers.size,0);
+  wheel(601);feedback.cancel();assert.equal(visible,false);assert.equal(announcement,null);assert.equal(c.timers.size,0);
+ } finally {globalThis.setTimeout=originalSet;globalThis.clearTimeout=originalClear;}
+});
+
 test('feedback uses confirmed ACK value, groups announcements, expires 900ms from input and has no idle timers',()=>{
  const c=clock();let value=42,visible=false,announcement=null;const f=new VolumeScrollFeedback({value:()=>value,visible:v=>visible=v,announce:v=>announcement=v},c);
  f.confirmedChanged();assert.equal(c.timers.size,0);f.input();assert.equal(visible,true);c.advance(100);value=43;f.confirmedChanged();c.advance(100);assert.equal(announcement,null);c.advance(80);assert.equal(announcement,43);c.advance(620);assert.equal(visible,false);assert.equal(c.timers.size,0);

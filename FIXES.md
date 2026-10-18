@@ -4,9 +4,54 @@ Memoria de cambios de Side B para investigar problemas y regresiones. Buscar aqu
 
 Tags de ámbito: `[Apple]`, `[Windows]`, `[Compartido]`. Core y herramientas comunes usan Compartido, detallando el componente. El tag indica dónde se hizo el cambio; no demuestra que ambas plataformas hayan sido verificadas. Estados, fechas, componentes y relaciones se conservan dentro de cada entrada.
 
-Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-213**. Se conservaron los FIX/FEAT históricos. Dos números antiguos repetidos se distinguen como `FIX-027-2` y `FIX-028-2`, anotando el ID original; al citar FIX-027/028 comprobar título y entrada exacta.
+Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-216**. Se conservaron los FIX/FEAT históricos. Dos números antiguos repetidos se distinguen como `FIX-027-2` y `FIX-028-2`, anotando el ID original; al citar FIX-027/028 comprobar título y entrada exacta.
 
 ## Cambios recientes
+
+<a id="fix-215"></a>
+
+### [FIX-215] [Compartido] - Preparar publicación 1.2.4 del volumen Windows confirmado
+
+- Fecha: 2026-10-18 (America/Montevideo).
+- Componente / tipo / estado: versiones y entrega Mac/Windows; preparación de release, publicación pendiente.
+- Pedido / motivo: el usuario confirma «ahora sí anda» y pide subir la build tras FIX-213/214. Se prepara1.2.4/build17 para ofrecer el arreglo mediante el actualizador, conservando la release1.2.3 y el binario0014 probado. Los nuevos paquetes se compilan con metadatos1.2.4; no se relabela0014.
+- Cambio: version.env, manifests Windows, versión del paquete propio en Cargo.lock, default manual del workflow, notas1.2.4 y plan. El workflow existente por tag verifica y publica ambos sistemas juntos. Sin cambios funcionales adicionales Apple/core/dependencias.
+- Archivos: `version.env`, `windows/package.json`, `windows/src-tauri/{Cargo.toml,Cargo.lock,tauri.conf.json}`, `.github/workflows/release.yml`, `release-notes/1.2.4.md`, [plan de entrega](plans/RELEASE-1.2.4.md), registros de FIX-213/214 y paridad.
+- Verificación previa: preflight v1.2.4/build17 aprobado;19pruebas runner/release aprobadas en Windows y1prueba de empaquetado Mac omitida por plataforma; cero fallos. La lógica FIX-213 cuenta con18focales,385frontend/check0/0/build,764pruebas nativas, hashes y prueba en0014 real/confirmación del usuario. CI y hashes de1.2.4 aún pendientes; no se presentan como ya aprobados.
+- Autenticación: revisión automática rechazó obtener la credencial Git para la API de releases; no se extrajo ni persistió. Se usa push normal de Git y disparo por tag para que Actions gestione su propia autorización dentro de GitHub. No se requiere conectar plugins ni cambiar permisos.
+- Antecedentes / paridad / plan: FIX-197/198/207/211/212/213/214, PAR-026/PAR-032 y [release1.2.4](plans/RELEASE-1.2.4.md). El defecto de timers es exclusivo WebView2; Apple conserva fuentes funcionales y sólo comparte nuevo número/build. No se cierra QA Apple por compilar.
+- Límites: publicación, paquetes nuevos y CI pendientes; no instalación interactiva ni nueva certificación de audio/dispositivos. Sin modificar releases anteriores ni publicar datos de usuario/diagnósticos locales.
+
+<a id="fix-214"></a>
+
+### [FIX-214] [Windows] - Liberar el perfil WebView2 retenido por el diagnóstico
+
+- Fecha: 2026-10-18 (America/Montevideo).
+- Componente / tipo / estado: arranque WebView2; corrección del entorno de ejecución, resuelta y comprobada con la misma build0014. Sin cambio de código ni nueva compilación.
+- Problema y causa: después de entregar FIX-213, el usuario informa que0014 abre y se cierra. El agente había dejado viva la instancia instalada del diagnóstico (PID27572, creada15:13:50) y su WebView2 con puerto62960/opciones de depuración, usando el mismo perfil de la app normal. Dos eventos Application Error1000 señalan0014 con0xc0000409. Reproducción con stderr y RUST_BACKTRACE del EXE exacto confirma panic de Tauri al crear WebView2, HRESULT0x8007139F; no alcanza frontend ni volumen. La validación de arranque faltaba en la entrega anterior.
+- Solución y motivo: recuperar la ventana anterior con Computer Use y cerrarla normalmente mediante Alt+F4; comprobar que desaparece el proceso y el puerto local. Lanzar explícitamente `builds/windows/build-0014/sideb-windows.exe`, verificando la ruta por PID para evitar confundirla con la instalación. Con el perfil liberado, el mismo binario abre y permanece estable. No se borran perfiles/cookies ni se cambia la cuenta, instalación, fuentes o configuración persistente.
+- Verificación: nuevo PID26816 con ruta exacta0014 y ventana visible estable durante las pruebas; antigua instancia retirada y puerto62960 cerrado. Portada real con wheel inyectado42→34→42 y porcentaje temporal que se oculta; barra abierta42→34→42 con lectura del range/feedback confirmados. Reproducción pausada y volumen inicial42 restaurado; app corregida dejada abierta. Los cuatro hashes de0014 se revalidan; se conserva el EXE SHA256 `0673d0a27c4d3fa0d84f087a1b64adbb2d18eab6d01fa84fde87ea432623c6d3`. No se repite compilación ni la suite764 ya aprobada por FIX-213, porque no cambia código.
+- Archivos: FIXES, PARIDAD, PLAN-009 e índice; stderr de reproducción en `temp/windows/startup-investigation/`, fuera de Git.
+- Antecedentes / plan: [FIX-213](#fix-213), [PLAN-009](windows/plans/PLAN-009-volume-scroll-feedback.md), [PAR-032](PARIDAD.md). Completa la comprobación de arranque y volumen en el EXE entregado; no invalida el fix de timers ni atribuye este cierre a ese cambio.
+- Paridad: no aplica port; conflicto de perfil/opciones de WebView2 del diagnóstico Windows. Apple usa AppKit y no comparte ese runtime ni puerto. PAR-032 mantiene dispositivo físico/audio audible pendientes.
+- Límites: cierre del proceso de diagnóstico resuelve este escenario comprobado. No se implementa una política general de instancias múltiples ni se declara probado todo error de arranque. Wheel nativo inyectado acredita UI/controller/runtime; no acredita el dispositivo del usuario ni escucha. Sin publicación, instalación, commit/push ni nueva build.
+
+<a id="fix-213"></a>
+
+### [FIX-213] [Windows] - Evitar que el indicador de volumen interrumpa la rueda
+
+- Fecha: 2026-10-18 (America/Montevideo).
+- Componente / estado: `VolumeScrollFeedback`, temporizadores de porcentaje y anuncios; implementado, regresión Chromium y build Windows0014 aprobadas; dispositivo y audio pendientes.
+- Problema / evidencia: la instalación abierta es1.2.3 (EXE SHA256 `4f7973de37e9e1e792ac30cbd9412b1a8713a1aa07357da19c282bdd95c4001e`), WebView2 155.0.4283.62. La entrada inyectada muestra feedback42 sin cambiar volumen. Captura schema2: dos eventos verticales confiables de833,33px, cancelables, foco activo, sin modal/arrastre/modificadores; consumo efectivo y cero órdenes de audio. Una sonda acotada del handler confirma que la política sí devuelve delta−8. La ventana para entrada del dispositivo del usuario terminó sin eventos; no se infiere hardware ni audio audible.
+- Causa reproducida: el reloj predeterminado guardaba `setTimeout`/`clearTimeout` sin vincular y los llamaba como métodos del objeto `clock`. Chromium rechaza ese receptor con `TypeError: Illegal invocation`. `input()` ya había activado el porcentaje, pero lanza antes de que el adaptador alcance `adjustVolume`. También afecta renovar/cancelar temporizadores. Git confirma esas referencias en b07ace9, entrega de FIX-197; FIX-207/211 corrigen otros defectos de acumulación y no sustituyen esta causa.
+- Cambio y motivo: vincular ambos temporizadores a `globalThis` al crear el reloj por defecto. Conserva inyección de relojes, acumulación, zonas, feedback900ms/anuncio180ms, controller, curva y audio nativo. El frontend de búsqueda ya usa wrappers con receptor global; no se modifica ese componente.
+- Archivos: `windows/src/lib/player/volume-scroll.ts`, `windows/scripts/volume-scroll.test.mjs`, PLAN-009 e índice; FIXES/PARIDAD.
+- Verificación: nueva regresión falla antes por receptor incorrecto y pasa después;18focales aprobadas, incluidas renovación, ACK, expiración y cancelación sin timers residuales. Ensayo Edge/Chromium headless con política/adaptador/controller originales y RPC simulado: antes cuatro `Illegal invocation`, cero órdenes y50fijo en ambas zonas; después cero errores, órdenes47/48/45/46, porcentaje confirmado y feedback retirado. `pnpm check`0errores/0avisos,385frontend aprobadas y `pnpm build` correcto. Evidencia local y capturas limitadas en `temp/windows/volume-investigation/`, ignoradas por Git.
+- Build / límite del entorno: build-0013 falla en verify nativo por `core/target/debug/gn_out/obj/rusty_v8.lib` truncada (123338752bytes). El GZIP original conservado permite recuperar233414244bytes: CRC y1796miembros COFF válidos, SHA256 `ba9a3e8f7710caf585d7072e089b6d6025ecbdf6961efffa9d126c9ce14ca14c`. Se conserva copia dañada fuera de Git y se repone sólo la biblioteca generada; no se cambia fuente core ni se relajan comprobaciones. Reintento `builds/windows/build-0014/sideb-windows.exe`: release compiled, sourceChangedDuringBuild=false, cuatro hashes de EXE/DLL/licencia válidos. Verify nativo764pruebas aprobadas (385frontend/97InnerTube/91core/93bridge/5player/93Tauri;14Rust ignoradas), check frontend0/0. Se conservan avisos Rust de campos no leídos/enlace LNK4098; no son errores de compilación.
+- Paridad / antecedentes / plan: FIX-197/198/207/211/212, [PAR-032](PARIDAD.md), [PLAN-009](windows/plans/PLAN-009-volume-scroll-feedback.md). Apple revisada en lectura: `VolumeScrollFeedback.swift` usa `Timer.scheduledTimer`/`invalidate`, sin objetos JS ni receptor Window; no requiere port de este fix. QA física de ambas plataformas sigue abierta.
+- Límites: pruebas de frontend/Chromium con audio RPC simulado no prueban audio audible ni dispositivo físico. La automatización dejó de activar Side B y falló también tras recuperar selección (`failed to activate captured window`); se detuvo la entrada nativa. Cerrar/reabrir normalmente la app instalada retira la sesión/puerto temporal de diagnóstico. Sin instalación, actualización pública, commit/push ni publicación.
+- Seguimiento: FIX-214 retira la instancia de diagnóstico que quedó viva y comprueba el mismo EXE0014 abierto/estable y wheel42→34→42 tanto en portada como barra, con runtime nativo y reproducción pausada. Dispositivo humano/audio audible siguen pendientes.
+- Confirmación posterior del usuario: «buenísimo ahora sí anda» y pedido de subir esa build. Se acepta funcionamiento del scroll reportado por el usuario; no se infiere modelo de dispositivo ni una medición de escucha. Entrega nueva seguida en FIX-215/release1.2.4.
 
 <a id="fix-212"></a>
 

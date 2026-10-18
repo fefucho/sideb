@@ -1,5 +1,30 @@
 # PLAN-009: volumen con rueda y feedback en fullscreen
 
+## Investigación local del reporte en 1.2.3 — 2026-10-18
+
+- Estado: causa reproducida y corregida en FIX-213; build local0014 compiled/764pruebas/fuentes estables/cuatro hashes válidos; aceptación con dispositivo y audio pendiente.
+- [x] Comprobar proceso instalado: `AppData/Local/Side B/sideb-windows.exe`, versión de archivo/producto 1.2.3; WebView2 155.0.4283.62.
+- [x] Prueba con entrada inyectada mediante Computer Use en la app instalada, pausada: se observa50→42 tras probar barra y portada, sin traza que atribuya esa primera bajada a una zona concreta. Las pruebas siguientes muestran feedback42 sin cambio. La interpretación inicial de que la portada funcionaba queda reemplazada por las capturas y la reproducción de Chromium; no acredita dispositivo ni audio audible.
+- [x] Reabrir el mismo ejecutable normalmente con el observador local schema2 para capturar entrada del dispositivo y órdenes/ACK sin datos de cuenta/canciones. Diagnóstico y capturas en `temp/windows/volume-investigation/`, fuera de Git.
+- [x] Analizar captura propia schema2: dos eventos inyectados confiables de833,33px, verticales, cancelables, foco activo y sin bloqueo; consumidos, feedback42, cero órdenes IPC. Sonda acotada del handler confirma delta−8. La primera ventana de captura del dispositivo del usuario terminó sin eventos; no se clasifica hardware.
+- [x] Reproducir causa en Edge/Chromium real: los temporizadores nativos lanzan `TypeError: Illegal invocation` al invocarlos como métodos del objeto clock. `input()` activa feedback antes del error; el adaptador no alcanza `adjust`. Un ensayo con política/adaptador/controller originales y RPC simulado produce cero órdenes/50fijo en portada y barra; tras vincular los timers a `globalThis` produce47→48→45→46 sin errores y retira feedback. No requiere cambiar umbrales ni controller/core.
+- [x] Agregar regresión que falla antes del cambio por receptor incorrecto y pasa después:18focales aprobadas, incluida renovación/ACK/expiración/cancelación. Comprobar suite global/check/build y registrar FIX-213/PAR-032.
+- [x] Completar build local numerada: `builds/windows/build-0014/sideb-windows.exe`, release compiled/sourceChangedDuringBuild=false, cuatro hashes válidos. Verify764pruebas (385frontend/97InnerTube/91core/93bridge/5player/93Tauri;14Rust ignoradas), check0/0. Build-0013 fallida conservada; biblioteca V8 recuperada desde GZIP original con CRC/1796miembros válidos y copia dañada fuera de Git. Sin fuentes core modificadas ni comprobaciones omitidas. Versión pública1.2.3 conservada; instalación/release sin reemplazar.
+- [ ] Probar dispositivo del usuario/audio con la build corregida. La herramienta de UI dejó de poder activar la ventana; tras recuperar selección falló de nuevo (`failed to activate captured window`), por lo que se detuvo la automatización nativa. Cerrar/reabrir normalmente la app instalada retira su puerto temporal de diagnóstico.
+- Una sonda adicional del controller no terminó: dejó de responder el canal CDP y se interrumpieron sus procesos de inspección. Sin resultado guardado, no se usa como evidencia causal. La causa del receptor de timers se demuestra por separado en Chromium, con código original/corregido y RPC simulado.
+- Verificación del entorno: dependencia `happy-dom` inicialmente ausente tras sincronizar Git; resuelta con `pnpm install --frozen-lockfile`, sin modificar manifests/lockfile. No era evidencia del fallo de volumen.
+
+## Arranque y comprobación del EXE entregado — FIX-214
+
+- [x] Reproducir el cierre de0014 con la instancia instalada del diagnóstico aún viva: Application Error1000/0xc0000409; stderr del EXE confirma panic Tauri creando WebView2, HRESULT0x8007139F. No era una prueba del frontend/volumen.
+- [x] Cerrar normalmente el PID27572 anterior con Computer Use, sin borrar perfil ni datos; comprobar proceso retirado y puerto62960 cerrado. La herramienta vuelve a poder seleccionar/activar la ventana en este turno.
+- [x] Abrir el binario exacto0014 y verificar ruta por PID26816, ventana visible y estabilidad. El lanzador de UI abrió inicialmente la instalación anterior pese a la ruta solicitada; se cerró normalmente y esa apertura no cuenta como validación de0014. La apertura explícita posterior se verificó contra el proceso real.
+- [x] Probar wheel inyectado sobre portada42→34→42 y barra abierta42→34→42, con confirmación visible/range y desaparición del porcentaje. Reproducción pausada, volumen42 restaurado y0014 dejada abierta. Cuatro hashes originales conservados; sin recompilar ni editar fuentes.
+- [x] El usuario confirma «ahora sí anda» tras probar0014 y solicita subirla. Funcionamiento de scroll aceptado por reporte del usuario; sin inventar tipo de dispositivo ni medición de audio. Publicación seguida en [release1.2.4](../../plans/RELEASE-1.2.4.md)/FIX-215.
+- Corrección del entorno registrada en [FIX-214](../../FIXES.md#fix-214). No requiere port Apple ni implementa una política general de múltiples instancias.
+
+## Entrega anterior y alcance conservado
+
 - Fecha: 2026-10-17 (America/Montevideo).
 - Estado: **FIX-211 publicado en1.2.3/build16**: captura Windows reproduce cancelación por muestras laterales; corregida y verificada con replay de portada/barra. CI Windows764pruebas/385frontend/check0/0 aprobado; instalador/portable/checksums y frontend del EXE público verificados. Prueba física del nuevo EXE pendiente;1.2.2 conserva el fallo. FIX-207 cubre otra pérdida de remanente y se conserva.
 - Objetivo: ajustar el volumen en pasos finos desde la cápsula de volumen abierta, el frente de la portada grande de Ahora suena; mostrar temporalmente el porcentaje sobre la portada oscurecida.
