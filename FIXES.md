@@ -13,10 +13,10 @@ Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-228**. Se
 ### [FIX-227] [Compartido] - Correo privado de autoría, caché excluida y protección de secretos
 
 - Fecha: 2026-10-19 (America/Montevideo).
-- Componente / tipo / estado: historial Git y configuración de publicación; privacidad, implementado y validado localmente; verificación remota de publicación pendiente.
+- Componente / tipo / estado: historial Git y configuración de publicación; privacidad, publicado y verificado en GitHub.
 - Problema / causa: un Gmail personal permanecía en 27 commits públicos; la caché de investigación de la raíz podía agregarse accidentalmente y GitHub tenía desactivadas detección y protección al subir secretos.
 - Cambio / motivo: reemplazar ese correo por el noreply de la misma cuenta en autoría/committer/tagger, con respaldo externo previo; excluir `/.cache/` y habilitar/releer ambas protecciones de GitHub. No se borra la caché del disco ni se retoca contenido de la app, capturas o documentación histórica ajena al cierre.
-- Verificación: igualdad exacta de árboles de los 103 commits públicos y veinte tags, conservación de nombres/fechas/mensajes/topología; 54 campos de autor/committer sustituidos. Las dos firmas de commits anteriores quedan invalidadas por el cambio de identidad y se retiran al reescribir. Security API confirma ambos estados enabled, sin alertas al consultar; publicación con leases y comprobaciones finales pendientes.
+- Verificación: igualdad exacta de árboles de los 103 commits públicos y veinte tags, conservación de nombres/fechas/mensajes/topología; 54 campos de autor/committer sustituidos. Las dos firmas de commits anteriores quedan invalidadas por el cambio de identidad y se retiran al reescribir. Security API confirma ambos estados enabled, sin alertas al consultar; publicación atómica con leases verificada en las 24 referencias. Las 16 releases/45 assets conservan IDs, metadata y digests. Parches e índices de los tres worktrees preservados al sincronizar sus referencias.
 - Archivos: `.gitignore`, `FIXES.md`, `plans/README.md`, [PLAN-011](plans/PLAN-011-github-privacy.md); metadatos Git y configuración del repositorio en GitHub.
 - Antecedentes / límites: completa higiene de FIX-130; backups fuera de Git. No afirma purga de referencias de PR cerrados, objetos por SHA, Actions antiguos ni otros clones. No hay build nueva y se conservan binarios/assets de releases.
 - Paridad: no requiere port ni nueva fila: reglas de publicación compartidas, sin cambios de comportamiento en Apple, Windows o core.
