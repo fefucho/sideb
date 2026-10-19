@@ -753,7 +753,11 @@ pub(crate) async fn play_song(
 
     let stream_info = match resolve_res {
         Ok(info) => info,
-        Err(_) => {
+        Err(error) => {
+            eprintln!(
+                "[Playback] stage=resolve category={}",
+                crate::cipher_runtime::resolution_failure_category(&error)
+            );
             let mut pb = state.playback.lock().map_err(|_| {
                 CommandError::new(
                     "LOCK_ERROR",

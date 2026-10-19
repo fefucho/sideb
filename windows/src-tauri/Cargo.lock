@@ -4964,6 +4964,7 @@ dependencies = [
  "futures-util",
  "player",
  "reqwest 0.12.28",
+ "rquickjs",
  "serde",
  "serde_json",
  "sha2",

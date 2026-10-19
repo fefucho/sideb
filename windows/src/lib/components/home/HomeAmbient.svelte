@@ -96,7 +96,7 @@
 <style>
   @property --left { syntax:'<color>'; inherits:true; initial-value:rgb(60 84 122); }
   @property --right { syntax:'<color>'; inherits:true; initial-value:rgb(102 77 132); }
-  .ambient { position:fixed; inset:0 0 0 var(--sidebar-width); container-type:size; --extent:max(100cqw,100cqh); pointer-events:none; z-index:0; overflow:hidden; background:#111318; transition:--left 1s,--right 1s; }
+  .ambient { position:fixed; inset:0 0 0 var(--sidebar-width); container-type:size; --extent:max(100cqw,100cqh); pointer-events:none; z-index:-1; overflow:hidden; background:#111318; transition:--left 1s,--right 1s; }
   .collection { inset:0; height:540px; background:transparent; mask-image:linear-gradient(#000 60%,transparent); }
   .collection.inactive { visibility:hidden; }
   .collection .a {opacity:.58;} .collection .b {opacity:.50;} .collection .first {opacity:.86;} .collection .second {opacity:.8;}

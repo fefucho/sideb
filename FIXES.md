@@ -8,6 +8,8 @@ Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-224**. Se
 
 ## Cambios recientes
 
+Integración posterior de FIX-216/217/218/219 (2026-10-19): por pedido de guardar/subir el trabajo Windows y combinarlo con lo hecho desde macOS, se integra sobre `origin/main` `ff36ce7` (FIX-221/222/223, versión 1.2.5). Se conservan ambos módulos Tauri (sesión y cipher), los nuevos estados/botones de cuenta y el icono SVG de refresh dentro de la nueva jerarquía desplazable de Explorar; también todos los registros de fixes, paridad y planes. Los arreglos de volumen FIX-213/214/215 ya estaban compartidos en la base `0ca3f64`. Respaldo externo de veinte archivos y parche antes de integrar, sin incluirlo en Git. `windows/scripts/windows.ps1 -Action verify` aprobado: **792 pruebas** (399 frontend, 97 InnerTube, 91 core, 93 core/windows-bridge, 5 player y 107 Tauri), 14 live Rust ignoradas; check 0 errores/0 avisos y build frontend aprobado. `node scripts/plan010-browser.mjs` repite las 144 configuraciones y las regresiones de scrim/foco/scroll, sin excepciones. Diff revisado sin errores de whitespace. Se conservan avisos existentes de dead_code, LNK4098 y tamaño de chunk. Apple/core y versiones sin cambios frente a GitHub; [PAR-011/PAR-012/PAR-033](PARIDAD.md), [PLAN-010](windows/plans/PLAN-010-windows-ui-stream-bugs.md#integración-con-github--2026-10-19). No hay build standalone nueva ni prueba física de apariencia/cuenta/audio; la release 1.2.5 y la build-0015 conservan sus fuentes originales. El commit que contiene esta nota guarda la integración; push autorizado por el usuario, sin publicar release ni tags.
+
 <a id="fix-223"></a>
 
 ### [FIX-223] [Compartido] - Publicar 1.2.5 con botones y acciones de cuenta Windows
@@ -52,6 +54,64 @@ Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-224**. Se
 - Evidencia / build: capturas locales en `windows/.cache/button-polish/evidence/` (`before.png`, `after-controls.png`, `after-real-album.png`, `controls-360.png`, `windows-buttons-preview.png`). Compilación de frontend en `/Users/stefano/Documents/PROGRAMACION PADRE/SIDE B RUST BASED PROJECTO/SIDE B/windows/build/`; no es EXE ni build nativa numerada.
 - Antecedentes / paridad / límites: refina FIX-174/175 y conserva decisiones de FIX-176/177; [PAR-030](PARIDAD.md), [PLAN-011](windows/plans/PLAN-011-button-polish.md). Apple aporta referencia estática de SideBControls/compatGlass; sin comparación nativa simultánea ni modificaciones Apple/core. WebView2, Narrator, preferencias reales y aceptación visual Windows pendientes. Trabajo local previo de sidebar/apariencia conservado; sin instalación, commit/push ni publicación.
 - Entrega posterior: FIX-223 publica este cambio en 1.2.5/build 18; verify/build Windows, 397 tests frontend y 97 Tauri nativos aprobados. Paquetes públicos, versiones y hashes comprobados. Cuenta real, WebView2 interactivo y aceptación física pendientes; ver el plan de release.
+
+Verificación posterior de FIX-216/217/218/219 (2026-10-18): por pedido «compila así pruebo», `node Scripts/build-version.mjs windows` completa verify y conserva [build-0015](builds/windows/build-0015/BUILD.json), Release, `status: compiled`, `sourceChangedDuringBuild:false`. **776 pruebas aprobadas**:387frontend,97InnerTube,91core,93core/windows-bridge,5player,103Tauri;14live Rust ignoradas. Check0errores/0avisos y frontend/build nativo aprobados. Cuatro hashes de EXE/libmpv/Vulkan/licencia revalidados; EXE SHA256 `efae455c6d425d0dac18ea5be1c35ae2fa1b618c31f529f145a3e0742e3c1fca`. Artefacto: `builds/windows/build-0015/sideb-windows.exe`. Avisos conservados de dead_code, LNK4098 y tamaño de chunk, sin errores. No se abrió la app ni se realizó reproducción/sesión/audio: el usuario probará la build. Compilación no certifica apariencia ni repara por sí sola la pista reportada. Apple/core fuente sin cambios y paridad física pendiente; actualización documental posterior al empaquetado.
+
+<a id="fix-219"></a>
+
+### [FIX-219] [Windows] - Registrar el runtime aislado de descifrado de streams
+
+- Fecha: 2026-10-18 (America/Montevideo).
+- Componente / estado: integración Tauri de CipherJsRuntime; implementado, diez pruebas nativas sin cuenta aprobadas; reproducción del caso reportado pendiente.
+- Problema y causa: Windows construía SideBCore sin instalar el callback de cipher que Apple registra desde FIX-083. El core devuelve runtime unavailable cuando necesita descifrar formatos web. Es una carencia comprobada de integración, todavía sin atribuirle el fallo exacto de la captura. El usuario identificó la pista `5LFB3qdmZBM` y autorizó sesión/audio; luego pidió no usar su PC mientras juega y probar él después, antes de realizar el ensayo en vivo.
+- Cambio y motivo: worker serial con QuickJS propio, separado de BotGuard y del WebView. Inicio y reintento usan la misma fábrica y registran el callback antes de publicar el core. Cada carga reemplaza su contexto, incluso si falla; shims inertes sin IPC, red, disco, credenciales ni loader. Límites de heap128MiB, stack512KiB, script16MiB, expresión/resultado64KiB y presupuesto JS5s/1s. Dependencia rquickjs0.9 ya presente transitivamente, sin actualizar paquetes. Los fallos de resolve emiten sólo una categoría finita, sin imprimir el mensaje libre ni URLs.
+- Archivos: `windows/src-tauri/src/cipher_runtime.rs`, `src/lib.rs`, `src/commands/playback.rs`, `Cargo.toml`, `Cargo.lock` del mismo ámbito.
+- Antecedentes: FIX-083 identifica el contrato Apple; FIX-007/077/134 consultados sin alterar selección de clientes, headers, cola ni generaciones. Core protegido y Apple sin cambios.
+- Verificación: `cargo test --offline --manifest-path windows/src-tauri/Cargo.toml --lib cipher_runtime::tests -- --nocapture`:10aprobadas,93filtradas; firma/n, escapes, errores, reemplazo, concurrencia/instancias, APIs ausentes, interrupción, límites de tamaños/memoria/recursión y comprobación estructural de inicio/retry. Rustfmt del archivo y diff check aprobados. El test de wiring por fuente no reemplaza arranque real ni acredita la cadena de fallbacks del proveedor.
+- Paridad: [PAR-033](PARIDAD.md); Apple ya usa NativeCipherJsRuntime, sin nueva validación Mac.
+- Límites / plan: falta verify completo, build numerada, resolver la pista exacta y una de control, progreso y escucha real. No se afirma que One Dance esté reparada ni que QuickJS haya ejecutado player.js actual del proveedor. Sin nueva build/publicación por el pedido de posponer pruebas. [PLAN-010](windows/plans/PLAN-010-windows-ui-stream-bugs.md).
+
+<a id="fix-218"></a>
+
+### [FIX-218] [Windows] - Toolbar bajo la portada y ambiente detrás de las colecciones
+
+- Fecha: 2026-10-18 (America/Montevideo).
+- Componente / estado: shell, HomeAmbient, CollectionHeader y TrackFilter; implementado, fixture Edge aprobada; aceptación WebView2 pendiente.
+- Problema y causa: toolbar anidada en metadata confinaba acciones/filtros a la derecha de la portada; breakpoints dependían del viewport completo. El ambiente fijo z0 podía pintar sobre primer plano no posicionado de playlist. La fixture reproduce el velo con z0 y sin la contención nueva del header; el álbum ya tenía posicionamiento propio, por lo que no se atribuye todo el reporte de álbum a idéntica causa sin evidencia.
+- Cambio y motivo: fila portada+metadatos y toolbar hermana debajo, acciones izquierda/filtros derecha con wrap. Container queries reducen espaciado/portada y apilan identidad según ancho útil. Se conserva el mismo input/query/foco. Ambiente z−1 dentro de app-frame aislado, sin crear una capa nueva en content-column que encerraría diálogos debajo del player. No se añaden fondos opacos ni se cambian opacidades para esconder el síntoma; medición/pausa/fade existentes se conservan.
+- Archivos: `windows/src/lib/components/detail/{CollectionHeader,TrackFilter}.svelte`, `components/home/HomeAmbient.svelte`, `windows/src/routes/+page.svelte`, `windows/scripts/collection-header-dom.test.mjs`, `scripts/fixtures/CollectionLayout.svelte`, `scripts/plan010-browser.mjs`.
+- Antecedentes: FIX-114/115/116/117/118/132/139 contrastados con la cabecera Swift y Git. Completa estructura/orden de capas del port; no atribuye una regresión al cambio de transparencia FIX-139.
+- Verificación: cuatro escenarios DOM internos comprueban acciones/permisos álbum/propia/ajena/LM, duplicados/índice de ocurrencia, filtrado, input/selección conservados al resize, orden paginado, shuffle/guardar/menú/créditos/descripción/foco. Edge155 headless monta ambos detalles reales con CSS vigente del shell:144combinaciones de cliente960×640/1100×720/1440×900,sidebar230/60,ES/EN,DPR1/1.25/1.5,toolbar debajo/alineada y controles dentro de header. Fronteras480/600/730 con última fila por encima del dock. Píxel de portada blanco idéntico al ocultar decoración corregida y distinto al reponer orden anterior en playlist. Artefactos ignorados en `windows/.cache/plan010-browser/`.
+- Verificación integrada:387frontend aprobadas, check0errores/0avisos, build frontend aprobado, diff check limpio. No se generó ejecutable nuevo. La fixture usa sidebar/dock de referencia y no mide DPI real del sistema ni audio.
+- Paridad: [PAR-011](PARIDAD.md), origen Apple consultado sin editar ni cerrar QA física.
+- Límites / plan: WebView2, portada real y aceptación visual humana pendientes; matriz no certifica fullscreen ni gestos físicos. La prueba de tabla mide el grupo de acciones, no el borde de cada botón: queda revisar presupuesto en playlist editable antes de dar por descartada superposición con duración. TrackList sin modificar por falta de reproducción concluyente. [PLAN-010](windows/plans/PLAN-010-windows-ui-stream-bugs.md).
+
+<a id="fix-217"></a>
+
+### [FIX-217] [Windows] - Explorar con título y categorías en el mismo scroll
+
+- Fecha: 2026-10-18 (America/Montevideo).
+- Componente / estado: ExploreView y viewport del shell; port implementado, pruebas frontend/Edge aprobadas, validación nativa pendiente.
+- Problema y causa: Windows conservaba chips fuera del scroll y título/eslogan anteriores al contrato Apple FIX-208. El shell tampoco fijaba la altura de Explorar para delegar el único viewport vertical.
+- Cambio y motivo: título localizado40px/caja52, márgenes28/24, chips debajo dentro del scroll y accesos con icono/título/subtítulo. Viewport explícito del shell conserva virtualización, rutas, región, refresh y metadatos originales; no cambia controller ni proveedor.
+- Archivos: `windows/src/lib/components/explore/ExploreView.svelte`, `windows/src/routes/+page.svelte`, `windows/scripts/explore-dom.test.mjs`, fixture optativa `windows/scripts/plan010-browser.mjs`.
+- Antecedentes / paridad: FIX-120/121/133/208; [PAR-012](PARIDAD.md), sin port del selector superior excluido ni cambios Apple/core.
+- Verificación: focal8/8wrappers y tres escenarios DOM internos: siete rutas, ES/EN, país/refresh/error/offset, suspensión y catálogo5000 con menos de40tarjetas y destino más allá de índice1000. Edge confirma título40, orden título→nav y desplazamiento conjunto sin desborde horizontal global con CSS actual del shell. Suite387frontend/check0/0/build frontend aprobados; diff check limpio.
+- Límites / plan: geometría DOM simulada para catálogo largo, conexión regional real, DPI/entrada física/FPS pendientes. No nueva build Windows ni QA Mac. [PLAN-010](windows/plans/PLAN-010-windows-ui-stream-bugs.md).
+
+<a id="fix-216"></a>
+
+### [FIX-216] [Windows] - Oscurecer todo el cliente al abrir Spotlight
+
+- Fecha: 2026-10-18 (America/Montevideo).
+- Componente / estado: Spotlight y TitleBar; implementado, regresión Edge aprobada, WebView2 físico pendiente.
+- Problema y causa: scrim empezaba40px debajo del techo y dejaba la franja superior iluminada; historial de TitleBar continuaba fuera de la modalidad.
+- Cambio y motivo: scrim inset0, zona del diálogo calculada por separado con titlebar32+16 y altura máxima del positioner. Durante el modal sólo los controles de ventana quedan por encima del scrim; historial/drag se desactivan, sin bloquear cerrar/minimizar/restaurar. Conserva Escape, clic exterior, Tab y retorno de foco.
+- Archivos: `windows/src/lib/components/search/SpotlightSearch.svelte`, `components/shell/TitleBar.svelte`, `windows/src/routes/+page.svelte`, fixture `windows/scripts/plan010-browser.mjs`.
+- Antecedentes: FIX-165/168/169/172 y foco/navegación actuales consultados; no se atribuye a ellos el origen de la banda.
+- Verificación: fixture Edge155 con Spotlight/TitleBar reales y CSS actual del shell comprueba scrim hasta y0, hit testing superior, botones de ventana accesibles, historial de fondo bloqueado, foco inicial, ciclo Tab, Escape, clic exterior/retorno al launcher. Suite387frontend,check0/0/build frontend y diff check aprobados.
+- Paridad: no aplica port de offsets o z-index; son composición CSS/TitleBar Windows. Apple usa presentación nativa propia y no cambió. Seguimiento funcional común de búsqueda PAR-027 conservado, sin declarar QA Mac.
+- Límites / plan: no ejecución de comandos nativos de ventana en fixture, ni matriz real de DPI/maximizado/viewport bajo, ni nueva build. Pruebas en PC pospuestas por pedido del usuario. [PLAN-010](windows/plans/PLAN-010-windows-ui-stream-bugs.md).
 
 <a id="fix-215"></a>
 

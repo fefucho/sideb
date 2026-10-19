@@ -11,9 +11,8 @@
   <div class="filter"><input bind:this={editor} bind:value={query} placeholder={$t('detail.search.songs')} aria-label={$t('detail.search.songsInCollection')} onkeydown={event => { if(event.key === 'Escape') { event.preventDefault(); editor.blur(); } }} onfocusout={() => {}} /><button type="button" class:empty={!query} tabindex={query ? 0 : -1} aria-label={$t('detail.search.clear')} onclick={() => { query = ''; editor.focus(); }}>×</button></div>
 </div>
 <style>
-  .track-tools.compact {padding:0;min-height:40px;flex-wrap:wrap;gap:8px 16px;} .compact .filter {flex:1 1 160px;width:auto;max-width:260px;} .compact label {flex:0 1 auto;} .compact select {max-width:100%;min-width:0;}
-  .track-tools { display:flex;align-items:center;justify-content:flex-end;gap:16px;padding:12px 32px;min-height:40px;color:#aaaab1;font-size:12px; }
-  label { display:flex;align-items:center;gap:8px; } select { max-width:100%;min-width:0; }
-  .filter { display:flex;align-items:center;width:min(240px,50%);border-bottom:1px solid #ffffff20; } input { min-width:0;flex:1;background:transparent;border:0;outline:none;color:inherit;padding:8px 0;font:inherit; } .filter:focus-within { border-color:var(--sideb-highlight);color:white; } button { width:28px;height:28px;flex:none;border:0;border-radius:50%;background:transparent;color:inherit;font-size:20px;cursor:pointer; } .empty { visibility:hidden; } button:focus-visible,select:focus-visible { outline:2px solid var(--sideb-highlight); }
-  @media(max-width:600px) { .track-tools {padding-inline:16px;gap:8px;} .filter {width:50%;} }
+  .track-tools.compact {padding:0;}
+  .track-tools { display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:8px 16px;padding:12px clamp(16px,4%,32px);min-height:40px;min-width:0;color:#aaaab1;font-size:12px; }
+  label { display:flex;flex:0 1 auto;max-width:100%;min-width:0;align-items:center;gap:8px; } select { max-width:100%;min-width:0; }
+  .filter { display:flex;flex:1 1 180px;max-width:260px;min-width:min(180px,100%);align-items:center;border-bottom:1px solid #ffffff20; } input { min-width:0;flex:1;background:transparent;border:0;outline:none;color:inherit;padding:8px 0;font:inherit; } .filter:focus-within { border-color:var(--sideb-highlight);color:white; } button { width:28px;height:28px;flex:none;border:0;border-radius:50%;background:transparent;color:inherit;font-size:20px;cursor:pointer; } .empty { visibility:hidden; } button:focus-visible,select:focus-visible { outline:2px solid var(--sideb-highlight); }
 </style>

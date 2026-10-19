@@ -924,7 +924,7 @@
 
 <div class="app-frame" class:sidebar-collapsed={sidebarCollapsed} class:fullscreen-open={isFullscreenOpen}>
   {#if activeView==='feed'}<HomeAmbient artwork={homeArtwork} session={homeSession} active={!isFullscreenOpen} />{:else if activeView==='album_detail'||activeView==='playlist_detail'}<HomeAmbient artwork={[(activeView==='album_detail'?selectedAlbum?.thumbnail:accountData.playlist?.thumbnail)??''].filter(Boolean)} session={homeSession} active={!isFullscreenOpen} collection />{/if}
-  <TitleBar onBack={goBackFromDetail} onForward={goForward} {canBack} {canForward} />
+  <TitleBar onBack={goBackFromDetail} onForward={goForward} {canBack} {canForward} modalOpen={spotlightOpen} />
   {#if gestureProgress.phase==='tracking'||gestureProgress.phase==='armed'}<div class="gesture-progress" role="status">{gestureProgress.action==='dismiss-fullscreen'?$t('windows.ui.closePlayer'):gestureProgress.action==='back'?'‹ '+$t('navigation.back'):$t('navigation.forward')+' ›'}<progress max="1" value={gestureProgress.progress}></progress></div>{/if}
   <div class="sidebar-host" inert={spotlightOpen}>
   <Sidebar
@@ -949,7 +949,7 @@
   />
   </div>
   <div class="content-column" class:home-content={activeView==='feed'&&!isFullscreenOpen}>
-<main class="shell" class:home-shell={activeView !== "search_results"} class:search-shell={activeView === 'search_results'} class:player-covered={isFullscreenOpen} inert={isFullscreenOpen || spotlightOpen}>
+<main class="shell" class:home-shell={activeView !== "search_results"} class:search-shell={activeView === 'search_results'} class:explore-shell={activeView === 'explore'} class:player-covered={isFullscreenOpen} inert={isFullscreenOpen || spotlightOpen}>
 
   {#if (backendStatus && !backendStatus.ready) || statusError}
   <div class="backend-notice" role="status">
@@ -1174,6 +1174,7 @@
   }
 
   .app-frame {
+    isolation: isolate;
     --titlebar-height: 32px;
     --sidebar-width: 230px;
     --sideb-sidebar: #24242a;
@@ -1232,7 +1233,8 @@
     gap: 0;
   }
 
-  .content-column:has(.search-shell) { overflow: hidden; }
+  .shell.explore-shell { height:100%; min-height:0; }
+  .content-column:has(.search-shell), .content-column:has(.explore-shell) { overflow: hidden; }
 
   .shell.player-covered { visibility: hidden; }
 

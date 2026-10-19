@@ -27,9 +27,9 @@
   </VirtualCatalog>
 {/snippet}
 <div class="explore-page" inert={!active}>
-  <nav aria-label={$t('explore.eyebrow')}>{#each tabs as item (item)}<ControlFilter selected={tab===item} onclick={()=>onNavigate(item)}>{$t(`explore.route.${item}`)}</ControlFilter>{/each}<ControlButton iconOnly type="button" disabled={data.isLoading} onclick={onRefresh} aria-label={$t('explore.refresh')}><MenuIcon name="refresh" /></ControlButton></nav>
   <div class="explore-scroll" bind:this={scroll} onscroll={()=>{if(active)onScrollTop?.(scroll.scrollTop);}}>
-    <header><p>{$t('explore.eyebrow')}</p><h1>{data.route==='discover'?$t('explore.title.discover'):title}</h1>{#if data.route==='discover'}<p>{$t('explore.subtitle.discover')}</p>{/if}</header>
+    <header><h1>{data.route==='discover'?$t('navigation.explore'):title}</h1></header>
+    <nav aria-label={$t('explore.eyebrow')}>{#each tabs as item (item)}<ControlFilter selected={tab===item} onclick={()=>onNavigate(item)}>{$t(`explore.route.${item}`)}</ControlFilter>{/each}<ControlButton iconOnly type="button" disabled={data.isLoading} onclick={onRefresh} aria-label={$t('explore.refresh')}><MenuIcon name="refresh" /></ControlButton></nav>
     {#if tab==='charts'}
       <label>{$t('explore.region.selector')} <select class="sideb-control-field" value={data.route} onchange={event=>onNavigate(event.currentTarget.value as ExploreRoute)}><option value="charts">{$t('explore.region.global_and_yours')}</option><option value="country:ZZ">{$t('explore.region.global')}</option>{#each data.countries.filter(c=>c.code!=='ZZ') as country (country.code)}<option value={`country:${country.code}`}>{countryName(country.code,$language)}</option>{/each}</select></label>
       {#if data.detectedCountry}<p class="hint">{$t('explore.region.detected',[countryName(data.detectedCountry,$language)])}</p>{/if}
@@ -38,7 +38,16 @@
     {#if data.error}<div class="state" role="alert"><p>{$t(data.error)}</p><ControlButton onclick={onRefresh}>{$t('explore.retry')}</ControlButton></div>{/if}
     {#if data.isLoading}<p class="hint" role="status" aria-busy="true">{$t('explore.refresh_music')}…</p>{/if}
     {#if data.route==='discover'}
-      <div class="shortcuts"><button type="button" onclick={()=>onNavigate('releases')}>{$t('explore.shortcut.new_arrivals')} →</button><button type="button" onclick={()=>onNavigate('charts')}>{$t('explore.shortcut.global_region')} →</button></div>
+      <div class="shortcuts">
+        <button type="button" style="--hue:7" onclick={()=>onNavigate('releases')}>
+          <svg class="shortcut-icon" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="16" cy="16" r="12"/><circle cx="16" cy="16" r="3"/><path d="M16 7a9 9 0 0 1 9 9M16 25a9 9 0 0 1-9-9"/></svg>
+          <span class="shortcut-copy"><strong>{$t('explore.route.releases')}</strong><span>{$t('explore.shortcut.new_arrivals')}</span></span><span class="shortcut-arrow" aria-hidden="true">↗</span>
+        </button>
+        <button type="button" style="--hue:230" onclick={()=>onNavigate('charts')}>
+          <svg class="shortcut-icon" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M5 26h23M8 22v-7h4v7M16 22V6h4v16M24 22V11h4v11"/></svg>
+          <span class="shortcut-copy"><strong>{$t('explore.route.charts')}</strong><span>{$t('explore.shortcut.global_region')}</span></span><span class="shortcut-arrow" aria-hidden="true">↗</span>
+        </button>
+      </div>
       <section><div class="section-heading"><h2>{$t('explore.section.new_albums_singles')}</h2><ControlButton emphasis="quiet" size="utility"  type="button" onclick={()=>onNavigate('releases')}>{$t('explore.see_all')}</ControlButton></div>{@render cards(data.items.slice(0,12),true)}</section>
       <section><h2>{$t('explore.section.for_every_moment')}</h2>{@render categories(moods)}</section>
       <section><div class="section-heading"><h2>{$t('explore.section.explore_genres')}</h2><ControlButton emphasis="quiet" size="utility"  type="button" onclick={()=>onNavigate('genres')}>{$t('explore.see_all')}</ControlButton></div>{@render categories(genres.slice(0,8))}</section>
@@ -47,7 +56,37 @@
     {:else if tab==='charts'}
       {#each data.sections as section (section.code)}<section><h2>{countryName(section.code,$language)}</h2>{#if section.error}<p role="status">{$t(section.error)} <ControlButton onclick={onRefresh}>{$t('explore.retry')}</ControlButton></p>{:else}{@render cards(section.items)}{/if}</section>{/each}
       {#if !data.isLoading&&!data.error&&!data.sections.some(s=>s.items.length)}<div class="state">{$t('explore.charts.empty_title')}</div>{/if}
-    {:else}{@render cards(data.items)}{#if !data.isLoading&&!data.error&&!data.items.length}<div class="state">{$t('explore.empty.description')}</div>{/if}{/if}
+    {:else}<section><h2>{$t(data.route==='releases'?'explore.section.new_albums_singles':'explore.section.playlists_to_explore')}</h2>{@render cards(data.items)}{#if !data.isLoading&&!data.error&&!data.items.length}<div class="state">{$t('explore.empty.description')}</div>{/if}</section>{/if}
   </div>
 </div>
-<style>.explore-page{display:flex;flex-direction:column;height:100%;min-height:0;color:var(--text-primary,#eee);}nav{display:flex;align-items:center;gap:var(--control-category-gap);padding:16px 24px;flex:none;overflow-x:auto;border-bottom:1px solid #ffffff12;}.categories button,.shortcuts button{font:inherit;color:inherit;border:0;border-radius:12px;background:var(--sideb-surface);padding:12px;cursor:pointer;}.categories button:hover,.shortcuts button:hover{filter:brightness(1.1);}button:focus-visible,select:focus-visible{outline:2px solid var(--sideb-highlight);outline-offset:2px;}.explore-scroll{flex:1;min-height:0;overflow:auto;padding:24px 30px 120px;}header p,.hint{color:#aaa;font-size:13px;}header h1{margin:8px 0;font-size:30px;}section{margin-top:28px;}h2{font-size:18px;}.section-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;}.categories{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:14px;}.categories button{text-align:left;min-height:110px;padding:18px;background:linear-gradient(125deg,hsl(var(--hue) 40% 27%),hsl(var(--hue) 25% 13%));}.categories strong,.categories span{display:block;}.categories span{margin-top:8px;color:#ffffffa8;font-size:12px;}.shortcuts{display:flex;gap:16px;margin-top:22px;}.shortcuts button{flex:1;padding:24px;text-align:left;}.state{text-align:center;padding:30px;color:#bbb;}label{display:flex;gap:10px;align-items:center;margin:20px 0;}select{max-width:100%;}@media(max-width:600px){.explore-scroll{padding-inline:16px;}nav{padding-inline:16px;}.shortcuts{flex-direction:column;}}</style>
+<style>
+  .explore-page{height:100%;min-height:0;min-width:0;color:var(--text-primary,#eee);container-type:inline-size;}
+  .explore-scroll{height:100%;min-height:0;min-width:0;overflow:auto;box-sizing:border-box;padding:24px 28px 140px;}
+  header h1{margin:0;min-height:52px;font-size:40px;line-height:52px;font-weight:700;overflow-wrap:anywhere;}
+  nav{display:flex;align-items:center;gap:var(--control-category-gap);margin-top:30px;padding:4px 2px;overflow-x:auto;}
+  nav :global(button){flex:none;}
+  .categories button,.shortcuts button{font:inherit;color:inherit;border:1px solid #ffffff12;border-radius:14px;background:var(--sideb-surface);cursor:pointer;}
+  .categories button:hover,.shortcuts button:hover{filter:brightness(1.1);}
+  button:focus-visible,select:focus-visible{outline:2px solid var(--sideb-highlight);outline-offset:2px;}
+  .hint{color:var(--text-secondary,#aaa);font-size:13px;}
+  section{margin-top:30px;min-width:0;}
+  h2{margin:0 0 16px;font-size:21px;}
+  .section-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px;}
+  .section-heading h2{margin:0;}
+  .categories{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(190px,100%),1fr));gap:14px;margin-top:30px;}
+  section .categories{margin-top:0;}
+  .categories button{text-align:left;min-width:0;min-height:135px;padding:18px;background:linear-gradient(125deg,hsl(var(--hue) 40% 27%),hsl(var(--hue) 25% 13%));}
+  .categories strong,.categories span{display:block;overflow-wrap:anywhere;}
+  .categories span{margin-top:8px;color:#ffffffa8;font-size:12px;}
+  .shortcuts{display:flex;gap:16px;margin-top:30px;}
+  .shortcuts button{display:flex;align-items:center;gap:16px;flex:1;min-width:0;padding:22px;text-align:left;border-radius:18px;background:linear-gradient(125deg,hsl(var(--hue) 40% 27%),hsl(var(--hue) 25% 13%));}
+  .shortcut-icon{width:46px;height:32px;flex:none;color:hsl(var(--hue) 45% 75%);}
+  .shortcut-copy{min-width:0;flex:1;overflow-wrap:anywhere;}
+  .shortcut-copy strong{display:block;font-size:18px;}
+  .shortcut-copy span{display:block;margin-top:5px;font-size:12px;color:#ffffffa8;}
+  .shortcut-arrow{flex:none;font-size:16px;color:#ffffff99;}
+  .state{text-align:center;padding:30px;color:var(--text-secondary,#bbb);}
+  label{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:30px 0 20px;}
+  select{max-width:100%;min-width:0;}
+  @container (width < 600px){.shortcuts{flex-direction:column;}}
+</style>

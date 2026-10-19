@@ -4,6 +4,7 @@ use tauri::{Emitter, Manager};
 
 mod dto;
 mod session_operations;
+mod cipher_runtime;
 #[cfg(windows)]
 mod media_controls;
 mod playback_runtime;
@@ -664,7 +665,7 @@ fn retry_init_core(
     })?;
 
     let data_dir_str = app_data_dir.to_string_lossy().to_string();
-    match sideb_core::SideBCore::new_windows(data_dir_str) {
+    match cipher_runtime::create_core(data_dir_str) {
         Ok(core) => {
             let mut core_lock = state.core.write().map_err(|_| {
                 CommandError::new("LOCK_ERROR", "Error de concurrencia al actualizar el core.")
@@ -733,7 +734,7 @@ pub fn run() {
             match app.path().app_data_dir() {
                 Ok(app_data_dir) => {
                     let data_dir_str = app_data_dir.to_string_lossy().to_string();
-                    match sideb_core::SideBCore::new_windows(data_dir_str) {
+                    match cipher_runtime::create_core(data_dir_str) {
                         Ok(core) => {
                             *state.core.write().unwrap() = Some(core);
                         }

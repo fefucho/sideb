@@ -4,8 +4,8 @@
   import type { Window as TauriWindow } from '@tauri-apps/api/window';
   import type { UnlistenFn } from '@tauri-apps/api/event';
 
-  let { onBack, onForward, canBack = false, canForward = false }:
-    { onBack?: () => void; onForward?: () => void; canBack?: boolean; canForward?: boolean } = $props();
+  let { onBack, onForward, canBack = false, canForward = false, modalOpen = false }:
+    { onBack?: () => void; onForward?: () => void; canBack?: boolean; canForward?: boolean; modalOpen?: boolean } = $props();
 
   let nativeWindow: TauriWindow | null = null;
   let isMaximized = $state(false);
@@ -58,12 +58,12 @@
   function toggleFromDragRegion() { void runWindowAction(current => current.toggleMaximize()); }
 </script>
 
-<header class="titlebar" aria-label={$t('windows.ui.sideBTitleBar')}>
-  <div class="drag-region" data-tauri-drag-region role="button" tabindex="0" aria-label={isMaximized ? $t('windows.ui.restoreWindow') : $t('windows.ui.maximizeWindow')} title={isMaximized ? $t('windows.ui.doubleClickToRestore') : $t('windows.ui.doubleClickToMaximize')} onkeydown={event => {
+<header class="titlebar" class:modal-open={modalOpen} aria-label={$t('windows.ui.sideBTitleBar')}>
+  <div class="drag-region" inert={modalOpen} data-tauri-drag-region role="button" tabindex="0" aria-label={isMaximized ? $t('windows.ui.restoreWindow') : $t('windows.ui.maximizeWindow')} title={isMaximized ? $t('windows.ui.doubleClickToRestore') : $t('windows.ui.doubleClickToMaximize')} onkeydown={event => {
     if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); toggleFromDragRegion(); }
   }}></div>
 
-  <nav class="history-controls" aria-label={$t('windows.ui.sidebarAndNavigationControls')}>
+  <nav class="history-controls" inert={modalOpen} aria-label={$t('windows.ui.sidebarAndNavigationControls')}>
     <button type="button" class="history-button" aria-label={$t('navigation.back')} title={$t('navigation.back')} disabled={!canBack} onclick={onBack}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg></button>
     <button type="button" class="history-button" aria-label={$t('navigation.forward')} title={$t('navigation.forward')} disabled={!canForward} onclick={onForward}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></button>
   </nav>
@@ -94,6 +94,10 @@
     user-select: none;
     -webkit-user-select: none;
   }
+  /* Only native window buttons remain above the search modal. */
+  .titlebar.modal-open { z-index:221; pointer-events:none; }
+  .modal-open .window-controls { pointer-events:auto; }
+  .modal-open .history-controls { visibility:hidden; }
   .window-controls { display: flex; align-items: center; height: 100%; }
   .history-button:hover:not(:disabled) { background:rgb(255 255 255 / 10%); }
   .history-button:focus-visible { outline:2px solid #d06c70; outline-offset:-3px; }
