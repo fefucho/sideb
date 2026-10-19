@@ -1,5 +1,7 @@
 # Planes Apple
 
+- [Sidebar y Apariencia: entrega compartida](../../plans/PLAN-010-sidebar-delivery.md) — FIX-224/225, nueva sidebar y opciones sincronizadas, base GitHub 23f1df5; comprobaciones/publicación 1.2.6 pendientes. PAR-036.
+
 [Formato](../../.agents/WORKFLOW.md#planes), [fixes](../../FIXES.md), [paridad](../../PARIDAD.md).
 
 | Plan | Estado | Referencia |

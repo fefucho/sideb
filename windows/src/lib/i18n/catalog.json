@@ -2587,6 +2587,10 @@
     "es": "Álbumes",
     "en": "Albums"
   },
+  "settings.appearance": {
+    "es": "Apariencia",
+    "en": "Appearance"
+  },
   "settings.categories": {
     "es": "Categorías de Inicio",
     "en": "Home categories"
@@ -2634,6 +2638,22 @@
   "settings.home": {
     "es": "Inicio",
     "en": "Home"
+  },
+  "settings.homeBackground": {
+    "es": "Fondo del Inicio",
+    "en": "Home background"
+  },
+  "settings.homeBackground.ambient": {
+    "es": "Colores de las portadas",
+    "en": "Artwork colors"
+  },
+  "settings.homeBackground.hint": {
+    "es": "Elegí los colores de las portadas o un fondo oscuro uniforme.",
+    "en": "Choose artwork colors or a uniform dark background."
+  },
+  "settings.homeBackground.solid": {
+    "es": "Liso",
+    "en": "Solid"
   },
   "settings.language": {
     "es": "Idioma de la aplicación",
@@ -2686,6 +2706,10 @@
   "settings.showAll": {
     "es": "Mostrar todas las categorías",
     "en": "Show all categories"
+  },
+  "settings.sidebarLayout": {
+    "es": "Vista de tu colección",
+    "en": "Collection view"
   },
   "settings.source.forgottenFavorites": {
     "es": "Favoritos olvidados",
@@ -2771,6 +2795,22 @@
     "es": "Inicio",
     "en": "Home"
   },
+  "sidebar.layout.grid": {
+    "es": "Cuadrados",
+    "en": "Grid"
+  },
+  "sidebar.layout.list": {
+    "es": "Filas",
+    "en": "List"
+  },
+  "sidebar.layout.show_grid": {
+    "es": "Mostrar como cuadrados",
+    "en": "Show as grid"
+  },
+  "sidebar.layout.show_list": {
+    "es": "Mostrar como filas",
+    "en": "Show as list"
+  },
   "sidebar.library": {
     "es": "Biblioteca",
     "en": "Library"
@@ -2814,6 +2854,10 @@
   "sidebar.sign_in_to_view": {
     "es": "Iniciá sesión para ver tu música guardada",
     "en": "Sign in to see your saved music"
+  },
+  "sidebar.your_collection": {
+    "es": "Tu colección",
+    "en": "Your collection"
   },
   "update.available_subtitle": {
     "es": "Hay una versión más reciente de Side B lista para descargar e instalar.",

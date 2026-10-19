@@ -1,6 +1,7 @@
 <script lang="ts" module>
   export type SidebarIconName =
     | "home"
+    | "explore"
     | "search"
     | "liked"
     | "library"
@@ -26,6 +27,8 @@
 >
   {#if name === "home"}
     <path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z" />
+  {:else if name === "explore"}
+    <path d="m12 3 2.2 6.8L21 12l-6.8 2.2L12 21l-2.2-6.8L3 12l6.8-2.2Z" /><path d="m20 2 .6 2.4L23 5l-2.4.6L20 8l-.6-2.4L17 5l2.4-.6Z" />
   {:else if name === "search"}
     <circle cx="10.8" cy="10.8" r="6.8" />
     <path d="m16 16 5 5" />

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { appearance } from '$lib/appearance/preferences';
   import { t, language, setLanguage } from '$lib/i18n';
   import { providerHeading } from '$lib/i18n/presentation';
   import { onMount } from 'svelte';
@@ -31,6 +32,21 @@
   <div class="settings-scroll">
     {#if onExponentialVolume}<section><h3>{$t('windows.settings.audio')}</h3><label><input type="checkbox" checked={exponentialVolume} disabled={volumeModePending} onchange={requestVolumeMode} aria-describedby="exponential-volume-hint" /><span>{$t('windows.settings.exponentialVolume')}</span></label><p id="exponential-volume-hint">{$t('windows.settings.exponentialVolumeHint')}</p></section>{/if}
     <section><h3>{$t('settings.general')}</h3><label>{$t('settings.language')} <select aria-label={$t('settings.language')} value={$language} onchange={event=>setLanguage(event.currentTarget.value==='en'?'en':'es')}><option value="es">Español</option><option value="en">English</option></select></label></section>
+    <section><h3>{$t('settings.appearance')}</h3>
+      <label for="sidebar-layout-picker">{$t('settings.sidebarLayout')}</label>
+      <select id="sidebar-layout-picker" value={$appearance.sidebarLayout}
+        onchange={event=>appearance.setSidebarLayout(event.currentTarget.value==='grid'?'grid':'list')}>
+        <option value="list">{$t('sidebar.layout.list')}</option>
+        <option value="grid">{$t('sidebar.layout.grid')}</option>
+      </select>
+      <label for="home-background-picker">{$t('settings.homeBackground')}</label>
+      <select id="home-background-picker" aria-describedby="home-background-hint" value={$appearance.homeBackground}
+        onchange={event=>appearance.setHomeBackground(event.currentTarget.value==='solid'?'solid':'artwork')}>
+        <option value="artwork">{$t('settings.homeBackground.ambient')}</option>
+        <option value="solid">{$t('settings.homeBackground.solid')}</option>
+      </select>
+      <p id="home-background-hint">{$t('settings.homeBackground.hint')}</p>
+    </section>
     <section><h3>{$t('settings.featured')}</h3><div class="kinds" role="group" aria-label={$t('settings.featuredKind')}><button type="button" aria-pressed={kind==='albums'} onclick={()=>onKind('albums')}>{$t('sidebar.albums')}</button><button type="button" aria-pressed={kind==='playlists'} onclick={()=>onKind('playlists')}>{$t('windows.ui.playlists')}</button></div>
     <p>{$t('settings.sourcesHint')}</p>
     {#each sources as row,index (row.source)}
@@ -73,7 +89,9 @@
   .setting-row { display:flex; align-items:center; gap:2px; min-height:44px; } .setting-row button { width:22px; height:28px; flex:none; font-size:13px; } .setting-row .handle { width:18px; cursor:grab; }
   label { display:flex; align-items:center; gap:7px; min-width:0; flex:1; font-size:12px; } label span { overflow:hidden; text-overflow:ellipsis; } input[type=checkbox] { accent-color:var(--sideb-accent); flex:none; }
   .category { height:52px; } .category label span { white-space:nowrap; } .filter { width:100%; box-sizing:border-box; margin:5px 0 8px; padding:8px; border:1px solid #fff3; border-radius:7px; background:#0003; color:white; }
+  select { max-width:100%; padding:7px 8px; border:1px solid #ffffff33; border-radius:6px; background:#29262b; color:white; font:inherit; font-size:12px; }
+  #home-background-picker, #sidebar-layout-picker { display:block; width:100%; margin:7px 0 12px; }
   .text-action { display:block; font-size:12px; padding:7px 4px; text-align:left; } .error { color:#ffb9c0; }
-  button:focus-visible,input:focus-visible { outline:2px solid var(--sideb-highlight); outline-offset:2px; }
+  button:focus-visible,input:focus-visible,select:focus-visible { outline:2px solid var(--sideb-highlight); outline-offset:2px; }
   @media (prefers-reduced-transparency:reduce) { .settings { background:#24242a; backdrop-filter:none; } }
 </style>

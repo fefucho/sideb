@@ -1,0 +1,9 @@
+{
+  "settings.appearance": { "es": "Apariencia", "en": "Appearance" },
+  "settings.sidebarLayout": { "es": "Vista de tu colección", "en": "Collection view" },
+  "sidebar.your_collection": { "es": "Tu colección", "en": "Your collection" },
+  "sidebar.layout.list": { "es": "Filas", "en": "List" },
+  "sidebar.layout.grid": { "es": "Cuadrados", "en": "Grid" },
+  "sidebar.layout.show_grid": { "es": "Mostrar como cuadrados", "en": "Show as grid" },
+  "sidebar.layout.show_list": { "es": "Mostrar como filas", "en": "Show as list" }
+}

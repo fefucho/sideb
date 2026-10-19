@@ -1291,6 +1291,8 @@ Historial: %@</string>
 	<string>Buscar</string>
 	<key>settings.albums</key>
 	<string>Álbumes</string>
+	<key>settings.appearance</key>
+	<string>Apariencia</string>
 	<key>settings.categories</key>
 	<string>Categorías de Inicio</string>
 	<key>settings.categoriesHint</key>
@@ -1315,6 +1317,14 @@ Historial: %@</string>
 	<string>General</string>
 	<key>settings.home</key>
 	<string>Inicio</string>
+	<key>settings.homeBackground</key>
+	<string>Fondo del Inicio</string>
+	<key>settings.homeBackground.ambient</key>
+	<string>Colores de las portadas</string>
+	<key>settings.homeBackground.hint</key>
+	<string>Elegí los colores de las portadas o un fondo oscuro uniforme.</string>
+	<key>settings.homeBackground.solid</key>
+	<string>Liso</string>
 	<key>settings.language</key>
 	<string>Idioma de la aplicación</string>
 	<key>settings.libraryError</key>
@@ -1341,6 +1351,8 @@ Historial: %@</string>
 	<string>Buscar categoría de Inicio</string>
 	<key>settings.showAll</key>
 	<string>Mostrar todas las categorías</string>
+	<key>settings.sidebarLayout</key>
+	<string>Vista de tu colección</string>
 	<key>settings.source.forgottenFavorites</key>
 	<string>Favoritos olvidados</string>
 	<key>settings.source.fromCommunity</key>
@@ -1383,6 +1395,14 @@ Historial: %@</string>
 	<string>Historial</string>
 	<key>sidebar.home</key>
 	<string>Inicio</string>
+	<key>sidebar.layout.grid</key>
+	<string>Cuadrados</string>
+	<key>sidebar.layout.list</key>
+	<string>Filas</string>
+	<key>sidebar.layout.show_grid</key>
+	<string>Mostrar como cuadrados</string>
+	<key>sidebar.layout.show_list</key>
+	<string>Mostrar como filas</string>
 	<key>sidebar.library</key>
 	<string>Biblioteca</string>
 	<key>sidebar.liked</key>
@@ -1405,6 +1425,8 @@ Historial: %@</string>
 	<string>Mostrar barra lateral</string>
 	<key>sidebar.sign_in_to_view</key>
 	<string>Iniciá sesión para ver tu música guardada</string>
+	<key>sidebar.your_collection</key>
+	<string>Tu colección</string>
 	<key>update.available_subtitle</key>
 	<string>Hay una versión más reciente de Side B lista para descargar e instalar.</string>
 	<key>update.available_title</key>

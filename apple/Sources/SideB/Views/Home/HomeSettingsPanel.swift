@@ -13,7 +13,11 @@ struct HomeSettingsPanel: View {
     let titlebarHeight: CGFloat
     var toolbarBottom: CGFloat = 0
     let onClose: () -> Void
-    private enum Control: Hashable { case close, language, collectionKind, search, row(String), up(String), down(String), reset(String) }
+    private enum Control: Hashable { case close, language, sidebarLayout, homeBackground, collectionKind, search, row(String), up(String), down(String), reset(String) }
+    @AppStorage(HomeAppearance.solidBackgroundKey, store: HomeAppearance.preferences)
+    private var useSolidHomeBackground = false
+    @AppStorage(SidebarStyle.preferenceKey, store: HomeAppearance.preferences)
+    private var sidebarStyleRawValue = SidebarStyle.collection.rawValue
     @FocusState private var focusedControl: Control?
     @State private var categorySearch = ""
     @State private var draggingSource: String?
@@ -71,7 +75,26 @@ struct HomeSettingsPanel: View {
                     .focused($focusedControl, equals: .language)
                     .accessibilityIdentifier("app-language-picker")
                     Divider().padding(.vertical, 8)
-                    Text(L10n.text("settings.home")).font(.system(size: 13, weight: .semibold)).accessibilityAddTraits(.isHeader)
+                    Text(L10n.text("settings.appearance")).font(.system(size: 13, weight: .semibold)).accessibilityAddTraits(.isHeader)
+                    Picker(L10n.text("settings.sidebarLayout"), selection: Binding(
+                        get: { SidebarStyle.resolve(sidebarStyleRawValue).rawValue },
+                        set: { sidebarStyleRawValue = $0 }
+                    )) {
+                        ForEach(SidebarStyle.allCases) { style in Text(style.title).tag(style.rawValue) }
+                    }
+                    .pickerStyle(.menu)
+                    .focused($focusedControl, equals: .sidebarLayout)
+                    .accessibilityIdentifier("sidebar-layout-picker")
+                    Picker(L10n.text("settings.homeBackground"), selection: $useSolidHomeBackground) {
+                        Text(L10n.text("settings.homeBackground.ambient")).tag(false)
+                        Text(L10n.text("settings.homeBackground.solid")).tag(true)
+                    }
+                    .pickerStyle(.menu)
+                    .focused($focusedControl, equals: .homeBackground)
+                    .accessibilityIdentifier("home-background-picker")
+                    Text(L10n.text("settings.homeBackground.hint"))
+                        .font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    Divider().padding(.vertical, 8)
                     Text(L10n.text("settings.featured")).font(.system(size: 13, weight: .semibold)).accessibilityAddTraits(.isHeader)
                     Picker(L10n.text("settings.featured"), selection: Binding(
                         get: { homeViewModel.featuredCollectionKind },

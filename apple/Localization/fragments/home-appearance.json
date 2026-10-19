@@ -1,0 +1,18 @@
+{
+  "settings.homeBackground": {
+    "es": "Fondo del Inicio",
+    "en": "Home background"
+  },
+  "settings.homeBackground.ambient": {
+    "es": "Colores de las portadas",
+    "en": "Artwork colors"
+  },
+  "settings.homeBackground.solid": {
+    "es": "Liso",
+    "en": "Solid"
+  },
+  "settings.homeBackground.hint": {
+    "es": "Elegí los colores de las portadas o un fondo oscuro uniforme.",
+    "en": "Choose artwork colors or a uniform dark background."
+  }
+}

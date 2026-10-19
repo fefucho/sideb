@@ -15,6 +15,7 @@
   import Sidebar from "$lib/components/sidebar/Sidebar.svelte";
   import PlayerBar from "$lib/components/player/PlayerBar.svelte";
   import HomeAmbient from "$lib/components/home/HomeAmbient.svelte";
+  import HomeBackground from "$lib/components/home/HomeBackground.svelte";
   import HomeView from "$lib/components/home/HomeView.svelte";
   import AlbumDetailView from "$lib/components/detail/AlbumDetailView.svelte";
   import ArtistDetailView from "$lib/components/detail/ArtistDetailView.svelte";
@@ -923,7 +924,7 @@
 </script>
 
 <div class="app-frame" class:sidebar-collapsed={sidebarCollapsed} class:fullscreen-open={isFullscreenOpen}>
-  {#if activeView==='feed'}<HomeAmbient artwork={homeArtwork} session={homeSession} active={!isFullscreenOpen} />{:else if activeView==='album_detail'||activeView==='playlist_detail'}<HomeAmbient artwork={[(activeView==='album_detail'?selectedAlbum?.thumbnail:accountData.playlist?.thumbnail)??''].filter(Boolean)} session={homeSession} active={!isFullscreenOpen} collection />{/if}
+  {#if activeView==='feed'}<HomeBackground artwork={homeArtwork} session={homeSession} active={!isFullscreenOpen} />{:else if activeView==='album_detail'||activeView==='playlist_detail'}<HomeAmbient artwork={[(activeView==='album_detail'?selectedAlbum?.thumbnail:accountData.playlist?.thumbnail)??''].filter(Boolean)} session={homeSession} active={!isFullscreenOpen} collection />{/if}
   <TitleBar onBack={goBackFromDetail} onForward={goForward} {canBack} {canForward} modalOpen={spotlightOpen} />
   {#if gestureProgress.phase==='tracking'||gestureProgress.phase==='armed'}<div class="gesture-progress" role="status">{gestureProgress.action==='dismiss-fullscreen'?$t('windows.ui.closePlayer'):gestureProgress.action==='back'?'‹ '+$t('navigation.back'):$t('navigation.forward')+' ›'}<progress max="1" value={gestureProgress.progress}></progress></div>{/if}
   <div class="sidebar-host" inert={spotlightOpen}>
@@ -1176,7 +1177,7 @@
   .app-frame {
     isolation: isolate;
     --titlebar-height: 32px;
-    --sidebar-width: 230px;
+    --sidebar-width: 253px;
     --sideb-sidebar: #24242a;
     --sideb-accent: #a33d45;
     --sideb-accent-highlight: #d06c70;

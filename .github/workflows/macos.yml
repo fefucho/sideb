@@ -41,4 +41,4 @@ jobs:
         working-directory: apple
         run: bash build_xcframework.sh
       - name: Test and compile macOS app
-        run: swift test --package-path apple
+        run: swift test --package-path apple --no-parallel

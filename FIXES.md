@@ -4,9 +4,33 @@ Memoria de cambios de Side B para investigar problemas y regresiones. Buscar aqu
 
 Tags de ámbito: `[Apple]`, `[Windows]`, `[Compartido]`. Core y herramientas comunes usan Compartido, detallando el componente. El tag indica dónde se hizo el cambio; no demuestra que ambas plataformas hayan sido verificadas. Estados, fechas, componentes y relaciones se conservan dentro de cada entrada.
 
-Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-224**. Se conservaron los FIX/FEAT históricos. Dos números antiguos repetidos se distinguen como `FIX-027-2` y `FIX-028-2`, anotando el ID original; al citar FIX-027/028 comprobar título y entrada exacta.
+Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-226**. Se conservaron los FIX/FEAT históricos. Dos números antiguos repetidos se distinguen como `FIX-027-2` y `FIX-028-2`, anotando el ID original; al citar FIX-027/028 comprobar título y entrada exacta.
 
 ## Cambios recientes
+
+<a id="fix-225"></a>
+
+### [FIX-225] [Compartido] - Publicar 1.2.6 con la sidebar recuperada
+
+- Fecha: 2026-10-19 (America/Montevideo).
+- Estado / ámbito: entrega Mac/Windows preparada, publicación pendiente; 1.2.6/build 19.
+- Pedido: el usuario autoriza actualizar desde GitHub, integrar sidebar/opciones y volver a publicar.
+- Cambio: base 23f1df5; metadatos centrales/Windows/default del workflow/notas 1.2.6 y plan de entrega. Se conserva 8f38bfe y toda 1.2.5; sin relabel de binarios anteriores ni modificación de releases publicadas.
+- Verificación: preflight y 20 tests release/runner aprobados; frontend y build Mac local aprobados (ver FIX-224). CI Windows/macOS y descargas públicas pendientes. CI Mac general alineado con --no-parallel ya vigente en el builder, sin omitir tests; conserva la suite completa y evita las carreras previas por estado global. No se publica hasta aprobar los gates existentes.
+- Antecedentes / paridad / límites: FIX-223/224, PAR-026/036. Mac ad hoc, aceptación física/cuenta/audio/instalación pendientes. [Plan](plans/RELEASE-1.2.6.md).
+
+<a id="fix-224"></a>
+
+### [FIX-224] [Compartido] - Recuperar sidebar de colección y opciones de Apariencia
+
+- Fecha: 2026-10-19 (America/Montevideo).
+- Componente / estado: presentación Apple/Windows, shell, preferencias y traducciones; integrado sobre GitHub, validación en curso.
+- Problema / causa: la sidebar diseñada localmente quedó fuera de 1.2.5 al publicar sólo FIX-221/222. Sus fuentes seguían en la carpeta original; no era una preferencia oculta de la versión publicada. El usuario pide actualizar la base y entregarla con sus opciones.
+- Cambio: navegación vertical fija, Me Gusta/Historial juntos, colección con scroll independiente, perfil fijo, ancho 253 y dos vistas con IDs/acciones/menús conservados. Vista inicial lista, botón directo de cuadrícula y selector Vista de tu colección dentro de Apariencia; ambos comparten persistencia por instalación. Fondo de Inicio Colores de las portadas/Liso #211E21 con desmontaje del ambiente; detalles/fullscreen conservados. Windows mantiene rail 60 y seis accesos; Mac migra classic/desconocido a collection y conserva covers. Buscar tiene prioridad sobre la ascendencia de Explorar en su selección.
+- Integración: worktree desde origin/main 23f1df5, preserva cambios remotos de colecciones/cipher y la entrega 1.2.5. Sólo dos hunks de fondo en SideBApp y tres de shell Windows; excluye prewarm/core/bindings locales y reorganización de viewports. Historial/IDs de los borradores locales de sidebar se conservan en origen y no se duplican sobre IDs ya publicados.
+- Archivos: Sidebar/SidebarIcon/HomeSettings/HomeBackground/appearance Windows y composición; SidebarView/StyledContent/Profile, SidebarStyle/Metrics/HomeAppearance/AppTheme/ShellLayout/HomeSettingsPanel y composición Mac; fragmentos/traducciones derivados y pruebas de sidebar/persistencia/montaje.
+- Verificación: frontend check 0/0, 399 aprobados/1 fixture Windows omitida, build web y QA browser aprobados; 752 claves ES/EN. Mac build-0001 compiled/sourceChangedDuringBuild=false, 764 ejecutadas aprobadas, firma/10 hashes/arm64 correctos; 239 XCTest y suite Swift Testing 344 con live desactivados, Rust 97+91. Renders lista/cuadrícula revisados. Windows nativo/CI final pendientes. Las regresiones recuperadas cubren preferencias, cambios de modo, identidad/foco/pestañas, menús, cuenta/compacto, idiomas y desmontaje ambiental; se añade interacción selector de Configuración ↔ botón de sidebar sin navegación ni cambio de recomendaciones.
+- Antecedentes / paridad / límites: FIX-174/195/221/222/223; PAR-036. Core y funciones de audio intactos; no se prueban mutaciones reales de cuenta ni instalación/audio/FPS. [Plan](plans/PLAN-010-sidebar-delivery.md); entrega posterior FIX-225.
 
 Build integrada de FIX-216/217/218/219 y FIX-221/222/223 (2026-10-19): por pedido «descargamos el código y vemos si compila», `Scripts/sync.ps1 -Action pull` confirma `main` al día con GitHub y `node Scripts/build-version.mjs windows` conserva [build-0016](builds/windows/build-0016/BUILD.json), Windows x64 Release, versión 1.2.5/build público18, commit `8f38bfeebe41a98da55be8bec08cd8451c66c996`, árbol limpio al compilar, `status:compiled` y `sourceChangedDuringBuild:false`. Verify completo:792pruebas aprobadas (399frontend,97InnerTube,91core,93bridge,5player,107Tauri),14live Rust ignoradas; check0errores/0avisos y frontend/nativo aprobados. EXE y tres dependencias conservados juntos, cuatro hashes SHA256 revalidados; EXE `7e7e8def3a92c866d261c690c97c9d0f95199b7ee6f3f2f6f5d107bf03745f7c`, PE x64 y versión1.2.5 comprobados. Avisos conocidos de dead_code, LNK4098 y chunk grande, sin errores. Ejecutable `builds/windows/build-0016/sideb-windows.exe`; no se abrió ni se probó cuenta/audio/apariencia física. Apple/core sin editar, paridades PAR-011/012/030/033/035 conservan sus límites; [PLAN-010](windows/plans/PLAN-010-windows-ui-stream-bugs.md#build-integrada-para-prueba--2026-10-19). Esta actualización documental es posterior al empaquetado; no altera la procedencia de la build ni publica una nueva release.
 

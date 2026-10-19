@@ -1291,6 +1291,8 @@ History: %@</string>
 	<string>Search</string>
 	<key>settings.albums</key>
 	<string>Albums</string>
+	<key>settings.appearance</key>
+	<string>Appearance</string>
 	<key>settings.categories</key>
 	<string>Home categories</string>
 	<key>settings.categoriesHint</key>
@@ -1315,6 +1317,14 @@ History: %@</string>
 	<string>General</string>
 	<key>settings.home</key>
 	<string>Home</string>
+	<key>settings.homeBackground</key>
+	<string>Home background</string>
+	<key>settings.homeBackground.ambient</key>
+	<string>Artwork colors</string>
+	<key>settings.homeBackground.hint</key>
+	<string>Choose artwork colors or a uniform dark background.</string>
+	<key>settings.homeBackground.solid</key>
+	<string>Solid</string>
 	<key>settings.language</key>
 	<string>App language</string>
 	<key>settings.libraryError</key>
@@ -1341,6 +1351,8 @@ History: %@</string>
 	<string>Search Home categories</string>
 	<key>settings.showAll</key>
 	<string>Show all categories</string>
+	<key>settings.sidebarLayout</key>
+	<string>Collection view</string>
 	<key>settings.source.forgottenFavorites</key>
 	<string>Forgotten favorites</string>
 	<key>settings.source.fromCommunity</key>
@@ -1383,6 +1395,14 @@ History: %@</string>
 	<string>History</string>
 	<key>sidebar.home</key>
 	<string>Home</string>
+	<key>sidebar.layout.grid</key>
+	<string>Grid</string>
+	<key>sidebar.layout.list</key>
+	<string>List</string>
+	<key>sidebar.layout.show_grid</key>
+	<string>Show as grid</string>
+	<key>sidebar.layout.show_list</key>
+	<string>Show as list</string>
 	<key>sidebar.library</key>
 	<string>Library</string>
 	<key>sidebar.liked</key>
@@ -1405,6 +1425,8 @@ History: %@</string>
 	<string>Show Sidebar</string>
 	<key>sidebar.sign_in_to_view</key>
 	<string>Sign in to see your saved music</string>
+	<key>sidebar.your_collection</key>
+	<string>Your collection</string>
 	<key>update.available_subtitle</key>
 	<string>A newer version of Side B is ready to download and install.</string>
 	<key>update.available_title</key>

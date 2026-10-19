@@ -148,6 +148,9 @@ struct WindowRootView: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    @AppStorage(HomeAppearance.solidBackgroundKey, store: HomeAppearance.preferences)
+    private var useSolidHomeBackground = false
+
     // Estado de Navegación y Shell específico por ventana
     @State private var isSidebarExpanded: Bool = true
     @State private var titlebarHeight: CGFloat = 0
@@ -618,10 +621,16 @@ struct WindowRootView: View {
         .background {
             ZStack {
                 Color.sidebDarkBackground
-                HomeAmbientBackground(thumbnails: homeViewModel.featured.ambientThumbnails,
-                                          sessionRevision: homeSessionRevision,
-                                          isObscured: router.currentPage != .home || playerViewModel.isFullscreenPresented || isSpotlightPresented)
-                    .opacity(router.currentPage == .home ? 1 : 0)
+                if useSolidHomeBackground {
+                    AppTheme.homeSolidBackground
+                        .ignoresSafeArea(.container, edges: .top)
+                        .opacity(router.currentPage == .home ? 1 : 0)
+                } else {
+                    HomeAmbientBackground(thumbnails: homeViewModel.featured.ambientThumbnails,
+                                              sessionRevision: homeSessionRevision,
+                                              isObscured: router.currentPage != .home || playerViewModel.isFullscreenPresented || isSpotlightPresented)
+                        .opacity(router.currentPage == .home ? 1 : 0)
+                }
                 CollectionWindowBackground(controller: collectionBackground,
                                            identity: collectionBackgroundIdentity,
                                            enabled: !playerViewModel.isFullscreenPresented)

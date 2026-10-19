@@ -10,6 +10,8 @@ public enum AppTheme {
     public static let artworkHeroRadius: CGFloat = 8
     public static let homeBackground = Color(red: 23/255, green: 23/255, blue: 23/255)
     public static let nsHomeBackground = NSColor(srgbRed: 23/255, green: 23/255, blue: 23/255, alpha: 1.0)
+    /// Optional flat Home surface (#211E21).
+    public static let homeSolidBackground = Color(red: 33/255, green: 30/255, blue: 33/255)
 
     // MARK: - Acento discreto para superficies seleccionadas
     /// Rojo suave mate (#A33D45): mantiene contraste con texto blanco sin dominar el contenido.

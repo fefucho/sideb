@@ -4,7 +4,7 @@ import Foundation
 /// Window controls retain native actions and align with the expanded panel header.
 enum ShellLayout {
     static let sidebarInset: CGFloat = 6
-    static let sidebarWidth: CGFloat = 230
+    static let sidebarWidth = SidebarMetrics.size(230)
     static let sidebarCornerRadius: CGFloat = 10
     static let navigationTopInset: CGFloat = 18
     static let navigationBottomInset: CGFloat = 18

@@ -5,6 +5,9 @@
 <script lang="ts">
   import { t , language, resolveMessage } from '$lib/i18n';
   import { tick } from "svelte";
+  import { appearance } from '$lib/appearance/preferences';
+  import { fallbackArtworkUrl } from '$lib/images/artwork';
+  import { canonicalId } from '$lib/home/settings';
   import SidebarIcon from "./SidebarIcon.svelte";
   import type { AuthStatusDto } from "$lib/types";
   import type { BrowseCardDto, PlaylistDetailDto } from "$lib/types";
@@ -154,87 +157,69 @@
       <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg>
     </button>
   </div>
-  <div class="scroll-region">
+  <div class="sidebar-content">
     <nav aria-label={$t('navigation.main')} class="primary-section">
-      <button
-        class:active={activeDestination === "home"}
-        class="sidebar-row"
-        type="button"
-        aria-current={activeDestination === "home" ? "page" : undefined}
-        aria-label={$t('sidebar.home')}
-        title={collapsed ? $t('sidebar.home') : undefined}
-        onclick={onHome}
-      >
-        <span class="icon"><SidebarIcon name="home" /></span>
-        <span class="row-label">{$t('sidebar.home')}</span>
+      <button class="sidebar-row" class:active={activeDestination === 'home'} type="button" aria-current={activeDestination === 'home' ? 'page' : undefined} aria-label={$t('sidebar.home')} title={collapsed ? $t('sidebar.home') : undefined} onclick={onHome}>
+        <span class="icon"><SidebarIcon name="home" /></span><span class="row-label">{$t('sidebar.home')}</span>
       </button>
-      <button
-        class:active={activeDestination === "search"}
-        class="sidebar-row"
-        type="button"
-        aria-current={activeDestination === "search" ? "page" : undefined}
-        aria-label={$t('sidebar.search')}
-        title={collapsed ? $t('sidebar.search') : undefined}
-        onclick={onSearch}
-      >
-        <span class="icon"><SidebarIcon name="search" /></span>
-        <span class="row-label">{$t('sidebar.search')}</span>
-        <kbd class="shortcut" aria-hidden="true">Ctrl K</kbd>
+      <button class="sidebar-row" class:active={activeDestination === 'library'} type="button" aria-current={activeDestination === 'library' ? 'page' : undefined} aria-label={$t('sidebar.library')} title={collapsed ? $t('sidebar.library') : undefined} onclick={() => onLibrary?.()}>
+        <span class="icon"><SidebarIcon name="library" /></span><span class="row-label">{$t('sidebar.library')}</span>
       </button>
-      {#if onExplore}<button class="sidebar-row" class:active={activeDestination === 'explore'} type="button" aria-current={activeDestination === 'explore' ? 'page' : undefined} aria-label={$t('sidebar.explore')} title={collapsed ? $t('sidebar.explore') : undefined} onclick={onExplore}><span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9"/><path d="m16 8-2.5 5.5L8 16l2.5-5.5Z"/></svg></span><span class="row-label">{$t('sidebar.explore')}</span></button>{/if}
+      {#if onExplore}<button class="sidebar-row" class:active={activeDestination === 'explore'} type="button" aria-current={activeDestination === 'explore' ? 'page' : undefined} aria-label={$t('sidebar.explore')} title={collapsed ? $t('sidebar.explore') : undefined} onclick={onExplore}>
+        <span class="icon"><SidebarIcon name="explore" /></span><span class="row-label">{$t('sidebar.explore')}</span>
+      </button>{/if}
+      <button class="sidebar-row" class:active={activeDestination === 'search'} type="button" aria-current={activeDestination === 'search' ? 'page' : undefined} aria-label={$t('sidebar.search')} title={collapsed ? $t('sidebar.search') : undefined} onclick={onSearch}>
+        <span class="icon"><SidebarIcon name="search" /></span><span class="row-label">{$t('sidebar.search')}</span><kbd class="shortcut" aria-hidden="true">Ctrl K</kbd>
+      </button>
     </nav>
 
-    <section class="collection-section" aria-labelledby="collection-heading">
-      <h2 id="collection-heading">{$t('detail.kind.collection')}</h2>
-      <button class="sidebar-row" class:active={activeDestination === "likes"} type="button" aria-label={$t('sidebar.liked')} title={collapsed ? $t('sidebar.liked') : undefined} aria-current={activeDestination === "likes" ? "page" : undefined} aria-haspopup={auth.state === 'ready' ? 'menu' : undefined} onclick={() => onLikes?.()} oncontextmenu={likesMenu.onContextMenu} onkeydown={likesMenu.onKeyDown}>
-        <span class="icon"><SidebarIcon name="liked" /></span>
-        <span class="row-label">{$t('sidebar.liked')}</span>
+    <section class="collection-section" aria-label={$t('sidebar.collection')}>
+      <button class="sidebar-row" class:active={activeDestination === 'likes'} type="button" aria-label={$t('sidebar.liked')} title={collapsed ? $t('sidebar.liked') : undefined} aria-current={activeDestination === 'likes' ? 'page' : undefined} aria-haspopup={auth.state === 'ready' ? 'menu' : undefined} onclick={() => onLikes?.()} oncontextmenu={likesMenu.onContextMenu} onkeydown={likesMenu.onKeyDown}>
+        <span class="icon"><SidebarIcon name="liked" /></span><span class="row-label">{$t('sidebar.liked')}</span>
       </button>
-      <button class="sidebar-row" class:active={activeDestination === "library"} type="button" aria-label={$t('sidebar.library')} title={collapsed ? $t('sidebar.library') : undefined} aria-current={activeDestination === "library" ? "page" : undefined} onclick={() => onLibrary?.()}>
-        <span class="icon"><SidebarIcon name="library" /></span>
-        <span class="row-label">{$t('sidebar.library')}</span>
-      </button>
-      <button class="sidebar-row" class:active={activeDestination === "history"} type="button" aria-label={$t('sidebar.history')} title={collapsed ? $t('sidebar.history') : undefined} aria-current={activeDestination === "history" ? "page" : undefined} onclick={() => onHistory?.()}>
-        <span class="icon"><SidebarIcon name="history" /></span>
-        <span class="row-label">{$t('sidebar.history')}</span>
+      <button class="sidebar-row" class:active={activeDestination === 'history'} type="button" aria-label={$t('sidebar.history')} title={collapsed ? $t('sidebar.history') : undefined} aria-current={activeDestination === 'history' ? 'page' : undefined} onclick={() => onHistory?.()}>
+        <span class="icon"><SidebarIcon name="history" /></span><span class="row-label">{$t('sidebar.history')}</span>
       </button>
     </section>
 
-    <section class="library-section" aria-label={$t('windows.ui.savedMusic')}>
-      <div class="library-heading"><div class="library-tabs" role="group" aria-label={$t('windows.ui.collectionType')}>
-        <button
-          type="button"
-          class:selected={libraryTab === "playlists"}
-          aria-pressed={libraryTab === "playlists"}
-          onclick={() => (libraryTab = "playlists")}
-        >{$t('windows.ui.playlists')}</button>
-        <button
-          type="button"
-          class:selected={libraryTab === "albums"}
-          aria-pressed={libraryTab === "albums"}
-          onclick={() => (libraryTab = "albums")}
-        >{$t('sidebar.albums')}</button>
-      </div>{#if onCreatePlaylist}<button type="button" class="create-playlist" aria-label={$t('windows.ui.createPlaylist')} title={$t('windows.ui.createPlaylist')} disabled={auth.state !== 'ready'} onclick={onCreatePlaylist}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>{/if}</div>
-      {#if auth.state !== "ready"}
-        <p class="guest-message">{$t('windows.ui.signInToSeeYourSavedMusic')}</p>
-      {:else if libraryLoading && currentItems.length === 0}
-        <p class="guest-message" role="status">{$t('windows.sidebar.loading', [libraryTab === 'playlists' ? $t('windows.ui.playlists') : $t('sidebar.albums')])}</p>
-      {:else if libraryError && currentItems.length === 0}
-        <p class="guest-message error" role="alert">{resolveMessage(libraryError, $language)}</p>
-        {#if onRetryLibrary}<button type="button" class="toolbar-button" onclick={onRetryLibrary}>{$t('sidebar.retry')}</button>{/if}
-      {:else if currentItems.length === 0}
-        <p class="guest-message">{libraryTab === "playlists" ? $t('windows.ui.noPlaylistsYet') : $t('windows.ui.noSavedAlbumsYet')}</p>
-      {:else}
-        <div class="collection-list" aria-label={libraryTab === "playlists" ? $t('windows.ui.playlists') : $t('settings.source.libraryAlbums')}>
-          {#each currentItems as item, index (`${item.id || `${item.kind}-${item.title}`}-${index}`)}
-            {@const menu = createMenu(() => targetFromCard(item), () => ({ view: activeDestination, currentId: selectedCollectionId }))}
-            <button class="sidebar-row item-row" class:active={selectedCollectionId === item.id} type="button" title={item.title} onclick={() => libraryTab === "playlists" ? onOpenPlaylist?.(item.id) : onOpenAlbum?.(item.id)} oncontextmenu={menu.onContextMenu} onkeydown={menu.onKeyDown}>
-              {#if item.thumbnail}<img class="item-art" src={item.thumbnail} alt="" />{:else}<span class="item-art placeholder" aria-hidden="true">♪</span>{/if}
-              <span class="row-label">{item.title}</span>
-            </button>
-          {/each}
+    <section class="library-section" aria-labelledby="sidebar-library-heading">
+      <div class="library-heading">
+        <h2 id="sidebar-library-heading">{$t('sidebar.your_collection')}</h2>
+        <div class="library-actions">
+          <button type="button" class="collection-action layout-toggle" aria-label={$t($appearance.sidebarLayout === 'list' ? 'sidebar.layout.show_grid' : 'sidebar.layout.show_list')}
+            title={$t($appearance.sidebarLayout === 'list' ? 'sidebar.layout.show_grid' : 'sidebar.layout.show_list')} onclick={() => appearance.toggleSidebarLayout()}>
+            <svg viewBox="0 0 24 24" aria-hidden="true">{#if $appearance.sidebarLayout === 'list'}<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>{:else}<path d="M8 5h13M8 12h13M8 19h13"/><circle cx="3" cy="5" r=".7"/><circle cx="3" cy="12" r=".7"/><circle cx="3" cy="19" r=".7"/>{/if}</svg>
+          </button>
+          {#if onCreatePlaylist}<button type="button" class="collection-action create-playlist" aria-label={$t('windows.ui.createPlaylist')} title={$t('windows.ui.createPlaylist')} disabled={auth.state !== 'ready'} onclick={onCreatePlaylist}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>{/if}
         </div>
-      {/if}
+      </div>
+      <div class="library-tabs" role="group" aria-label={$t('windows.ui.collectionType')}>
+        <button type="button" class:selected={libraryTab === 'playlists'} aria-pressed={libraryTab === 'playlists'} onclick={() => libraryTab = 'playlists'}>{$t('windows.ui.playlists')}</button>
+        <button type="button" class:selected={libraryTab === 'albums'} aria-pressed={libraryTab === 'albums'} onclick={() => libraryTab = 'albums'}>{$t('sidebar.albums')}</button>
+      </div>
+      <div class="scroll-region">
+        {#if auth.state !== 'ready'}
+          <p class="guest-message">{$t('windows.ui.signInToSeeYourSavedMusic')}</p>
+        {:else if libraryLoading && currentItems.length === 0}
+          <p class="guest-message" role="status">{$t('windows.sidebar.loading', [libraryTab === 'playlists' ? $t('windows.ui.playlists') : $t('sidebar.albums')])}</p>
+        {:else if libraryError && currentItems.length === 0}
+          <p class="guest-message error" role="alert">{resolveMessage(libraryError, $language)}</p>
+          {#if onRetryLibrary}<button type="button" class="retry-library" onclick={onRetryLibrary}>{$t('sidebar.retry')}</button>{/if}
+        {:else if currentItems.length === 0}
+          <p class="guest-message">{libraryTab === 'playlists' ? $t('windows.ui.noPlaylistsYet') : $t('windows.ui.noSavedAlbumsYet')}</p>
+        {:else}
+          <div class="collection-list" class:grid={$appearance.sidebarLayout === 'grid'} aria-label={libraryTab === 'playlists' ? $t('windows.ui.playlists') : $t('settings.source.libraryAlbums')}>
+            {#each currentItems as item, index (`${item.id || `${item.kind}-${item.title}`}-${index}`)}
+              {@const menu = createMenu(() => targetFromCard(item), () => ({ view: activeDestination, currentId: selectedCollectionId }))}
+              {@const selected = selectedCollectionId !== null && canonicalId(libraryTab === 'playlists' ? 'playlist' : 'album', selectedCollectionId) === canonicalId(libraryTab === 'playlists' ? 'playlist' : 'album', item.id) && (libraryTab === 'playlists' ? activeDestination === 'playlist' || activeDestination === 'likes' : activeDestination === 'album')}
+              <button class="sidebar-row item-row" class:active={selected} type="button" aria-current={selected ? 'page' : undefined} title={[item.title,item.subtitle].filter(Boolean).join(' — ')} onclick={() => libraryTab === 'playlists' ? onOpenPlaylist?.(item.id) : onOpenAlbum?.(item.id)} oncontextmenu={menu.onContextMenu} onkeydown={menu.onKeyDown}>
+                {#if item.thumbnail}<img class="item-art" src={fallbackArtworkUrl(item.thumbnail, $appearance.sidebarLayout === 'grid' ? 256 : 96) ?? item.thumbnail} loading="lazy" decoding="async" alt="" />{:else}<span class="item-art placeholder" aria-hidden="true">♪</span>{/if}
+                <span class="item-copy"><span class="row-label">{item.title}</span>{#if item.subtitle}<small>{item.subtitle}</small>{/if}</span>
+              </button>
+            {/each}
+          </div>
+        {/if}
+      </div>
     </section>
   </div>
 
@@ -269,167 +254,65 @@
 </aside>
 
 <style>
-  .guest-update { display: block; max-width: 100%; margin: 4px auto; border: 0; padding: 6px; border-radius: 6px; background: transparent; color: #ffffff99; font: inherit; font-size: 11px; cursor: pointer; } .guest-update:hover { color: white; background: #ffffff0d; } .guest-update:focus-visible { outline: 2px solid var(--sideb-highlight); }
   aside {
-    --sidebar-accent: var(--sideb-accent, #a33d45);
     --sidebar-surface: var(--sideb-sidebar, #24242a);
-    position: relative;
-    display: flex;
-    flex-direction: column;
-    width: 230px;
-    min-width: 230px;
-    height: 100%;
-    min-height: 0;
-    box-sizing: border-box;
-    padding-top: 0;
-    color: #f3f1f2;
-    background: var(--sidebar-surface);
+    position: relative; display: flex; flex-direction: column;
+    width: var(--sidebar-width, 253px); min-width: var(--sidebar-width, 253px); height: 100%; min-height: 0;
+    box-sizing: border-box; color: #fff; background: var(--sidebar-surface);
     box-shadow: inset -1px 0 0 rgb(255 255 255 / 8%);
     font: 13px/1.3 system-ui, "Segoe UI", sans-serif;
   }
-
-  .scroll-region {
-    flex: 1;
-    min-height: 0;
-    overflow-y: auto;
-    overflow-x: hidden;
-    padding: 0 10px 16px;
-    box-sizing: border-box;
-    scrollbar-width: thin;
-  }
-
-  .primary-section,
-  .collection-section {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-  }
-
-  .primary-section {
-    padding-bottom: 12px;
-    border-bottom: 1px solid rgb(255 255 255 / 9%);
-  }
-
-  .collection-section,
-  .library-section {
-    margin-top: 12px;
-  }
-
-  h2 {
-    margin: 0 4px 4px;
-    color: rgb(255 255 255 / 47%);
-    font-size: 10px;
-    font-weight: 700;
-    letter-spacing: 0.08em;
-  }
-
-  .sidebar-row {
-    display: flex;
-    align-items: center;
-    gap: 11px;
-    min-height: 40px;
-    width: 100%;
-    padding: 6px 10px;
-    box-sizing: border-box;
-    border: 1px solid transparent;
-    border-radius: 8px;
-    background: transparent;
-    color: inherit;
-    text-align: left;
-    font: inherit;
-    white-space: nowrap;
-  }
-
-  button.sidebar-row {
-    cursor: pointer;
-  }
-
-  button.sidebar-row:hover {
-    background: rgb(255 255 255 / 6%);
-  }
-
-  button.sidebar-row:focus-visible,
-  .library-tabs button:focus-visible {
-    outline: 2px solid var(--sideb-accent-highlight, #d06c70);
-    outline-offset: 2px;
-  }
-
-  .sidebar-row.active,
-  button.sidebar-row.active:hover {
-    background: rgb(163 61 69 / 55%);
-    border-color: rgb(163 61 69 / 65%);
-    font-weight: 600;
-  }
-
-  .icon {
-    display: flex;
-    flex: 0 0 20px;
-    align-items: center;
-    justify-content: center;
-  }
-
-  .row-label {
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .shortcut {
-    margin-left: auto;
-    padding: 2px 5px;
-    border-radius: 4px;
-    background: rgb(255 255 255 / 6%);
-    color: rgb(255 255 255 / 48%);
-    font: 600 10px system-ui, "Segoe UI", sans-serif;
-  }
-
-  .library-tabs {
-    display: flex;
-    gap: 2px;
-    width: fit-content;
-    max-width: 100%;
-    padding: 2px;
-    border-radius: 7px;
-    background: rgb(255 255 255 / 6%);
-  }
   .sidebar-drag-region { position:absolute; inset:0 0 auto; height:var(--titlebar-height,32px); }
-  .sidebar-toolbar { position:relative; display:flex; flex:none; align-items:center; gap:4px; padding:10px; pointer-events:none; }
+  .sidebar-toolbar { position:relative; display:flex; flex:none; align-items:center; padding:10px; pointer-events:none; }
   .toolbar-button { display:grid; flex:none; place-items:center; width:40px; height:40px; padding:0; border:0; border-radius:8px; background:transparent; color:inherit; cursor:pointer; pointer-events:auto; }
-  .toolbar-button:hover:not(:disabled) { background:var(--sideb-surface-hover); }
-  .toolbar-button:disabled { color:rgb(255 255 255 / 28%); cursor:default; }
-  .toolbar-button:focus-visible,.create-playlist:focus-visible { outline:2px solid var(--sideb-highlight); outline-offset:-2px; }
-  .toolbar-button svg,.create-playlist svg { width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
-  .library-heading { display:flex; align-items:center; justify-content:space-between; gap:8px; }
-  .create-playlist { display:grid; flex:none; place-items:center; width:28px; height:28px; padding:0; border:0; border-radius:6px; color:inherit; background:transparent; cursor:pointer; }
-  .create-playlist:hover:not(:disabled) { background:var(--sideb-surface-hover); }
-  .create-playlist:disabled { opacity:.35; cursor:default; }
-
-  .library-tabs button {
-    border: 0;
-    border-radius: 5px;
-    padding: 5px 8px;
-    background: transparent;
-    color: rgb(255 255 255 / 60%);
-    font: 500 11px system-ui, "Segoe UI", sans-serif;
-    cursor: pointer;
-  }
-
-  .library-tabs button.selected {
-    background: rgb(255 255 255 / 12%);
-    color: #f3f1f2;
-    font-weight: 600;
-  }
-
-  .guest-message {
-    margin: 8px 4px 0;
-    color: rgb(255 255 255 / 48%);
-    font-size: 11px;
-    line-height: 1.4;
-  }
-  .guest-message.error { color: #ef9a9e; }
-  .collection-list { display: flex; flex-direction: column; gap: 2px; margin-top: 5px; }
-  .item-row { min-height: 36px; cursor: pointer; }
-  .item-art { flex: 0 0 24px; width: 24px; height: 24px; border-radius: 4px; object-fit: cover; }
-  .item-art.placeholder { display: grid; place-items: center; background: rgb(255 255 255 / 8%); color: #bbb; }
+  .toolbar-button svg { width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
+  .sidebar-content { flex:1; min-height:0; display:flex; flex-direction:column; padding:0 12px 8px; }
+  .primary-section { display:flex; flex:none; flex-direction:column; gap:2px; padding-bottom:10px; }
+  .sidebar-row { display:flex; align-items:center; gap:12px; min-height:38px; width:100%; padding:7px 10px; box-sizing:border-box; border:1px solid transparent; border-radius:8px; background:transparent; color:#fff; text-align:left; font:inherit; white-space:nowrap; cursor:pointer; }
+  .primary-section .sidebar-row { font-size:14px; font-weight:500; }
+  button.sidebar-row:hover { background:rgb(255 255 255 / 7%); }
+  .sidebar-row.active, button.sidebar-row.active:hover { color:var(--sideb-highlight, #d06c70); background:rgb(255 255 255 / 10%); border-color:rgb(255 255 255 / 10%); font-weight:600; }
+  button:focus-visible { outline:2px solid var(--sideb-highlight, #d06c70); outline-offset:-2px; }
+  .icon { display:flex; flex:0 0 20px; align-items:center; justify-content:center; }
+  .icon :global(svg) { width:18px; height:18px; }
+  .row-label { overflow:hidden; text-overflow:ellipsis; }
+  .shortcut { margin-left:auto; padding:2px 5px; border-radius:4px; background:rgb(255 255 255 / 8%); color:rgb(255 255 255 / 80%); font:600 10px system-ui,"Segoe UI",sans-serif; }
+  .collection-section { display:flex; flex:none; gap:3px; padding:8px 0; border-block:1px solid rgb(255 255 255 / 10%); }
+  .collection-section .sidebar-row { flex:1; min-width:0; min-height:32px; padding:5px 3px; justify-content:center; gap:6px; font-size:12px; }
+  .collection-section .icon { flex-basis:15px; }
+  .collection-section .icon :global(svg) { width:15px; height:15px; }
+  .library-section { display:flex; flex:1; flex-direction:column; min-height:0; margin-top:12px; }
+  .library-heading { display:flex; flex:none; align-items:center; justify-content:space-between; gap:6px; padding-inline:8px; }
+  h2 { margin:0; min-width:0; color:#fff; font-size:13px; font-weight:600; }
+  .library-actions { display:flex; flex:none; gap:4px; }
+  .collection-action { display:grid; flex:none; place-items:center; width:28px; height:28px; padding:0; border:0; border-radius:6px; color:#fff; background:transparent; cursor:pointer; }
+  .collection-action svg { width:16px; height:16px; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
+  .collection-action:disabled { opacity:.35; cursor:default; }
+  .toolbar-button:hover, .collection-action:hover:not(:disabled) { background:var(--sideb-surface-hover, #ffffff14); }
+  .library-tabs { display:flex; flex:none; gap:2px; padding:8px 8px 6px; }
+  .library-tabs button { border:0; border-radius:5px; padding:5px 9px; background:transparent; color:#fff; font:500 12px system-ui,"Segoe UI",sans-serif; cursor:pointer; }
+  .library-tabs button.selected { background:rgb(255 255 255 / 12%); color:var(--sideb-highlight, #d06c70); font-weight:600; }
+  .scroll-region { flex:1; min-height:0; overflow-y:auto; overflow-x:hidden; padding:3px 0 10px; scrollbar-width:thin; scrollbar-color:#ffffff40 transparent; }
+  .guest-message { margin:8px; color:rgb(255 255 255 / 80%); font-size:12px; line-height:1.4; }
+  .guest-message.error { color:#ef9a9e; }
+  .retry-library { padding:7px 9px; color:#fff; background:transparent; border:0; border-radius:6px; cursor:pointer; }
+  .collection-list { display:flex; flex-direction:column; gap:2px; }
+  .item-row { min-height:48px; padding:6px 8px; gap:10px; }
+  .item-art { flex:0 0 34px; width:34px; height:34px; border-radius:4px; object-fit:cover; border:1px solid #ffffff26; box-sizing:border-box; }
+  .item-art.placeholder { display:grid; place-items:center; background:#ffffff1a; color:#ffffffcc; font-size:18px; }
+  .item-copy { display:flex; flex:1; flex-direction:column; gap:3px; min-width:0; }
+  .item-copy > .row-label { font-size:13px; font-weight:500; }
+  .item-copy small { overflow:hidden; text-overflow:ellipsis; color:#ffffffbf; font-size:11px; }
+  .collection-list.grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px 12px; padding:3px 8px; }
+  .grid .item-row { flex-direction:column; align-items:stretch; gap:8px; padding:0; border:0; min-width:0; }
+  .grid .item-art { flex:none; width:100%; height:auto; aspect-ratio:1; border-radius:6px; }
+  .grid .item-copy > .row-label { font-size:12px; }
+  .grid .item-copy small { font-size:10.5px; }
+  .grid .item-row.active { background:transparent; }
+  .grid .item-row.active .item-art { border:2px solid var(--sideb-highlight, #d06c70); }
+  .guest-update { display:block; max-width:100%; margin:4px auto; border:0; padding:6px; border-radius:6px; background:transparent; color:#ffffffbf; font:inherit; font-size:11px; cursor:pointer; }
+  .guest-update:hover { color:white; background:#ffffff0d; }
+  .guest-update:focus-visible { outline:2px solid var(--sideb-highlight); }
 
   .profile-wrap { position: relative; flex: 0 0 auto; margin: 0 12px; padding: 8px 0; border-top: 1px solid rgb(255 255 255 / 10%); }
   .profile {
@@ -452,7 +335,7 @@
 
   .profile-icon {
     display: flex;
-    color: rgb(255 255 255 / 65%);
+    color: rgb(255 255 255 / 80%);
   }
 
   .profile-copy {
@@ -469,7 +352,7 @@
   .popover-account > span:last-child { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
   .popover-account strong, .popover-account small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .popover-account strong { font-size: 13px; }
-  .popover-account small, .account-active { color: rgb(255 255 255 / 60%); font-size: 11px; }
+  .popover-account small, .account-active { color: rgb(255 255 255 / 75%); font-size: 11px; }
   .popover-avatar { width: 42px; height: 42px; border-radius: 50%; object-fit: cover; }
   .popover-avatar.fallback { display: grid; place-items: center; background: rgb(255 255 255 / 12%); }
   .account-active { padding: 10px 2px; border-top: 1px solid rgb(255 255 255 / 10%); border-bottom: 1px solid rgb(255 255 255 / 10%); }
@@ -484,7 +367,7 @@
   }
 
   .profile-copy small {
-    color: rgb(255 255 255 / 48%);
+    color: rgb(255 255 255 / 75%);
     font-size: 11px;
   }
 
@@ -493,33 +376,15 @@
     min-width: 60px;
   }
 
-  .collapsed .scroll-region {
-    padding-inline: 10px;
-  }
-
-  .collapsed h2,
-  .collapsed .row-label,
-  .collapsed .shortcut,
-  .collapsed .library-section,
-  .collapsed .profile-copy {
-    display: none;
-  }
-
-  .collapsed .sidebar-row {
-    justify-content: center;
-    width:40px;
-    height:40px;
-    padding:0;
-  }
+  .collapsed .sidebar-content { padding-inline:10px; }
+  .collapsed h2, .collapsed .row-label, .collapsed .shortcut, .collapsed .library-section, .collapsed .profile-copy { display:none; }
+  .collapsed .sidebar-row { justify-content:center; width:40px; height:40px; padding:0; flex:none; }
   .collapsed .sidebar-toolbar { flex-direction:column; }
   .collapsed .primary-section { gap:4px; padding-bottom:10px; }
-  .collapsed .collection-section { gap:4px; margin-top:10px; }
-
-  .collapsed .profile-wrap {
-    justify-content: center;
-    margin-inline: 10px;
-    padding-inline: 0;
-  }
+  .collapsed .collection-section { flex-direction:column; gap:4px; padding-block:10px; }
+  .collapsed .collection-section .icon { flex-basis:20px; }
+  .collapsed .collection-section .icon :global(svg) { width:18px; height:18px; }
+  .collapsed .profile-wrap { justify-content:center; margin-inline:10px; padding-inline:0; }
   .collapsed .profile { justify-content:center; width:40px; height:40px; min-height:40px; padding:0; }
 
   @media (prefers-reduced-motion: no-preference) {

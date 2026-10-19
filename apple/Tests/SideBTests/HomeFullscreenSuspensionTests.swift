@@ -107,6 +107,7 @@ final class HomeFullscreenSuspensionTests: XCTestCase {
 
     func testHiddenHomeCannotExpandShellWhenSidebarOpensOrWindowResizes() async throws {
         let player = PlayerViewModel()
+        let sidebarReserve = ShellLayout.sidebarReserveWidth(expanded: true)
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
         let home = HomeViewModel(cacheStore: HomeFeedCacheStore(directory: directory),
@@ -142,8 +143,8 @@ final class HomeFullscreenSuspensionTests: XCTestCase {
 
         // Include intermediate/reversed sidebar widths and a smaller window.
         for (width, reserve): (CGFloat, CGFloat) in [
-            (1100, 0), (1100, 60), (1100, 121), (1100, 242),
-            (1100, 121), (1512, 242), (960, 242), (1100, 0), (1100, 242)
+            (1100, 0), (1100, sidebarReserve / 4), (1100, sidebarReserve / 2), (1100, sidebarReserve),
+            (1100, sidebarReserve / 2), (1512, sidebarReserve), (960, sidebarReserve), (1100, 0), (1100, sidebarReserve)
         ] {
             host.rootView = shell(reserve: reserve)
             host.frame.size.width = width
@@ -169,6 +170,7 @@ final class HomeFullscreenSuspensionTests: XCTestCase {
 
     func testRetainedHomeKeepsLeadingEdgeAcrossSidebarAndPageChanges() async throws {
         let player = PlayerViewModel()
+        let sidebarReserve = ShellLayout.sidebarReserveWidth(expanded: true)
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
         let home = HomeViewModel(cacheStore: HomeFeedCacheStore(directory: directory),
@@ -186,7 +188,7 @@ final class HomeFullscreenSuspensionTests: XCTestCase {
                     detail: { EmptyView() })
             }
         }
-        let host = NSHostingView(rootView: shell(.home, reserve: 242))
+        let host = NSHostingView(rootView: shell(.home, reserve: sidebarReserve))
         host.sizingOptions = []
         host.frame = NSRect(x: 0, y: 0, width: 960, height: 680)
         host.layoutSubtreeIfNeeded()
@@ -194,8 +196,8 @@ final class HomeFullscreenSuspensionTests: XCTestCase {
         for scrollerStyle: NSScroller.Style in [.legacy, .overlay] {
             scroll.scrollerStyle = scrollerStyle
             for (page, reserve): (PageDestination, CGFloat) in [
-                (.explore(.discover), 242), (.library, 242), (.home, 242),
-                (.home, 0), (.home, 242), (.home, 0)
+                (.explore(.discover), sidebarReserve), (.library, sidebarReserve), (.home, sidebarReserve),
+                (.home, 0), (.home, sidebarReserve), (.home, 0)
             ] {
                 host.rootView = shell(page, reserve: reserve)
                 host.layoutSubtreeIfNeeded()
