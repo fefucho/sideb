@@ -4,7 +4,7 @@ Herramientas compartidas o fixes para ambas plataformas. [Formato](../.agents/WO
 
 | Plan | Estado |
 |---|---|
-| [Release 1.2.5](RELEASE-1.2.5.md) | Preparación de FIX-221/222: botones y respuesta de cuenta Windows;1.2.5/build18, verificación exacta/CI/publicación pendientes |
+| [Release 1.2.5](RELEASE-1.2.5.md) | Publicada Latest 1.2.5/build 18: FIX-221/222/223, botones y respuesta de cuenta Windows; builds nativos Mac/Windows, cinco descargas públicas y hashes verificados; cuenta/instalación física pendientes |
 | [Release 1.2.4](RELEASE-1.2.4.md) | FIX-213/214 confirmado por el usuario; FIX-215 publicada Latest1.2.4/build17, cuatro jobs CI aprobados y cinco descargas públicas/checksums verificados |
 | [Release 1.2.3](RELEASE-1.2.3.md) | FIX-211/212; Latest publicada1.2.3/build16, CI completo aprobado (761Mac/764Windows), cinco descargas públicas/checksums y frontend del EXE verificados; entrada física nueva pendiente |
 | [Release 1.2.2](RELEASE-1.2.2.md) | FIX-207/208/209/210; Latest publicada y cinco descargas públicas verificadas; antecedentes del parche de rueda y layouts Mac |

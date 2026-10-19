@@ -1,7 +1,7 @@
 # PLAN-012 — Respuesta inmediata de Me Gusta y biblioteca
 
 - Fecha: 2026-10-19 (America/Montevideo).
-- Estado: implementado; frontend, cuatro tests Rust aislados y QA navegador aprobados. Verify/EXE Windows pendientes. FIX-222 / PAR-035.
+- Estado: implementado; frontend, QA navegador y verify/build EXE Windows en CI aprobados, incluidos los cuatro tests Rust en Tauri nativo. Cuenta real/WebView2 interactivo pendientes. FIX-222 / PAR-035.
 - Objetivo: eliminar esperas de acciones detrás de cargas de biblioteca y mostrar inmediatamente la intención del usuario, con reversión y error ante un rechazo.
 - Ámbito: integración Tauri Windows, controller de cuenta, composición y botones de Like/Guardar/Suscripción; conservar edición de playlists, generaciones, cuenta y acciones existentes. Apple/core sólo como referencia.
 - Causas comprobadas: `auth_operation` es un mutex sostenido durante solicitudes completas (incluidos catálogos de biblioteca paginados). El corazón del reproductor/cola confunde hidratación global de likes con mutación individual. `toggleLike` espera todas las páginas antes de actuar; guardados esperan también recargas posteriores. Los botones reemplazan su contenido por un spinner hasta confirmar la red.
@@ -26,4 +26,8 @@
 
 ## Cierre
 
-No probar mutaciones contra la cuenta real. Las pruebas usan RPC controladas y componentes reales. La verificación aislada Rust en Mac no sustituye WebView2/EXE/verify en Windows. No modificar core ni Apple, publicar ni crear una release.
+No probar mutaciones contra la cuenta real. Las pruebas usan RPC controladas y componentes reales. La verificación aislada Rust en Mac no sustituye WebView2/EXE/verify en Windows. Core y Apple funcionales se conservan. La publicación posterior autorizada se gestiona por separado en FIX-223.
+
+## Entrega nativa posterior — FIX-223
+
+1.2.5/build 18: 397 tests frontend sin omisiones/check 0/0; Tauri nativo aprueba 97 tests, incluidos los cuatro de SessionOperations, y verify/build release completos. EXE x64 1.2.5.0 y hashes de los cuatro archivos de runtime comprobados contra el SHA de fuentes exacto. La fase frontend inicial incluía dos tests de trabajo local ajeno que se excluyen de esta entrega. [Release 1.2.5](../../plans/RELEASE-1.2.5.md), [CI](https://github.com/fefucho/sideb/actions/runs/39287591174). Quedan pendientes la latencia del proveedor/cuenta real y aceptación interactiva en Windows.

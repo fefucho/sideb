@@ -1,8 +1,8 @@
 # Planes Windows
 
-- [PLAN-012: Respuesta de Like y biblioteca](PLAN-012-action-feedback.md) — FIX-222 implementado: lecturas/mutaciones independientes, acciones simples acotadas15s, optimismo/rollback y feedback discreto; check0/0,398pruebas frontend,4Rust aisladas/build frontend y QA browser aprobados. Verify/EXE Windows pendientes. PAR-035.
+- [PLAN-012: Respuesta de Like y biblioteca](PLAN-012-action-feedback.md) — FIX-222 publicada en 1.2.5/build 18 mediante FIX-223: optimismo/rollback, red concurrente y acciones acotadas a 15 s. Verify/build Windows, 397 frontend y 97 Tauri aprobados, incluidos los cuatro tests del guard; paquetes/hashes comprobados. Cuenta real/WebView2 interactivo pendientes. PAR-035.
 
-- [PLAN-011: Acabado de botones](PLAN-011-button-polish.md) — FIX-221 implementado: comparación Apple estática, materiales/jerarquía/iconos refinados; check0/0,386pruebas/build frontend y QA navegador aprobados. WebView2/aceptación Windows pendientes. PAR-030.
+- [PLAN-011: Acabado de botones](PLAN-011-button-polish.md) — FIX-221 publicada en 1.2.5/build 18 mediante FIX-223: materiales/jerarquía/iconos refinados y QA navegador. Verify/build EXE Windows y 397 tests frontend aprobados; paquetes/versiones/hashes comprobados. Comparación Apple estática; aceptación física Windows pendiente. PAR-030.
 
 - [PLAN-009: Volumen con rueda y feedback fullscreen](PLAN-009-volume-scroll-feedback.md) — FIX-213 corrige `Illegal invocation` del indicador que interrumpía rueda en1.2.3. Build local0014 release compiled,764pruebas/check0/0/fuentes estables/cuatro hashes válidos y regresión Chromium antes/después aprobada. FIX-214 retira la instancia de diagnóstico que bloqueaba WebView2: mismo EXE abierto/estable y wheel42→34→42 comprobado en portada/barra; usuario confirma funcionamiento, sin medición de audio. FIX-207/211 conservan sus correcciones de acumulación y FIX-198 sus zonas; complementa PLAN-021 Apple. FIX-215 publicada1.2.4/build17 como Latest, CI completo y cinco descargas/checksums aprobados; instalador interactivo pendiente.
 

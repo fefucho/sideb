@@ -1,7 +1,7 @@
 # PLAN-011 — Acabado de botones Windows
 
 - Fecha: 2026-10-19 (America/Montevideo).
-- Estado: implementado; frontend y QA navegador aprobados. Validación nativa Windows pendiente. FIX-221 / PAR-030.
+- Estado: implementado; frontend, QA navegador y verify/build EXE Windows en CI aprobados. Aceptación visual física pendiente. FIX-221 / PAR-030.
 - Objetivo: comparar los botones actuales con macOS y mejorar el acabado Windows sin cambiar acciones ni proporciones de la app.
 - Alcance: tokens/CSS compartidos, iconos de acciones en álbum/playlist/artista/Explorar/Historial y acabado de los controles del reproductor. Apple y core se consultan sin editar. Preservar el trabajo local previo de sidebar y apariencia.
 - Antecedentes: FIX-174 (familia común), FIX-175/176/177 (selector fullscreen compacto), PAR-030; `apple/Sources/SideB/UI/{SideBControls,LiquidGlassCompat}.swift` y componentes Windows vigentes.
@@ -39,4 +39,8 @@ La comparación del material Apple es estática; no equivale a una medición vis
 
 ## Límites
 
-WebView2/EXE Windows, Narrator y aceptación visual en Windows requieren el sistema destino. La compilación frontend en Mac no demuestra ejecución nativa. No se publica ni genera una release.
+Narrator, ejecución interactiva WebView2 y aceptación visual requieren el sistema destino. La compilación frontend en Mac no demuestra ejecución nativa. La publicación posterior se gestiona por separado en FIX-223.
+
+## Entrega nativa posterior — FIX-223
+
+El checkout aislado de 1.2.5/build 18 conserva únicamente los cambios autorizados y el arreglo de volumen de 1.2.4: check 0/0, 397 tests frontend sin omisiones y verify/build Windows nativos aprobados. EXE x64 con versión binaria 1.2.5.0; instalador, portable y cuatro hashes de runtime comprobados. [Release 1.2.5](../../plans/RELEASE-1.2.5.md), [CI](https://github.com/fefucho/sideb/actions/runs/39287591174). Esta evidencia amplía la fase frontend inicial; no certifica aceptación física.
