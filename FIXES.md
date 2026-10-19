@@ -13,13 +13,13 @@ Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-227**. Se
 ### [FIX-226] [Compartido] - Capturas nativas con descripciones en la página de GitHub
 
 - Fecha: 2026-10-19 (America/Montevideo).
-- Componente / estado: README público y galería documental; preparada para publicar por pedido explícito del usuario.
+- Componente / estado: README público y galería documental; publicada en main y verificada por pedido explícito del usuario.
 - Problema / causa: FIX-154 dejó un punto de inserción sin imágenes hasta contar con capturas actuales. El usuario aporta seis PNG y pide subirlos con descripciones visibles en GitHub.
 - Cambio / motivo: galería de seis vistas, acceso Screenshots en la navegación del README, descripciones y alt text en inglés coherentes con el documento. Inicio/sidebar, fullscreen/cola, letras sincronizadas, Genius, detalle de álbum e Inicio expandido. Se identifica macOS en cada entrada y se enlaza cada imagen a resolución completa.
 - Archivos: README.md, docs/screenshots/README.md y seis PNG con nombres descriptivos, plans/PLAN-004-public-readme.md e índice; FIXES.md.
-- Verificación / límites: las seis capturas fueron inspeccionadas visualmente y copiadas byte por byte, 3248×2122; enlaces locales, render GFM y publicación pública por verificar. No se requieren pruebas ni builds de las apps para documentación. Las capturas provienen del usuario y no certifican rendimiento, audio o UI Windows.
+- Verificación / límites: seis capturas inspeccionadas y copiadas byte por byte, 3248×2122. Enlaces locales/alt text correctos; GitHub GFM renderiza las seis. Página pública revisada en navegador sin sesión: las seis imágenes complete=true, naturalWidth=3248/naturalHeight=2122, descripciones y navegación visibles. Descarga pública sin autenticación de las seis URLs mostradas por GitHub: los 23871222 bytes y SHA256 coinciden con los originales. Evidencia local ignorada en builds/documentation/readme-gallery: github-gallery.png, browser-images.json y public-verification.json. Sin builds/pruebas de apps por ser documentación; no certifica rendimiento, audio o UI Windows.
 - Antecedentes / paridad: completa las capturas pendientes de FIX-154 y conserva FIX-155. No requiere port: cambia la presentación pública compartida, sin tocar apps/core/versiones/releases; la galería se rotula macOS y no cierra paridad Windows.
-- Plan / Git: [PLAN-004](plans/PLAN-004-public-readme.md); push a main autorizado con el pedido de subir las capturas.
+- Plan / Git: [PLAN-004](plans/PLAN-004-public-readme.md); galería publicada en main mediante 97fb18db84cdc61ced5353c41354bdb94eafbcb1. [Página pública](https://github.com/fefucho/sideb#screenshots). Push autorizado con el pedido de subir las capturas; documentación de verificación posterior.
 
 <a id="fix-225"></a>
 
