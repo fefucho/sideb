@@ -1,4 +1,6 @@
 <script lang="ts">
+  import ControlButton from '$lib/components/common/ControlButton.svelte';
+  import MenuIcon from '$lib/components/menu/MenuIcon.svelte';
   import { t , language, resolveMessage } from '$lib/i18n';
   import type { HistoryGroupDto, AccountSongDto } from '$lib/account/types';
   import { normalizeHistoryDate } from '../common/trackList';
@@ -17,12 +19,12 @@
 </script>
 <section class="history" aria-busy={loading}>
   <header><div><div class="eyebrow">{$t('detail.kind.collection')}</div><h1>{$t('sidebar.history')}</h1><p>{$t('history.subtitle')}</p></div>
-    {#if loggedIn}<button type="button" onclick={onRefresh} disabled={loading} aria-label={$t('windows.ui.refreshHistory')}>↻</button>{/if}
+    {#if loggedIn}<ControlButton iconOnly onclick={onRefresh} disabled={loading} aria-label={$t('windows.ui.refreshHistory')}><MenuIcon name="refresh" /></ControlButton>{/if}
   </header>
   <div class="divider"></div>
-  {#if !loggedIn}<div class="state"><h2>{$t('windows.ui.signInToSeeYourHistory')}</h2><button type="button" onclick={onLogin}>{$t('account.sign_in')}</button></div>
+  {#if !loggedIn}<div class="state"><h2>{$t('windows.ui.signInToSeeYourHistory')}</h2><ControlButton emphasis="prominent" onclick={onLogin}>{$t('account.sign_in')}</ControlButton></div>
   {:else if loading && !allTracks.length}<div class="state" role="status">{$t('windows.ui.loadingHistory')}</div>
-  {:else if error && !allTracks.length}<div class="state" role="alert"><h2>{$t('history.error.load')}</h2><p>{resolveMessage(error, $language)}</p><button type="button" onclick={onRefresh}>{$t('sidebar.retry')}</button></div>
+  {:else if error && !allTracks.length}<div class="state" role="alert"><h2>{$t('history.error.load')}</h2><p>{resolveMessage(error, $language)}</p><ControlButton onclick={onRefresh}>{$t('sidebar.retry')}</ControlButton></div>
   {:else if !allTracks.length}<div class="state"><h2>{$t('history.empty')}</h2></div>
   {:else}
     {#if error}<p class="error" role="alert">{resolveMessage(error, $language)}</p>{/if}
@@ -43,8 +45,6 @@
   .eyebrow { font-size: 11px; font-weight: 700; letter-spacing: 1.2px; color: #aaaab1; }
   h1 { margin: 4px 0 0; font-size: 32px; } header p { margin: 6px 0 0; font-size: 13px; color: #aaaab1; }
   .divider { height: 1px; background: #ffffff15; margin: 0 32px 8px; }
-  button { border: 0; border-radius: 8px; padding: 8px 14px; color: inherit; background: var(--sideb-surface); font: inherit; cursor: pointer; }
-  button:hover { background: var(--sideb-surface-hover); } button:focus-visible { outline: 2px solid var(--sideb-highlight); }
   .state { min-height: 300px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; color: #aaaab1; }
   .state h2 { font-size: 17px; } .group-heading { margin: 20px 32px 8px; font-size: 15px; } .error { margin: 14px 32px; color: #ffd5d5; }
 </style>

@@ -26,6 +26,7 @@
     {:else if name === 'sort'}<path d="M3 4h10M3 8h7M3 12h4m3-6 3 3 3-3m-3 3V2" />
     {:else if name === 'reorder'}<path d="M3 4h10M3 8h10M3 12h10" />
     {:else if name === 'history'}<path d="M3.2 5.3V2.8m0 2.5h2.5M3.5 5a5.6 5.6 0 1 1-.4 5.4M8 4.5V8l2.5 1.5" />
+    {:else if name === 'refresh'}<path d="M13.5 3v4h-4M13.1 7a5.3 5.3 0 1 0-.8 4.1" />
     {:else if name === 'clock'}<circle cx="8" cy="8" r="6" /><path d="M8 4.5V8l2.5 1.5" />
     {:else if name === 'text'}<path d="M2.5 4V2.8h11V4M8 3v10m-2 0h4m1-5 2 5m-4 0 2-5 2 5m-.6-1.5h-2.8" />
     {:else if name === 'bell'}<path d="M3.3 11.5h9.4l-1.2-1.6V6.5a3.5 3.5 0 0 0-7 0v3.4l-1.2 1.6Zm3.2 1.5a1.5 1.5 0 0 0 3 0" /><path d="M12.4 3.1 14 1.7" />

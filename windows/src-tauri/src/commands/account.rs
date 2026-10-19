@@ -37,6 +37,22 @@ pub(crate) fn account_core(
         })
 }
 
+async fn user_mutation<T>(
+    state: &AppState,
+    action: impl std::future::Future<Output = Result<T, CommandError>>,
+) -> Result<T, CommandError> {
+    state
+        .auth_operation
+        .run_mutation(action)
+        .await
+        .map_err(|_| {
+            CommandError::new(
+                "ACTION_TIMEOUT",
+                "No se pudo confirmar el cambio a tiempo. Comprobá la conexión y reintentá.",
+            )
+        })?
+}
+
 fn canonical_playlist_id(id: &str) -> Result<String, CommandError> {
     let id = id.trim();
     if id.is_empty() {
@@ -106,7 +122,7 @@ pub(crate) async fn get_library_playlists(
     state: tauri::State<'_, AppState>,
 ) -> Result<Vec<BrowseCardDto>, CommandError> {
     let generation = state.auth_generation.load(Ordering::SeqCst);
-    let _operation = state.auth_operation.lock().await;
+    let _operation = state.auth_operation.read().await;
     let core = account_core(&state, generation)?;
     let result = core
         .get_library_playlists()
@@ -127,7 +143,7 @@ pub(crate) async fn get_library_albums(
     state: tauri::State<'_, AppState>,
 ) -> Result<Vec<BrowseCardDto>, CommandError> {
     let generation = state.auth_generation.load(Ordering::SeqCst);
-    let _operation = state.auth_operation.lock().await;
+    let _operation = state.auth_operation.read().await;
     let core = account_core(&state, generation)?;
     let result = core
         .get_library_albums()
@@ -148,7 +164,7 @@ pub(crate) async fn get_library_artists(
     state: tauri::State<'_, AppState>,
 ) -> Result<Vec<BrowseCardDto>, CommandError> {
     let generation = state.auth_generation.load(Ordering::SeqCst);
-    let _operation = state.auth_operation.lock().await;
+    let _operation = state.auth_operation.read().await;
     let core = account_core(&state, generation)?;
     let result = core
         .get_library_artists()
@@ -169,7 +185,7 @@ pub(crate) async fn get_library_songs(
     state: tauri::State<'_, AppState>,
 ) -> Result<PlaylistContinuationDto, CommandError> {
     let generation = state.auth_generation.load(Ordering::SeqCst);
-    let _operation = state.auth_operation.lock().await;
+    let _operation = state.auth_operation.read().await;
     let core = account_core(&state, generation)?;
     let result = core
         .get_library_songs()
@@ -198,7 +214,7 @@ pub(crate) async fn get_playlist_continuation(
         ));
     }
     let generation = state.auth_generation.load(Ordering::SeqCst);
-    let _operation = state.auth_operation.lock().await;
+    let _operation = state.auth_operation.read().await;
     if state.auth_generation.load(Ordering::SeqCst) != generation {
         return Err(CommandError::new(
             "SESSION_CHANGED",
@@ -240,7 +256,7 @@ pub(crate) async fn get_history(
     state: tauri::State<'_, AppState>,
 ) -> Result<Vec<HistoryGroupDto>, CommandError> {
     let generation = state.auth_generation.load(Ordering::SeqCst);
-    let _operation = state.auth_operation.lock().await;
+    let _operation = state.auth_operation.read().await;
     if state.auth_generation.load(Ordering::SeqCst) != generation {
         return Err(CommandError::new(
             "SESSION_CHANGED",
@@ -290,18 +306,20 @@ pub(crate) async fn rate_song(
         ));
     }
     let generation = state.auth_generation.load(Ordering::SeqCst);
-    let _operation = state.auth_operation.lock().await;
-    let core = account_core(&state, generation)?;
-    core.rate_song(id.to_owned(), rating)
-        .await
-        .map_err(|_| CommandError::new("RATE_FAILED", "No se pudo actualizar Me Gusta."))?;
-    if state.auth_generation.load(Ordering::SeqCst) != generation {
-        return Err(CommandError::new(
-            "SESSION_CHANGED",
-            "La sesión cambió durante la operación.",
-        ));
-    }
-    Ok(())
+    user_mutation(&state, async {
+        let core = account_core(&state, generation)?;
+        core.rate_song(id.to_owned(), rating)
+            .await
+            .map_err(|_| CommandError::new("RATE_FAILED", "No se pudo actualizar Me Gusta."))?;
+        if state.auth_generation.load(Ordering::SeqCst) != generation {
+            return Err(CommandError::new(
+                "SESSION_CHANGED",
+                "La sesión cambió durante la operación.",
+            ));
+        }
+        Ok(())
+    })
+    .await
 }
 
 #[tauri::command]
@@ -317,23 +335,25 @@ pub(crate) async fn apply_song_library_action(
         ));
     }
     let generation = state.auth_generation.load(Ordering::SeqCst);
-    let _operation = state.auth_operation.lock().await;
-    let core = account_core(&state, generation)?;
-    core.apply_song_library_action(token.to_owned())
-        .await
-        .map_err(|_| {
-            CommandError::new(
-                "LIBRARY_ACTION_FAILED",
-                "No se pudo actualizar la biblioteca de la canción.",
-            )
-        })?;
-    if state.auth_generation.load(Ordering::SeqCst) != generation {
-        return Err(CommandError::new(
-            "SESSION_CHANGED",
-            "La sesión cambió durante la operación.",
-        ));
-    }
-    Ok(())
+    user_mutation(&state, async {
+        let core = account_core(&state, generation)?;
+        core.apply_song_library_action(token.to_owned())
+            .await
+            .map_err(|_| {
+                CommandError::new(
+                    "LIBRARY_ACTION_FAILED",
+                    "No se pudo actualizar la biblioteca de la canción.",
+                )
+            })?;
+        if state.auth_generation.load(Ordering::SeqCst) != generation {
+            return Err(CommandError::new(
+                "SESSION_CHANGED",
+                "La sesión cambió durante la operación.",
+            ));
+        }
+        Ok(())
+    })
+    .await
 }
 
 #[tauri::command]
@@ -368,7 +388,7 @@ pub(crate) async fn create_playlist(
         ));
     }
     let generation = state.auth_generation.load(Ordering::SeqCst);
-    let _operation = state.auth_operation.lock().await;
+    let _operation = state.auth_operation.mutation().await;
     let core = account_core(&state, generation)?;
     let id = core
         .create_playlist(title.to_owned(), description.to_owned(), privacy)
@@ -416,7 +436,7 @@ pub(crate) async fn edit_playlist_details(
     }
     let playlist_id = canonical_playlist_id(&playlist_id)?;
     let generation = state.auth_generation.load(Ordering::SeqCst);
-    let _operation = state.auth_operation.lock().await;
+    let _operation = state.auth_operation.mutation().await;
     let core = account_core(&state, generation)?;
     owned_playlist(&core, &playlist_id, false).await?;
     check_operation_generation(&state, generation)?;
@@ -454,7 +474,7 @@ pub(crate) async fn set_playlist_sort(
     }
     let playlist_id = canonical_playlist_id(&playlist_id)?;
     let generation = state.auth_generation.load(Ordering::SeqCst);
-    let _operation = state.auth_operation.lock().await;
+    let _operation = state.auth_operation.mutation().await;
     let core = account_core(&state, generation)?;
     owned_playlist(&core, &playlist_id, true).await?;
     check_operation_generation(&state, generation)?;
@@ -476,7 +496,7 @@ pub(crate) async fn delete_playlist(
 ) -> Result<(), CommandError> {
     let playlist_id = canonical_playlist_id(&playlist_id)?;
     let generation = state.auth_generation.load(Ordering::SeqCst);
-    let _operation = state.auth_operation.lock().await;
+    let _operation = state.auth_operation.mutation().await;
     let core = account_core(&state, generation)?;
     owned_playlist(&core, &playlist_id, false).await?;
     check_operation_generation(&state, generation)?;
@@ -501,7 +521,7 @@ pub(crate) async fn add_to_playlist(
         ));
     }
     let generation = state.auth_generation.load(Ordering::SeqCst);
-    let _operation = state.auth_operation.lock().await;
+    let _operation = state.auth_operation.mutation().await;
     let core = account_core(&state, generation)?;
     owned_playlist(&core, &playlist_id, false).await?;
     check_operation_generation(&state, generation)?;
@@ -533,7 +553,7 @@ pub(crate) async fn remove_from_playlist(
         ));
     }
     let generation = state.auth_generation.load(Ordering::SeqCst);
-    let _operation = state.auth_operation.lock().await;
+    let _operation = state.auth_operation.mutation().await;
     let core = account_core(&state, generation)?;
     owned_playlist(&core, &playlist_id, false).await?;
     check_operation_generation(&state, generation)?;
@@ -567,7 +587,7 @@ pub(crate) async fn move_playlist_track(
         ));
     }
     let generation = state.auth_generation.load(Ordering::SeqCst);
-    let _operation = state.auth_operation.lock().await;
+    let _operation = state.auth_operation.mutation().await;
     let core = account_core(&state, generation)?;
     let playlist = owned_playlist(&core, &playlist_id, false).await?;
     if playlist
@@ -603,21 +623,23 @@ pub(crate) async fn toggle_album_library(
         ));
     }
     let generation = state.auth_generation.load(Ordering::SeqCst);
-    let _operation = state.auth_operation.lock().await;
-    let core = account_core(&state, generation)?;
-    core.like_playlist(id.to_owned(), save).await.map_err(|_| {
-        CommandError::new(
-            "ALBUM_LIBRARY_FAILED",
-            "No se pudo actualizar la biblioteca del álbum.",
-        )
-    })?;
-    if state.auth_generation.load(Ordering::SeqCst) != generation {
-        return Err(CommandError::new(
-            "SESSION_CHANGED",
-            "La sesión cambió durante la operación.",
-        ));
-    }
-    Ok(())
+    user_mutation(&state, async {
+        let core = account_core(&state, generation)?;
+        core.like_playlist(id.to_owned(), save).await.map_err(|_| {
+            CommandError::new(
+                "ALBUM_LIBRARY_FAILED",
+                "No se pudo actualizar la biblioteca del álbum.",
+            )
+        })?;
+        if state.auth_generation.load(Ordering::SeqCst) != generation {
+            return Err(CommandError::new(
+                "SESSION_CHANGED",
+                "La sesión cambió durante la operación.",
+            ));
+        }
+        Ok(())
+    })
+    .await
 }
 
 #[tauri::command]
@@ -634,21 +656,23 @@ pub(crate) async fn set_artist_subscription(
         ));
     }
     let generation = state.auth_generation.load(Ordering::SeqCst);
-    let _operation = state.auth_operation.lock().await;
-    let core = account_core(&state, generation)?;
-    core.subscribe_artist(id.to_owned(), subscribe)
-        .await
-        .map_err(|_| {
-            CommandError::new(
-                "ARTIST_SUBSCRIPTION_FAILED",
-                "No se pudo actualizar la suscripción al artista.",
-            )
-        })?;
-    if state.auth_generation.load(Ordering::SeqCst) != generation {
-        return Err(CommandError::new(
-            "SESSION_CHANGED",
-            "La sesión cambió durante la operación.",
-        ));
-    }
-    Ok(())
+    user_mutation(&state, async {
+        let core = account_core(&state, generation)?;
+        core.subscribe_artist(id.to_owned(), subscribe)
+            .await
+            .map_err(|_| {
+                CommandError::new(
+                    "ARTIST_SUBSCRIPTION_FAILED",
+                    "No se pudo actualizar la suscripción al artista.",
+                )
+            })?;
+        if state.auth_generation.load(Ordering::SeqCst) != generation {
+            return Err(CommandError::new(
+                "SESSION_CHANGED",
+                "La sesión cambió durante la operación.",
+            ));
+        }
+        Ok(())
+    })
+    .await
 }

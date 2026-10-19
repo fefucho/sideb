@@ -1,6 +1,6 @@
 [package]
 name = "sideb-windows"
-version = "1.2.4"
+version = "1.2.5"
 description = "Side B Windows - Native Music Client"
 authors = ["Side B Team"]
 edition = "2021"
@@ -27,6 +27,9 @@ sha2 = "0.10"
 tokio = { version = "1", features = ["sync", "time"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream"] }
 futures-util = { version = "0.3", default-features = false, features = ["std"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt", "test-util"] }
 
 [target.'cfg(windows)'.dependencies]
 souvlaki = { version = "0.8.3", default-features = false }

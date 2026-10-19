@@ -3,6 +3,7 @@ use std::sync::{Arc, Mutex, RwLock};
 use tauri::{Emitter, Manager};
 
 mod dto;
+mod session_operations;
 #[cfg(windows)]
 mod media_controls;
 mod playback_runtime;
@@ -513,7 +514,7 @@ pub struct AppState {
     pub playback: Arc<Mutex<PlaybackManager>>,
     pub auth: RwLock<AuthStatusDto>,
     pub auth_generation: AtomicU64,
-    pub auth_operation: tokio::sync::Mutex<()>,
+    pub auth_operation: session_operations::SessionOperations,
 }
 
 fn set_auth_status(app: &tauri::AppHandle, status: AuthStatusDto) {
@@ -595,7 +596,7 @@ async fn sign_out(
     state: tauri::State<'_, AppState>,
 ) -> Result<AuthStatusDto, CommandError> {
     state.auth_generation.fetch_add(1, Ordering::SeqCst);
-    let _auth_operation = state.auth_operation.lock().await;
+    let _auth_operation = state.auth_operation.write().await;
     let dir = app.path().app_data_dir().map_err(|_| {
         CommandError::new("STORAGE_ERROR", "No se pudo resolver el almacén de sesión.")
     })?;
@@ -726,7 +727,7 @@ pub fn run() {
                 playback: playback_manager.clone(),
                 auth: RwLock::new(AuthStatusDto::guest()),
                 auth_generation: AtomicU64::new(0),
-                auth_operation: tokio::sync::Mutex::new(()),
+                auth_operation: session_operations::SessionOperations::default(),
             };
 
             match app.path().app_data_dir() {

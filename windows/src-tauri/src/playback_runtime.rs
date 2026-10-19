@@ -418,7 +418,7 @@ pub(crate) fn record_progress(
     tauri::async_runtime::spawn(async move {
         let state = app.state::<AppState>();
         // Serialize against account cookie replacement, not against transport.
-        let _operation = state.auth_operation.lock().await;
+        let _operation = state.auth_operation.read().await;
         if state.auth_generation.load(Ordering::SeqCst) != auth_generation
             || !state
                 .playback

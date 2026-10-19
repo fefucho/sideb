@@ -578,30 +578,26 @@
     if (revision === navigationRevision) contentScrollElement(previous.view)?.scrollTo({ top: previous.scroll });
   }
 
-  async function toggleAlbumLibrary() {
-    const album = selectedAlbum;
+  async function toggleAlbumLibrary(album = selectedAlbum) {
     if (!album?.playlistId || authStatus.state !== "ready") throw new Error("Inicia sesión para guardar el álbum.");
-    const revision = sessionRevision;
     const save = !album.inLibrary;
-    try { await invoke("toggle_album_library", { playlistId: album.playlistId, save }); }
-    catch (error) { throw new Error(extractErrorMessage(error, "No se pudo actualizar la biblioteca.")); }
-    if (revision !== sessionRevision) return;
-    catalog.updateAlbum(current => current.browseId === album.browseId ? { ...current, inLibrary: save } : current);
-    navigationHistory.mapSnapshots(snapshot => ({ ...snapshot, details: { ...snapshot.details, album: snapshot.details.album?.browseId === album.browseId ? { ...snapshot.details.album, inLibrary: save } : snapshot.details.album } }));
-    void account.load('albums');
+    const patch = (value: boolean) => {
+      catalog.updateAlbum(current => current.browseId === album.browseId ? { ...current, inLibrary: value } : current);
+      navigationHistory.mapSnapshots(snapshot => ({ ...snapshot, details: { ...snapshot.details, album: snapshot.details.album?.browseId === album.browseId ? { ...snapshot.details.album, inLibrary: value } : snapshot.details.album } }));
+    };
+    const changed = await account.feedback(`playlist:${album.playlistId.replace(/^VL/, '')}`, () => invoke("toggle_album_library", { playlistId: album.playlistId, save }), () => patch(save), () => patch(album.inLibrary));
+    if (changed) void account.load('albums');
   }
 
-  async function toggleArtistSubscription() {
-    const artist = selectedArtist;
+  async function toggleArtistSubscription(artist = selectedArtist) {
     if (!artist || authStatus.state !== "ready") throw new Error("Inicia sesión para suscribirte.");
-    const revision = sessionRevision;
     const subscribe = !artist.subscribed;
-    try { await invoke("set_artist_subscription", { channelId: artist.channelId, subscribe }); }
-    catch (error) { throw new Error(extractErrorMessage(error, "No se pudo actualizar la suscripción.")); }
-    if (revision !== sessionRevision) return;
-    catalog.updateArtist(current => current.channelId === artist.channelId ? { ...current, subscribed: subscribe } : current);
-    navigationHistory.mapSnapshots(snapshot => ({ ...snapshot, details: { ...snapshot.details, artist: snapshot.details.artist?.channelId === artist.channelId ? { ...snapshot.details.artist, subscribed: subscribe } : snapshot.details.artist } }));
-    void account.load('artists');
+    const patch = (value: boolean) => {
+      catalog.updateArtist(current => current.channelId === artist.channelId ? { ...current, subscribed: value } : current);
+      navigationHistory.mapSnapshots(snapshot => ({ ...snapshot, details: { ...snapshot.details, artist: snapshot.details.artist?.channelId === artist.channelId ? { ...snapshot.details.artist, subscribed: value } : snapshot.details.artist } }));
+    };
+    const changed = await account.feedback(`artist:${artist.channelId}`, () => invoke("set_artist_subscription", { channelId: artist.channelId, subscribe }), () => patch(subscribe), () => patch(artist.subscribed));
+    if (changed) void account.load('artists');
   }
 
   async function playCollection(items: SongDto[], index: number, source: {kind:string;id:string;title:string}, shuffle = false, fallbackThumbnail: string | null = null, fallbackArtist = "") {
@@ -782,25 +778,14 @@
       if(target.kind==='playlist'&&(('owned' in detail&&detail.owned)||target.card.id.replace(/^VL/,'')==='LM'))throw new Error('Esta colección no ofrece una acción de biblioteca.');
       const id = target.kind === 'album' ? (detail as import('$lib/types').AlbumDetailDto).playlistId : target.card.id;
       if (!id) throw new Error('Esta colección no ofrece una acción de biblioteca.');
-      await invoke('toggle_album_library', { playlistId: id, save: !detail.inLibrary });
-      if (revision !== sessionRevision) return;
       if (target.kind === 'album') {
-        catalog.updateAlbum(album => album.browseId === target.card.id ? { ...album, inLibrary: !detail.inLibrary } : album);
-        navigationHistory.mapSnapshots(snapshot => ({ ...snapshot, details: { ...snapshot.details, album: snapshot.details.album?.browseId === target.card.id ? { ...snapshot.details.album, inLibrary: !detail.inLibrary } : snapshot.details.album } }));
-        void account.load('albums');
+        await toggleAlbumLibrary(detail as import('$lib/types').AlbumDetailDto);
       } else {
-        if (lastPlaylistId?.replace(/^VL/, '') === target.card.id.replace(/^VL/, '')) await account.refreshPlaylist(target.card.id);
-        patchPlaylistSnapshots(target.card.id); void account.load('playlists');
+        await account.togglePlaylistLibrary(detail as PlaylistDetailDto);
+        if (revision === sessionRevision) patchPlaylistSnapshots(target.card.id);
       }
     },
-    async subscribe(artist) {
-      const revision = sessionRevision;
-      await invoke('set_artist_subscription', { channelId: artist.channelId, subscribe: !artist.subscribed });
-      if (revision !== sessionRevision) return;
-      catalog.updateArtist(current => current.channelId === artist.channelId ? { ...current, subscribed: !artist.subscribed } : current);
-      navigationHistory.mapSnapshots(snapshot => ({ ...snapshot, details: { ...snapshot.details, artist: snapshot.details.artist?.channelId === artist.channelId ? { ...snapshot.details.artist, subscribed: !artist.subscribed } : snapshot.details.artist } }));
-      void account.load('artists');
-    },
+    subscribe: artist => toggleArtistSubscription(artist),
     open: (kind, id) => kind === 'album' ? openAlbumDetail(id) : kind === 'artist' ? openArtistDetail(id) : openPlaylist(id),
     editPlaylist: playlist => { editingPlaylist = playlist; }, deletePlaylist: playlist => { deletingPlaylist = playlist; },
     newPlaylist: song => openNewPlaylist(song),
@@ -1117,7 +1102,7 @@
     onOpenArtist={(id) => { void setPlayerFullscreen(false); void openArtistDetail(id); }}
     onOpenAlbum={(id) => { void setPlayerFullscreen(false); void openAlbumDetail(id); }} onOpenMenu={openNowPlayingMenu}
     loggedIn={authStatus.state === 'ready'} liked={accountData.likedIds.has(playbackState.currentTrack?.videoId ?? '')}
-    likePending={(accountData.loading.likes && !accountData.likedIds.has(playbackState.currentTrack?.videoId ?? '')) || accountData.pendingIds.has(playbackState.currentTrack?.videoId ?? '')}
+    likePending={accountData.pendingIds.has(playbackState.currentTrack?.videoId ?? '')}
     likeError={accountData.actionError || accountData.errors.likes}
     onToggleLike={() => { if (playbackState.currentTrack) void account.toggleLike(playbackState.currentTrack); }} />
 </div>

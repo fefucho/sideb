@@ -59,6 +59,20 @@ function buttonClasses(html) {
   return [...html.matchAll(/<button\b[^>]*class="([^"]+)"/g)].map(match => match[1].split(/\s+/)[0]);
 }
 
+test('hydrating older likes never disables unrelated queue hearts', () => {
+  const html=panel({likesLoading:true,likedIds:new Set(),pendingIds:new Set()});
+  const hearts=[...html.matchAll(/<button\b[^>]*class="queue-action like-action[^>]*>/g)].map(match=>match[0]);
+  assert.equal(hearts.length,2);
+  assert.ok(hearts.every(button=>!button.includes('disabled')));
+});
+
+test('only the individual pending like is disabled and its selected heart remains visible', () => {
+  const html=panel({playback:playback([entry('first'),{...entry('other'),videoId:'other-video'}]),likesLoading:true,likedIds:new Set(['same-video']),pendingIds:new Set(['same-video'])});
+  const hearts=[...html.matchAll(/<button\b[^>]*class="queue-action like-action[^>]*>/g)].map(match=>match[0]);
+  assert.equal(hearts.length,2);assert.match(hearts[0],/disabled/);assert.match(hearts[0],/aria-pressed="true"/);
+  assert.doesNotMatch(hearts[1],/disabled/);
+});
+
 test('queue renders controls in visual and keyboard DOM order for distinct duplicate occurrences', () => {
   const html = panel();
   assert.deepEqual(buttonClasses(html), [

@@ -95,7 +95,7 @@ pub fn open_login(app: AppHandle) -> Result<(), String> {
 
 async fn finish_login(app: AppHandle, generation: u64, cookie: String) {
     let state = app.state::<AppState>();
-    let _auth_operation = state.auth_operation.lock().await;
+    let _auth_operation = state.auth_operation.write().await;
     if auth_generation(&app) != generation {
         return;
     }
@@ -243,7 +243,7 @@ pub async fn restore(app: AppHandle, core: Arc<sideb_core::SideBCore>) {
         Err(_) => return,
     };
     let state = app.state::<AppState>();
-    let _auth_operation = state.auth_operation.lock().await;
+    let _auth_operation = state.auth_operation.write().await;
     let guest = state
         .auth
         .read()
@@ -292,7 +292,7 @@ pub async fn watch_rotations(app: AppHandle, core: Arc<sideb_core::SideBCore>) {
             break;
         };
         let state = app.state::<AppState>();
-        let _auth_operation = state.auth_operation.lock().await;
+        let _auth_operation = state.auth_operation.read().await;
         let ready = state
             .auth
             .read()

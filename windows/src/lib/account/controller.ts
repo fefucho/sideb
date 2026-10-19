@@ -53,6 +53,9 @@ export class AccountController {
   private historyOccurrence = 0;
   private pendingHistoryListens: SongDto[] | null = null;
   private likeOverrides = new Map<string, boolean>();
+  private hydratedLikedIds = new Set<string>();
+  private savedOverrides = new Map<string, { value: boolean }>();
+  private playlistLibraryOverrides = new Map<string, boolean>();
   private published: (data: AccountData) => void;
   constructor(private rpc: AccountRpc, publish: (data: AccountData) => void) { this.published = publish; }
   captureNavigation(): AccountNavigationSnapshot {
@@ -64,9 +67,9 @@ export class AccountController {
     this.data.tab = snapshot.tab;
     const playlist = snapshot.playlist?.id.replace(/^VL/, '') === 'LM'
       ? this.likedPlaylist ?? snapshot.playlist : snapshot.playlist;
-    this.data.playlist = playlist ? { ...playlist, items: playlist.items
+    this.data.playlist = playlist ? { ...playlist, inLibrary: this.playlistLibraryOverrides.get(playlist.id.replace(/^VL/, '')) ?? playlist.inLibrary, items: playlist.items
       .filter(item => playlist.id.replace(/^VL/, '') !== 'LM' || this.likeOverrides.get(item.videoId) !== false)
-      .map(item => ({ ...item })) } : null;
+      .map(item => this.projectSaved({ ...item })) } : null;
     this.data.playlistLoading = false;
     this.data.playlistLoadingMore = false;
     this.data.playlistError = snapshot.playlistError;
@@ -89,7 +92,7 @@ export class AccountController {
     ++this.generation; this.loadedChannels.clear(); this.requests.clear(); this.usedSongTokens.clear(); this.usedPlaylistTokens.clear();
     this.pendingHistoryListens = null;
     this.playlistCatalogEpochs.clear();
-    this.likeOverrides.clear(); this.likesLoaded = false; this.likedPlaylist = null;
+    this.likeOverrides.clear(); this.hydratedLikedIds.clear(); this.savedOverrides.clear(); this.playlistLibraryOverrides.clear(); this.likesLoaded = false; this.likedPlaylist = null;
     this.likesHydration = null; this.invalidateCatalog();
     this.data = emptyAccountData(loggedIn); this.emit();
   }
@@ -101,7 +104,8 @@ export class AccountController {
   async refreshPlaylist(id: string) {
     this.invalidateCatalog();
     if (id === 'LM') {
-      this.likedPlaylist = null; this.likesLoaded = false; this.likeOverrides.clear();
+      this.likedPlaylist = null; this.likesLoaded = false;
+      this.likeOverrides = new Map([...this.likeOverrides].filter(([id]) => this.data.pendingIds.has(id)));
       this.ticket('likes'); this.likesHydration = null; this.data.loading.likes = false;
     }
     await this.openPlaylist(id);
@@ -122,14 +126,14 @@ export class AccountController {
         const result = await this.rpc<SongPage>('get_library_songs');
         if (valid()) {
           const target = Math.max(100, this.data.songs.length);
-          this.data.songs = result.items; this.data.songContinuation = result.continuation; this.usedSongTokens.clear();
+          this.data.songs = result.items.map(song => this.projectSaved(song)); this.data.songContinuation = result.continuation; this.usedSongTokens.clear();
           // Bounded preload; errors keep the accepted prefix and retry token.
           for (let page = 0; this.data.songs.length < target && this.data.songContinuation && page < 10; page++) {
             this.emit(); const token = this.data.songContinuation;
             try {
               const next = await this.rpc<SongPage>('get_playlist_continuation', { token });
               if (!valid()) return;
-              this.usedSongTokens.add(token); this.data.songs = appendSongs(this.data.songs, next.items);
+              this.usedSongTokens.add(token); this.data.songs = appendSongs(this.data.songs, next.items.map(song => this.projectSaved(song)));
               this.data.songContinuation = next.continuation && !this.usedSongTokens.has(next.continuation) ? next.continuation : null;
             } catch (error) { if (valid()) this.data.errors.songs = message(error, 'No se pudieron cargar más canciones.'); break; }
           }
@@ -137,7 +141,7 @@ export class AccountController {
       } else if (channel === 'history') {
         const result = await this.rpc<HistoryGroup[]>('get_history');
         if (valid()) {
-          const groups: HistoryGroup[] = result.map(group => ({ ...group, items: group.items.map(song => ({ ...song,
+          const groups: HistoryGroup[] = result.map(group => ({ ...group, items: group.items.map(song => ({ ...this.projectSaved(song),
             historyOccurrenceId: song.historyOccurrenceId ?? `history:${this.generation}:${++this.historyOccurrence}` })) }));
           const known = new Set(groups.flatMap(group => group.items.flatMap(song => song.historyOccurrenceId ? [song.historyOccurrenceId] : [])));
           // Provider history has no durable listen identifier. Retain every accepted
@@ -170,7 +174,7 @@ export class AccountController {
     try {
       const page = await this.rpc<SongPage>('get_playlist_continuation', { token });
       if (valid()) {
-        this.usedSongTokens.add(token); this.data.songs = appendSongs(this.data.songs, page.items);
+        this.usedSongTokens.add(token); this.data.songs = appendSongs(this.data.songs, page.items.map(song => this.projectSaved(song)));
         this.data.songContinuation = page.continuation && !this.usedSongTokens.has(page.continuation) ? page.continuation : null;
       }
     } catch (error) { if (valid()) this.data.errors.songs = message(error, 'No se pudieron cargar más canciones.'); }
@@ -202,6 +206,7 @@ export class AccountController {
       let items = appendSongs([], playlist.items);
       const ids = new Set(playlist.items.map(song => song.videoId));
       const publishIds = () => {
+        this.hydratedLikedIds = new Set(ids);
         const next = new Set(ids);
         for (const [id, liked] of this.likeOverrides) { if (liked) next.add(id); else next.delete(id); }
         this.data.likedIds = next; this.emit();
@@ -228,6 +233,9 @@ export class AccountController {
     finally { if (valid()) { this.data.loading.likes = false; this.emit(); } }
   }
   async openPlaylist(id: string) {
+    const libraryKey = id.replace(/^VL/, '');
+    const libraryAtRequest = this.playlistLibraryOverrides.get(libraryKey);
+    const libraryPending = this.data.pendingIds.has(`playlist:${libraryKey}`);
     this.ticket('playlist');
     this.data.playlist = null; this.data.playlistLoading = true; this.data.playlistError = null;
     this.data.playlistLoadingMore = false; this.usedPlaylistTokens.clear(); this.emit();
@@ -245,8 +253,9 @@ export class AccountController {
           this.completePlaylists.delete(key);
           this.playlistCatalogEpochs.set(key, (this.playlistCatalogEpochs.get(key) ?? 0) + 1);
         }
-        this.data.playlist = playlist;
-        if (id === 'LM') { for (const song of playlist.items) this.data.likedIds.add(song.videoId); }
+        if (!libraryPending && !this.data.pendingIds.has(`playlist:${libraryKey}`) && this.playlistLibraryOverrides.get(libraryKey) === libraryAtRequest) this.playlistLibraryOverrides.delete(libraryKey);
+        this.data.playlist = { ...playlist, inLibrary: this.playlistLibraryOverrides.get(libraryKey) ?? playlist.inLibrary, items: playlist.items.map(song => this.projectSaved(song)) };
+        if (id === 'LM') { for (const song of playlist.items) { this.hydratedLikedIds.add(song.videoId); if (this.likeOverrides.get(song.videoId) !== false) this.data.likedIds.add(song.videoId); } }
       }
     } catch (error) { if (same()) this.data.playlistError = message(error, 'No se pudo cargar la playlist.'); }
     finally { if (same()) { this.data.playlistLoading = false; this.emit(); } }
@@ -261,32 +270,42 @@ export class AccountController {
       const page = await this.rpc<SongPage>('get_playlist_continuation', { token });
       if (same()) {
         this.usedPlaylistTokens.add(token);
-        this.data.playlist = { ...this.data.playlist!, items: appendSongs(this.data.playlist!.items, page.items), continuation: page.continuation && !this.usedPlaylistTokens.has(page.continuation) ? page.continuation : null };
-        if (playlist.id === 'LM') for (const song of page.items) this.data.likedIds.add(song.videoId);
+        this.data.playlist = { ...this.data.playlist!, items: appendSongs(this.data.playlist!.items, page.items.map(song => this.projectSaved(song))), continuation: page.continuation && !this.usedPlaylistTokens.has(page.continuation) ? page.continuation : null };
+        if (playlist.id === 'LM') for (const song of page.items) { this.hydratedLikedIds.add(song.videoId); if (this.likeOverrides.get(song.videoId) !== false) this.data.likedIds.add(song.videoId); }
       }
     } catch (error) { if (same()) this.data.playlistError = message(error, 'No se pudieron cargar más canciones.'); }
     finally { if (same()) { this.data.playlistLoadingMore = false; this.emit(); } }
   }
-  private async mutate(key: string, action: () => Promise<unknown>, commit: () => void) {
+  private async mutate(key: string, action: () => Promise<unknown>, commit: () => void, optimistic?: () => (() => void)) {
     if (!this.data.loggedIn || this.data.pendingIds.has(key)) return false;
-    const generation = this.generation; this.data.pendingIds.add(key); this.data.actionError = null; this.emit();
-    try { await action(); if (generation !== this.generation) return false; commit(); return true; }
-    catch (error) { if (generation === this.generation) this.data.actionError = message(error, 'No se pudo guardar el cambio.'); return false; }
+    const generation = this.generation; this.data.pendingIds.add(key); this.data.actionError = null;
+    let rollback: (() => void) | undefined;
+    try { rollback = optimistic?.(); this.emit(); await action(); if (generation !== this.generation) return false; commit(); return true; }
+    catch (error) { if (generation === this.generation) { rollback?.(); this.data.actionError = message(error, 'No se pudo guardar el cambio.'); } return false; }
     finally { if (generation === this.generation) { this.data.pendingIds.delete(key); this.emit(); } }
+  }
+  /** Share pending/rollback/session guards with album and artist detail actions. */
+  async feedback(key: string, action: () => Promise<unknown>, apply: () => void, rollback: () => void) {
+    return this.mutate(key, action, () => {}, () => { apply(); return rollback; });
   }
   async toggleLike(song: Pick<SongDto, 'videoId'>) {
     const generation = this.generation;
-    // Wait for complete hydration before deciding LIKE vs INDIFFERENT.
-    if (!this.likesLoaded && !this.data.likedIds.has(song.videoId)) { await this.hydrateLikes(); if (!this.likesLoaded) { this.data.actionError = this.data.errors.likes; this.emit(); return; } }
-    if (generation !== this.generation || !this.data.loggedIn) return;
-    const liked = !this.data.likedIds.has(song.videoId);
+    if (!this.data.loggedIn || this.data.pendingIds.has(song.videoId)) return;
+    // Send the intent shown by the heart immediately, including during hydration.
+    const wasLiked = this.data.likedIds.has(song.videoId); const liked = !wasLiked;
+    const previousOverride = this.likeOverrides.get(song.videoId);
     const changed = await this.mutate(song.videoId, () => this.rpc('rate_song', { videoId: song.videoId, rating: liked ? 'LIKE' : 'INDIFFERENT' }), () => {
-      this.likeOverrides.set(song.videoId, liked); if (liked) this.data.likedIds.add(song.videoId); else this.data.likedIds.delete(song.videoId);
       this.likedPlaylist = null;
       this.invalidateCatalog();
       if (!liked && this.data.playlist?.id === 'LM') this.data.playlist = { ...this.data.playlist, items: this.data.playlist.items.filter(item => item.videoId !== song.videoId) };
+    }, () => {
+      this.likeOverrides.set(song.videoId, liked); if (liked) this.data.likedIds.add(song.videoId); else this.data.likedIds.delete(song.videoId);
+      return () => {
+        if (previousOverride === undefined) this.likeOverrides.delete(song.videoId); else this.likeOverrides.set(song.videoId, previousOverride);
+        if (previousOverride ?? (wasLiked || this.hydratedLikedIds.has(song.videoId))) this.data.likedIds.add(song.videoId); else this.data.likedIds.delete(song.videoId);
+      };
     });
-    if (changed && generation === this.generation && this.data.playlist?.id === 'LM' && liked) await this.openPlaylist('LM');
+    if (changed && generation === this.generation && this.data.playlist?.id === 'LM' && liked) void this.openPlaylist('LM');
   }
   async dislike(song: Pick<SongDto, 'videoId'>) {
     const id = song.videoId; const generation = this.generation;
@@ -307,22 +326,46 @@ export class AccountController {
     return changed;
   }
   async toggleSaved(song: SongDto) {
-    const library = song.library; const token = library?.inLibrary ? library.removeToken : library?.addToken;
+    const generation = this.generation;
+    const library = song.library; const previous = this.savedOverrides.get(song.videoId);
+    const wasSaved = previous?.value ?? library?.inLibrary ?? false;
+    const token = wasSaved ? library?.removeToken : library?.addToken;
     if (!token) return;
-    const saved = !library!.inLibrary;
-    const changed = await this.mutate(song.videoId, () => this.rpc('apply_song_library_action', { token }), () => {
-      const update = (item: SongDto) => item.videoId === song.videoId ? { ...item, library: { ...(item.library ?? library!), inLibrary: saved } } : item;
-      this.data.songs = this.data.songs.map(update);
-      if (this.data.playlist) this.data.playlist = { ...this.data.playlist, items: this.data.playlist.items.map(update) };
+    const saved = !wasSaved; const override = { value: saved };
+    const changed = await this.mutate(song.videoId, () => this.rpc('apply_song_library_action', { token }), () => {}, () => {
+      this.savedOverrides.set(song.videoId, override); this.patchSaved(song.videoId, saved, library!);
+      return () => {
+        if (previous) this.savedOverrides.set(song.videoId, previous); else this.savedOverrides.delete(song.videoId);
+        this.patchSaved(song.videoId, wasSaved, library!);
+      };
     });
-    if (changed) await this.load('songs');
+    if (changed && generation === this.generation) void this.load('songs').then(() => {
+      if (generation === this.generation && this.savedOverrides.get(song.videoId) === override) this.savedOverrides.delete(song.videoId);
+    });
   }
-  async togglePlaylistLibrary() {
-    const playlist = this.data.playlist; if (!playlist || playlist.id === 'LM' || playlist.owned) return;
-    const changed = await this.mutate(`playlist:${playlist.id}`, () => this.rpc('toggle_album_library', { playlistId: playlist.id, save: !playlist.inLibrary }), () => {
-      if (this.data.playlist?.id === playlist.id) this.data.playlist = { ...this.data.playlist, inLibrary: !playlist.inLibrary };
+  private projectSaved(song: SongDto): SongDto {
+    const override = this.savedOverrides.get(song.videoId);
+    return override && song.library ? { ...song, library: { ...song.library, inLibrary: override.value } } : song;
+  }
+  private patchSaved(id: string, saved: boolean, library: NonNullable<SongDto['library']>) {
+    const update = (item: SongDto) => item.videoId === id ? { ...item, library: { ...(item.library ?? library), inLibrary: saved } } : item;
+    this.data.songs = this.data.songs.map(update);
+    if (this.data.playlist) this.data.playlist = { ...this.data.playlist, items: this.data.playlist.items.map(update) };
+    this.data.history = this.data.history.map(group => ({ ...group, items: group.items.map(update) }));
+  }
+  async togglePlaylistLibrary(playlist = this.data.playlist) {
+    if (!playlist || playlist.id.replace(/^VL/, '') === 'LM' || playlist.owned) return;
+    const generation = this.generation; const id = playlist.id.replace(/^VL/, '');
+    const previous = this.playlistLibraryOverrides.get(id);
+    const changed = await this.mutate(`playlist:${id}`, () => this.rpc('toggle_album_library', { playlistId: playlist.id, save: !playlist.inLibrary }), () => {}, () => {
+      this.playlistLibraryOverrides.set(id, !playlist.inLibrary);
+      if (this.data.playlist?.id.replace(/^VL/, '') === id) this.data.playlist = { ...this.data.playlist, inLibrary: !playlist.inLibrary };
+      return () => {
+        if (previous === undefined) this.playlistLibraryOverrides.delete(id); else this.playlistLibraryOverrides.set(id, previous);
+        if (this.data.playlist?.id.replace(/^VL/, '') === id) this.data.playlist = { ...this.data.playlist, inLibrary: playlist.inLibrary };
+      };
     });
-    if (changed) await this.load('playlists');
+    if (changed && generation === this.generation) void this.load('playlists');
   }
   async createPlaylist(title: string, description: string, privacy = 'PRIVATE'): Promise<string> {
     if (!this.data.loggedIn) throw new Error('Iniciá sesión para crear una playlist.');

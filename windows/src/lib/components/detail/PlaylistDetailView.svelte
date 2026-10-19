@@ -3,6 +3,7 @@
 </script>
 <script lang="ts">
   import ControlButton from '$lib/components/common/ControlButton.svelte';
+  import MenuIcon from '$lib/components/menu/MenuIcon.svelte';
 
   import { untrack } from 'svelte';
   import { t, language, count, resolveMessage  } from '$lib/i18n';
@@ -91,9 +92,9 @@
       <CollectionHeader identity={playlist.id} title={playlist.title} thumbnail={playlist.thumbnail} kind={playlist.id === 'LM' ? $t('detail.kind.collection') : $t('detail.kind.playlist')} summary={playlist.continuation ? $t('windows.collection.partialCount', [playlist.items.length]) : count('common.songCount', playlist.items.length, $language)} description={playlist.description} onDescription={() => showDescription = true}>
         {#snippet credit()}{#if playlist.subtitle}<span>{playlist.subtitle}</span>{/if}{/snippet}
         {#snippet actions()}
-            <ControlButton data-action="play" emphasis="prominent" type="button" disabled={!playlist.items.length || loadingMore || order!=='custom'&&!!playlist.continuation} onclick={() => onPlay(ordered[0]?.sourceIndex ?? 0, false, order)}>▶ <span>{$t('player.play')}</span></ControlButton>
-            <ControlButton  type="button" disabled={!playlist.items.length} onclick={() => onPlay(0, true, order)}><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m16 3 4 4-4 4M4 17h2.5c4.2 0 6.3-10 10.5-10H20M16 13l4 4-4 4M4 7h2.5c1.5 0 2.7 1.2 3.8 2.7m2.3 4.6c1.1 1.5 2.3 2.7 3.9 2.7H20" /></svg><span>{$t('player.shuffle')}</span></ControlButton>
-            {#if canSavePlaylist}<ControlButton selected={Boolean(playlist.inLibrary)} loading={saving} type="button"  aria-pressed={Boolean(playlist.inLibrary)} onclick={toggleLibrary}>{playlist.inLibrary ? '▣ ' + $t('detail.collection.inLibrary') : '▢ ' + $t('detail.collection.save')}</ControlButton>{/if}
+            <ControlButton data-action="play" emphasis="prominent" type="button" disabled={!playlist.items.length || loadingMore || order!=='custom'&&!!playlist.continuation} onclick={() => onPlay(ordered[0]?.sourceIndex ?? 0, false, order)}><MenuIcon name="play" /><span>{$t('player.play')}</span></ControlButton>
+            <ControlButton type="button" disabled={!playlist.items.length} onclick={() => onPlay(0, true, order)}><MenuIcon name="shuffle" /><span>{$t('player.shuffle')}</span></ControlButton>
+            {#if canSavePlaylist}<ControlButton selected={Boolean(playlist.inLibrary)} loading={saving} loadingFeedback="subtle" type="button" aria-pressed={Boolean(playlist.inLibrary)} onclick={toggleLibrary}><MenuIcon name={playlist.inLibrary ? 'bookmark-fill' : 'bookmark'} />{playlist.inLibrary ? $t('detail.collection.inLibrary') : $t('detail.collection.save')}</ControlButton>{/if}
             {#if onOpenMenu}<ControlButton iconOnly type="button" aria-label={$t('windows.playlist.moreOptions')} title={$t('menu.more_options')} onclick={onOpenMenu} oncontextmenu={(event) => { event.preventDefault(); onOpenMenu?.(event); }} onkeydown={(event) => { if (event.key === 'ContextMenu' || event.shiftKey && event.key === 'F10') { event.preventDefault(); onOpenMenu?.(event); } }}><MoreIcon /></ControlButton>{/if}
 {/snippet}
         {#snippet tools()}{#if playlist.items.length}<TrackFilter bind:query bind:order busy={loadingMore||mutationPending} compact />{/if}{/snippet}

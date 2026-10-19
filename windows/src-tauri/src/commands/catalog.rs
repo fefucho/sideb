@@ -29,7 +29,7 @@ pub(crate) async fn search_suggestions(state: tauri::State<'_, AppState>, query:
 pub(crate) async fn search_catalog(state: tauri::State<'_, AppState>, query: String, record_history: bool, ignore_spelling: bool) -> Result<SearchCatalogDto, CommandError> {
     let query = validate_search_query(&query)?;
     let generation = state.auth_generation.load(Ordering::SeqCst);
-    let _operation = if record_history { Some(state.auth_operation.lock().await) } else { None };
+    let _operation = if record_history { Some(state.auth_operation.read().await) } else { None };
     if state.auth_generation.load(Ordering::SeqCst) != generation { return Err(CommandError::new("SESSION_CHANGED", "La sesión cambió antes de completar la búsqueda.")); }
     let core = search_core(&state)?;
     let result = core.search_catalog(query.to_owned(), record_history, ignore_spelling).await
@@ -45,7 +45,7 @@ pub(crate) async fn search_catalog(state: tauri::State<'_, AppState>, query: Str
 pub(crate) async fn search_all(state: tauri::State<'_, AppState>, query: String, record_history: bool) -> Result<SearchResultsDto, CommandError> {
     let query = validate_search_query(&query)?;
     let generation = state.auth_generation.load(Ordering::SeqCst);
-    let _operation = if record_history { Some(state.auth_operation.lock().await) } else { None };
+    let _operation = if record_history { Some(state.auth_operation.read().await) } else { None };
     if state.auth_generation.load(Ordering::SeqCst) != generation { return Err(CommandError::new("SESSION_CHANGED", "La sesión cambió antes de completar la búsqueda.")); }
     let core = search_core(&state)?;
     let result = core.search_all(query.to_owned(), record_history).await
@@ -265,7 +265,7 @@ pub(crate) async fn get_playlist(state: tauri::State<'_, AppState>, playlist_id:
     if id.is_empty() { return Err(CommandError::new("INVALID_ID", "El identificador de la lista no puede estar vacío.")); }
     if matches!(id.to_ascii_uppercase().as_str(), "LM" | "VLLM") {
         let generation = state.auth_generation.load(Ordering::SeqCst);
-        let _operation = state.auth_operation.lock().await;
+        let _operation = state.auth_operation.read().await;
         let core = account_core(&state, generation)?;
         let result = core.get_playlist(id.to_owned()).await.map(PlaylistDetailDto::from)
             .map_err(|_| CommandError::new("PLAYLIST_FAILED", "No se pudo cargar la lista. Comprobá tu conexión a internet o el identificador."))?;

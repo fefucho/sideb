@@ -731,7 +731,7 @@ pub(crate) async fn play_song(
     }
     // Cookie validation/replacement and an authenticated upload resolution must
     // never overlap. Recheck the attempt after waiting for this operation lock.
-    let _auth_operation = state.auth_operation.lock().await;
+    let _auth_operation = state.auth_operation.read().await;
     let upload = {
         let pb = state
             .playback
@@ -2583,7 +2583,7 @@ fn fetch_source_background(app: tauri::AppHandle) {
     tauri::async_runtime::spawn(async move {
         let state = app.state::<AppState>();
         let fetched = {
-            let _operation = state.auth_operation.lock().await;
+            let _operation = state.auth_operation.read().await;
             if state.auth_generation.load(Ordering::SeqCst) != auth_generation {
                 return;
             }

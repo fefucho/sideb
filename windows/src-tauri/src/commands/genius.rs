@@ -66,19 +66,19 @@ pub(crate) async fn genius_search(state: tauri::State<'_, AppState>, query: Stri
 }
 #[tauri::command]
 pub(crate) async fn genius_choose(state: tauri::State<'_, AppState>, track: GeniusTrackDto, song_id: i64) -> Result<Value, CommandError> {
-    let generation = state.auth_generation.load(Ordering::SeqCst); let _operation = state.auth_operation.lock().await;
+    let generation = state.auth_generation.load(Ordering::SeqCst); let _operation = state.auth_operation.read().await;
     same_session(&state, generation)?; let core = core(&state)?;
     let value = core.choose_genius(track.into(), song_id).await.map_err(failed)?; same_session(&state, generation)?; dto(value)
 }
 #[tauri::command]
 pub(crate) async fn genius_clear_choice(state: tauri::State<'_, AppState>, track: GeniusTrackDto) -> Result<(), CommandError> {
-    let generation = state.auth_generation.load(Ordering::SeqCst); let _operation = state.auth_operation.lock().await;
+    let generation = state.auth_generation.load(Ordering::SeqCst); let _operation = state.auth_operation.read().await;
     same_session(&state, generation)?; core(&state)?.clear_genius_choice(track.into()); Ok(())
 }
 #[tauri::command]
 pub(crate) async fn genius_report_miss(state: tauri::State<'_, AppState>, track: GeniusTrackDto, status: String, candidate_ids: Vec<i64>) -> Result<(), CommandError> {
     let status = match status.as_str() { "ambiguous" => sideb_core::GeniusMatchStatusRecord::Ambiguous, "notFound" => sideb_core::GeniusMatchStatusRecord::NotFound, _ => return Err(CommandError::new("INVALID_STATUS", "La pista ya está identificada.")) };
-    let generation = state.auth_generation.load(Ordering::SeqCst); let _operation = state.auth_operation.lock().await;
+    let generation = state.auth_generation.load(Ordering::SeqCst); let _operation = state.auth_operation.read().await;
     same_session(&state, generation)?; core(&state)?.report_genius_miss(track.into(), status, candidate_ids).map_err(failed)
 }
 #[tauri::command]

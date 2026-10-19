@@ -1,5 +1,6 @@
 <script lang="ts">
   import ControlButton from '$lib/components/common/ControlButton.svelte';
+  import MenuIcon from '$lib/components/menu/MenuIcon.svelte';
   import ControlFilter from '$lib/components/common/ControlFilter.svelte';
 
   import {tick} from 'svelte';
@@ -26,7 +27,7 @@
   </VirtualCatalog>
 {/snippet}
 <div class="explore-page" inert={!active}>
-  <nav aria-label={$t('explore.eyebrow')}>{#each tabs as item (item)}<ControlFilter selected={tab===item} onclick={()=>onNavigate(item)}>{$t(`explore.route.${item}`)}</ControlFilter>{/each}<ControlButton iconOnly type="button" disabled={data.isLoading} onclick={onRefresh} aria-label={$t('explore.refresh')}>↻</ControlButton></nav>
+  <nav aria-label={$t('explore.eyebrow')}>{#each tabs as item (item)}<ControlFilter selected={tab===item} onclick={()=>onNavigate(item)}>{$t(`explore.route.${item}`)}</ControlFilter>{/each}<ControlButton iconOnly type="button" disabled={data.isLoading} onclick={onRefresh} aria-label={$t('explore.refresh')}><MenuIcon name="refresh" /></ControlButton></nav>
   <div class="explore-scroll" bind:this={scroll} onscroll={()=>{if(active)onScrollTop?.(scroll.scrollTop);}}>
     <header><p>{$t('explore.eyebrow')}</p><h1>{data.route==='discover'?$t('explore.title.discover'):title}</h1>{#if data.route==='discover'}<p>{$t('explore.subtitle.discover')}</p>{/if}</header>
     {#if tab==='charts'}

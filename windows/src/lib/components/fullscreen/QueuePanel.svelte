@@ -268,7 +268,7 @@
           {/if}
           {#if loggedIn && onToggleLike}
             {@const liked = likedIds.has(entry.videoId)}
-            {@const likePending = (likesLoading && !liked) || pendingIds.has(entry.videoId)}
+            {@const likePending = pendingIds.has(entry.videoId)}
             <button type="button" class="queue-action like-action" class:liked aria-pressed={liked} aria-label={liked ? $t('windows.queue.unlike', [entry.title]) : $t('windows.queue.like', [entry.title])} title={likePending ? $t('windows.ui.updatingLike') : liked ? $t('windows.ui.removeLike') : $t('detail.track.like')} disabled={likePending} onclick={(event) => { event.stopPropagation(); onToggleLike?.(entry); }} onpointerdown={(event) => event.stopPropagation()}>
               <svg viewBox="2 1.68 20 20" aria-hidden="true" fill={liked ? "currentColor" : "none"} stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20.8 8.7c0 4.2-6.4 9.1-8.8 11-2.4-1.9-8.8-6.8-8.8-11a4.9 4.9 0 0 1 8.8-3.1 4.9 4.9 0 0 1 8.8 3.1Z" /></svg>
             </button>

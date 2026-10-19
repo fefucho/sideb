@@ -1,5 +1,6 @@
 <script lang="ts">
   import ControlButton from '$lib/components/common/ControlButton.svelte';
+  import MenuIcon from '$lib/components/menu/MenuIcon.svelte';
 
   import { t , language, resolveMessage } from '$lib/i18n';
   import { providerHeading } from '$lib/i18n/presentation';
@@ -142,15 +143,15 @@
           <div class="actions">
             {#if artist.radioPlaylistId}
               <ControlButton emphasis="prominent" type="button" onclick={startRadio} loading={radioPending}>
-                ◉ {$t('detail.artist.startMix')}
+                <MenuIcon name="radio" />{$t('detail.artist.startMix')}
               </ControlButton>
             {/if}
             {#if artist.topSongs.length > 0}
-              <ControlButton type="button" onclick={() => onPlay(0, true)}>⤨ {$t('player.shuffle')}</ControlButton>
+              <ControlButton type="button" onclick={() => onPlay(0, true)}><MenuIcon name="shuffle" />{$t('player.shuffle')}</ControlButton>
             {/if}
             {#if loggedIn}
-              <ControlButton type="button" onclick={toggleSubscription} loading={subscriptionPending} selected={Boolean(artist.subscribed)} aria-pressed={Boolean(artist.subscribed)}>
-                {artist.subscribed ? '♧ ' + $t('detail.artist.subscribed') : '♧ ' + $t('detail.artist.subscribe')}
+              <ControlButton type="button" onclick={toggleSubscription} loading={subscriptionPending} loadingFeedback="subtle" selected={Boolean(artist.subscribed)} aria-pressed={Boolean(artist.subscribed)}>
+                <MenuIcon name={artist.subscribed ? 'bell' : 'person'} />{artist.subscribed ? $t('detail.artist.subscribed') : $t('detail.artist.subscribe')}
               </ControlButton>
             {/if}
             <ControlButton iconOnly type="button" aria-label={$t('menu.more_options')} title={$t('menu.more_options')} aria-haspopup="menu" onclick={artistMenu.onContextMenu} onkeydown={artistMenu.onKeyDown}><MoreIcon /></ControlButton>

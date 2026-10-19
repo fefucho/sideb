@@ -9,6 +9,121 @@ const song = (id, extra = {}) => ({ videoId: id, title: id, artists: 'Artist', a
 const playlist = items => ({ id: 'LM', title: 'Tus Me Gusta', items, continuation: null, thumbnail: null, subtitle: null, description: null, owned: false, inLibrary: false });
 function deferred() { let resolve, reject; const promise = new Promise((a, b) => { resolve = a; reject = b; }); return { promise, resolve, reject }; }
 
+test('a like updates immediately and reaches the provider while older likes are still loading', async () => {
+  const older = deferred(), mutation = deferred(); const calls = []; let data;
+  const account = new AccountController(async (command, args) => {
+    calls.push({command,args});
+    if (command === 'get_playlist') return {...playlist([song('known')]),continuation:'older'};
+    if (command === 'get_playlist_continuation') return older.promise;
+    if (command === 'rate_song') return mutation.promise;
+  }, next => data = next);
+  account.reset(true); const hydration = account.hydrateLikes();
+  await new Promise(resolve => setImmediate(resolve));
+  const action = account.toggleLike(song('new'));
+  assert.equal(data.loading.likes, true);
+  assert.equal(data.likedIds.has('new'), true);
+  assert.equal(data.pendingIds.has('new'), true);
+  assert.equal(calls.find(call=>call.command==='rate_song').args.rating, 'LIKE');
+  await account.toggleLike(song('new'));
+  assert.equal(calls.filter(call=>call.command==='rate_song').length,1);
+  mutation.resolve(); await action;
+  assert.equal(data.pendingIds.has('new'),false);
+  older.resolve({items:[song('old')],continuation:null}); await hydration;
+  assert.equal(data.likedIds.has('new'),true); assert.equal(data.likedIds.has('old'),true);
+});
+
+test('failed unknown like restores a confirmed like discovered on a late hydration page', async () => {
+  const older=deferred(), mutation=deferred(); let data;
+  const account=new AccountController(async command=>command==='get_playlist'?{...playlist([]),continuation:'older'}:command==='get_playlist_continuation'?older.promise:mutation.promise,next=>data=next);
+  account.reset(true);const hydration=account.hydrateLikes();await new Promise(resolve=>setImmediate(resolve));
+  const action=account.toggleLike(song('old'));
+  older.resolve({items:[song('old')],continuation:null});await hydration;
+  mutation.reject(new Error('Connection failed'));await action;
+  assert.equal(data.likedIds.has('old'),true);assert.equal(data.pendingIds.size,0);assert.equal(data.actionError,'Connection failed');
+});
+
+test('failed unlike rolls back immediately and an explicit LM refresh preserves the pending intent', async () => {
+  const mutation=deferred();let data;
+  const account=new AccountController(async command=>command==='get_playlist'?playlist([song('a')]):mutation.promise,next=>data=next);
+  account.reset(true);await account.hydrateLikes();
+  const action=account.toggleLike(song('a'));
+  assert.equal(data.likedIds.has('a'),false);
+  await account.refreshPlaylist('LM');
+  assert.equal(data.likedIds.has('a'),false);
+  mutation.reject(new Error('Rejected'));await action;
+  assert.equal(data.likedIds.has('a'),true);
+});
+
+test('a late failed like cannot roll back or surface errors in another account', async () => {
+  const mutation=deferred();let data;
+  const account=new AccountController(()=>mutation.promise,next=>data=next);
+  account.reset(true);const pending=account.toggleLike(song('old'));
+  assert.equal(data.likedIds.has('old'),true);
+  account.reset(true);mutation.reject(new Error('Old account failure'));await pending;
+  assert.equal(data.likedIds.size,0);assert.equal(data.pendingIds.size,0);assert.equal(data.actionError,null);
+});
+
+test('saving a track is optimistic, survives stale reads and returns before its library refresh', async () => {
+  const mutation=deferred(),refresh=deferred();let reads=0,data;
+  const track=song('a',{library:{inLibrary:false,addToken:'add',removeToken:'remove'}});
+  const account=new AccountController(async command=>command==='get_library_songs'?(++reads===1?{items:[track],continuation:null}:refresh.promise):command==='get_playlist'?{...playlist([track]),id:'PL'}:mutation.promise,next=>data=next);
+  account.reset(true);await account.load('songs');await account.openPlaylist('PL');
+  const action=account.toggleSaved(track);
+  assert.equal(data.songs[0].library.inLibrary,true);assert.equal(data.playlist.items[0].library.inLibrary,true);
+  await account.openPlaylist('PL');
+  assert.equal(data.playlist.items[0].library.inLibrary,true);
+  mutation.resolve();await action;
+  assert.equal(data.pendingIds.size,0);assert.equal(data.loading.songs,true);
+  refresh.resolve({items:[track],continuation:null});await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(data.songs[0].library.inLibrary,true);
+});
+
+test('failed save restores only the target track and never overwrites a new account', async () => {
+  const mutation=deferred();let data;
+  const track=song('a',{library:{inLibrary:false,addToken:'add',removeToken:'remove'}});
+  const account=new AccountController(async command=>command==='get_library_songs'?{items:[track,song('other')],continuation:null}:mutation.promise,next=>data=next);
+  account.reset(true);await account.load('songs');
+  const action=account.toggleSaved(track);assert.equal(data.songs[0].library.inLibrary,true);
+  mutation.reject(new Error('Rejected'));await action;
+  assert.equal(data.songs[0].library.inLibrary,false);assert.equal(data.songs[1].videoId,'other');assert.equal(data.pendingIds.size,0);
+  const late=deferred();const otherAccount=new AccountController(async command=>command==='get_library_songs'?{items:[track],continuation:null}:late.promise,next=>data=next);
+  otherAccount.reset(true);await otherAccount.load('songs');const pending=otherAccount.toggleSaved(track);
+  otherAccount.reset(true);late.reject(new Error('Old failure'));await pending;
+  assert.equal(data.songs.length,0);assert.equal(data.actionError,null);
+});
+
+test('playlist saving updates at once, survives navigation and finishes before refreshing the sidebar', async () => {
+  const mutation=deferred(),refresh=deferred();let data;
+  const detail={...playlist([song('a')]),id:'PL',inLibrary:false};
+  const account=new AccountController(async command=>command==='get_playlist'?detail:command==='get_library_playlists'?refresh.promise:mutation.promise,next=>data=next);
+  account.reset(true);await account.openPlaylist('PL');const before=account.captureNavigation();
+  const action=account.togglePlaylistLibrary();assert.equal(data.playlist.inLibrary,true);
+  account.restoreNavigation(before);assert.equal(data.playlist.inLibrary,true);
+  mutation.resolve();await action;
+  assert.equal(data.pendingIds.size,0);assert.equal(data.loading.playlists,true);
+  refresh.resolve([]);await new Promise(resolve=>setImmediate(resolve));
+  await account.openPlaylist('PL');assert.equal(data.playlist.inLibrary,false,'fresh explicit loads can reconcile external library changes');
+});
+
+test('failed playlist save rolls back the matching collection after navigation', async () => {
+  const mutation=deferred();let data;
+  const account=new AccountController(async command=>command==='get_playlist'?{...playlist([]),id:'PL',inLibrary:false}:mutation.promise,next=>data=next);
+  account.reset(true);await account.openPlaylist('PL');const before=account.captureNavigation();
+  const action=account.togglePlaylistLibrary();account.restoreNavigation(before);
+  mutation.reject(new Error('Rejected'));await action;
+  assert.equal(data.playlist.inLibrary,false);assert.equal(data.pendingIds.size,0);
+});
+
+test('album and artist feedback shares duplicate protection and generation-safe rollback', async () => {
+  const mutation=deferred();let data,selected=false,calls=0;
+  const account=new AccountController(async()=>{},next=>data=next);account.reset(true);
+  const pending=account.feedback('artist:a',()=>{calls++;return mutation.promise;},()=>selected=true,()=>selected=false);
+  assert.equal(selected,true);assert.equal(data.pendingIds.has('artist:a'),true);
+  assert.equal(await account.feedback('artist:a',async()=>{calls++;},()=>{},()=>{}),false);assert.equal(calls,1);
+  account.reset(true);selected=true;mutation.reject(new Error('Old session'));assert.equal(await pending,false);
+  assert.equal(selected,true);assert.equal(data.actionError,null);
+});
+
 test('account reset discards old library response and metadata', async () => {
   const request = deferred(); let data;
   const account = new AccountController(() => request.promise, next => data = next);

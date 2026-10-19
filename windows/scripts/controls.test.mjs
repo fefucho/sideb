@@ -85,6 +85,13 @@ test('tab arrows wrap, respect RTL and leave vertical, Enter and modifier-neutra
   assert.equal(segmentKeyIndex('ArrowRight',0,1),0);
 });
 
+test('optimistic toggle feedback keeps its label and selected state while preventing duplicate submissions', () => {
+  const html=render(Button,{props:{loading:true,loadingFeedback:'subtle',selected:true,'aria-label':'En biblioteca'}}).body;
+  assert.match(html,/disabled/);assert.match(html,/aria-busy="true"/);assert.match(html,/data-selected="true"/);
+  assert.match(html,/data-loading-feedback="subtle"/);assert.match(html,/sideb-control-pending" aria-hidden="true"/);
+  assert.doesNotMatch(html,/sideb-control-spinner/);
+});
+
 test('compact toolbar appearance is opt-in and preserves tab selection and keyboard entry', () => {
   assert.match(segments({}), /data-appearance="standard"/);
   const html = segments({appearance:'toolbar'});

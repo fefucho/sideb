@@ -1,4 +1,8 @@
 {
+  "windows.actions.confirmTimeout": {
+    "es": "No se pudo confirmar el cambio a tiempo. Comprobá la conexión y reintentá.",
+    "en": "The change could not be confirmed in time. Check your connection and try again."
+  },
   "windows.player.volumeScrollHint": { "es": "Desplazá verticalmente para ajustar el volumen en pasos de 1 punto.", "en": "Scroll vertically to adjust volume in 1-point steps." },
   "windows.player.volumeAnnouncement": { "es": "Volumen: %@ %%", "en": "Volume: %@%%" },
   "windows.settings.audio": { "es": "Audio", "en": "Audio" },

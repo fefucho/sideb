@@ -19,7 +19,7 @@ export interface MenuService { open(event: MouseEvent | KeyboardEvent, target: M
 export type MenuAction = { type: 'play' | 'shuffle' | 'radio' | 'enqueue-next' | 'enqueue-end' | 'like' | 'save-song' | 'save-collection' | 'subscribe' | 'open' | 'open-album' | 'open-artist' | 'share' | 'remove-playlist' | 'remove-queue' | 'edit-playlist' | 'delete-playlist' | 'new-playlist' }
   | { type: 'add-to-playlist'; playlistId: string }
   | { type: 'sort-playlist'; sort: string };
-export type MenuIconName = 'play' | 'shuffle' | 'radio' | 'queue-next' | 'queue-end' | 'heart' | 'heart-remove' | 'heart-fill' | 'bookmark' | 'bookmark-fill' | 'music-list' | 'list-add' | 'plus' | 'disc' | 'person' | 'share' | 'trash' | 'minus' | 'edit' | 'sort' | 'reorder' | 'history' | 'clock' | 'text' | 'bell' | 'bell-off';
+export type MenuIconName = 'play' | 'shuffle' | 'radio' | 'queue-next' | 'queue-end' | 'heart' | 'heart-remove' | 'heart-fill' | 'bookmark' | 'bookmark-fill' | 'music-list' | 'list-add' | 'plus' | 'disc' | 'person' | 'share' | 'trash' | 'minus' | 'edit' | 'sort' | 'reorder' | 'history' | 'clock' | 'text' | 'bell' | 'bell-off' | 'refresh';
 export interface MenuItem { id: string; label: string; icon?: MenuIconName; disabled?: boolean; checked?: boolean; action?: MenuAction; children?: MenuItem[]; separator?: boolean }
 export interface MenuFacts { loggedIn: boolean; likedIds: Set<string>; playlists: BrowseCardDto[] }
 export interface MenuRequest { identity?:number; x: number; y: number; target: MenuTarget; origin: MenuOrigin; focus: HTMLElement | null }

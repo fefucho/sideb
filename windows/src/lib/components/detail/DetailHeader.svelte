@@ -1,5 +1,6 @@
 <script lang="ts">
   import ControlButton from '$lib/components/common/ControlButton.svelte';
+  import MenuIcon from '$lib/components/menu/MenuIcon.svelte';
 
   import { t, language, count, resolveMessage  } from '$lib/i18n';
   import type { Snippet } from 'svelte';
@@ -32,11 +33,11 @@
 <CollectionHeader identity={album.browseId} title={album.title} thumbnail={album.thumbnail} kind={$t('detail.kind.album')} summary={meta.join(' · ')} description={album.description} onDescription={onDescription} {tools}>
   {#snippet credit()}{#if album.artistRuns?.length || album.artist}<ArtistCredits artistRuns={album.artistRuns} artists={album.artist} artistId={album.artistId} {onOpenArtist} />{/if}{/snippet}
   {#snippet actions()}
-      <ControlButton emphasis="prominent" type="button" disabled={!album.items.length} onclick={() => onPlay(0)}><span aria-hidden="true">▶</span> {$t('player.play')}</ControlButton>
-      <ControlButton type="button" disabled={!album.items.length} onclick={() => onPlay(0, true)}><span aria-hidden="true">⤨</span> {$t('player.shuffle')}</ControlButton>
+      <ControlButton emphasis="prominent" type="button" disabled={!album.items.length} onclick={() => onPlay(0)}><MenuIcon name="play" />{$t('player.play')}</ControlButton>
+      <ControlButton type="button" disabled={!album.items.length} onclick={() => onPlay(0, true)}><MenuIcon name="shuffle" />{$t('player.shuffle')}</ControlButton>
       {#if album.playlistId}
-        <ControlButton type="button" disabled={!loggedIn} loading={saving} selected={Boolean(album.inLibrary)} aria-pressed={Boolean(album.inLibrary)} title={loggedIn ? (album.inLibrary ? $t('windows.menu.removeFromLibrary') : $t('windows.menu.saveToLibrary')) : $t('windows.ui.signInToSave')} onclick={toggleLibrary}>
-          {album.inLibrary ? '▣ ' + $t('detail.collection.inLibrary') : '▢ ' + $t('detail.collection.save')}
+        <ControlButton type="button" disabled={!loggedIn} loading={saving} loadingFeedback="subtle" selected={Boolean(album.inLibrary)} aria-pressed={Boolean(album.inLibrary)} title={loggedIn ? (album.inLibrary ? $t('windows.menu.removeFromLibrary') : $t('windows.menu.saveToLibrary')) : $t('windows.ui.signInToSave')} onclick={toggleLibrary}>
+          <MenuIcon name={album.inLibrary ? 'bookmark-fill' : 'bookmark'} />{album.inLibrary ? $t('detail.collection.inLibrary') : $t('detail.collection.save')}
         </ControlButton>
       {/if}
       <ControlButton type="button" iconOnly aria-label={$t('menu.more_options')} title={$t('menu.more_options')} aria-haspopup="menu" onclick={menu.onContextMenu} onkeydown={menu.onKeyDown}><MoreIcon /></ControlButton>
