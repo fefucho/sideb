@@ -1,7 +1,7 @@
 # PLAN-010 — Bugs Windows: buscador, Explorar, colecciones y streams
 
 - Fecha: 2026-10-18 (America/Montevideo).
-- Estado: implementación Windows realizada en FIX-216/217/218/219; fixture Edge y verify completo aprobados. Build-0015 Release compilada con776pruebas, fuentes estables y cuatro hashes revalidados. Pedido posterior «compila así pruebo» autoriza esta build; se entrega sin abrir ni reproducir audio. Prueba de la pista y aceptación visual a cargo del usuario, pendientes.
+- Estado: FIX-216/217/218/219 integrados con FIX-221/222/223 en `main` `8f38bfe`. Build-0016 Windows x64 Release,1.2.5/build público18,compiled,792pruebas/check0/0,fuentes estables y cuatro hashes revalidados. Se entrega sin abrir ni reproducir audio; pista exacta/control y aceptación visual pendientes del usuario. La evidencia previa de build-0015 se conserva abajo.
 - Pedido inicial: detallar los bugs mostrados y comparar con macOS antes de corregirlos. Pedido posterior2026-10-18: ejecutar este plan con subagentes; tres encargos6.1Sol/medio integrados. El análisis inicial siguiente se conserva como referencia, con resultados actuales al final.
 - Base consultada: `0ca3f64dd7398c850164a7069f1e84d0aa424972`, árbol limpio al comenzar. Código Windows1.2.4; la versión del proceso mostrado en las capturas no se puede certificar por las imágenes.
 - Objetivo: corregir la presentación Windows conservando acciones y comportamiento, y recuperar la reproducción de las pistas afectadas a partir de una causa comprobada.
@@ -167,3 +167,12 @@ El plan queda implementado parcialmente validado, con los pendientes anteriores 
 - [x] Completar `windows/scripts/windows.ps1 -Action verify`: 792 pruebas aprobadas (399 frontend, 97 InnerTube, 91 core, 93 bridge, 5 player, 107 Tauri); 14 live Rust ignoradas, sin fallos. Avisos existentes de dead_code, LNK4098 y chunk grande conservados.
 - [x] Revisar diff final y preparar el commit descriptivo en `main` para el push autorizado, conservando los commits remotos. Los veinte archivos revisados sólo contienen fuentes/pruebas/planes Windows y registros FIXES/PARIDAD; respaldo, builds, cachés y datos de cuenta fuera del commit. Diff check aprobado y todos los FIX-216…219/221…223 conservados una vez.
 - Límites: no hay build standalone nueva, instalación ni prueba de cuenta/audio en esta integración. Las builds anteriores y la release 1.2.5 conservan su procedencia; no contienen retroactivamente este trabajo local.
+
+## Build integrada para prueba — 2026-10-19
+
+- Pedido posterior: «entonces ahora qué, descargamos el código y vemos si compila». Sincronización con `powershell -NoProfile -File Scripts/sync.ps1 -Action pull`: `main` ya coincide con GitHub, sin commits pendientes de traer/subir.
+- Comando: `node Scripts/build-version.mjs windows`. Protocolo completo de verify y compilación Release aprobado; `status:compiled` en `builds/windows/build-0016/BUILD.json`, registro `build.log` al lado.
+- Fuente: `8f38bfeebe41a98da55be8bec08cd8451c66c996`, árbol limpio, `sourceChangedDuringBuild:false`. Versión pública1.2.5/build18; número local0016 independiente. Las actualizaciones de FIXES/PARIDAD/este plan son posteriores al empaquetado.
+- Resultado: `builds/windows/build-0016/sideb-windows.exe`, conservado con `libmpv-2.dll`, `vulkan-1.dll` y `VulkanRT-License.txt`. Los cuatro hashes coinciden con el manifest; EXE SHA256 `7e7e8def3a92c866d261c690c97c9d0f95199b7ee6f3f2f6f5d107bf03745f7c`, PE x64 y recurso de versión1.2.5 comprobados. Builds anteriores intactas.
+- Pruebas:792aprobadas (399frontend,97InnerTube,91core,93bridge,5player,107Tauri),14live Rust ignoradas; check0errores/0avisos,build frontend y nativo correctos. Avisos conocidos de dead_code,LNK4098 y chunk grande sin errores.
+- Límites: no se abrió el ejecutable ni se probó cuenta/audio/apariencia física. Falta aceptación manual de volumen, colecciones/buscador, acciones de cuenta y pista exacta/control. Apple/core sin cambios, sin QA Mac nueva ni cierre de paridad física. Esta build local no cambia la release publicada ni implica instalación/publicación/push de documentación.
