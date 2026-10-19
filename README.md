@@ -9,6 +9,7 @@
 <p align="center">
   <a href="https://github.com/fefucho/SIDE-B-CLIENT-NATIVE/releases">Download</a> ·
   <a href="#features">Features</a> ·
+  <a href="#screenshots">Screenshots</a> ·
   <a href="#how-it-works">How it works</a> ·
   <a href="#thanks">Thanks</a>
 </p>
@@ -36,7 +37,45 @@ Album artwork has a lot of room here. Its colors carry into the background, whil
 
 On Mac, the interface uses SwiftUI and AppKit. Windows follows the same layout and visual direction, using Svelte and Tauri. Each app uses its platform's playback engine and desktop controls.
 
-<!-- Add current native Home/fullscreen screenshots here; see docs/screenshots/README.md. -->
+## Screenshots
+
+These screenshots show the native macOS app. Click an image to see it at full resolution.
+
+**Home and your collection · macOS**
+
+Speed Dial, album recommendations and your saved playlists, with navigation and your collection in the sidebar.
+
+[![Home and your collection in Side B for macOS](docs/screenshots/macos-home-sidebar.png)](docs/screenshots/macos-home-sidebar.png)
+
+**Fullscreen playback and queue · macOS**
+
+Large album artwork, colors drawn from the cover and the upcoming songs together in one view.
+
+[![Fullscreen playback and queue in Side B for macOS](docs/screenshots/macos-fullscreen-queue.png)](docs/screenshots/macos-fullscreen-queue.png)
+
+**Synced lyrics · macOS**
+
+Follow the current line while listening, with artwork and playback controls close by.
+
+[![Synced lyrics in Side B for macOS](docs/screenshots/macos-synced-lyrics.png)](docs/screenshots/macos-synced-lyrics.png)
+
+**Genius annotations · macOS**
+
+Open an annotation beside the lyrics to explore the story behind a song.
+
+[![Genius annotations in Side B for macOS](docs/screenshots/macos-genius-annotations.png)](docs/screenshots/macos-genius-annotations.png)
+
+**Album details · macOS**
+
+Browse an album, search its track list and keep playback controls within reach.
+
+[![Album details in Side B for macOS](docs/screenshots/macos-album-detail.png)](docs/screenshots/macos-album-detail.png)
+
+**More room for your music · macOS**
+
+Collapse the sidebar to give Home more space while keeping navigation and the floating player available.
+
+[![More room for your music in Side B for macOS](docs/screenshots/macos-home-wide.png)](docs/screenshots/macos-home-wide.png)
 
 ## Download
 

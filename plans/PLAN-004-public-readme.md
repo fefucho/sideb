@@ -1,6 +1,6 @@
 # Public GitHub README
 
-- Status: public README and About published and visually verified. Optional native screenshots pending.
+- Status: public README and About published; six owner-supplied native macOS screenshots integrated with captions, final render/publication verification pending.
 - Goal: present Side B in plain English, with its origins, features, design, backend and meaningful upstream credits.
 - Scope: README, relocation of the internal workflow guide and its links, project artwork, existing license notices and GitHub About metadata. No app/core changes or release-tag changes.
 - References: existing README/AGENTS, FIX-088/089/130, apple/Resources/Credits.rtf, platform manifests and source; upstream Limusic and Kaset repositories.
@@ -12,7 +12,8 @@
 - [x] Write a public README with logo, downloads, features, design, backend and acknowledgments.
 - [x] Preserve upstream notices and the project's already-declared GPL license.
 - [x] Check links, image rendering, tone and scope; publish the reviewed documentation and About metadata.
-- [ ] Add current native screenshots when suitable images are available. Existing QA fixtures/bug reports are not presentation screenshots.
+- [x] Add the six native macOS screenshots supplied by the owner, with captions, platform labels and full-resolution links.
+- [ ] Verify the expanded GFM gallery, publish the scoped documentation/images and check the public page and image URLs.
 
 ## Verification
 
@@ -25,3 +26,7 @@ Review Markdown/image rendering and relative links. Check descriptions against c
 - GitHub About now describes both platforms and the artwork/lyrics/Genius focus. Topics: youtube-music, music-player, macos, windows, rust, swiftui, tauri, svelte; API state verified.
 - Native screenshot selection remains optional/pending: inspected existing QA/bug images, none appropriate as current public app screenshots. Directory and insertion point prepared without broken image links or published account data.
 - Published in source commit45a47d3 on main. Public GitHub page checked in a background browser: centered rounded icon/header, introduction, features, download table, backend and acknowledgments render; GitHub recognizes the root GPL license. Screenshot evidence saved locally at windows/.cache/release-tools/public-readme.png (ignored). Internal guide compared against the previous README: preserved exactly apart from heading/introduction and relocated links. No app/core edits or new build.
+
+## Screenshot gallery — 2026-10-19
+
+FIX-226 completes the optional screenshot work from FIX-154 at the owner’s request. Six original PNG captures (3248×2122, unchanged bytes) show Home/sidebar, fullscreen/queue, synced lyrics, Genius annotations, album details and Home with the sidebar collapsed. All are explicitly labeled macOS; the README retains its English voice and adds a Screenshots jump link. Source app/core and release 1.2.6 are unaffected. Local links, GFM rendering and the final public page/image delivery are checked before closing publication.

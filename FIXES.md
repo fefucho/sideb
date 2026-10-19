@@ -4,9 +4,22 @@ Memoria de cambios de Side B para investigar problemas y regresiones. Buscar aqu
 
 Tags de ámbito: `[Apple]`, `[Windows]`, `[Compartido]`. Core y herramientas comunes usan Compartido, detallando el componente. El tag indica dónde se hizo el cambio; no demuestra que ambas plataformas hayan sido verificadas. Estados, fechas, componentes y relaciones se conservan dentro de cada entrada.
 
-Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-226**. Se conservaron los FIX/FEAT históricos. Dos números antiguos repetidos se distinguen como `FIX-027-2` y `FIX-028-2`, anotando el ID original; al citar FIX-027/028 comprobar título y entrada exacta.
+Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-227**. Se conservaron los FIX/FEAT históricos. Dos números antiguos repetidos se distinguen como `FIX-027-2` y `FIX-028-2`, anotando el ID original; al citar FIX-027/028 comprobar título y entrada exacta.
 
 ## Cambios recientes
+
+<a id="fix-226"></a>
+
+### [FIX-226] [Compartido] - Capturas nativas con descripciones en la página de GitHub
+
+- Fecha: 2026-10-19 (America/Montevideo).
+- Componente / estado: README público y galería documental; preparada para publicar por pedido explícito del usuario.
+- Problema / causa: FIX-154 dejó un punto de inserción sin imágenes hasta contar con capturas actuales. El usuario aporta seis PNG y pide subirlos con descripciones visibles en GitHub.
+- Cambio / motivo: galería de seis vistas, acceso Screenshots en la navegación del README, descripciones y alt text en inglés coherentes con el documento. Inicio/sidebar, fullscreen/cola, letras sincronizadas, Genius, detalle de álbum e Inicio expandido. Se identifica macOS en cada entrada y se enlaza cada imagen a resolución completa.
+- Archivos: README.md, docs/screenshots/README.md y seis PNG con nombres descriptivos, plans/PLAN-004-public-readme.md e índice; FIXES.md.
+- Verificación / límites: las seis capturas fueron inspeccionadas visualmente y copiadas byte por byte, 3248×2122; enlaces locales, render GFM y publicación pública por verificar. No se requieren pruebas ni builds de las apps para documentación. Las capturas provienen del usuario y no certifican rendimiento, audio o UI Windows.
+- Antecedentes / paridad: completa las capturas pendientes de FIX-154 y conserva FIX-155. No requiere port: cambia la presentación pública compartida, sin tocar apps/core/versiones/releases; la galería se rotula macOS y no cierra paridad Windows.
+- Plan / Git: [PLAN-004](plans/PLAN-004-public-readme.md); push a main autorizado con el pedido de subir las capturas.
 
 <a id="fix-225"></a>
 
