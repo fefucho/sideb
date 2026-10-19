@@ -4,8 +4,8 @@ Herramientas compartidas o fixes para ambas plataformas. [Formato](../.agents/WO
 
 | Plan | Estado |
 |---|---|
-| [Release 1.2.6](RELEASE-1.2.6.md) | Sidebar y Apariencia compartidas sobre GitHub actualizado; FIX-224/225, validación/publicación pendientes |
-| [Entrega de sidebar](PLAN-010-sidebar-delivery.md) | Recuperación local, preferencias lista/cuadrícula/fondo y preservación de las correcciones remotas; PAR-036 |
+| [Release 1.2.6](RELEASE-1.2.6.md) | Publicada Latest 1.2.6/build 19: sidebar y Apariencia en ambas apps sobre GitHub actualizado; FIX-224/225, CI completo/1557 pruebas ejecutadas y cinco descargas públicas verificadas |
+| [Entrega de sidebar](PLAN-010-sidebar-delivery.md) | Entregada en 1.2.6: lista/cuadrícula/fondo, opciones sincronizadas, core y correcciones remotas preservados; ambos binarios públicos contienen la UI, PAR-036 |
 | [Release 1.2.5](RELEASE-1.2.5.md) | Publicada Latest 1.2.5/build 18: FIX-221/222/223, botones y respuesta de cuenta Windows; builds nativos Mac/Windows, cinco descargas públicas y hashes verificados; cuenta/instalación física pendientes |
 | [Release 1.2.4](RELEASE-1.2.4.md) | FIX-213/214 confirmado por el usuario; FIX-215 publicada Latest1.2.4/build17, cuatro jobs CI aprobados y cinco descargas públicas/checksums verificados |
 | [Release 1.2.3](RELEASE-1.2.3.md) | FIX-211/212; Latest publicada1.2.3/build16, CI completo aprobado (761Mac/764Windows), cinco descargas públicas/checksums y frontend del EXE verificados; entrada física nueva pendiente |

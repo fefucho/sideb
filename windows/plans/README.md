@@ -1,6 +1,6 @@
 # Planes Windows
 
-- [Sidebar y Apariencia: entrega compartida](../../plans/PLAN-010-sidebar-delivery.md) — FIX-224/225, nueva sidebar y opciones sincronizadas, base GitHub 23f1df5; comprobaciones/publicación 1.2.6 pendientes. PAR-036.
+- [Sidebar y Apariencia: entrega compartida](../../plans/PLAN-010-sidebar-delivery.md) — FIX-224/225 publicada Latest 1.2.6/build 19 sobre GitHub 23f1df5; nueva sidebar y opciones sincronizadas, 764 pruebas Mac/793 Windows y cinco descargas públicas verificadas. PAR-036; aceptación física pendiente.
 
 - [PLAN-012: Respuesta de Like y biblioteca](PLAN-012-action-feedback.md) — FIX-222 publicada en 1.2.5/build 18 mediante FIX-223: optimismo/rollback, red concurrente y acciones acotadas a 15 s. Verify/build Windows, 397 frontend y 97 Tauri aprobados, incluidos los cuatro tests del guard; paquetes/hashes comprobados. Cuenta real/WebView2 interactivo pendientes. PAR-035.
 
