@@ -4,6 +4,7 @@ Herramientas compartidas o fixes para ambas plataformas. [Formato](../.agents/WO
 
 | Plan | Estado |
 |---|---|
+| [Privacidad de GitHub y cachés](PLAN-011-github-privacy.md) | FIX-227: historial y exclusión preparados; protecciones activadas, publicación/verificación final pendientes |
 | [Release 1.2.6](RELEASE-1.2.6.md) | Publicada Latest 1.2.6/build 19: sidebar y Apariencia en ambas apps sobre GitHub actualizado; FIX-224/225, CI completo/1557 pruebas ejecutadas y cinco descargas públicas verificadas |
 | [Entrega de sidebar](PLAN-010-sidebar-delivery.md) | Entregada en 1.2.6: lista/cuadrícula/fondo, opciones sincronizadas, core y correcciones remotas preservados; ambos binarios públicos contienen la UI, PAR-036 |
 | [Release 1.2.5](RELEASE-1.2.5.md) | Publicada Latest 1.2.5/build 18: FIX-221/222/223, botones y respuesta de cuenta Windows; builds nativos Mac/Windows, cinco descargas públicas y hashes verificados; cuenta/instalación física pendientes |

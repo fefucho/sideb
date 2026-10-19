@@ -4,9 +4,22 @@ Memoria de cambios de Side B para investigar problemas y regresiones. Buscar aqu
 
 Tags de ámbito: `[Apple]`, `[Windows]`, `[Compartido]`. Core y herramientas comunes usan Compartido, detallando el componente. El tag indica dónde se hizo el cambio; no demuestra que ambas plataformas hayan sido verificadas. Estados, fechas, componentes y relaciones se conservan dentro de cada entrada.
 
-Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-227**. Se conservaron los FIX/FEAT históricos. Dos números antiguos repetidos se distinguen como `FIX-027-2` y `FIX-028-2`, anotando el ID original; al citar FIX-027/028 comprobar título y entrada exacta.
+Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-228**. Se conservaron los FIX/FEAT históricos. Dos números antiguos repetidos se distinguen como `FIX-027-2` y `FIX-028-2`, anotando el ID original; al citar FIX-027/028 comprobar título y entrada exacta.
 
 ## Cambios recientes
+
+<a id="fix-227"></a>
+
+### [FIX-227] [Compartido] - Correo privado de autoría, caché excluida y protección de secretos
+
+- Fecha: 2026-10-19 (America/Montevideo).
+- Componente / tipo / estado: historial Git y configuración de publicación; privacidad, implementado y validado localmente; verificación remota de publicación pendiente.
+- Problema / causa: un Gmail personal permanecía en 27 commits públicos; la caché de investigación de la raíz podía agregarse accidentalmente y GitHub tenía desactivadas detección y protección al subir secretos.
+- Cambio / motivo: reemplazar ese correo por el noreply de la misma cuenta en autoría/committer/tagger, con respaldo externo previo; excluir `/.cache/` y habilitar/releer ambas protecciones de GitHub. No se borra la caché del disco ni se retoca contenido de la app, capturas o documentación histórica ajena al cierre.
+- Verificación: igualdad exacta de árboles de los 103 commits públicos y veinte tags, conservación de nombres/fechas/mensajes/topología; 54 campos de autor/committer sustituidos. Las dos firmas de commits anteriores quedan invalidadas por el cambio de identidad y se retiran al reescribir. Security API confirma ambos estados enabled, sin alertas al consultar; publicación con leases y comprobaciones finales pendientes.
+- Archivos: `.gitignore`, `FIXES.md`, `plans/README.md`, [PLAN-011](plans/PLAN-011-github-privacy.md); metadatos Git y configuración del repositorio en GitHub.
+- Antecedentes / límites: completa higiene de FIX-130; backups fuera de Git. No afirma purga de referencias de PR cerrados, objetos por SHA, Actions antiguos ni otros clones. No hay build nueva y se conservan binarios/assets de releases.
+- Paridad: no requiere port ni nueva fila: reglas de publicación compartidas, sin cambios de comportamiento en Apple, Windows o core.
 
 <a id="fix-226"></a>
 

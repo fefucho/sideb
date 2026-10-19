@@ -33,6 +33,9 @@ Updates/
 *.tmp
 *.log
 
+# Caché local de investigación y diagnósticos
+/.cache/
+
 # Windows tooling and local work
 /scratch/
 **/node_modules/
