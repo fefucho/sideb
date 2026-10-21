@@ -22,7 +22,11 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": "media-src 'self' asset: http://asset.localhost",
+      "assetProtocol": {
+        "enable": true,
+        "scope": ["$APPCACHE/AnimatedArtwork/**"]
+      }
     }
   },
   "bundle": {

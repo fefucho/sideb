@@ -540,7 +540,14 @@ public protocol SideBCoreProtocol : AnyObject {
      */
     func applySongLibraryAction(token: String) async throws 
     
+    func cancelAnimatedArtwork(requestId: String) 
+    
     func chooseGenius(track: GeniusTrackRecord, songId: Int64) async throws  -> GeniusResolutionRecord
+    
+    /**
+     * Players release their leases before clearing. Any remaining lease is preserved.
+     */
+    func clearAnimatedArtworkCache(cacheDir: String) async throws  -> UInt64
     
     func clearGeniusChoice(track: GeniusTrackRecord) 
     
@@ -572,6 +579,8 @@ public protocol SideBCoreProtocol : AnyObject {
      * Album page by browse ID.
      */
     func getAlbumJson(browseId: String) async throws  -> String
+    
+    func getAnimatedArtworkCacheSize(cacheDir: String) async throws  -> UInt64
     
     /**
      * Fetch artist detail, top songs, and carousels by browseId (e.g. "UC...").
@@ -641,6 +650,12 @@ public protocol SideBCoreProtocol : AnyObject {
      * Fetch YouTube Music Home Page as typed sections.
      */
     func getHomeSections() async throws  -> [HomeSectionRecord]
+    
+    /**
+     * Opt-in karaoke lookup with detailed timing and a separate, refreshable cache.
+     * The classic get_lyrics contract and cache are never replaced by this method.
+     */
+    func getKaraokeLyrics(videoId: String, title: String, artist: String, album: String?, durationSecs: UInt64?, forceRefresh: Bool) async throws  -> KaraokeLyricsInfo?
     
     /**
      * Fetch user's saved library albums.
@@ -741,6 +756,12 @@ public protocol SideBCoreProtocol : AnyObject {
      * Pin an item in SQLite for quick access.
      */
     func pinItem(id: String, kind: String, title: String, subtitle: String?, thumbnail: String?) throws 
+    
+    /**
+     * Optional public album artwork; never part of the audio or lyrics request path.
+     * The shell retains request_id until its native player releases the local file.
+     */
+    func prepareAnimatedArtwork(request: AnimatedArtworkRequest, requestId: String, cacheDir: String) async throws  -> AnimatedArtworkAsset?
     
     /**
      * Rate song (LIKE, DISLIKE, INDIFFERENT).
@@ -929,6 +950,13 @@ open func applySongLibraryAction(token: String)async throws  {
         )
 }
     
+open func cancelAnimatedArtwork(requestId: String) {try! rustCall() {
+    uniffi_sideb_core_fn_method_sidebcore_cancel_animated_artwork(self.uniffiClonePointer(),
+        FfiConverterString.lower(requestId),$0
+    )
+}
+}
+    
 open func chooseGenius(track: GeniusTrackRecord, songId: Int64)async throws  -> GeniusResolutionRecord {
     return
         try  await uniffiRustCallAsync(
@@ -942,6 +970,26 @@ open func chooseGenius(track: GeniusTrackRecord, songId: Int64)async throws  -> 
             completeFunc: ffi_sideb_core_rust_future_complete_rust_buffer,
             freeFunc: ffi_sideb_core_rust_future_free_rust_buffer,
             liftFunc: FfiConverterTypeGeniusResolutionRecord.lift,
+            errorHandler: FfiConverterTypeSideBError.lift
+        )
+}
+    
+    /**
+     * Players release their leases before clearing. Any remaining lease is preserved.
+     */
+open func clearAnimatedArtworkCache(cacheDir: String)async throws  -> UInt64 {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_sideb_core_fn_method_sidebcore_clear_animated_artwork_cache(
+                    self.uniffiClonePointer(),
+                    FfiConverterString.lower(cacheDir)
+                )
+            },
+            pollFunc: ffi_sideb_core_rust_future_poll_u64,
+            completeFunc: ffi_sideb_core_rust_future_complete_u64,
+            freeFunc: ffi_sideb_core_rust_future_free_u64,
+            liftFunc: FfiConverterUInt64.lift,
             errorHandler: FfiConverterTypeSideBError.lift
         )
 }
@@ -1083,6 +1131,23 @@ open func getAlbumJson(browseId: String)async throws  -> String {
             completeFunc: ffi_sideb_core_rust_future_complete_rust_buffer,
             freeFunc: ffi_sideb_core_rust_future_free_rust_buffer,
             liftFunc: FfiConverterString.lift,
+            errorHandler: FfiConverterTypeSideBError.lift
+        )
+}
+    
+open func getAnimatedArtworkCacheSize(cacheDir: String)async throws  -> UInt64 {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_sideb_core_fn_method_sidebcore_get_animated_artwork_cache_size(
+                    self.uniffiClonePointer(),
+                    FfiConverterString.lower(cacheDir)
+                )
+            },
+            pollFunc: ffi_sideb_core_rust_future_poll_u64,
+            completeFunc: ffi_sideb_core_rust_future_complete_u64,
+            freeFunc: ffi_sideb_core_rust_future_free_u64,
+            liftFunc: FfiConverterUInt64.lift,
             errorHandler: FfiConverterTypeSideBError.lift
         )
 }
@@ -1390,6 +1455,27 @@ open func getHomeSections()async throws  -> [HomeSectionRecord] {
             completeFunc: ffi_sideb_core_rust_future_complete_rust_buffer,
             freeFunc: ffi_sideb_core_rust_future_free_rust_buffer,
             liftFunc: FfiConverterSequenceTypeHomeSectionRecord.lift,
+            errorHandler: FfiConverterTypeSideBError.lift
+        )
+}
+    
+    /**
+     * Opt-in karaoke lookup with detailed timing and a separate, refreshable cache.
+     * The classic get_lyrics contract and cache are never replaced by this method.
+     */
+open func getKaraokeLyrics(videoId: String, title: String, artist: String, album: String?, durationSecs: UInt64?, forceRefresh: Bool)async throws  -> KaraokeLyricsInfo? {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_sideb_core_fn_method_sidebcore_get_karaoke_lyrics(
+                    self.uniffiClonePointer(),
+                    FfiConverterString.lower(videoId),FfiConverterString.lower(title),FfiConverterString.lower(artist),FfiConverterOptionString.lower(album),FfiConverterOptionUInt64.lower(durationSecs),FfiConverterBool.lower(forceRefresh)
+                )
+            },
+            pollFunc: ffi_sideb_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_sideb_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_sideb_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterOptionTypeKaraokeLyricsInfo.lift,
             errorHandler: FfiConverterTypeSideBError.lift
         )
 }
@@ -1763,6 +1849,27 @@ open func pinItem(id: String, kind: String, title: String, subtitle: String?, th
         FfiConverterOptionString.lower(thumbnail),$0
     )
 }
+}
+    
+    /**
+     * Optional public album artwork; never part of the audio or lyrics request path.
+     * The shell retains request_id until its native player releases the local file.
+     */
+open func prepareAnimatedArtwork(request: AnimatedArtworkRequest, requestId: String, cacheDir: String)async throws  -> AnimatedArtworkAsset? {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_sideb_core_fn_method_sidebcore_prepare_animated_artwork(
+                    self.uniffiClonePointer(),
+                    FfiConverterTypeAnimatedArtworkRequest.lower(request),FfiConverterString.lower(requestId),FfiConverterString.lower(cacheDir)
+                )
+            },
+            pollFunc: ffi_sideb_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_sideb_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_sideb_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterOptionTypeAnimatedArtworkAsset.lift,
+            errorHandler: FfiConverterTypeSideBError.lift
+        )
 }
     
     /**
@@ -2408,6 +2515,226 @@ public func FfiConverterTypeAlbumDetailRecord_lift(_ buf: RustBuffer) throws -> 
 #endif
 public func FfiConverterTypeAlbumDetailRecord_lower(_ value: AlbumDetailRecord) -> RustBuffer {
     return FfiConverterTypeAlbumDetailRecord.lower(value)
+}
+
+
+public struct AnimatedArtworkAsset {
+    public var assetId: String
+    public var localPath: String
+    public var codec: String
+    public var width: UInt32
+    public var height: UInt32
+    public var frameRate: Double
+    public var sizeBytes: UInt64
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(assetId: String, localPath: String, codec: String, width: UInt32, height: UInt32, frameRate: Double, sizeBytes: UInt64) {
+        self.assetId = assetId
+        self.localPath = localPath
+        self.codec = codec
+        self.width = width
+        self.height = height
+        self.frameRate = frameRate
+        self.sizeBytes = sizeBytes
+    }
+}
+
+
+
+extension AnimatedArtworkAsset: Equatable, Hashable {
+    public static func ==(lhs: AnimatedArtworkAsset, rhs: AnimatedArtworkAsset) -> Bool {
+        if lhs.assetId != rhs.assetId {
+            return false
+        }
+        if lhs.localPath != rhs.localPath {
+            return false
+        }
+        if lhs.codec != rhs.codec {
+            return false
+        }
+        if lhs.width != rhs.width {
+            return false
+        }
+        if lhs.height != rhs.height {
+            return false
+        }
+        if lhs.frameRate != rhs.frameRate {
+            return false
+        }
+        if lhs.sizeBytes != rhs.sizeBytes {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(assetId)
+        hasher.combine(localPath)
+        hasher.combine(codec)
+        hasher.combine(width)
+        hasher.combine(height)
+        hasher.combine(frameRate)
+        hasher.combine(sizeBytes)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAnimatedArtworkAsset: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AnimatedArtworkAsset {
+        return
+            try AnimatedArtworkAsset(
+                assetId: FfiConverterString.read(from: &buf), 
+                localPath: FfiConverterString.read(from: &buf), 
+                codec: FfiConverterString.read(from: &buf), 
+                width: FfiConverterUInt32.read(from: &buf), 
+                height: FfiConverterUInt32.read(from: &buf), 
+                frameRate: FfiConverterDouble.read(from: &buf), 
+                sizeBytes: FfiConverterUInt64.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: AnimatedArtworkAsset, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.assetId, into: &buf)
+        FfiConverterString.write(value.localPath, into: &buf)
+        FfiConverterString.write(value.codec, into: &buf)
+        FfiConverterUInt32.write(value.width, into: &buf)
+        FfiConverterUInt32.write(value.height, into: &buf)
+        FfiConverterDouble.write(value.frameRate, into: &buf)
+        FfiConverterUInt64.write(value.sizeBytes, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAnimatedArtworkAsset_lift(_ buf: RustBuffer) throws -> AnimatedArtworkAsset {
+    return try FfiConverterTypeAnimatedArtworkAsset.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAnimatedArtworkAsset_lower(_ value: AnimatedArtworkAsset) -> RustBuffer {
+    return FfiConverterTypeAnimatedArtworkAsset.lower(value)
+}
+
+
+public struct AnimatedArtworkRequest {
+    public var videoId: String
+    public var title: String
+    public var artists: String
+    public var album: String?
+    public var albumId: String?
+    public var durationSecs: UInt64?
+    public var storefront: String
+    public var preferHevc: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(videoId: String, title: String, artists: String, album: String?, albumId: String?, durationSecs: UInt64?, storefront: String, preferHevc: Bool) {
+        self.videoId = videoId
+        self.title = title
+        self.artists = artists
+        self.album = album
+        self.albumId = albumId
+        self.durationSecs = durationSecs
+        self.storefront = storefront
+        self.preferHevc = preferHevc
+    }
+}
+
+
+
+extension AnimatedArtworkRequest: Equatable, Hashable {
+    public static func ==(lhs: AnimatedArtworkRequest, rhs: AnimatedArtworkRequest) -> Bool {
+        if lhs.videoId != rhs.videoId {
+            return false
+        }
+        if lhs.title != rhs.title {
+            return false
+        }
+        if lhs.artists != rhs.artists {
+            return false
+        }
+        if lhs.album != rhs.album {
+            return false
+        }
+        if lhs.albumId != rhs.albumId {
+            return false
+        }
+        if lhs.durationSecs != rhs.durationSecs {
+            return false
+        }
+        if lhs.storefront != rhs.storefront {
+            return false
+        }
+        if lhs.preferHevc != rhs.preferHevc {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(videoId)
+        hasher.combine(title)
+        hasher.combine(artists)
+        hasher.combine(album)
+        hasher.combine(albumId)
+        hasher.combine(durationSecs)
+        hasher.combine(storefront)
+        hasher.combine(preferHevc)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAnimatedArtworkRequest: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AnimatedArtworkRequest {
+        return
+            try AnimatedArtworkRequest(
+                videoId: FfiConverterString.read(from: &buf), 
+                title: FfiConverterString.read(from: &buf), 
+                artists: FfiConverterString.read(from: &buf), 
+                album: FfiConverterOptionString.read(from: &buf), 
+                albumId: FfiConverterOptionString.read(from: &buf), 
+                durationSecs: FfiConverterOptionUInt64.read(from: &buf), 
+                storefront: FfiConverterString.read(from: &buf), 
+                preferHevc: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: AnimatedArtworkRequest, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.videoId, into: &buf)
+        FfiConverterString.write(value.title, into: &buf)
+        FfiConverterString.write(value.artists, into: &buf)
+        FfiConverterOptionString.write(value.album, into: &buf)
+        FfiConverterOptionString.write(value.albumId, into: &buf)
+        FfiConverterOptionUInt64.write(value.durationSecs, into: &buf)
+        FfiConverterString.write(value.storefront, into: &buf)
+        FfiConverterBool.write(value.preferHevc, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAnimatedArtworkRequest_lift(_ buf: RustBuffer) throws -> AnimatedArtworkRequest {
+    return try FfiConverterTypeAnimatedArtworkRequest.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAnimatedArtworkRequest_lower(_ value: AnimatedArtworkRequest) -> RustBuffer {
+    return FfiConverterTypeAnimatedArtworkRequest.lower(value)
 }
 
 
@@ -4428,6 +4755,287 @@ public func FfiConverterTypeHomeSectionRecord_lower(_ value: HomeSectionRecord) 
 }
 
 
+public struct KaraokeLineInfo {
+    public var timeMs: UInt64?
+    public var endTimeMs: UInt64?
+    public var text: String
+    public var words: [KaraokeWordInfo]
+    public var translation: String?
+    public var role: String?
+    public var agent: String?
+    public var groupId: String?
+    public var section: String?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(timeMs: UInt64?, endTimeMs: UInt64?, text: String, words: [KaraokeWordInfo], translation: String?, role: String?, agent: String?, groupId: String?, section: String?) {
+        self.timeMs = timeMs
+        self.endTimeMs = endTimeMs
+        self.text = text
+        self.words = words
+        self.translation = translation
+        self.role = role
+        self.agent = agent
+        self.groupId = groupId
+        self.section = section
+    }
+}
+
+
+
+extension KaraokeLineInfo: Equatable, Hashable {
+    public static func ==(lhs: KaraokeLineInfo, rhs: KaraokeLineInfo) -> Bool {
+        if lhs.timeMs != rhs.timeMs {
+            return false
+        }
+        if lhs.endTimeMs != rhs.endTimeMs {
+            return false
+        }
+        if lhs.text != rhs.text {
+            return false
+        }
+        if lhs.words != rhs.words {
+            return false
+        }
+        if lhs.translation != rhs.translation {
+            return false
+        }
+        if lhs.role != rhs.role {
+            return false
+        }
+        if lhs.agent != rhs.agent {
+            return false
+        }
+        if lhs.groupId != rhs.groupId {
+            return false
+        }
+        if lhs.section != rhs.section {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(timeMs)
+        hasher.combine(endTimeMs)
+        hasher.combine(text)
+        hasher.combine(words)
+        hasher.combine(translation)
+        hasher.combine(role)
+        hasher.combine(agent)
+        hasher.combine(groupId)
+        hasher.combine(section)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeKaraokeLineInfo: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> KaraokeLineInfo {
+        return
+            try KaraokeLineInfo(
+                timeMs: FfiConverterOptionUInt64.read(from: &buf), 
+                endTimeMs: FfiConverterOptionUInt64.read(from: &buf), 
+                text: FfiConverterString.read(from: &buf), 
+                words: FfiConverterSequenceTypeKaraokeWordInfo.read(from: &buf), 
+                translation: FfiConverterOptionString.read(from: &buf), 
+                role: FfiConverterOptionString.read(from: &buf), 
+                agent: FfiConverterOptionString.read(from: &buf), 
+                groupId: FfiConverterOptionString.read(from: &buf), 
+                section: FfiConverterOptionString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: KaraokeLineInfo, into buf: inout [UInt8]) {
+        FfiConverterOptionUInt64.write(value.timeMs, into: &buf)
+        FfiConverterOptionUInt64.write(value.endTimeMs, into: &buf)
+        FfiConverterString.write(value.text, into: &buf)
+        FfiConverterSequenceTypeKaraokeWordInfo.write(value.words, into: &buf)
+        FfiConverterOptionString.write(value.translation, into: &buf)
+        FfiConverterOptionString.write(value.role, into: &buf)
+        FfiConverterOptionString.write(value.agent, into: &buf)
+        FfiConverterOptionString.write(value.groupId, into: &buf)
+        FfiConverterOptionString.write(value.section, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeKaraokeLineInfo_lift(_ buf: RustBuffer) throws -> KaraokeLineInfo {
+    return try FfiConverterTypeKaraokeLineInfo.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeKaraokeLineInfo_lower(_ value: KaraokeLineInfo) -> RustBuffer {
+    return FfiConverterTypeKaraokeLineInfo.lower(value)
+}
+
+
+public struct KaraokeLyricsInfo {
+    public var provider: String
+    public var isSynced: Bool
+    public var instrumental: Bool
+    public var lines: [KaraokeLineInfo]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(provider: String, isSynced: Bool, instrumental: Bool, lines: [KaraokeLineInfo]) {
+        self.provider = provider
+        self.isSynced = isSynced
+        self.instrumental = instrumental
+        self.lines = lines
+    }
+}
+
+
+
+extension KaraokeLyricsInfo: Equatable, Hashable {
+    public static func ==(lhs: KaraokeLyricsInfo, rhs: KaraokeLyricsInfo) -> Bool {
+        if lhs.provider != rhs.provider {
+            return false
+        }
+        if lhs.isSynced != rhs.isSynced {
+            return false
+        }
+        if lhs.instrumental != rhs.instrumental {
+            return false
+        }
+        if lhs.lines != rhs.lines {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(provider)
+        hasher.combine(isSynced)
+        hasher.combine(instrumental)
+        hasher.combine(lines)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeKaraokeLyricsInfo: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> KaraokeLyricsInfo {
+        return
+            try KaraokeLyricsInfo(
+                provider: FfiConverterString.read(from: &buf), 
+                isSynced: FfiConverterBool.read(from: &buf), 
+                instrumental: FfiConverterBool.read(from: &buf), 
+                lines: FfiConverterSequenceTypeKaraokeLineInfo.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: KaraokeLyricsInfo, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.provider, into: &buf)
+        FfiConverterBool.write(value.isSynced, into: &buf)
+        FfiConverterBool.write(value.instrumental, into: &buf)
+        FfiConverterSequenceTypeKaraokeLineInfo.write(value.lines, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeKaraokeLyricsInfo_lift(_ buf: RustBuffer) throws -> KaraokeLyricsInfo {
+    return try FfiConverterTypeKaraokeLyricsInfo.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeKaraokeLyricsInfo_lower(_ value: KaraokeLyricsInfo) -> RustBuffer {
+    return FfiConverterTypeKaraokeLyricsInfo.lower(value)
+}
+
+
+/**
+ * Detailed lyrics are additive: classic clients keep the original line-only records.
+ */
+public struct KaraokeWordInfo {
+    public var text: String
+    public var startMs: UInt64
+    public var endMs: UInt64
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(text: String, startMs: UInt64, endMs: UInt64) {
+        self.text = text
+        self.startMs = startMs
+        self.endMs = endMs
+    }
+}
+
+
+
+extension KaraokeWordInfo: Equatable, Hashable {
+    public static func ==(lhs: KaraokeWordInfo, rhs: KaraokeWordInfo) -> Bool {
+        if lhs.text != rhs.text {
+            return false
+        }
+        if lhs.startMs != rhs.startMs {
+            return false
+        }
+        if lhs.endMs != rhs.endMs {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(text)
+        hasher.combine(startMs)
+        hasher.combine(endMs)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeKaraokeWordInfo: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> KaraokeWordInfo {
+        return
+            try KaraokeWordInfo(
+                text: FfiConverterString.read(from: &buf), 
+                startMs: FfiConverterUInt64.read(from: &buf), 
+                endMs: FfiConverterUInt64.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: KaraokeWordInfo, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.text, into: &buf)
+        FfiConverterUInt64.write(value.startMs, into: &buf)
+        FfiConverterUInt64.write(value.endMs, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeKaraokeWordInfo_lift(_ buf: RustBuffer) throws -> KaraokeWordInfo {
+    return try FfiConverterTypeKaraokeWordInfo.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeKaraokeWordInfo_lower(_ value: KaraokeWordInfo) -> RustBuffer {
+    return FfiConverterTypeKaraokeWordInfo.lower(value)
+}
+
+
 public struct LibraryToggleRecord {
     public var inLibrary: Bool
     public var addToken: String?
@@ -6065,6 +6673,30 @@ fileprivate struct FfiConverterOptionString: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypeAnimatedArtworkAsset: FfiConverterRustBuffer {
+    typealias SwiftType = AnimatedArtworkAsset?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeAnimatedArtworkAsset.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeAnimatedArtworkAsset.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionTypeGeniusAnnotationsRecord: FfiConverterRustBuffer {
     typealias SwiftType = GeniusAnnotationsRecord?
 
@@ -6153,6 +6785,30 @@ fileprivate struct FfiConverterOptionTypeGeniusSongRecord: FfiConverterRustBuffe
         switch try readInt(&buf) as Int8 {
         case 0: return nil
         case 1: return try FfiConverterTypeGeniusSongRecord.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeKaraokeLyricsInfo: FfiConverterRustBuffer {
+    typealias SwiftType = KaraokeLyricsInfo?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeKaraokeLyricsInfo.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeKaraokeLyricsInfo.read(from: &buf)
         default: throw UniffiInternalError.unexpectedOptionalTag
         }
     }
@@ -6633,6 +7289,56 @@ fileprivate struct FfiConverterSequenceTypeHomeSectionRecord: FfiConverterRustBu
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeKaraokeLineInfo: FfiConverterRustBuffer {
+    typealias SwiftType = [KaraokeLineInfo]
+
+    public static func write(_ value: [KaraokeLineInfo], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeKaraokeLineInfo.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [KaraokeLineInfo] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [KaraokeLineInfo]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeKaraokeLineInfo.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeKaraokeWordInfo: FfiConverterRustBuffer {
+    typealias SwiftType = [KaraokeWordInfo]
+
+    public static func write(_ value: [KaraokeWordInfo], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeKaraokeWordInfo.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [KaraokeWordInfo] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [KaraokeWordInfo]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeKaraokeWordInfo.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeLyricLineInfo: FfiConverterRustBuffer {
     typealias SwiftType = [LyricLineInfo]
 
@@ -6773,7 +7479,13 @@ private let initializationResult: InitializationResult = {
     if (uniffi_sideb_core_checksum_method_sidebcore_apply_song_library_action() != 10220) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_sideb_core_checksum_method_sidebcore_cancel_animated_artwork() != 50775) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_sideb_core_checksum_method_sidebcore_choose_genius() != 51171) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_sideb_core_checksum_method_sidebcore_clear_animated_artwork_cache() != 23891) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_sideb_core_checksum_method_sidebcore_clear_genius_choice() != 58473) {
@@ -6798,6 +7510,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_sideb_core_checksum_method_sidebcore_get_album_json() != 30396) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_sideb_core_checksum_method_sidebcore_get_animated_artwork_cache_size() != 56879) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_sideb_core_checksum_method_sidebcore_get_artist() != 31516) {
@@ -6849,6 +7564,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_sideb_core_checksum_method_sidebcore_get_home_sections() != 15105) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_sideb_core_checksum_method_sidebcore_get_karaoke_lyrics() != 55894) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_sideb_core_checksum_method_sidebcore_get_library_albums() != 4232) {
@@ -6912,6 +7630,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_sideb_core_checksum_method_sidebcore_pin_item() != 25725) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_sideb_core_checksum_method_sidebcore_prepare_animated_artwork() != 41957) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_sideb_core_checksum_method_sidebcore_rate_song() != 25083) {

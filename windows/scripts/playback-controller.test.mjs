@@ -560,10 +560,12 @@ test('audio ACK merges confirmed volume without replacing interleaved full-state
 });
 
 test('late unrelated command snapshot cannot rewind accepted audio in the same generation', async () => {
-  const { player, calls } = audioHarness(); await player.connect();
-  const seeking = player.seek(8), volume = player.setVolume(55);
-  calls[1].resolve(state(4, { volume: 55 })); await volume;
-  calls[0].resolve(state(4, { volume: 42.3, position: 8 })); await seeking;
+  const initial=state(4,{volume:42.3,currentTrack:song('a'),queue:{items:[{...song('a'),entryId:'a'}],currentIndex:0}});
+  const { player, calls } = audioHarness(initial); await player.connect();
+  const seeking = player.seek(8); await Promise.resolve();
+  const volume = player.setVolume(55);
+  calls.find(c=>c.command==='set_playback_volume').resolve({...initial,volume:55}); await volume;
+  calls.find(c=>c.command==='seek_playback_identified').resolve({...initial,volume:42.3,position:8}); await seeking;
   assert.equal(player.snapshot.state.position, 8);
   assert.equal(player.snapshot.confirmedVolume, 55);
   assert.equal(player.snapshot.state.volume, 55);
@@ -697,4 +699,27 @@ test('input queued between the last ACK and drain completion still flushes its f
   assert.equal(calls[1].args.volume, 44);
   calls[1].resolve(state(4, { volume: 44 })); await pending;
   assert.equal(player.snapshot.confirmedVolume, 44);
+});
+
+test('identified lyric seeks coalesce unsent cues and preserve observed audio while pending',async()=>{
+ const initial=state(4,{authGeneration:7,currentTrack:song('same'),position:3,seekRevision:1,seekPending:null,queue:{items:[{...song('same'),entryId:'one'}],currentIndex:0}});
+ const {player,calls,listeners}=audioHarness(initial);await player.connect();
+ const first=player.seek(30),last=player.seek(80);await new Promise(resolve=>setTimeout(resolve,0));
+ assert.equal(calls.length,1);assert.deepEqual(calls[0].args,{seconds:80,expectedGeneration:4,expectedAuthGeneration:7,expectedEntryId:'one'});
+ calls[0].resolve({...initial,seekRevision:2,seekPending:80});await Promise.all([first,last]);
+ assert.equal(player.snapshot.state.position,3);assert.equal(player.snapshot.state.seekPending,80);
+ listeners.get('playback-progress')({payload:{position:30,duration:200,generation:4,seekRevision:1}});
+ assert.equal(player.snapshot.state.position,3);
+ listeners.get('playback-state-changed')({payload:{...initial,position:80.03,seekRevision:3,seekPending:null}});
+ assert.equal(player.snapshot.state.position,80.03);assert.equal(player.snapshot.state.seekPending,null);
+ listeners.get('playback-state-changed')({payload:{...initial,position:3,seekRevision:2,seekPending:80}});
+ assert.equal(player.snapshot.state.position,80.03);assert.equal(player.snapshot.state.seekPending,null);
+});
+
+test('queued seek for an old occurrence never reaches the replacement track',async()=>{
+ const initial=state(4,{authGeneration:2,currentTrack:song('same'),queue:{items:[{...song('same'),entryId:'one'}],currentIndex:0}});
+ const {player,calls,listeners}=audioHarness(initial);await player.connect();
+ const pending=player.seek(30);
+ listeners.get('playback-state-changed')({payload:{...initial,generation:5,queue:{...initial.queue,items:[{...song('same'),entryId:'two'}]}}});
+ await pending;assert.equal(calls.length,0);
 });

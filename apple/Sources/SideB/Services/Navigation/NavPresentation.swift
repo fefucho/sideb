@@ -25,6 +25,6 @@ enum NavPresentation {
     }
 
     static func animation(reduceMotion: Bool) -> Animation {
-        reduceMotion ? .easeOut(duration: 0.15) : .smooth(duration: 0.42, extraBounce: 0)
+        reduceMotion ? .easeOut(duration: 0.15) : .timingCurve(0.25, 1, 0.5, 1, duration: 0.42)
     }
 }

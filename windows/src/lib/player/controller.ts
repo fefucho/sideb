@@ -101,6 +101,7 @@ export class PlaybackController {
   private audioLastSent = -Infinity;
   private audioWake: (() => void) | null = null;
   private modeQueue: Promise<void> = Promise.resolve();
+  private seekQueue: Promise<void> = Promise.resolve();
   private connectionRevision = 0;
   private connectStarted = false;
   private unlisteners = new Set<PlayerUnlisten>();
@@ -130,6 +131,12 @@ export class PlaybackController {
       exponentialVolume: next.exponentialVolume ?? false, audioRevision: this.audioRevision };
     return true;
   }
+  private acceptSeek(next: PlaybackStateDto): boolean {
+    if (next.generation !== this.state.generation || (next.seekRevision ?? 0) <= (this.state.seekRevision ?? 0)) return false;
+    this.state = { ...this.state, seekRevision: next.seekRevision ?? 0,
+      seekPending: next.seekPending ?? null, seekError: next.seekError ?? null };
+    return true;
+  }
   private acceptState(next: PlaybackStateDto, audio = true): boolean {
     if (next.generation < this.state.generation) return false;
     if (next.generation === this.state.generation && next.queue.revision < this.state.queue.revision) {
@@ -140,9 +147,12 @@ export class PlaybackController {
       this.cancelVolumeInput();
       this.audioRevision = 0;
     }
+    const previousSeek = next.generation === this.state.generation && (next.seekRevision ?? 0) < (this.state.seekRevision ?? 0)
+      ? { seekRevision: this.state.seekRevision, seekPending: this.state.seekPending,
+          seekError: this.state.seekError, position: this.state.position } : {};
     const previousAudio = { volume: this.state.volume, exponentialVolume: this.state.exponentialVolume,
       audioRevision: this.audioRevision };
-    this.state = cloneState(next);
+    this.state = { ...cloneState(next), ...previousSeek };
     if (!audio || !this.acceptAudio(next)) this.state = { ...this.state, ...previousAudio };
     this.error = next.error;
     this.emit();
@@ -153,6 +163,7 @@ export class PlaybackController {
     if (this.eventRevision !== eventRevision && next.generation <= this.state.generation) {
       // Audio and queue revisions are independent; neither is allowed to rewind progress.
       const audioAccepted = audio && this.acceptAudio(next);
+      const seekAccepted = this.acceptSeek(next);
       if (next.generation === this.state.generation && next.queue.revision > this.state.queue.revision) {
         const normalized = cloneState(next);
         this.state = { ...this.state, queue: normalized.queue, canNext: normalized.canNext, sourceLoad: normalized.sourceLoad,
@@ -160,7 +171,7 @@ export class PlaybackController {
             ? normalized.currentTrack : this.state.currentTrack };
         this.emit(); return true;
       }
-      if (audioAccepted) this.emit();
+      if (audioAccepted || seekAccepted) this.emit();
       return false;
     }
     return this.acceptState(next, audio || next.generation !== this.state.generation);
@@ -204,7 +215,8 @@ export class PlaybackController {
 
   private acceptProgress(progress: PlaybackProgressDto) {
     this.eventRevision++;
-    if (progress.generation !== this.state.generation || this.state.isLoading) return;
+    if (progress.generation !== this.state.generation || this.state.isLoading
+      || (progress.seekRevision ?? 0) < (this.state.seekRevision ?? 0)) return;
     this.state = { ...this.state, position: progress.position,
       duration: progress.duration > 0 ? progress.duration : this.state.duration };
     this.emit();
@@ -363,7 +375,28 @@ export class PlaybackController {
   }
 
   async seek(seconds: number): Promise<void> {
-    return this.command('seek', 'seek_playback', { seconds }, 'Error al cambiar la posición de reproducción.');
+    if (!Number.isFinite(seconds) || seconds < 0) return;
+    const entry = this.state.queue.items[this.state.queue.currentIndex ?? -1];
+    if (!entry) return;
+    const generation = this.state.generation;
+    const auth = this.state.authGeneration ?? 0;
+    const revision = this.issue('seek');
+    // Serialize dispatch, coalescing unsent cues. Only native snapshots describe
+    // pending/observed state; accepting an RPC never assigns the requested target.
+    const scheduled = this.seekQueue.then(async () => {
+      if (!this.current('seek', revision) || this.state.generation !== generation
+        || (this.state.authGeneration ?? 0) !== auth
+        || this.state.queue.items[this.state.queue.currentIndex ?? -1]?.entryId !== entry.entryId) return;
+      const eventRevision = this.eventRevision;
+      try {
+        const next = await this.rpc<PlaybackStateDto>('seek_playback_identified', {
+          seconds, expectedGeneration: generation, expectedAuthGeneration: auth, expectedEntryId: entry.entryId,
+        });
+        if (this.current('seek', revision) && this.state.generation === generation) this.acceptResponse(next, eventRevision);
+      } catch (cause) { this.fail('seek', revision, eventRevision, cause, 'Error al cambiar la posición de reproducción.'); }
+    });
+    this.seekQueue = scheduled.catch(() => {});
+    return scheduled;
   }
 
   setVolume(volume: number): Promise<void> {

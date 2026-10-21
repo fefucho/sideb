@@ -299,9 +299,19 @@ uint64_t uniffi_sideb_core_fn_method_sidebcore_add_to_playlist(void*_Nonnull ptr
 uint64_t uniffi_sideb_core_fn_method_sidebcore_apply_song_library_action(void*_Nonnull ptr, RustBuffer token
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_FN_METHOD_SIDEBCORE_CANCEL_ANIMATED_ARTWORK
+#define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_FN_METHOD_SIDEBCORE_CANCEL_ANIMATED_ARTWORK
+void uniffi_sideb_core_fn_method_sidebcore_cancel_animated_artwork(void*_Nonnull ptr, RustBuffer request_id, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_FN_METHOD_SIDEBCORE_CHOOSE_GENIUS
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_FN_METHOD_SIDEBCORE_CHOOSE_GENIUS
 uint64_t uniffi_sideb_core_fn_method_sidebcore_choose_genius(void*_Nonnull ptr, RustBuffer track, int64_t song_id
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_FN_METHOD_SIDEBCORE_CLEAR_ANIMATED_ARTWORK_CACHE
+#define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_FN_METHOD_SIDEBCORE_CLEAR_ANIMATED_ARTWORK_CACHE
+uint64_t uniffi_sideb_core_fn_method_sidebcore_clear_animated_artwork_cache(void*_Nonnull ptr, RustBuffer cache_dir
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_FN_METHOD_SIDEBCORE_CLEAR_GENIUS_CHOICE
@@ -342,6 +352,11 @@ uint64_t uniffi_sideb_core_fn_method_sidebcore_get_album(void*_Nonnull ptr, Rust
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_FN_METHOD_SIDEBCORE_GET_ALBUM_JSON
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_FN_METHOD_SIDEBCORE_GET_ALBUM_JSON
 uint64_t uniffi_sideb_core_fn_method_sidebcore_get_album_json(void*_Nonnull ptr, RustBuffer browse_id
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_FN_METHOD_SIDEBCORE_GET_ANIMATED_ARTWORK_CACHE_SIZE
+#define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_FN_METHOD_SIDEBCORE_GET_ANIMATED_ARTWORK_CACHE_SIZE
+uint64_t uniffi_sideb_core_fn_method_sidebcore_get_animated_artwork_cache_size(void*_Nonnull ptr, RustBuffer cache_dir
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_FN_METHOD_SIDEBCORE_GET_ARTIST
@@ -427,6 +442,11 @@ uint64_t uniffi_sideb_core_fn_method_sidebcore_get_home_page(void*_Nonnull ptr, 
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_FN_METHOD_SIDEBCORE_GET_HOME_SECTIONS
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_FN_METHOD_SIDEBCORE_GET_HOME_SECTIONS
 uint64_t uniffi_sideb_core_fn_method_sidebcore_get_home_sections(void*_Nonnull ptr
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_FN_METHOD_SIDEBCORE_GET_KARAOKE_LYRICS
+#define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_FN_METHOD_SIDEBCORE_GET_KARAOKE_LYRICS
+uint64_t uniffi_sideb_core_fn_method_sidebcore_get_karaoke_lyrics(void*_Nonnull ptr, RustBuffer video_id, RustBuffer title, RustBuffer artist, RustBuffer album, RustBuffer duration_secs, int8_t force_refresh
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_FN_METHOD_SIDEBCORE_GET_LIBRARY_ALBUMS
@@ -532,6 +552,11 @@ uint64_t uniffi_sideb_core_fn_method_sidebcore_move_playlist_track(void*_Nonnull
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_FN_METHOD_SIDEBCORE_PIN_ITEM
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_FN_METHOD_SIDEBCORE_PIN_ITEM
 void uniffi_sideb_core_fn_method_sidebcore_pin_item(void*_Nonnull ptr, RustBuffer id, RustBuffer kind, RustBuffer title, RustBuffer subtitle, RustBuffer thumbnail, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_FN_METHOD_SIDEBCORE_PREPARE_ANIMATED_ARTWORK
+#define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_FN_METHOD_SIDEBCORE_PREPARE_ANIMATED_ARTWORK
+uint64_t uniffi_sideb_core_fn_method_sidebcore_prepare_animated_artwork(void*_Nonnull ptr, RustBuffer request, RustBuffer request_id, RustBuffer cache_dir
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_FN_METHOD_SIDEBCORE_RATE_SONG
@@ -936,9 +961,21 @@ uint16_t uniffi_sideb_core_checksum_method_sidebcore_apply_song_library_action(v
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_CANCEL_ANIMATED_ARTWORK
+#define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_CANCEL_ANIMATED_ARTWORK
+uint16_t uniffi_sideb_core_checksum_method_sidebcore_cancel_animated_artwork(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_CHOOSE_GENIUS
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_CHOOSE_GENIUS
 uint16_t uniffi_sideb_core_checksum_method_sidebcore_choose_genius(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_CLEAR_ANIMATED_ARTWORK_CACHE
+#define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_CLEAR_ANIMATED_ARTWORK_CACHE
+uint16_t uniffi_sideb_core_checksum_method_sidebcore_clear_animated_artwork_cache(void
     
 );
 #endif
@@ -987,6 +1024,12 @@ uint16_t uniffi_sideb_core_checksum_method_sidebcore_get_album(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_GET_ALBUM_JSON
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_GET_ALBUM_JSON
 uint16_t uniffi_sideb_core_checksum_method_sidebcore_get_album_json(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_GET_ANIMATED_ARTWORK_CACHE_SIZE
+#define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_GET_ANIMATED_ARTWORK_CACHE_SIZE
+uint16_t uniffi_sideb_core_checksum_method_sidebcore_get_animated_artwork_cache_size(void
     
 );
 #endif
@@ -1089,6 +1132,12 @@ uint16_t uniffi_sideb_core_checksum_method_sidebcore_get_home_page(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_GET_HOME_SECTIONS
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_GET_HOME_SECTIONS
 uint16_t uniffi_sideb_core_checksum_method_sidebcore_get_home_sections(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_GET_KARAOKE_LYRICS
+#define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_GET_KARAOKE_LYRICS
+uint16_t uniffi_sideb_core_checksum_method_sidebcore_get_karaoke_lyrics(void
     
 );
 #endif
@@ -1215,6 +1264,12 @@ uint16_t uniffi_sideb_core_checksum_method_sidebcore_move_playlist_track(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_PIN_ITEM
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_PIN_ITEM
 uint16_t uniffi_sideb_core_checksum_method_sidebcore_pin_item(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_PREPARE_ANIMATED_ARTWORK
+#define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_PREPARE_ANIMATED_ARTWORK
+uint16_t uniffi_sideb_core_checksum_method_sidebcore_prepare_animated_artwork(void
     
 );
 #endif

@@ -159,6 +159,10 @@ export interface PlaybackStateDto {
   duration: number;
   volume: number;
   audioRevision?: number;
+  authGeneration?: number;
+  seekRevision?: number;
+  seekPending?: number | null;
+  seekError?: string | null;
   exponentialVolume?: boolean;
   currentTrack: PlaybackTrackDto | null;
   error: string | null;
@@ -190,6 +194,7 @@ export interface QueueStateDto {
 }
 
 export interface PlaybackProgressDto {
+  seekRevision?: number;
   position: number;
   duration: number;
   generation: number;

@@ -66,12 +66,14 @@ function props(calls,extra={}) {return {activeDestination:'playlist',selectedCol
 test('appearance survives recreation, rejects malformed/future values and works when storage is blocked',()=>{
   const values=new Map(),storage={getItem:key=>values.get(key)??null,setItem:(key,value)=>values.set(key,value)};
   let store=createAppearancePreferences(storage);
-  assert.deepEqual(get(store),{version:1,homeBackground:'artwork',sidebarLayout:'list'});
+  assert.deepEqual(get(store),{version:1,homeBackground:'artwork',sidebarLayout:'list',animatedArtwork:true});
+  store.setAnimatedArtwork(false);store=createAppearancePreferences(storage);assert.equal(get(store).animatedArtwork,false);
+  store.setAnimatedArtwork(true);
   store.setHomeBackground('solid');store.toggleSidebarLayout();store=createAppearancePreferences(storage);
-  assert.deepEqual(get(store),{version:1,homeBackground:'solid',sidebarLayout:'grid'});
-  assert.deepEqual(Object.keys(JSON.parse(values.get(appearanceKey))).sort(),['version','homeBackground','sidebarLayout'].sort());
+  assert.deepEqual(get(store),{version:1,homeBackground:'solid',sidebarLayout:'grid',animatedArtwork:true});
+  assert.deepEqual(Object.keys(JSON.parse(values.get(appearanceKey))).sort(),['version','homeBackground','sidebarLayout','animatedArtwork'].sort());
   for(const value of ['broken',JSON.stringify({version:2,homeBackground:'solid'}),JSON.stringify({version:1,homeBackground:'unknown',sidebarLayout:'unknown'})]){
-    values.set(appearanceKey,value);assert.deepEqual(get(createAppearancePreferences(storage)),{version:1,homeBackground:'artwork',sidebarLayout:'list'});
+    values.set(appearanceKey,value);assert.deepEqual(get(createAppearancePreferences(storage)),{version:1,homeBackground:'artwork',sidebarLayout:'list',animatedArtwork:true});
   }
   store=createAppearancePreferences({getItem(){throw Error('blocked');},setItem(){throw Error('blocked');}});
   store.setHomeBackground('solid');store.toggleSidebarLayout();assert.equal(get(store).homeBackground,'solid');assert.equal(get(store).sidebarLayout,'grid');

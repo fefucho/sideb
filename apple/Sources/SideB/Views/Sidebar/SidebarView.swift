@@ -50,7 +50,7 @@ struct SidebarView: View {
         .compatGlass(in: RoundedRectangle(cornerRadius: ShellLayout.sidebarCornerRadius, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: ShellLayout.sidebarCornerRadius, style: .continuous)
             .strokeBorder(.white.opacity(0.10), lineWidth: 0.5))
-        .shadow(color: .black.opacity(0.18), radius: 12, x: 0, y: 4)
+        .shadow(color: .black.opacity(isExpanded ? 0.18 : 0), radius: 12, x: 0, y: 4)
     }
 
     // MARK: - Navegación Segura (Cierre de Fullscreen)

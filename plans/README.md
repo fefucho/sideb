@@ -4,6 +4,9 @@ Herramientas compartidas o fixes para ambas plataformas. [Formato](../.agents/WO
 
 | Plan | Estado |
 |---|---|
+| [Indicadores de explícito y censurado](PLAN-013-explicit-content-indicators.md) | Plan propuesto, sin implementar: conservar metadata por entidad, distinguir explicit/clean/unknown y mostrar indicadores en artista/catálogo, búsqueda, álbum, filas y playback. PAR-040 |
+| [Preferencia de versiones de audio](PLAN-014-content-version-preference.md) | Plan propuesto, sin implementar: preferir explícitas por defecto, opción censuradas/catálogo y respetar álbumes/IDs elegidos manualmente. Búsqueda y selecciones automáticas con equivalencias verificadas. PAR-041 |
+| [Carátulas animadas en Fullscreen](PLAN-012-animated-artwork.md) | FIX-237/238, PAR-039: core y consumidores hasta1080/60;0154 Mac aprobada/956 pruebas. Graduation resuelto mediante otras ediciones oficiales y negativos antiguos revalidados. QA del usuario, rendimiento y Windows nativo pendientes |
 | [Privacidad de GitHub y cachés](PLAN-011-github-privacy.md) | FIX-227: ramas/tags saneados, caché excluida y protecciones activadas/verificadas; releases conservadas, copias de PR/Actions documentadas |
 | [Release 1.2.6](RELEASE-1.2.6.md) | Publicada Latest 1.2.6/build 19: sidebar y Apariencia en ambas apps sobre GitHub actualizado; FIX-224/225, CI completo/1557 pruebas ejecutadas y cinco descargas públicas verificadas |
 | [Entrega de sidebar](PLAN-010-sidebar-delivery.md) | Entregada en 1.2.6: lista/cuadrícula/fondo, opciones sincronizadas, core y correcciones remotas preservados; ambos binarios públicos contienen la UI, PAR-036 |

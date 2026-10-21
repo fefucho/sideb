@@ -1,0 +1,464 @@
+{
+  "date": "2026-10-20",
+  "timezone": "America/Montevideo",
+  "status": "Restored from original research results; external API probes not rerun during restoration",
+  "current_checkout": "907ac01",
+  "method": "Public catalog/lyrics queries and HLS manifests; no account, audio tokens or video segments",
+  "lyrics": [
+    {
+      "title": "Blinding Lights",
+      "artist": "The Weeknd",
+      "catalog_id": "908604612",
+      "duration_s": 200,
+      "isrc": "USUG11904206",
+      "source": "lrcred-karaoke",
+      "synced": true,
+      "line_count": 35,
+      "word_element_count": 253,
+      "response_fields": [
+        "success",
+        "synced",
+        "lyrics",
+        "richSync",
+        "source",
+        "alternates",
+        "timing"
+      ],
+      "line_fields": [
+        "start",
+        "end",
+        "text",
+        "words"
+      ],
+      "word_fields": [
+        "start",
+        "end",
+        "word"
+      ],
+      "alternates": [
+        {
+          "label": "Karaoke (Deezer)",
+          "source": "deezer-karaoke",
+          "synced": true,
+          "kind": "karaoke"
+        },
+        {
+          "label": "Line-sync (LRCLIB)",
+          "source": "lrclib-synced",
+          "synced": true,
+          "kind": "synced"
+        }
+      ],
+      "timing_diagnostics": {
+        "deezer-karaoke": "agree a=1.0001 b=0.058 n=9",
+        "lrclib-synced": "agree a=0.9982 b=-0.088 n=8"
+      }
+    },
+    {
+      "title": "DtMF",
+      "artist": "Bad Bunny",
+      "catalog_id": "3171003131",
+      "duration_s": 237,
+      "isrc": "QMFMF2447070",
+      "source": "lrcred-karaoke",
+      "synced": true,
+      "line_count": 62,
+      "word_element_count": 480,
+      "response_fields": [
+        "success",
+        "synced",
+        "lyrics",
+        "richSync",
+        "source",
+        "alternates",
+        "timing"
+      ],
+      "line_fields": [
+        "start",
+        "end",
+        "text",
+        "words"
+      ],
+      "word_fields": [
+        "start",
+        "end",
+        "word"
+      ],
+      "alternates": [
+        {
+          "label": "Line-sync (LRCLIB)",
+          "source": "lrclib-synced",
+          "synced": true,
+          "kind": "synced"
+        },
+        {
+          "label": "Line-sync (Deezer)",
+          "source": "deezer",
+          "synced": true,
+          "kind": "synced"
+        }
+      ],
+      "timing_diagnostics": {
+        "lrclib-synced": "agree a=0.9998 b=0.029 n=23",
+        "deezer": "agree a=0.9998 b=0.123 n=19"
+      }
+    },
+    {
+      "title": "De Música Ligera",
+      "artist": "Soda Stereo",
+      "catalog_id": "13247459",
+      "duration_s": 213,
+      "isrc": "ARFSB0700930",
+      "source": "lrcred-karaoke",
+      "synced": true,
+      "line_count": 23,
+      "word_element_count": 87,
+      "response_fields": [
+        "success",
+        "synced",
+        "lyrics",
+        "richSync",
+        "source",
+        "alternates",
+        "timing"
+      ],
+      "line_fields": [
+        "start",
+        "end",
+        "text",
+        "words"
+      ],
+      "word_fields": [
+        "start",
+        "end",
+        "word"
+      ],
+      "alternates": [
+        {
+          "label": "Karaoke (Deezer)",
+          "source": "deezer-karaoke",
+          "synced": true,
+          "kind": "karaoke"
+        },
+        {
+          "label": "Line-sync (LRCLIB)",
+          "source": "lrclib-synced",
+          "synced": true,
+          "kind": "synced"
+        }
+      ],
+      "timing_diagnostics": {
+        "deezer-karaoke": "inconclusive",
+        "lrclib-synced": "inconclusive a=1.0014 b=-0.295 n=7"
+      }
+    }
+  ],
+  "motion": {
+    "motion": {
+      "key": "theweeknd~afterhours",
+      "hasMotion": true,
+      "variants": [
+        "sq",
+        "tall"
+      ],
+      "apple_asset_hostnames": [
+        "mvod.itunes.apple.com"
+      ]
+    },
+    "motion-soda": {
+      "key": "sodastereo~cancionanimal",
+      "hasMotion": false,
+      "variants": [],
+      "apple_asset_hostnames": []
+    },
+    "motion-bunny": {
+      "key": "badbunny~debtirarmasfotos",
+      "hasMotion": false,
+      "variants": [],
+      "apple_asset_hostnames": []
+    },
+    "motion-bunny-correct": {
+      "key": "badbunny~debitirarmasfotos",
+      "hasMotion": false,
+      "variants": [],
+      "apple_asset_hostnames": []
+    },
+    "artist-motion": {
+      "key": null,
+      "hasMotion": false,
+      "variants": [],
+      "apple_asset_hostnames": []
+    }
+  },
+  "other_checks": {
+    "better-old": {
+      "response_fields": [
+        "ttml"
+      ],
+      "ttml_character_count": 17065,
+      "http_status": "HTTP/2 200",
+      "selected_headers": [
+        "cache-control: max-age=300",
+        "x-auth-mode: cache",
+        "x-cache-status: HIT"
+      ]
+    },
+    "better-new": {
+      "response_fields": [
+        "ttml"
+      ],
+      "ttml_character_count": 17065,
+      "http_status": "HTTP/2 200",
+      "selected_headers": [
+        "cache-control: max-age=300",
+        "x-auth-mode: cache",
+        "x-cache-status: HIT"
+      ]
+    },
+    "lrclib": {
+      "response_fields": [
+        "id",
+        "name",
+        "trackName",
+        "artistName",
+        "albumName",
+        "duration",
+        "instrumental",
+        "hasWordSync",
+        "plainLyrics",
+        "syncedLyrics",
+        "lyricsfile"
+      ],
+      "hasWordSync": false,
+      "lyricsfile_present": true,
+      "http_status": "HTTP/2 200",
+      "selected_headers": [
+        "access-control-allow-origin: *"
+      ]
+    },
+    "np-look": {
+      "response_fields": [
+        "sf",
+        "upc",
+        "apple",
+        "fetchedAt"
+      ],
+      "apple_present": false,
+      "http_status": "HTTP/2 200",
+      "selected_headers": [
+        "cache-control: public, max-age=86400"
+      ]
+    },
+    "np-correct": {
+      "response_fields": [
+        "sf",
+        "upc",
+        "apple",
+        "fetchedAt"
+      ],
+      "apple_present": true,
+      "http_status": "HTTP/2 200",
+      "selected_headers": [
+        "cache-control: public, max-age=86400"
+      ]
+    },
+    "unison": {
+      "response_fields": [
+        "success",
+        "error",
+        "code",
+        "hint"
+      ],
+      "success": false,
+      "code": "NOT_FOUND"
+    },
+    "lyrics-no-id": {
+      "response_fields": [
+        "success",
+        "synced",
+        "lyrics"
+      ],
+      "success": false,
+      "http_status": "HTTP/2 200",
+      "selected_headers": [
+        "cache-control: public, max-age=86400"
+      ]
+    },
+    "features": {
+      "response_fields": [
+        "features"
+      ],
+      "features": {
+        "908604612": {
+          "bpm": 170.8,
+          "gain": -8.8
+        }
+      },
+      "http_status": "HTTP/2 200",
+      "selected_headers": [
+        "cache-control: public, max-age=86400"
+      ]
+    },
+    "credits": {
+      "response_fields": [
+        "people"
+      ],
+      "people_count": 15,
+      "http_status": "HTTP/2 200",
+      "selected_headers": [
+        "cache-control: public, max-age=86400"
+      ]
+    },
+    "charts": {
+      "response_fields": [
+        "sf",
+        "genre",
+        "results",
+        "fetchedAt"
+      ],
+      "result_counts": {
+        "albums": 20,
+        "music-videos": 20,
+        "playlists": 20,
+        "songs": 20
+      },
+      "http_status": "HTTP/2 200",
+      "selected_headers": [
+        "cache-control: public, max-age=900"
+      ]
+    },
+    "audiodb": {
+      "response_fields": [
+        "artists"
+      ],
+      "http_status": "HTTP/2 200",
+      "selected_headers": [
+        "access-control-allow-origin: *"
+      ]
+    },
+    "lyrics-search": {
+      "response_fields": [
+        "query",
+        "storefront",
+        "matched",
+        "considered",
+        "results"
+      ],
+      "matched": 2,
+      "considered": 6,
+      "result_count": 2
+    },
+    "openapi": {
+      "response_fields": [
+        "error"
+      ],
+      "http_status": "HTTP/2 404",
+      "selected_headers": []
+    },
+    "better-artwork": {
+      "json_response": false
+    }
+  },
+  "open_source_projects": [
+    {
+      "repo": "WillSuo-Github/KaraokeText",
+      "commit": "08697a112d314aa360f9b2ebed3622181ab58ad8",
+      "tree": "08697a112d314aa360f9b2ebed3622181ab58ad8",
+      "license": "MIT",
+      "branch": "main",
+      "pushed_at": "2026-08-17T09:40:30Z"
+    },
+    {
+      "repo": "Yudaotor/lyrimuse",
+      "commit": "c4ed629c6f332352f8be3ef9799baf4c9413939e",
+      "tree": "c4ed629c6f332352f8be3ef9799baf4c9413939e",
+      "license": "GPL-3.0",
+      "branch": "main",
+      "pushed_at": "2026-10-20T01:37:35Z"
+    },
+    {
+      "repo": "better-lyrics/braccato",
+      "commit": "394f1318ed504abbc5f01bde0e84006c5d4598d5",
+      "tree": "394f1318ed504abbc5f01bde0e84006c5d4598d5",
+      "license": "MIT",
+      "branch": "master",
+      "pushed_at": "2026-10-20T12:43:04Z"
+    },
+    {
+      "repo": "amll-dev/applemusic-like-lyrics",
+      "commit": "ca0f41d67882d936c0365ffd99c16841ea2fa39d",
+      "tree": "ca0f41d67882d936c0365ffd99c16841ea2fa39d",
+      "license": "AGPL-3.0",
+      "branch": "main",
+      "pushed_at": "2026-10-16T10:20:33Z"
+    },
+    {
+      "repo": "Takpap/apple-music-lyrics",
+      "commit": "e402374f4d371d8709f6e091570b4a864e03b903",
+      "tree": "e402374f4d371d8709f6e091570b4a864e03b903",
+      "license": "MIT",
+      "branch": "main",
+      "pushed_at": "2026-09-23T13:18:07Z"
+    },
+    {
+      "repo": "Spikerko/spicy-lyrics",
+      "commit": "f4e471e2b5e483c81c59cc1eb7b7608e434df71f",
+      "tree": "f4e471e2b5e483c81c59cc1eb7b7608e434df71f",
+      "license": "AGPL-3.0",
+      "branch": "main",
+      "pushed_at": "2026-10-18T22:47:58Z"
+    }
+  ],
+  "restoration_checks": {
+    "code_reinspected": true,
+    "elrc_probe_regenerated_from_current_code": true,
+    "elrc_input": "[00:01.00]<00:01.00>Uno <00:02.00>dos<00:03.00>",
+    "actual_words": [
+      {
+        "text": "Uno ",
+        "start_ms": 1000,
+        "end_ms": 1000
+      },
+      {
+        "text": "dos",
+        "start_ms": 1000,
+        "end_ms": 2000
+      },
+      {
+        "text": "",
+        "start_ms": 2000,
+        "end_ms": 3000
+      }
+    ],
+    "expected_words": [
+      {
+        "text": "Uno ",
+        "start_ms": 1000,
+        "end_ms": 2000
+      },
+      {
+        "text": "dos",
+        "start_ms": 2000,
+        "end_ms": 3000
+      }
+    ]
+  },
+  "original_karaoke_verification": {
+    "swift_candidate": "KaraokeText",
+    "command": "swiftc -typecheck -parse-as-library -target arm64-apple-macosx15.0 <three KaraokeText Swift sources>",
+    "result": "Passed in original investigation with Swift 6.4; not rerun during restoration",
+    "runtime_validated": false,
+    "braccato_demo": "Visual inspection and Play control/progress change; no FPS or audio measurements",
+    "amll_playground": "Opened empty; no playback verified",
+    "lyrimuse": "Official screenshot and source inspection; app not installed"
+  },
+  "limits": [
+    "Three songs do not estimate general coverage",
+    "No application audio-visual synchronization evaluation or animated-art playback test",
+    "No third-party integration or redistribution license confirmed",
+    "Unison metadata sample and Better Lyrics artwork query returned 404",
+    "Arbitrary-origin motion response lacked Access-Control-Allow-Origin",
+    "Software licenses do not establish content or hosted API reuse rights",
+    "Only documentation restored; no application implementation or build"
+  ]
+}

@@ -49,6 +49,9 @@ struct FullscreenNowPlayingView: View, Animatable {
     @State private var failedMaxQualityURL: URL? = nil
     @State private var isArtworkFlipped = false
     @State private var geniusAnnotationColorMode = GeniusAnnotationColorMode.artwork
+    @State private var isShowingExperimentalLyrics = true
+    @State private var experimentalLyrics = ExperimentalLyricsController()
+    @State private var lyricsPresentation = LyricsPresentationSettings()
     
     
     var animatableData: CGFloat {
@@ -97,7 +100,13 @@ struct FullscreenNowPlayingView: View, Animatable {
                 viewModel.isFullscreenPresented = false
             }
         }
-        .onDisappear { viewModel.volumeScroll.cancel() }
+        .onDisappear {
+            viewModel.volumeScroll.cancel()
+            experimentalLyrics.deactivate()
+        }
+        .onChange(of: experimentalLyricsRequest, initial: true) { _, request in
+            experimentalLyrics.activate(request, fetch: fetchExperimentalLyrics)
+        }
         .onChange(of: isArtworkFlipped) { _, _ in viewModel.volumeScroll.cancel() }
         .onChange(of: viewModel.currentTrack?.videoId) { _, _ in
             failedOriginalURL = nil
@@ -183,6 +192,16 @@ struct FullscreenNowPlayingView: View, Animatable {
                 fallbackArtwork(size: size)
                     .frame(width: size, height: size)
             }
+
+            AnimatedArtworkView(track: viewModel.currentTrack,
+                                sessionID: viewModel.mediaSessionIdentity,
+                                core: viewModel.rustCore,
+                                isPlaying: viewModel.isPlaying,
+                                isPresented: viewModel.isFullscreenPresented,
+                                isFlipped: isArtworkFlipped,
+                                audioDuration: viewModel.duration)
+                .frame(width: size, height: size)
+                .clipShape(RoundedRectangle(cornerRadius: AppTheme.artworkHeroRadius, style: .continuous))
 
             FullscreenArtworkVolumeFeedback(player: viewModel, size: size, hovered: isHoveringArtwork)
 
@@ -562,11 +581,135 @@ struct FullscreenNowPlayingView: View, Animatable {
                 GeniusPanelView(model: viewModel.genius, artwork: viewModel.currentTrack?.thumbnail,
                                 annotationColorMode: $geniusAnnotationColorMode)
                     .id(viewModel.currentTrack?.videoId)
+            } else if !isDisplayingOriginalLyrics {
+                experimentalLyricsPanel
             } else {
                 nativeLyricsPanel(height: height)
             }
         }
+        .frame(maxWidth: .infinity)
         .frame(height: height)
+        .overlay(alignment: .topTrailing) {
+            // Loaded new lyrics supply their own menu with presentation settings.
+            if !viewModel.isShowingGeniusLyrics && (!isShowingExperimentalLyrics || !hasExperimentalLyrics) {
+                LyricsOptionsMenu(
+                    isShowingNewLyrics: !isDisplayingOriginalLyrics,
+                    onToggleLyrics: {
+                        if isDisplayingOriginalLyrics {
+                            if isShowingExperimentalLyrics { refreshExperimentalLyrics() }
+                            else { isShowingExperimentalLyrics = true }
+                        } else { isShowingExperimentalLyrics = false }
+                    },
+                    onRefresh: refreshExperimentalLyrics,
+                    isRefreshing: experimentalLyrics.isLoading
+                ) {
+                    LyricsPresentationOptions(settings: lyricsPresentation)
+                }
+                .padding(.trailing, 8)
+            }
+        }
+    }
+
+    private var isDisplayingOriginalLyrics: Bool {
+        LyricsPanelSelection.usesOriginal(prefersNew: isShowingExperimentalLyrics,
+                                          hasNew: hasExperimentalLyrics,
+                                          hasOriginal: viewModel.lyricsInfo?.lines.isEmpty == false)
+    }
+
+    private var currentExperimentalDocument: ExperimentalLyricsDocument? {
+        guard let active = experimentalLyrics.activeRequest,
+              active.playbackID == viewModel.experimentalLyricsPlaybackIdentity,
+              active.sessionID == viewModel.mediaSessionIdentity,
+              active.videoID == viewModel.currentTrack?.videoId else { return nil }
+        return experimentalLyrics.document
+    }
+
+    private var hasExperimentalLyrics: Bool {
+        guard let document = currentExperimentalDocument else { return false }
+        return document.instrumental || !document.lines.isEmpty
+    }
+
+    private func refreshExperimentalLyrics() {
+        experimentalLyrics.refresh(fetch: fetchExperimentalLyrics)
+    }
+
+    private var experimentalLyricsRequest: ExperimentalLyricsRequest? {
+        guard isShowingExperimentalLyrics, !viewModel.isShowingGeniusLyrics, viewModel.isFullscreenPresented,
+              selectedPanel == .lyrics, let track = viewModel.currentTrack,
+              viewModel.rustCore != nil else { return nil }
+        return ExperimentalLyricsRequest(track: track,
+                                         playbackID: viewModel.experimentalLyricsPlaybackIdentity,
+                                         sessionID: viewModel.mediaSessionIdentity,
+                                         audioDuration: viewModel.duration)
+    }
+
+    @MainActor
+    private func fetchExperimentalLyrics(_ request: ExperimentalLyricsRequest,
+                                         forceRefresh: Bool) async throws -> ExperimentalLyricsDocument? {
+        guard let core = viewModel.rustCore else { throw CancellationError() }
+        let document = try await ExperimentalLyricsController.fetch(request, forceRefresh: forceRefresh, core: core)
+        guard !Task.isCancelled,
+              request.playbackID == viewModel.experimentalLyricsPlaybackIdentity,
+              request.sessionID == viewModel.mediaSessionIdentity,
+              request.videoID == viewModel.currentTrack?.videoId else { throw CancellationError() }
+        return document
+    }
+
+    @ViewBuilder
+    private var experimentalLyricsPanel: some View {
+        if let document = currentExperimentalDocument,
+           document.instrumental || !document.lines.isEmpty {
+            ExperimentalLyricsPanel(
+                document: document,
+                player: viewModel.audioService.avPlayer,
+                playbackIdentity: viewModel.experimentalLyricsPlaybackIdentity,
+                duration: viewModel.duration,
+                seekSnapshot: viewModel.audioService.seekSnapshot,
+                onSeek: { _ = viewModel.seekToLyric(seconds: $0) },
+                onShowOriginalLyrics: { isShowingExperimentalLyrics = false },
+                onRefresh: refreshExperimentalLyrics,
+                isRefreshing: experimentalLyrics.isLoading,
+                presentation: lyricsPresentation
+            )
+            .id(viewModel.experimentalLyricsPlaybackIdentity)
+            .overlay(alignment: .bottom) {
+                if let errorKey = experimentalLyrics.errorKey {
+                    Text(L10n.text(errorKey))
+                        .font(.system(size: 11))
+                        .foregroundStyle(.white.opacity(0.65))
+                        .padding(8)
+                        .background(.black.opacity(0.65), in: RoundedRectangle(cornerRadius: 8))
+                        .accessibilityLabel(L10n.text(errorKey))
+                }
+            }
+        } else {
+            VStack(spacing: 12) {
+                if experimentalLyrics.isLoading {
+                    ProgressView()
+                    Text(L10n.text("lyrics.experimental.loading"))
+                } else if experimentalLyricsRequest == nil {
+                    Image(systemName: "music.note")
+                    Text(L10n.text("lyrics.experimental.noTrack"))
+                } else if experimentalLyrics.errorKey != nil {
+                    Image(systemName: "exclamationmark.bubble")
+                    Text(L10n.text("lyrics.experimental.error"))
+                    Button(L10n.text("lyrics.experimental.retry")) {
+                        experimentalLyrics.refresh(fetch: fetchExperimentalLyrics)
+                    }
+                    .buttonStyle(SideBControlStyle())
+                } else {
+                    Image(systemName: "quote.bubble")
+                    Text(L10n.text("lyrics.experimental.empty"))
+                    Text(L10n.text("lyrics.experimental.emptyDetail"))
+                        .font(.system(size: 11.5))
+                }
+            }
+            .font(.system(size: 13.5))
+            .foregroundStyle(.white.opacity(0.65))
+            .multilineTextAlignment(.center)
+            .padding(16)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
     }
 
     @ViewBuilder
@@ -580,14 +723,15 @@ struct FullscreenNowPlayingView: View, Animatable {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if let lyrics = viewModel.lyricsInfo, !lyrics.lines.isEmpty {
-            SyncedLyricsPanel(
+            ClassicLyricsClockHost(
+                viewModel: viewModel,
                 lyrics: lyrics,
-                currentTime: viewModel.currentTime,
                 duration: viewModel.duration,
                 height: height,
-                onSeek: { viewModel.seek(toFraction: $0) }
+                playbackIdentity: viewModel.experimentalLyricsPlaybackIdentity,
+                presentation: lyricsPresentation
             )
-            .id(viewModel.currentTrack?.videoId)
+            .id(viewModel.experimentalLyricsPlaybackIdentity)
         } else {
             VStack(spacing: 12) {
                 Image(systemName: "quote.bubble")
@@ -655,120 +799,143 @@ enum LyricTiming {
     }
 }
 
-private struct SyncedLyricsPanel: View {
+/// Keeps the frequently changing playback clock at the edge of the classic renderer.
+private struct ClassicLyricsClockHost: View {
+    @Bindable var viewModel: PlayerViewModel
     let lyrics: LyricsInfo
-    let currentTime: Double
     let duration: Double
     let height: CGFloat
+    let playbackIdentity: UUID
+    let presentation: LyricsPresentationSettings
+
+    var body: some View {
+        let activeIndex = LyricTiming.activeIndex(in: lyrics, at: viewModel.currentTime)
+        SyncedLyricsPanel(
+            lyrics: lyrics,
+            activeIndex: activeIndex,
+            duration: duration,
+            height: height,
+            playbackIdentity: playbackIdentity,
+            presentation: presentation,
+            onSeek: { _ = viewModel.seekToLyric(seconds: $0) }
+        )
+    }
+}
+
+private struct SyncedLyricsPanel: View {
+    let lyrics: LyricsInfo
+    let activeIndex: Int?
+    let duration: Double
+    let height: CGFloat
+    let playbackIdentity: UUID
+    let presentation: LyricsPresentationSettings
     let onSeek: (Double) -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-    @State private var isFollowing = true
+    @Environment(\.colorSchemeContrast) private var contrast
 
-    private var activeIndex: Int? { LyricTiming.activeIndex(in: lyrics, at: currentTime) }
     private var canFollow: Bool { activeIndex != nil }
-    private var transition: Animation? {
-        reduceMotion ? nil : .spring(response: 0.48, dampingFraction: 0.86)
-    }
+    private var isFollowing: Bool { presentation.followState.isFollowing }
+    private var karaoke: Bool { presentation.mode == .karaoke }
 
     var body: some View {
-        ScrollViewReader { proxy in
-            let currentIndex = activeIndex
-            ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    ForEach(Array(lyrics.lines.enumerated()), id: \.offset) { index, line in
-                        lyricRow(index: index, line: line, activeIndex: currentIndex)
-                            .id(index)
+        GeometryReader { geometry in
+            let horizontalPadding: CGFloat = geometry.size.width >= 330 ? 32 : 20
+            let textWidth = max(1, geometry.size.width - horizontalPadding * 2 - (karaoke ? 48 : 0))
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 0) {
+                        ForEach(Array(lyrics.lines.enumerated()), id: \.offset) { index, line in
+                            lyricRow(index: index, line: line, proxy: proxy)
+                                .frame(maxWidth: textWidth, alignment: .leading)
+                                .padding(.vertical, karaoke ? 10 : 8)
+                                .id(index)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, horizontalPadding)
+                    .padding(.vertical, karaoke && lyrics.isSynced ? geometry.size.height / 2 : 12)
+                }
+                .scrollIndicators(.hidden)
+                .mask { LyricsViewportMask(height: geometry.size.height, increasedContrast: contrast == .increased) }
+                .onScrollPhaseChange { _, phase in
+                    if canFollow && (phase == .tracking || phase == .interacting) {
+                        presentation.followState.userScrolled()
                     }
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 8)
-                // Keep natural scroll bounds: the first and last lines only
-                // reach center when the surrounding content allows it.
-                .padding(.vertical, 12)
-            }
-            .scrollIndicators(.hidden)
-            .onScrollPhaseChange { _, phase in
-                // Programmatic scrollTo enters .animating. Only an input gesture
-                // should take control away from the lyric follower.
-                if canFollow && (phase == .tracking || phase == .interacting) {
-                    isFollowing = false
-                }
-            }
-            .overlay(alignment: .bottom) {
-                if canFollow && !isFollowing {
-                    Button {
-                        isFollowing = true
-                        centerCurrentLine(using: proxy, animated: true)
-                    } label: {
-                        SideBControlLabel(title: L10n.text("fullscreen.returnToCurrentLyric"), symbol: "location.fill")
+                .overlay(alignment: .bottom) {
+                    if canFollow && !isFollowing {
+                        Button {
+                            presentation.followState.resume()
+                            centerCurrentLine(using: proxy, animated: true)
+                        } label: {
+                            SideBControlLabel(title: L10n.text("fullscreen.returnToCurrentLyric"), symbol: "location.fill")
+                        }
+                        .buttonStyle(SideBControlStyle())
+                        .padding(.bottom, 12)
+                        .help(L10n.text("fullscreen.resumeLyricsTracking"))
+                        .accessibilityLabel(L10n.text("fullscreen.resumeLyricsTracking"))
+                        .accessibilityHint(L10n.text("fullscreen.resumeLyricsTrackingHint"))
                     }
-                    .buttonStyle(SideBControlStyle())
-                    .shadow(color: .black.opacity(0.3), radius: 12, y: 5)
-                    .padding(.bottom, 18)
-                    .transition(.opacity.combined(with: .move(edge: .bottom)))
-                    .help(L10n.text("fullscreen.resumeLyricsTracking"))
-                    .accessibilityLabel(L10n.text("fullscreen.resumeLyricsTracking"))
-                    .accessibilityHint(L10n.text("fullscreen.resumeLyricsTrackingHint"))
                 }
-            }
-            .animation(transition, value: isFollowing)
-            .frame(maxWidth: .infinity)
-            .frame(height: height)
-            .onAppear {
-                // Wait for the ScrollView to lay out before the initial centering.
-                Task { @MainActor in
-                    await Task.yield()
-                    if isFollowing { centerCurrentLine(using: proxy, animated: false) }
+                .onAppear {
+                    presentation.activate(playbackIdentity)
+                    scheduleCenter(using: proxy, animated: false)
                 }
-            }
-            .onChange(of: currentIndex) { _, _ in
-                if isFollowing { centerCurrentLine(using: proxy, animated: true) }
+                .onDisappear { presentation.followState.invalidateRequests() }
+                .onChange(of: activeIndex) { _, _ in scheduleCenter(using: proxy, animated: true) }
+                .onChange(of: geometry.size) { _, _ in scheduleCenter(using: proxy, animated: false) }
+                .onChange(of: presentation.fontSize) { _, _ in scheduleCenter(using: proxy, animated: false) }
+                .onChange(of: karaoke) { _, _ in scheduleCenter(using: proxy, animated: false) }
             }
         }
+        .frame(maxWidth: .infinity)
+        .frame(height: height)
     }
 
     @ViewBuilder
-    private func lyricRow(index: Int, line: LyricLineInfo, activeIndex: Int?) -> some View {
-        let text = Text(line.text.isEmpty ? "•••" : line.text)
-            .font(.system(size: 25.2, weight: index == activeIndex ? .semibold : .medium))
-            .foregroundStyle(Color.white.opacity(opacity(for: index, activeIndex: activeIndex)))
-            .scaleEffect(index == activeIndex ? 1.025 : 1, anchor: .leading)
-            .shadow(color: .white.opacity(index == activeIndex ? 0.22 : 0), radius: 9)
-            .multilineTextAlignment(.leading)
+    private func lyricRow(index: Int, line: LyricLineInfo, proxy: ScrollViewProxy) -> some View {
+        let active = activeIndex == nil || index == activeIndex
+        let distance = ExperimentalLyricsStyle.visualDistance(abs(index - (activeIndex ?? index)))
+        let text = LyricsPhraseText(text: line.text, fontSize: presentation.fontSize, karaoke: karaoke)
+            .modifier(LyricsContextPresentation(karaoke: karaoke, active: active, distance: distance,
+                                               isFollowing: isFollowing && canFollow, reduceMotion: reduceMotion,
+                                               increasedContrast: contrast == .increased))
             .frame(maxWidth: .infinity, alignment: .leading)
-            .animation(transition, value: activeIndex)
+            .contentShape(Rectangle())
 
-        if let milliseconds = line.timeMs, duration.isFinite, duration > 0 {
+        if let milliseconds = line.timeMs {
             Button {
-                onSeek(min(1, max(0, Double(milliseconds) / 1_000 / duration)))
-            } label: {
-                text
-            }
+                presentation.followState.resume()
+                onSeek(Double(milliseconds) / 1_000)
+                center(index, using: proxy, animated: true)
+            } label: { text }
             .buttonStyle(.plain)
             .accessibilityAddTraits(index == activeIndex ? [.isSelected] : [])
             .accessibilityHint(L10n.text("fullscreen.goToLyricLine"))
-        } else {
-            text
-        }
+        } else { text }
     }
 
-    private func opacity(for index: Int, activeIndex: Int?) -> Double {
-        guard let activeIndex else { return 0.82 }
-        if index == activeIndex { return 1 }
-        return abs(index - activeIndex) == 1 ? 0.60 : 0.36
+    private func scheduleCenter(using proxy: ScrollViewProxy, animated: Bool) {
+        guard let request = presentation.followState.beginRequest() else { return }
+        Task { @MainActor in
+            await Task.yield()
+            guard presentation.followState.canApply(request) else { return }
+            centerCurrentLine(using: proxy, animated: animated)
+        }
     }
 
     private func centerCurrentLine(using proxy: ScrollViewProxy, animated: Bool) {
         guard let activeIndex else { return }
+        center(activeIndex, using: proxy, animated: animated)
+    }
+
+    private func center(_ index: Int, using proxy: ScrollViewProxy, animated: Bool) {
         if animated && !reduceMotion {
-            withAnimation(.spring(response: 0.65, dampingFraction: 0.94)) {
-                proxy.scrollTo(activeIndex, anchor: .center)
+            withAnimation(.spring(response: ExperimentalLyricsStyle.focusTransitionDuration, dampingFraction: 0.96)) {
+                proxy.scrollTo(index, anchor: .center)
             }
-        } else {
-            proxy.scrollTo(activeIndex, anchor: .center)
-        }
+        } else { proxy.scrollTo(index, anchor: .center) }
     }
 }
 

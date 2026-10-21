@@ -1,6 +1,7 @@
 uniffi::setup_scaffolding!();
 
 pub mod blocked;
+pub mod animated_artwork;
 pub mod cipher;
 pub mod db;
 pub mod genius;
@@ -22,6 +23,7 @@ pub use genius::{
     GeniusLyricsRecord, GeniusMatchStatusRecord, GeniusMetricsRecord, GeniusPerformanceRecord,
     GeniusResolutionRecord, GeniusSongRecord, GeniusTrackRecord,
 };
+pub use animated_artwork::{AnimatedArtworkAsset, AnimatedArtworkRequest};
 use innertube::{AudioQuality, Clients, InnerTube, PlaylistSort, METADATA_CLIENT};
 
 /// Runs YouTube's player.js in the native JavaScriptCore process on macOS.
@@ -85,6 +87,75 @@ pub struct StreamPlaybackInfo {
     pub duration: Option<String>,
     pub thumbnail: Option<String>,
     pub headers: std::collections::HashMap<String, String>,
+}
+
+/// Detailed lyrics are additive: classic clients keep the original line-only records.
+#[derive(Clone, Debug, uniffi::Record)]
+pub struct KaraokeWordInfo {
+    pub text: String,
+    pub start_ms: u64,
+    pub end_ms: u64,
+}
+
+#[derive(Clone, Debug, uniffi::Record)]
+pub struct KaraokeLineInfo {
+    pub time_ms: Option<u64>,
+    pub end_time_ms: Option<u64>,
+    pub text: String,
+    pub words: Vec<KaraokeWordInfo>,
+    pub translation: Option<String>,
+    pub role: Option<String>,
+    pub agent: Option<String>,
+    pub group_id: Option<String>,
+    pub section: Option<String>,
+}
+
+#[derive(Clone, Debug, uniffi::Record)]
+pub struct KaraokeLyricsInfo {
+    pub provider: String,
+    pub is_synced: bool,
+    pub instrumental: bool,
+    pub lines: Vec<KaraokeLineInfo>,
+}
+
+impl From<lyrics::Lyrics> for KaraokeLyricsInfo {
+    fn from(value: lyrics::Lyrics) -> Self {
+        lyrics::karaoke::Document::from(value).into()
+    }
+}
+
+impl From<lyrics::karaoke::Document> for KaraokeLyricsInfo {
+    fn from(value: lyrics::karaoke::Document) -> Self {
+        Self {
+            provider: value.source,
+            is_synced: value.synced,
+            instrumental: value.instrumental,
+            lines: value
+                .lines
+                .into_iter()
+                .map(|line| KaraokeLineInfo {
+                    time_ms: line.time_ms,
+                    end_time_ms: line.end_time_ms,
+                    text: line.text,
+                    words: line
+                        .words
+                        .unwrap_or_default()
+                        .into_iter()
+                        .map(|word| KaraokeWordInfo {
+                            text: word.text,
+                            start_ms: word.start_ms,
+                            end_ms: word.end_ms,
+                        })
+                        .collect(),
+                    translation: line.translation,
+                    role: line.role,
+                    agent: line.agent,
+                    group_id: line.group_id,
+                    section: line.section,
+                })
+                .collect(),
+        }
+    }
 }
 
 #[derive(Clone, Debug, uniffi::Record)]
@@ -476,6 +547,7 @@ pub struct SideBCore {
     cipher: Arc<cipher::CipherDeobfuscator>,
     current_playback: Arc<Mutex<Option<CorePlaybackTracking>>>,
     genius: Arc<genius::GeniusEngine>,
+    animated_artwork: animated_artwork::Engine,
 }
 
 impl SideBCore {
@@ -533,6 +605,7 @@ impl SideBCore {
         Ok(Arc::new(SideBCore {
             data_dir: path,
             genius: Arc::new(genius::GeniusEngine::new(db.clone())),
+            animated_artwork: animated_artwork::Engine::new(),
             db,
             persist_cookie_in_sqlite,
             it,
@@ -554,6 +627,33 @@ impl SideBCore {
 
     pub fn set_cipher_js_runtime(&self, runtime: Box<dyn CipherJsRuntime>) {
         self.cipher.set_runtime(Arc::from(runtime));
+    }
+
+    /// Optional public album artwork; never part of the audio or lyrics request path.
+    /// The shell retains request_id until its native player releases the local file.
+    pub async fn prepare_animated_artwork(
+        &self,
+        request: AnimatedArtworkRequest,
+        request_id: String,
+        cache_dir: String,
+    ) -> Result<Option<AnimatedArtworkAsset>, SideBError> {
+        self.animated_artwork.prepare(request, request_id, cache_dir).await
+            .map_err(|_| SideBError::Other { message: "Animated artwork unavailable".into() })
+    }
+
+    pub fn cancel_animated_artwork(&self, request_id: String) {
+        self.animated_artwork.cancel(&request_id);
+    }
+
+    pub async fn get_animated_artwork_cache_size(&self, cache_dir: String) -> Result<u64, SideBError> {
+        self.animated_artwork.cache_size(cache_dir).await
+            .map_err(|_| SideBError::Other { message: "Animated artwork cache unavailable".into() })
+    }
+
+    /// Players release their leases before clearing. Any remaining lease is preserved.
+    pub async fn clear_animated_artwork_cache(&self, cache_dir: String) -> Result<u64, SideBError> {
+        self.animated_artwork.clear(cache_dir).await
+            .map_err(|_| SideBError::Other { message: "Animated artwork cache could not be cleared".into() })
     }
 
     /// Set session cookie extracted from Swift WKWebView or login flow.
@@ -1882,6 +1982,34 @@ impl SideBCore {
                 })
                 .collect(),
         }))
+    }
+
+    /// Opt-in karaoke lookup with detailed timing and a separate, refreshable cache.
+    /// The classic get_lyrics contract and cache are never replaced by this method.
+    pub async fn get_karaoke_lyrics(
+        &self,
+        video_id: String,
+        title: String,
+        artist: String,
+        album: Option<String>,
+        duration_secs: Option<u64>,
+        force_refresh: bool,
+    ) -> Result<Option<KaraokeLyricsInfo>, SideBError> {
+        let ctx = lyrics::LyricsContext {
+            db: &self.db,
+            it: &self.it,
+            clients: &self.clients,
+        };
+        let req = lyrics::LyricsRequest {
+            video_id,
+            title,
+            artists: artist,
+            album,
+            duration: duration_secs.map(|d| d as f64),
+        };
+        lyrics::karaoke::get(&ctx, req, force_refresh)
+            .await
+            .map(|hit| hit.map(Into::into))
     }
 
     /// Read-only cache probe used before the delayed background network lookup.

@@ -1,5 +1,6 @@
 import SwiftUI
 import UniformTypeIdentifiers
+import SideBCore
 
 /// Window-local overlay; dynamic preferences belong to the current Home account.
 enum HomeSettingsVisibility {
@@ -10,14 +11,19 @@ enum HomeSettingsVisibility {
 
 struct HomeSettingsPanel: View {
     var homeViewModel: HomeViewModel
+    var rustCore: SideBCore? = nil
     let titlebarHeight: CGFloat
     var toolbarBottom: CGFloat = 0
     let onClose: () -> Void
-    private enum Control: Hashable { case close, language, sidebarLayout, homeBackground, collectionKind, search, row(String), up(String), down(String), reset(String) }
+    private enum Control: Hashable { case close, language, sidebarLayout, homeBackground, animatedArtwork, clearAnimatedArtwork, collectionKind, search, row(String), up(String), down(String), reset(String) }
     @AppStorage(HomeAppearance.solidBackgroundKey, store: HomeAppearance.preferences)
     private var useSolidHomeBackground = false
     @AppStorage(SidebarStyle.preferenceKey, store: HomeAppearance.preferences)
     private var sidebarStyleRawValue = SidebarStyle.collection.rawValue
+    @AppStorage(HomeAppearance.animatedArtworkKey, store: HomeAppearance.preferences)
+    private var animatedArtworkEnabled = true
+    @State private var animatedArtworkCacheBytes: UInt64?
+    @State private var animatedArtworkCacheError = false
     @FocusState private var focusedControl: Control?
     @State private var categorySearch = ""
     @State private var draggingSource: String?
@@ -61,7 +67,7 @@ struct HomeSettingsPanel: View {
             Divider().opacity(0.2).padding(.horizontal, 16).padding(.vertical, 16)
 
             ScrollView(.vertical) {
-                LazyVStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: 12) {
                     Text(L10n.text("settings.general")).font(.system(size: 13, weight: .semibold)).accessibilityAddTraits(.isHeader)
                     Picker(L10n.text("settings.language"), selection: Binding(
                         get: { L10n.language },
@@ -94,6 +100,24 @@ struct HomeSettingsPanel: View {
                     .accessibilityIdentifier("home-background-picker")
                     Text(L10n.text("settings.homeBackground.hint"))
                         .font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    Toggle(L10n.text("settings.animatedArtwork"), isOn: $animatedArtworkEnabled)
+                        .toggleStyle(.checkbox)
+                        .font(.system(size: 12))
+                        .focused($focusedControl, equals: .animatedArtwork)
+                        .accessibilityIdentifier("animated-artwork-toggle")
+                    Text(L10n.text("settings.animatedArtwork.hint"))
+                        .font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    Button(animatedArtworkCacheLabel) {
+                        Task { await clearAnimatedArtworkCache() }
+                    }
+                    .font(.system(size: 12))
+                    .disabled(rustCore == nil || AnimatedArtworkManager.shared.isClearing)
+                    .focused($focusedControl, equals: .clearAnimatedArtwork)
+                    .accessibilityIdentifier("animated-artwork-clear-cache")
+                    if animatedArtworkCacheError {
+                        Text(L10n.text("settings.animatedArtwork.cacheFailure"))
+                            .font(.system(size: 11)).foregroundStyle(.secondary)
+                    }
                     Divider().padding(.vertical, 8)
                     Text(L10n.text("settings.featured")).font(.system(size: 13, weight: .semibold)).accessibilityAddTraits(.isHeader)
                     Picker(L10n.text("settings.featured"), selection: Binding(
@@ -110,7 +134,10 @@ struct HomeSettingsPanel: View {
 
                     Text(L10n.text("settings.sourcesHint"))
                         .font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                    ForEach(rules) { rule in sourceRow(rule) }
+                    let currentRules = rules
+                    ForEach(Array(currentRules.enumerated()), id: \.element.id) { index, rule in
+                        sourceRow(rule, index: index, count: currentRules.count)
+                    }
                     if homeViewModel.allFeaturedSourcesDisabled {
                         Text(L10n.text("settings.enableSource"))
                             .font(.system(size: 12)).foregroundStyle(.secondary)
@@ -173,7 +200,29 @@ struct HomeSettingsPanel: View {
         .accessibilityIdentifier("home-settings-panel")
         .background(HomeSettingsKeyboardFocusBridge(isControlFocused: focusedControl != nil))
         .onChange(of: homeViewModel.featuredCollectionKind) { _, _ in draggingSource = nil }
+        .task(id: rustCore != nil) {
+            guard let rustCore else { return }
+            animatedArtworkCacheBytes = try? await AnimatedArtworkManager.shared.size(core: rustCore)
+        }
         .onExitCommand(perform: onClose)
+    }
+
+    private var animatedArtworkCacheLabel: String {
+        if AnimatedArtworkManager.shared.isClearing { return L10n.text("settings.animatedArtwork.cacheClearing") }
+        let size = animatedArtworkCacheBytes.map { String(format: "%.1f", Double($0) / (1024 * 1024)) } ?? "—"
+        return L10n.text("settings.animatedArtwork.clearCache", args: [size])
+    }
+
+    @MainActor
+    private func clearAnimatedArtworkCache() async {
+        guard let rustCore else { return }
+        animatedArtworkCacheError = false
+        do {
+            animatedArtworkCacheBytes = try await AnimatedArtworkManager.shared.clear(core: rustCore)
+            animatedArtworkCacheError = animatedArtworkCacheBytes != 0
+        } catch {
+            animatedArtworkCacheError = true
+        }
     }
 
     private var orderDescription: String {
@@ -184,14 +233,15 @@ struct HomeSettingsPanel: View {
         }
     }
 
-    private func sourceRow(_ rule: HomeRecommendationSourceRule) -> some View {
-        HStack(spacing: 6) {
-            Toggle(rule.source.title, isOn: Binding(get: {
-                rules.first(where: { $0.id == rule.id })?.enabled ?? false
+    private func sourceRow(_ rule: HomeRecommendationSourceRule, index: Int, count: Int) -> some View {
+        let title = rule.source.title
+        return HStack(spacing: 6) {
+            Toggle(title, isOn: Binding(get: {
+                rule.enabled
             }, set: { enabled in
                 var settings = homeViewModel.recommendationSettings
                 var updated = rules
-                if let index = updated.firstIndex(where: { $0.id == rule.id }) { updated[index].enabled = enabled }
+                if let idx = updated.firstIndex(where: { $0.id == rule.id }) { updated[idx].enabled = enabled }
                 settings.setSources(updated, for: homeViewModel.featuredCollectionKind)
                 homeViewModel.setRecommendationSettings(settings)
             }))
@@ -199,11 +249,11 @@ struct HomeSettingsPanel: View {
             .font(.system(size: 12))
             .focused($focusedControl, equals: .row("source-\(rule.id)"))
             Spacer(minLength: 0)
-            moveButtons(id: "source-\(rule.id)", title: rule.source.title,
-                index: rules.firstIndex(where: { $0.id == rule.id }) ?? 0, count: rules.count) { delta in
+            moveButtons(id: "source-\(rule.id)", title: title,
+                index: index, count: count) { delta in
                 moveSource(rule.id, delta: delta)
             }
-            dragHandle(title: rule.source.title).onDrag {
+            dragHandle(title: title).onDrag {
                 draggingSource = rule.id
                 return NSItemProvider(object: NSString(string: "source:\(rule.id)"))
             }
@@ -219,8 +269,11 @@ struct HomeSettingsPanel: View {
     }
 
     private func categoryRow(_ category: HomeCategoryOption) -> some View {
-        HStack(spacing: 6) {
-            Toggle(L10n.providerHeading(category.title), isOn: Binding(get: {
+        let heading = L10n.providerHeading(category.title)
+        let allCategories = homeViewModel.receivedCategories
+        let index = allCategories.firstIndex(where: { $0.id == category.id }) ?? 0
+        return HStack(spacing: 6) {
+            Toggle(heading, isOn: Binding(get: {
                 homeViewModel.recommendationSettings.isCategoryVisible(key: category.id)
             }, set: { visible in
                 var settings = homeViewModel.recommendationSettings
@@ -232,10 +285,9 @@ struct HomeSettingsPanel: View {
             .font(.system(size: 12))
             .focused($focusedControl, equals: .row("category-\(category.id)"))
             Spacer(minLength: 0)
-            moveButtons(id: "category-\(category.id)", title: L10n.providerHeading(category.title),
-                index: homeViewModel.receivedCategories.firstIndex(where: { $0.id == category.id }) ?? 0,
-                count: homeViewModel.receivedCategories.count) { delta in moveCategory(category.id, delta: delta) }
-            dragHandle(title: L10n.providerHeading(category.title)).onDrag {
+            moveButtons(id: "category-\(category.id)", title: heading,
+                index: index, count: allCategories.count) { delta in moveCategory(category.id, delta: delta) }
+            dragHandle(title: heading).onDrag {
                 draggingCategory = category.id
                 return NSItemProvider(object: NSString(string: "category:\(category.id)"))
             }

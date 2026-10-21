@@ -414,91 +414,65 @@ extension View {
         fallbackArtist: String? = nil,
         knownArtistId: String? = nil
     ) -> some View {
-        let resolvedOrigin = origin ?? (router?.currentPage.asMenuOrigin ?? .home)
-        switch card.kind.lowercased() {
-        case "song", "video":
-            let song = SongItemRecord(fromCard: card, fallbackArtist: fallbackArtist, knownArtistId: knownArtistId)
-            let isLiked = player.likedVideoIds.contains(song.videoId)
-            let isCurrent = AppContextMenuFactory.isCurrentPlayingOccurrence(origin: resolvedOrigin, player: player)
-            let facts = MenuFacts(
-                isLoggedIn: core?.isLoggedIn() ?? false,
-                isCurrentPlayingTrack: isCurrent,
-                isLiked: isLiked,
-                userPlaylists: AppContextMenuFactory.cachedUserPlaylists
-            )
-            self.sideBContextMenu(
-                target: .song(song),
-                origin: resolvedOrigin,
-                facts: facts,
-                player: player,
-                router: router,
-                core: core
-            )
-        case "album":
-            let target = MenuTarget.album(
-                browseId: card.id,
-                playlistId: nil,
-                title: card.title,
-                artist: card.subtitle,
-                artistId: knownArtistId,
-                thumbnail: card.thumbnail
-            )
-            let inLib = AppContextMenuFactory.cachedUserAlbums.contains(where: { $0.id == card.id })
-            let facts = MenuFacts(
-                isLoggedIn: core?.isLoggedIn() ?? false,
-                inLibrary: inLib ? .known(true) : .unknown,
-                userPlaylists: AppContextMenuFactory.cachedUserPlaylists
-            )
-            self.sideBContextMenu(
-                target: target,
-                origin: resolvedOrigin,
-                facts: facts,
-                player: player,
-                router: router,
-                core: core
-            )
-        case "artist":
-            let target = MenuTarget.artist(
-                channelId: card.id,
-                name: card.title,
-                thumbnail: card.thumbnail,
-                radioPlaylistId: nil
-            )
-            let facts = MenuFacts(
-                isLoggedIn: core?.isLoggedIn() ?? false,
-                userPlaylists: AppContextMenuFactory.cachedUserPlaylists
-            )
-            self.sideBContextMenu(
-                target: target,
-                origin: resolvedOrigin,
-                facts: facts,
-                player: player,
-                router: router,
-                core: core
-            )
-        default:
-            let isMix = MenuIDNormalizer.isDynamicRadioMix(id: card.id)
-            let target = MenuTarget.playlist(
-                id: card.id,
-                title: card.title,
-                subtitle: card.subtitle,
-                thumbnail: card.thumbnail,
-                isRadioMix: isMix
-            )
-            let inLib = AppContextMenuFactory.cachedUserPlaylists.contains(where: { $0.id == card.id })
-            let facts = MenuFacts(
-                isLoggedIn: core?.isLoggedIn() ?? false,
-                inLibrary: inLib ? .known(true) : .unknown,
-                userPlaylists: AppContextMenuFactory.cachedUserPlaylists
-            )
-            self.sideBContextMenu(
-                target: target,
-                origin: resolvedOrigin,
-                facts: facts,
-                player: player,
-                router: router,
-                core: core
-            )
+        self.sideBLazyContextMenu(player: player, router: router, core: core) {
+            let resolvedOrigin = origin ?? (router?.currentPage.asMenuOrigin ?? .home)
+            switch card.kind.lowercased() {
+            case "song", "video":
+                let song = SongItemRecord(fromCard: card, fallbackArtist: fallbackArtist, knownArtistId: knownArtistId)
+                let isLiked = player.likedVideoIds.contains(song.videoId)
+                let isCurrent = AppContextMenuFactory.isCurrentPlayingOccurrence(origin: resolvedOrigin, player: player)
+                let facts = MenuFacts(
+                    isLoggedIn: core?.isLoggedIn() ?? false,
+                    isCurrentPlayingTrack: isCurrent,
+                    isLiked: isLiked,
+                    userPlaylists: AppContextMenuFactory.cachedUserPlaylists
+                )
+                return (.song(song), resolvedOrigin, facts)
+            case "album":
+                let target = MenuTarget.album(
+                    browseId: card.id,
+                    playlistId: nil,
+                    title: card.title,
+                    artist: card.subtitle,
+                    artistId: knownArtistId,
+                    thumbnail: card.thumbnail
+                )
+                let inLib = AppContextMenuFactory.cachedUserAlbums.contains(where: { $0.id == card.id })
+                let facts = MenuFacts(
+                    isLoggedIn: core?.isLoggedIn() ?? false,
+                    inLibrary: inLib ? .known(true) : .unknown,
+                    userPlaylists: AppContextMenuFactory.cachedUserPlaylists
+                )
+                return (target, resolvedOrigin, facts)
+            case "artist":
+                let target = MenuTarget.artist(
+                    channelId: card.id,
+                    name: card.title,
+                    thumbnail: card.thumbnail,
+                    radioPlaylistId: nil
+                )
+                let facts = MenuFacts(
+                    isLoggedIn: core?.isLoggedIn() ?? false,
+                    userPlaylists: AppContextMenuFactory.cachedUserPlaylists
+                )
+                return (target, resolvedOrigin, facts)
+            default:
+                let isMix = MenuIDNormalizer.isDynamicRadioMix(id: card.id)
+                let target = MenuTarget.playlist(
+                    id: card.id,
+                    title: card.title,
+                    subtitle: card.subtitle,
+                    thumbnail: card.thumbnail,
+                    isRadioMix: isMix
+                )
+                let inLib = AppContextMenuFactory.cachedUserPlaylists.contains(where: { $0.id == card.id })
+                let facts = MenuFacts(
+                    isLoggedIn: core?.isLoggedIn() ?? false,
+                    inLibrary: inLib ? .known(true) : .unknown,
+                    userPlaylists: AppContextMenuFactory.cachedUserPlaylists
+                )
+                return (target, resolvedOrigin, facts)
+            }
         }
     }
 
@@ -539,37 +513,32 @@ extension View {
         router: NavigationRouter?,
         core: SideBCore?
     ) -> some View {
-        let resolvedOrigin = origin ?? (router?.currentPage.asMenuOrigin ?? .home)
-        let inLibStatus: TriStateStatus
-        if let inLibrary {
-            inLibStatus = .known(inLibrary)
-        } else if AppContextMenuFactory.cachedUserAlbums.contains(where: { $0.id == browseId }) {
-            inLibStatus = .known(true)
-        } else {
-            inLibStatus = .unknown
-        }
+        self.sideBLazyContextMenu(player: player, router: router, core: core) {
+            let resolvedOrigin = origin ?? (router?.currentPage.asMenuOrigin ?? .home)
+            let inLibStatus: TriStateStatus
+            if let inLibrary {
+                inLibStatus = .known(inLibrary)
+            } else if AppContextMenuFactory.cachedUserAlbums.contains(where: { $0.id == browseId }) {
+                inLibStatus = .known(true)
+            } else {
+                inLibStatus = .unknown
+            }
 
-        let facts = MenuFacts(
-            isLoggedIn: core?.isLoggedIn() ?? false,
-            inLibrary: inLibStatus,
-            userPlaylists: AppContextMenuFactory.cachedUserPlaylists
-        )
-        let target = MenuTarget.album(
-            browseId: browseId,
-            playlistId: playlistId,
-            title: title,
-            artist: artist,
-            artistId: nil,
-            thumbnail: thumbnail
-        )
-        return self.sideBContextMenu(
-            target: target,
-            origin: resolvedOrigin,
-            facts: facts,
-            player: player,
-            router: router,
-            core: core
-        )
+            let facts = MenuFacts(
+                isLoggedIn: core?.isLoggedIn() ?? false,
+                inLibrary: inLibStatus,
+                userPlaylists: AppContextMenuFactory.cachedUserPlaylists
+            )
+            let target = MenuTarget.album(
+                browseId: browseId,
+                playlistId: playlistId,
+                title: title,
+                artist: artist,
+                artistId: nil,
+                thumbnail: thumbnail
+            )
+            return (target, resolvedOrigin, facts)
+        }
     }
 
     /// Menú contextual de Playlist
@@ -589,49 +558,44 @@ extension View {
         onDelete: (@MainActor @Sendable () -> Void)? = nil,
         onSort: (@MainActor @Sendable (String) -> Void)? = nil
     ) -> some View {
-        let resolvedOrigin = origin ?? (router?.currentPage.asMenuOrigin ?? .home)
-        let inLibStatus: TriStateStatus
-        if let inLibrary {
-            inLibStatus = .known(inLibrary)
-        } else if AppContextMenuFactory.cachedUserPlaylists.contains(where: { $0.id == id }) {
-            inLibStatus = .known(true)
-        } else {
-            inLibStatus = .unknown
-        }
+        self.sideBLazyContextMenu(player: player, router: router, core: core) {
+            let resolvedOrigin = origin ?? (router?.currentPage.asMenuOrigin ?? .home)
+            let inLibStatus: TriStateStatus
+            if let inLibrary {
+                inLibStatus = .known(inLibrary)
+            } else if AppContextMenuFactory.cachedUserPlaylists.contains(where: { $0.id == id }) {
+                inLibStatus = .known(true)
+            } else {
+                inLibStatus = .unknown
+            }
 
-        let isOwnedStatus: TriStateStatus
-        if let isOwned {
-            isOwnedStatus = .known(isOwned)
-        } else {
-            isOwnedStatus = .unknown
-        }
+            let isOwnedStatus: TriStateStatus
+            if let isOwned {
+                isOwnedStatus = .known(isOwned)
+            } else {
+                isOwnedStatus = .unknown
+            }
 
-        let isMix = MenuIDNormalizer.isDynamicRadioMix(id: id)
-        let facts = MenuFacts(
-            isLoggedIn: core?.isLoggedIn() ?? false,
-            inLibrary: inLibStatus,
-            isOwned: isOwnedStatus,
-            sortEditable: sortEditable,
-            userPlaylists: AppContextMenuFactory.cachedUserPlaylists,
-            onEditPlaylist: onEdit,
-            onDeletePlaylist: onDelete,
-            onSortPlaylist: onSort
-        )
-        let target = MenuTarget.playlist(
-            id: id,
-            title: title,
-            subtitle: subtitle,
-            thumbnail: thumbnail,
-            isRadioMix: isMix
-        )
-        return self.sideBContextMenu(
-            target: target,
-            origin: resolvedOrigin,
-            facts: facts,
-            player: player,
-            router: router,
-            core: core
-        )
+            let isMix = MenuIDNormalizer.isDynamicRadioMix(id: id)
+            let facts = MenuFacts(
+                isLoggedIn: core?.isLoggedIn() ?? false,
+                inLibrary: inLibStatus,
+                isOwned: isOwnedStatus,
+                sortEditable: sortEditable,
+                userPlaylists: AppContextMenuFactory.cachedUserPlaylists,
+                onEditPlaylist: onEdit,
+                onDeletePlaylist: onDelete,
+                onSortPlaylist: onSort
+            )
+            let target = MenuTarget.playlist(
+                id: id,
+                title: title,
+                subtitle: subtitle,
+                thumbnail: thumbnail,
+                isRadioMix: isMix
+            )
+            return (target, resolvedOrigin, facts)
+        }
     }
 
     /// Menú contextual de Artista
@@ -646,32 +610,27 @@ extension View {
         router: NavigationRouter?,
         core: SideBCore?
     ) -> some View {
-        let resolvedOrigin = origin ?? (router?.currentPage.asMenuOrigin ?? .home)
-        let subStatus: TriStateStatus
-        if let subscribed {
-            subStatus = .known(subscribed)
-        } else {
-            subStatus = .unknown
-        }
+        self.sideBLazyContextMenu(player: player, router: router, core: core) {
+            let resolvedOrigin = origin ?? (router?.currentPage.asMenuOrigin ?? .home)
+            let subStatus: TriStateStatus
+            if let subscribed {
+                subStatus = .known(subscribed)
+            } else {
+                subStatus = .unknown
+            }
 
-        let facts = MenuFacts(
-            isLoggedIn: core?.isLoggedIn() ?? false,
-            isSubscribed: subStatus,
-            userPlaylists: AppContextMenuFactory.cachedUserPlaylists
-        )
-        let target = MenuTarget.artist(
-            channelId: channelId,
-            name: name,
-            thumbnail: thumbnail,
-            radioPlaylistId: radioPlaylistId
-        )
-        return self.sideBContextMenu(
-            target: target,
-            origin: resolvedOrigin,
-            facts: facts,
-            player: player,
-            router: router,
-            core: core
-        )
+            let facts = MenuFacts(
+                isLoggedIn: core?.isLoggedIn() ?? false,
+                isSubscribed: subStatus,
+                userPlaylists: AppContextMenuFactory.cachedUserPlaylists
+            )
+            let target = MenuTarget.artist(
+                channelId: channelId,
+                name: name,
+                thumbnail: thumbnail,
+                radioPlaylistId: radioPlaylistId
+            )
+            return (target, resolvedOrigin, facts)
+        }
     }
 }

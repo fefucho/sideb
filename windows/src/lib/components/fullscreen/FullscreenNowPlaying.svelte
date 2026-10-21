@@ -19,9 +19,11 @@
   import { artworkCandidates, nextArtworkUrl } from '$lib/images/artwork';
   import type { LyricsState } from '$lib/player/lyrics';
   import type { RecommendationsSnapshot } from '$lib/player/recommendations';
+  import AnimatedArtwork from './AnimatedArtwork.svelte';
 
   type Panel = "queue" | "lyrics" | "related";
   interface Props {
+    session: number;
     pullDistance?:number; pulling?:boolean;
     confirmedVolume?:number; volumeFeedback?:boolean; volumeAnnouncement?:string;
     onVolumeSurfaceChange?:()=>void;
@@ -61,7 +63,7 @@
   }
 
   let {
-    pullDistance=0,pulling=false,confirmedVolume=100,volumeFeedback=false,volumeAnnouncement='',onVolumeSurfaceChange,geniusState,geniusController,onOpenExternal,playback, onSelectQueue, onTogglePlayback, onClose, selectedPanel, lyricsMode='synced', onShowGenius, onSelectPanel, onOpenArtist, onOpenAlbum,
+    session,pullDistance=0,pulling=false,confirmedVolume=100,volumeFeedback=false,volumeAnnouncement='',onVolumeSurfaceChange,geniusState,geniusController,onOpenExternal,playback, onSelectQueue, onTogglePlayback, onClose, selectedPanel, lyricsMode='synced', onShowGenius, onSelectPanel, onOpenArtist, onOpenAlbum,
     onOpenMenu, onQueueContextMenu, loggedIn = false, liked = false, likePending = false,
     onToggleLike, onRetryRadio, onRetrySource, likedIds = new Set<string>(), pendingIds = new Set<string>(), likesLoading = false,
     onToggleQueueLike, onDislikeQueueEntry,
@@ -140,6 +142,7 @@
           {:else}
             <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M10 5v12.1a4 4 0 1 1-2-3.46V3l12-2v14.1a4 4 0 1 1-2-3.46V4.4z" /></svg>
           {/if}
+          <AnimatedArtwork {session} audioDuration={playback.duration} track={currentTrack} isPlaying={playback.isPlaying && !playback.isLoading} flipped={showInformation} />
           <span class="artwork-shade" aria-hidden="true"></span>
           <span class="artwork-percentage" aria-hidden="true">{$t('player.volumePercentage',[Math.round(confirmedVolume)])}</span>
           <span class="artwork-control" aria-hidden="true">
@@ -178,13 +181,12 @@
       </ControlSegments>
 
       <div id="fullscreen-panel" class="panel" role="tabpanel" tabindex="0" aria-labelledby={`fullscreen-tab-${panel}`}>
+        <LyricsPanel state={lyricsState} {playback} {session} active={panel==='lyrics'&&lyricsMode!=='genius'} {onSeek} onRetry={onRetryLyrics} />
         {#if panel === "queue"}
           <QueuePanel {playback} {onSelectQueue} {onTogglePlayback} {onOpenArtist} {onOpenAlbum} {onMoveQueue} {onQueueContextMenu} {onRetryRadio} {onRetrySource} {loggedIn} {likedIds} {pendingIds} {likesLoading} onToggleLike={onToggleQueueLike} onDislike={onDislikeQueueEntry} />
         {:else if panel === "lyrics"}
           {#if lyricsMode==='genius'}
             <GeniusPanel state={geniusState} controller={geniusController} title={currentTrack?.title??''} artists={currentTrack?.artists??''} artwork={selectedArtworkUrl} {onOpenExternal} />
-          {:else}
-            <LyricsPanel state={lyricsState} position={playback.position} duration={playback.duration} {onSeek} onRetry={onRetryLyrics} />
           {/if}
         {:else}
           <RecommendedPanel snapshot={recommendationsState} {currentTrack} isPlaying={playback.isPlaying}

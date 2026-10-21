@@ -119,6 +119,28 @@ extension View {
             .labelStyle(.titleAndIcon)
         }
     }
+
+    /// Variante con evaluación 100% diferida de `target`, `origin` y `facts` (incluyendo llamadas FFI `isLoggedIn()`
+    /// y lecturas de estado observable) exclusivamente al abrir el menú contextual.
+    func sideBLazyContextMenu(
+        player: PlayerViewModel?,
+        router: NavigationRouter?,
+        core: SideBCore?,
+        resolve: @escaping @MainActor () -> (target: MenuTarget, origin: MenuOrigin, facts: MenuFacts)
+    ) -> some View {
+        self.contextMenu {
+            let resolved = resolve()
+            let sections = MenuPolicy.resolveSections(target: resolved.target, origin: resolved.origin, facts: resolved.facts)
+            let executor = MenuActionExecutor(player: player, router: router, core: core, origin: resolved.origin)
+            MenuSectionContentView(
+                sections: sections,
+                target: resolved.target,
+                facts: resolved.facts,
+                executor: executor
+            )
+            .labelStyle(.titleAndIcon)
+        }
+    }
 }
 
 // MARK: - SideBEllipsisMenuButton

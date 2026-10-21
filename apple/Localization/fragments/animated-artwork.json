@@ -1,0 +1,22 @@
+{
+  "settings.animatedArtwork": {
+    "es": "Carátulas animadas en pantalla completa",
+    "en": "Animated artwork in full screen"
+  },
+  "settings.animatedArtwork.hint": {
+    "es": "Mostrá la animación del álbum cuando esté disponible.",
+    "en": "Show album animation when available."
+  },
+  "settings.animatedArtwork.clearCache": {
+    "es": "Vaciar caché de carátulas animadas (%@ MB)",
+    "en": "Clear animated artwork cache (%@ MB)"
+  },
+  "settings.animatedArtwork.cacheClearing": {
+    "es": "Vaciando caché…",
+    "en": "Clearing cache…"
+  },
+  "settings.animatedArtwork.cacheFailure": {
+    "es": "No se pudo vaciar toda la caché. Intentá de nuevo.",
+    "en": "Could not clear the entire cache. Try again."
+  }
+}

@@ -1,0 +1,77 @@
+{
+  "date": "2026-10-20",
+  "kind": "live-browser-visual-observation",
+  "url": "https://music.octavestreaming.com/",
+  "scope": "Research and macOS plan; no app implementation or build",
+  "access": "User completed access gate manually",
+  "audio": { "volumeObserved": 0, "auditorySyncVerified": false },
+  "tracks": [
+    { "title": "Patience (feat. Don Toliver)", "artist": "Lil Uzi Vert", "album": "Pink Tape", "durationVisible": "4:22", "checks": ["typography", "focus", "context blur", "ad-libs as normal rows"] },
+    { "title": "De Música Ligera", "artist": "Soda Stereo", "album": "Me Verás Volver (Hits & Más)", "durationVisible": "3:33", "checks": ["intro dots", "interlude dots around 75 seconds", "manual scroll pill", "responsive columns"] },
+    { "title": "DtMF", "artist": "Bad Bunny", "album": "DeBÍ TiRAR MáS FOToS", "durationVisible": "3:57", "checks": ["intro dots", "long phrases", "inline parenthetical ad-libs around 40 seconds"] },
+    { "title": "Blinding Lights", "artist": "The Weeknd", "album": "After Hours", "durationVisible": "3:20", "checks": ["word fill around 59 seconds", "sustained word scale around 62 seconds", "pause"] }
+  ],
+  "desktop": {
+    "viewportCSS": { "width": 1134, "height": 853, "dpr": 2 },
+    "fontPx": 36,
+    "fontWeight": 700,
+    "lineHeightPx": 45,
+    "letterSpacingPxSample": -0.176,
+    "fontFamilyStartsWith": ["-apple-system", "system-ui", "SF Pro Display", "SF Pro Text"],
+    "fontFileResolved": false,
+    "scrollRect": { "x": 591, "y": 78, "width": 447, "height": 720 },
+    "scrollPaddingPx": { "top": 360, "bottom": 360, "left": 32, "right": 32 },
+    "rowWidthPx": 383,
+    "actionReservedWidthPx": 48,
+    "effectiveTextWidthPx": 335,
+    "phraseVerticalPaddingPxPerSide": 10,
+    "singleVisualLineRowHeightPx": 65,
+    "edgeMaskPx": { "top": 48, "bottom": 88 },
+    "focusColorSample": "#f5f5f7",
+    "contextColor": "rgba(255,255,255,0.4)",
+    "contextScale": 0.98,
+    "contextBlurPxSamples": [1.2, 2.1, 3],
+    "focusStyleTransitionSeconds": 0.788,
+    "scrollAnimationDurationMeasured": false
+  },
+  "words": {
+    "activeBaseOpacity": 0.7,
+    "highlightLayerOpacity": 1,
+    "gradientFeatherPxSamples": [30, 30],
+    "sustainedSample": { "scale": 1.1288, "translateYPx": -1.84, "origin": "50% 100%", "glowRadiusPx": 5, "glowAlphaSample": 0.37 },
+    "fullAnimationFormulaKnown": false
+  },
+  "instrumental": {
+    "dotCount": 3,
+    "baseDotDiameterPx": 14,
+    "gapPx": 10,
+    "blockHeightPx": 38,
+    "verticalPaddingPxPerSide": 12,
+    "scaleSample": [1, 0.723, 0.52],
+    "opacitySample": [1, 0.55, 0.22],
+    "glowRadiusPxSample": 16,
+    "previousPhraseCanRemainFocused": true,
+    "insertionThresholdMeasured": false,
+    "audioSilenceVerified": false
+  },
+  "backgroundVocals": {
+    "dtmfSampleInlineParentheses": true,
+    "fontPx": 36,
+    "weight": 700,
+    "alignment": "start",
+    "separateVoiceLayerVerified": false,
+    "duetOppositeAlignmentVerified": false
+  },
+  "responsive": [
+    { "width": 1440, "height": 900, "fontPx": 36, "lineHeightPx": 45, "lyricsContainerWidthPx": 600, "rowWidthPx": 536 },
+    { "width": 1134, "height": 853, "fontPx": 36, "lineHeightPx": 45, "lyricsContainerWidthPx": 447, "rowWidthPx": 383 },
+    { "width": 900, "height": 900, "fontPx": 36, "lineHeightPx": 45, "lyricsContainerWidthPx": 370, "rowWidthPx": 306 },
+    { "width": 600, "height": 900, "lyricsColumnVisible": false, "fontPx": null }
+  ],
+  "manualScroll": { "pillObserved": "Current line", "clickReturnVerified": false, "timeoutMeasured": false },
+  "sourceButton": { "clicked": true, "selectorOpened": false, "resultProviderVerified": false },
+  "artifactsIgnoredDirectory": "builds/octave-lyrics-visual-2026-10-20",
+  "rawEvidence": ["patience-paused-wide.png", "patience-playing.png", "patience-paused-style.json", "patience-playing-rows.json", "soda-intro.png", "soda-interlude-75.png", "soda-interlude-metrics.json", "soda-manual-scroll.png", "soda-width-1440.png", "soda-width-900.png", "soda-width-600.png", "responsive.json", "dtmf-playing.png", "dtmf-adlibs-40.png", "dtmf-adlib-styles.json", "weeknd-playing.png", "weeknd-word-frame1.json", "weeknd-word-frame2.json", "weeknd-paused-final.png", "desktop-layout-final.json", "octave-reference-crop.png"],
+  "cleanup": { "viewportOverrideReset": true, "lastPlaybackPaused": true, "userTabClosed": false },
+  "proposalNotObservation": { "sideBGapThresholdSecondsInitial": 5, "sideBFontPointsInitial": 36, "backgroundVoicesSmaller": true }
+}

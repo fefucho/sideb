@@ -1,0 +1,410 @@
+{
+  "date": "2026-10-20",
+  "timezone": "America/Montevideo",
+  "scope": "Read-only provider and GitHub research; no app changes, account access or audio playback",
+  "live": [
+    {
+      "name": "octave-weeknd",
+      "status": 200,
+      "seconds": 0.52,
+      "curlExit": 0,
+      "bytes": 33917,
+      "headers": {
+        "content-type": "application/json; charset=utf-8"
+      },
+      "keys": [
+        "success",
+        "synced",
+        "lyrics",
+        "richSync",
+        "source",
+        "alternates",
+        "timing"
+      ],
+      "success": true,
+      "source": "lrcred-karaoke",
+      "lines": 35,
+      "segments": 253,
+      "wordKeys": [
+        "start",
+        "end",
+        "word"
+      ],
+      "alternates": [
+        {
+          "source": "deezer-karaoke",
+          "keys": [
+            "label",
+            "source",
+            "synced",
+            "kind",
+            "lyrics",
+            "richSync"
+          ],
+          "lines": 34
+        },
+        {
+          "source": "lrclib-synced",
+          "keys": [
+            "label",
+            "source",
+            "synced",
+            "kind",
+            "lyrics",
+            "corrected"
+          ],
+          "lines": 0
+        }
+      ]
+    },
+    {
+      "name": "boidu-weeknd",
+      "status": 200,
+      "seconds": 0.34,
+      "curlExit": 0,
+      "bytes": 25239,
+      "headers": {
+        "content-type": "application/json",
+        "x-auth-mode": "cache",
+        "x-cache-status": "HIT"
+      },
+      "keys": [
+        "ttml"
+      ],
+      "lines": 35,
+      "timedSpans": 275,
+      "rootAttributes": {
+        "{http://music.apple.com/lyric-ttml-internal}timing": "Word",
+        "{http://www.w3.org/XML/1998/namespace}lang": "en"
+      },
+      "roles": [
+        "x-bg"
+      ],
+      "sourceFields": {}
+    },
+    {
+      "name": "octave-bunny",
+      "status": 200,
+      "seconds": 0.34,
+      "curlExit": 0,
+      "bytes": 37197,
+      "headers": {
+        "content-type": "application/json; charset=utf-8"
+      },
+      "keys": [
+        "success",
+        "synced",
+        "lyrics",
+        "richSync",
+        "source",
+        "alternates",
+        "timing"
+      ],
+      "success": true,
+      "source": "lrcred-karaoke",
+      "lines": 62,
+      "segments": 480,
+      "wordKeys": [
+        "start",
+        "end",
+        "word"
+      ],
+      "alternates": [
+        {
+          "source": "lrclib-synced",
+          "keys": [
+            "label",
+            "source",
+            "synced",
+            "kind",
+            "lyrics"
+          ],
+          "lines": 0
+        },
+        {
+          "source": "deezer",
+          "keys": [
+            "label",
+            "source",
+            "synced",
+            "kind",
+            "lyrics"
+          ],
+          "lines": 0
+        }
+      ]
+    },
+    {
+      "name": "boidu-bunny",
+      "status": 200,
+      "seconds": 0.35,
+      "curlExit": 0,
+      "bytes": 50818,
+      "headers": {
+        "content-type": "application/json",
+        "x-auth-mode": "cache",
+        "x-cache-status": "HIT"
+      },
+      "keys": [
+        "ttml"
+      ],
+      "lines": 62,
+      "timedSpans": 486,
+      "rootAttributes": {
+        "{http://music.apple.com/lyric-ttml-internal}timing": "Word",
+        "{http://www.w3.org/XML/1998/namespace}lang": "es"
+      },
+      "roles": [
+        "x-bg"
+      ],
+      "sourceFields": {}
+    },
+    {
+      "name": "octave-soda",
+      "status": 200,
+      "seconds": 1.25,
+      "curlExit": 0,
+      "bytes": 13129,
+      "headers": {
+        "content-type": "application/json; charset=utf-8"
+      },
+      "keys": [
+        "success",
+        "synced",
+        "lyrics",
+        "richSync",
+        "source",
+        "alternates",
+        "timing"
+      ],
+      "success": true,
+      "source": "lrcred-karaoke",
+      "lines": 23,
+      "segments": 87,
+      "wordKeys": [
+        "start",
+        "end",
+        "word"
+      ],
+      "alternates": [
+        {
+          "source": "deezer-karaoke",
+          "keys": [
+            "label",
+            "source",
+            "synced",
+            "kind",
+            "lyrics",
+            "richSync"
+          ],
+          "lines": 29
+        }
+      ]
+    },
+    {
+      "name": "boidu-soda",
+      "status": 200,
+      "seconds": 0.08,
+      "curlExit": 0,
+      "bytes": 12979,
+      "headers": {
+        "content-type": "application/json",
+        "x-auth-mode": "cache",
+        "x-cache-status": "HIT"
+      },
+      "keys": [
+        "ttml"
+      ],
+      "lines": 23,
+      "timedSpans": 109,
+      "rootAttributes": {
+        "{http://music.apple.com/lyric-ttml-internal}timing": "Word",
+        "{http://www.w3.org/XML/1998/namespace}lang": "es"
+      },
+      "roles": [],
+      "sourceFields": {}
+    }
+  ],
+  "grouping": [
+    {
+      "track": "weeknd",
+      "octaveTotalWords": 253,
+      "boiduTotalTimedSpans": 275,
+      "matchingGroupsFromBeginning": 253,
+      "groupsContainingMultipleSpans": 18,
+      "groupsWithSameOuterTiming": 248,
+      "allSegmentsConsumed": true
+    },
+    {
+      "track": "bunny",
+      "octaveTotalWords": 480,
+      "boiduTotalTimedSpans": 486,
+      "matchingGroupsFromBeginning": 480,
+      "groupsContainingMultipleSpans": 6,
+      "groupsWithSameOuterTiming": 469,
+      "allSegmentsConsumed": true
+    },
+    {
+      "track": "soda",
+      "octaveTotalWords": 87,
+      "boiduTotalTimedSpans": 109,
+      "matchingGroupsFromBeginning": 87,
+      "groupsContainingMultipleSpans": 20,
+      "groupsWithSameOuterTiming": 87,
+      "allSegmentsConsumed": true
+    }
+  ],
+  "lrcredDirect": {
+    "status": 200,
+    "bytes": 16930,
+    "timedSpans": 275,
+    "lines": 35,
+    "identicalToBoiduTTML": false,
+    "sha256": "673b5268593c99b56bd503e542e1deb7e961563d31adc323831c6f5a8767a228",
+    "identicalTimedSegmentTuplesToBoidu": true
+  },
+  "githubRevisions": [
+    {
+      "repo": "rryam/MusanovaKit",
+      "commit": "1ead3053f3c69428a7caf28335b7b72902095dc0",
+      "date": "2026-09-30T19:59:17Z"
+    },
+    {
+      "repo": "Ruytha/lyric-player",
+      "commit": "0fca6a2d006dbf62cf27aa41bc5a8dfb9e285bca",
+      "date": "2026-10-11T16:43:12Z"
+    },
+    {
+      "repo": "better-lyrics/api",
+      "commit": "8b0ac346ac90ae38be0636611fcadbe8fe351106",
+      "date": "2026-09-25T10:34:40Z"
+    },
+    {
+      "repo": "anselmoshim/applemusic-private",
+      "commit": "98e35a04a1367c3f3b632c527594193a6ac4a91c",
+      "date": "2026-06-16T06:38:47Z"
+    }
+  ],
+  "sourceFiles": [
+    {
+      "repo": "rryam/MusanovaKit",
+      "path": "LICENSE",
+      "blobSHA": "b381781cf52fb68de19674dae70aae17f5d0b83e",
+      "bytes": 1062
+    },
+    {
+      "repo": "rryam/MusanovaKit",
+      "path": "Sources/MusanovaKit/Lyrics/MusicLyricsRequest.swift",
+      "blobSHA": "a12a4e482f5aad835150109684f9b11f439971b0",
+      "bytes": 7890
+    },
+    {
+      "repo": "rryam/MusanovaKit",
+      "path": "Sources/MusanovaKit/Lyrics/LyricsParser.swift",
+      "blobSHA": "dee8fbc0c0c78ccc2dece909d05c038f24df50f9",
+      "bytes": 11897
+    },
+    {
+      "repo": "Ruytha/lyric-player",
+      "path": "LICENSE",
+      "blobSHA": "3972c308937d0a1451e4ecf41002eff29af6af8f",
+      "bytes": 34521
+    },
+    {
+      "repo": "Ruytha/lyric-player",
+      "path": "src/apple-music.js",
+      "blobSHA": "534dcf2daa3b37fcbaf3eaca1203d18856c677e8",
+      "bytes": 2705
+    },
+    {
+      "repo": "Ruytha/lyric-player",
+      "path": "src/binilyrics.js",
+      "blobSHA": "857f39985dccdd6dc23dd40b0461f6a9de620d03",
+      "bytes": 1937
+    },
+    {
+      "repo": "better-lyrics/api",
+      "path": "services/providers/ttml/client.go",
+      "blobSHA": "3f18a420f0400b3ad2cd10353900ce10897514a4",
+      "bytes": 26095
+    },
+    {
+      "repo": "better-lyrics/api",
+      "path": "services/providers/ttml/provider.go",
+      "blobSHA": "8889f689c4367523ae31c5010e6f6d6ef0deab3e",
+      "bytes": 1763
+    },
+    {
+      "repo": "better-lyrics/api",
+      "path": "services/providers/ttml/lrcred.go",
+      "blobSHA": "07ca0e896e7c21f23fbb3185677c397b9247f025",
+      "bytes": 2158
+    },
+    {
+      "repo": "better-lyrics/api",
+      "path": "services/providers/ttml/ttml.go",
+      "blobSHA": "63f675370ff9acfe4ebfc143e6aa115c411bb3ea",
+      "bytes": 8248
+    },
+    {
+      "repo": "anselmoshim/applemusic-private",
+      "path": "pyproject.toml",
+      "blobSHA": "69b7834c88e269854f235cf3c62fdeb71a247fd7",
+      "bytes": 1197
+    },
+    {
+      "repo": "anselmoshim/applemusic-private",
+      "path": "applemusic_private/lyrics.py",
+      "blobSHA": "72dabc508fd66a308235bf981072c35b1f8bb5e2",
+      "bytes": 5234
+    }
+  ],
+  "limitations": [
+    "Three known tracks do not establish coverage or audible sync accuracy",
+    "Boidu samples were public cache hits, not evidence of access to cache misses",
+    "TTML Apple namespaces do not establish provenance or redistribution rights",
+    "Octave returns grouped JSON rather than raw TTML in this endpoint",
+    "No authenticated Apple Music request was performed"
+  ],
+  "backgroundVoiceInspection": {
+    "boidu": {
+      "Blinding Lights": {
+        "x-bgGroups": 2,
+        "agents": [
+          "v1"
+        ]
+      },
+      "DtMF": {
+        "x-bgGroups": 12,
+        "agents": [
+          "v1",
+          "v1000",
+          "v2000"
+        ]
+      },
+      "De Música Ligera": {
+        "x-bgGroups": 0,
+        "agents": [
+          "v1"
+        ]
+      }
+    },
+    "lrcredBlindingLights": {
+      "x-bgGroups": 2
+    },
+    "octaveAllThreeSamples": {
+      "lineFields": [
+        "end",
+        "start",
+        "text",
+        "words"
+      ],
+      "wordFields": [
+        "end",
+        "start",
+        "word"
+      ],
+      "roleAndAgentNotExposedInRichSync": true
+    }
+  }
+}

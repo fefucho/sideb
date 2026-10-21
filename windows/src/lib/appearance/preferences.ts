@@ -2,14 +2,14 @@ import { writable } from 'svelte/store';
 
 export type HomeBackground = 'artwork' | 'solid';
 export type SidebarLayout = 'list' | 'grid';
-export interface AppearancePreferences { version: 1; homeBackground: HomeBackground; sidebarLayout: SidebarLayout }
+export interface AppearancePreferences { version: 1; homeBackground: HomeBackground; sidebarLayout: SidebarLayout; animatedArtwork: boolean }
 export const appearanceKey = 'sideb.appearance.v1';
-export const appearanceDefaults = (): AppearancePreferences => ({ version: 1, homeBackground: 'artwork', sidebarLayout: 'list' });
+export const appearanceDefaults = (): AppearancePreferences => ({ version: 1, homeBackground: 'artwork', sidebarLayout: 'list', animatedArtwork: true });
 
 export function decodeAppearance(value: unknown): AppearancePreferences {
   if (!value || typeof value !== 'object' || (value as { version?: unknown }).version !== 1) return appearanceDefaults();
   const raw = value as Record<string, unknown>;
-  return { version: 1, homeBackground: raw.homeBackground === 'solid' ? 'solid' : 'artwork', sidebarLayout: raw.sidebarLayout === 'grid' ? 'grid' : 'list' };
+  return { version: 1, homeBackground: raw.homeBackground === 'solid' ? 'solid' : 'artwork', sidebarLayout: raw.sidebarLayout === 'grid' ? 'grid' : 'list', animatedArtwork: raw.animatedArtwork !== false };
 }
 
 type PreferenceStorage = Pick<Storage, 'getItem' | 'setItem'>;
@@ -31,6 +31,7 @@ export function createAppearancePreferences(storage = browserStorage()) {
     subscribe: store.subscribe,
     setHomeBackground: (homeBackground: HomeBackground) => update({ homeBackground }),
     setSidebarLayout: (sidebarLayout: SidebarLayout) => update({ sidebarLayout }),
+    setAnimatedArtwork: (animatedArtwork: boolean) => update({ animatedArtwork }),
     toggleSidebarLayout: () => update({ sidebarLayout: current.sidebarLayout === 'list' ? 'grid' : 'list' }),
   };
 }

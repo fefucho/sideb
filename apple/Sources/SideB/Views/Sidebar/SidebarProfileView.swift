@@ -37,7 +37,7 @@ struct SidebarProfileView: View {
         )
         .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
         .onHover { hovering in
-            withAnimation(.easeInOut(duration: 0.15)) {
+            if isHovering != hovering {
                 isHovering = hovering
             }
         }

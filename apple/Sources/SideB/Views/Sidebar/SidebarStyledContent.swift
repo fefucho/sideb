@@ -16,7 +16,6 @@ extension SidebarView {
                     .padding(.top, 8)
                     .padding(.bottom, 10)
             }
-            .id(libraryViewModel.selectedTab)
             .accessibilityIdentifier("sidebar-collection-scroll")
         }
         .padding(.horizontal, 12)
@@ -188,12 +187,25 @@ extension SidebarView {
             .frame(maxWidth: .infinity, alignment: .leading).padding(9)
     }
 
+    private var selectedPlaylistBrowseId: String? {
+        guard !isSearchPresented, case .playlist(let id) = router.currentPage else { return nil }
+        return id
+    }
+
+    private var selectedAlbumBrowseId: String? {
+        guard !isSearchPresented, case .album(let id) = router.currentPage else { return nil }
+        return id
+    }
+
     @ViewBuilder private var styledLibraryItems: some View {
+        let isCover = sidebarStyle == .covers
         switch libraryViewModel.selectedTab {
         case .playlists:
+            let selectedId = selectedPlaylistBrowseId
             ForEach(libraryViewModel.playlists, id: \.id) { playlist in
-                let item = SidebarCollectionCard(card: playlist, isCover: sidebarStyle == .covers,
-                    isSelected: isPlaylistSelected(id: playlist.id)) { navigate(to: .playlist(browseId: playlist.id)) }
+                let item = SidebarCollectionCard(card: playlist, isCover: isCover,
+                    isSelected: selectedId == playlist.id) { navigate(to: .playlist(browseId: playlist.id)) }
+                    .equatable()
                 if let player = playerViewModel {
                     item.playlistCardContextMenu(id: playlist.id, title: playlist.title, subtitle: playlist.subtitle,
                         thumbnail: playlist.thumbnail, inLibrary: true, origin: .sidebar,
@@ -201,9 +213,11 @@ extension SidebarView {
                 } else { item }
             }
         case .albums:
+            let selectedId = selectedAlbumBrowseId
             ForEach(libraryViewModel.albums, id: \.id) { album in
-                let item = SidebarCollectionCard(card: album, isCover: sidebarStyle == .covers,
-                    isSelected: isAlbumSelected(id: album.id)) { navigate(to: .album(browseId: album.id)) }
+                let item = SidebarCollectionCard(card: album, isCover: isCover,
+                    isSelected: selectedId == album.id) { navigate(to: .album(browseId: album.id)) }
+                    .equatable()
                 if let player = playerViewModel {
                     item.albumCardContextMenu(browseId: album.id, playlistId: nil, title: album.title,
                         artist: album.subtitle, thumbnail: album.thumbnail, inLibrary: true, origin: .sidebar,
@@ -214,11 +228,30 @@ extension SidebarView {
     }
 }
 
-private struct SidebarCollectionCard: View {
+private struct SidebarCollectionCard: View, Equatable {
     let card: BrowseCardRecord
     let isCover: Bool
     let isSelected: Bool
     let action: () -> Void
+
+    nonisolated static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.card == rhs.card && lhs.isCover == rhs.isCover && lhs.isSelected == rhs.isSelected
+    }
+
+    private var cleanSubtitle: String? {
+        guard let subtitle = card.subtitle, !subtitle.isEmpty else { return nil }
+        return subtitle
+    }
+
+    private var accessibilitySummary: String {
+        if let sub = cleanSubtitle { return "\(card.displayTitle), \(sub)" }
+        return card.displayTitle
+    }
+
+    private var helpSummary: String {
+        if let sub = cleanSubtitle { return "\(card.displayTitle) — \(sub)" }
+        return card.displayTitle
+    }
 
     var body: some View {
         Button(action: action) {
@@ -229,6 +262,7 @@ private struct SidebarCollectionCard: View {
                             .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(
                                 isSelected ? Color.sidebAccentHighlight : Color.clear, lineWidth: 2))
                         copy
+                            .frame(height: 30, alignment: .topLeading)
                     }
                 } else {
                     HStack(spacing: 10) {
@@ -237,15 +271,16 @@ private struct SidebarCollectionCard: View {
                         Spacer(minLength: 0)
                     }
                     .padding(.horizontal, 9).padding(.vertical, 6)
+                    .frame(height: 46)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
         }
         .buttonStyle(SidebarHoverStyle(selected: !isCover && isSelected))
-        .accessibilityLabel([card.displayTitle, card.subtitle].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: ", "))
+        .accessibilityLabel(accessibilitySummary)
         .accessibilityAddTraits(isSelected ? [.isSelected] : [])
-        .help([card.displayTitle, card.subtitle].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " — "))
+        .help(helpSummary)
     }
 
     private var copy: some View {
@@ -253,7 +288,7 @@ private struct SidebarCollectionCard: View {
             Text(card.displayTitle)
                 .font(.system(size: isCover ? 12 : 13, weight: isSelected ? .semibold : .medium))
                 .foregroundStyle(isSelected ? Color.sidebAccentHighlight : Color.white).lineLimit(1)
-            if let subtitle = card.subtitle, !subtitle.isEmpty {
+            if let subtitle = cleanSubtitle {
                 Text(subtitle).font(.system(size: isCover ? 10.5 : 11))
                     .foregroundStyle(Color.white.opacity(0.75)).lineLimit(1)
             }

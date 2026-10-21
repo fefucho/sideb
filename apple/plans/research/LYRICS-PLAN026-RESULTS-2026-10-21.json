@@ -1,0 +1,93 @@
+{
+  "date": "2026-10-21",
+  "plan": "PLAN-026",
+  "fix": "FIX-236",
+  "status": "implemented; app performance acceptance pending",
+  "before_build": 147,
+  "after_build": 150,
+  "hardware": {
+    "cpu": "Apple M1 Pro",
+    "ram_bytes": 17179869184,
+    "macos": "27.0 (26A428)",
+    "xcode": "27.1 (27A9275)",
+    "viewport_pixels": [
+      3024,
+      1898
+    ],
+    "low_power_mode": false
+  },
+  "document": {
+    "key_sha256": "ec43ac8648d59ba3cba969a45ef6aa76fada9f2f3867bb435315c94391180456",
+    "payload_sha256": "f27c7c2fd853ac0d33fadcd220b0dc6f27040f357e60f202e75437afd205855d",
+    "document_sha256": "b62f073b8fc31183d03bb85192cbae7988553284198d4ab6187b0de68d9b9262",
+    "bytes": 34912,
+    "lines": 72,
+    "words": 448,
+    "provider": "Better Lyrics / Boidu"
+  },
+  "continuous_scroll": {
+    "gesture_count": 80,
+    "pages_per_gesture": 0.25,
+    "direction_change_every": 20,
+    "requested_pause_ms": 250,
+    "before_paused": {
+      "wall_seconds": 35.475,
+      "main_sampled_cpu_ms": 8405,
+      "main_cpu_ms_per_wall_second": 236.9274136715997
+    },
+    "before_playing": {
+      "wall_seconds": 49.388,
+      "main_sampled_cpu_ms": 16497,
+      "main_cpu_ms_per_wall_second": 334.0285089495424
+    },
+    "after_paused": null,
+    "after_playing": null
+  },
+  "frame_metrics": null,
+  "blockers": [
+    "Core Animation FPS disabled on macOS",
+    "Frame Lifetimes malformed; raw display-surface-swap has zero rows",
+    "Build0150 waits in SecItemCopyMatching during session restore; Computer Use blocks SecurityAgent for safety; user must resolve the system prompt before after-profile"
+  ],
+  "synthetic_raster_ms": {
+    "context": {
+      "before_median": 14.778458,
+      "after_median": 7.529791,
+      "before_p95": 16.676958,
+      "after_p95": 9.036625
+    },
+    "active_sweep": {
+      "before_median": 15.19225,
+      "after_median": 16.7635
+    },
+    "active_motion": {
+      "before_median": 15.45,
+      "after_median": 17.38725
+    }
+  },
+  "validation": {
+    "fitting_fixture_combinations": 36,
+    "fitting_size_measurements": 108,
+    "context_raster_comparisons": 12,
+    "core_innertube_passed": 97,
+    "core_sideb_passed": 129,
+    "xctest_passed": 239,
+    "swift_testing_total": 442,
+    "swift_testing_skipped": 7,
+    "rust_ignored": 8,
+    "total_executed_passed": 900,
+    "total_omitted": 15,
+    "signature_verified": true,
+    "artifact_hashes_verified": 10,
+    "source_changed_during_build": false
+  },
+  "limits": [
+    "CPU samples and synthetic snapshots are not displayed FPS",
+    "Baseline valid captures used unchanged bundle0147 after source edits had begun",
+    "No app improvement percentage, hitch rate or FPS acceptance is claimed",
+    "Active raster medians increased in the isolated sequential probe"
+  ],
+  "local_evidence": ".cache/plan026-execution-2026-10-21/ and .cache/plan026-renderer/",
+  "keychain_wait_observed": true,
+  "security_agent_tool_blocked": true
+}

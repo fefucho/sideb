@@ -239,12 +239,13 @@
     genius.setTrack(acceptedTrack,playbackState.generation,homeSession);
     if(playbackState.isPlaying)genius.playbackStarted();
     if(isFullscreenOpen&&selectedPanel==='lyrics'&&lyricsMode==='genius')void genius.ensureNow();
-    lyrics.setTrack(acceptedTrack, playbackState.generation, playbackState.duration);
+    const lyricEntry = playbackState.queue.currentIndex === null ? null : playbackState.queue.items[playbackState.queue.currentIndex]?.entryId;
+    lyrics.setTrack(acceptedTrack, playbackState.generation, playbackState.duration, JSON.stringify([homeSession, lyricEntry ?? null]));
     recommendations.setTrack(acceptedTrack);
     if (isFullscreenOpen && selectedPanel === 'related') void recommendations.load();
   });
 
-  let sessionRevision = 0;
+  let sessionRevision = $state(0);
   let requestedRecentAlbums = false;
   $effect(() => { const identity=authStatus.state === 'ready' ? `account:${authStatus.channelId || authStatus.email || authStatus.handle || ''}` : 'guest'; recents.setAccount(identity); featuredArtists.resetScope(identity); });
   const homeSession = $derived(authStatus.state === 'ready' ? `account:${authStatus.channelId || authStatus.email || authStatus.handle || authStatus.name || 'authenticated'}` : 'guest');
@@ -376,6 +377,7 @@
     isRetryingInit = true;
     statusError = null;
     try {
+      ++sessionRevision;
       backendStatus = await invoke<BackendStatusDto>("retry_init_core");
       if (backendStatus?.ready) {
         loadHomePage();
@@ -1110,7 +1112,7 @@
   </div>
   {#if isFullscreenOpen}
     <div class="fullscreen-host" inert={spotlightOpen}>
-    <FullscreenNowPlaying playback={playerBarState} {confirmedVolume} volumeFeedback={volumeFeedbackVisible} {volumeAnnouncement} onVolumeSurfaceChange={()=>gestureInput?.invalidate()} onTogglePlayback={handleTogglePlay} onSelectQueue={playQueueIndex} onClose={() => setPlayerFullscreen(false)}
+    <FullscreenNowPlaying session={sessionRevision} playback={playerBarState} {confirmedVolume} volumeFeedback={volumeFeedbackVisible} {volumeAnnouncement} onVolumeSurfaceChange={()=>gestureInput?.invalidate()} onTogglePlayback={handleTogglePlay} onSelectQueue={playQueueIndex} onClose={() => setPlayerFullscreen(false)}
       pulling={gestureProgress.action==='dismiss-fullscreen'&&(gestureProgress.phase==='tracking'||gestureProgress.phase==='armed')}
       pullDistance={gestureProgress.action==='dismiss-fullscreen'&&(gestureProgress.phase==='tracking'||gestureProgress.phase==='armed')?gestureProgress.distance:0}
       onMoveQueue={(entryId, beforeEntryId) => player.moveQueueEntry(entryId, beforeEntryId)}

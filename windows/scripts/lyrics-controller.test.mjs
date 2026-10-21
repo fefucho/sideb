@@ -31,10 +31,14 @@ test('lyric timing matches macOS before first line, backwards seeks, unsorted an
 test('line seeking clamps within audio duration and untimed lyrics cannot seek', () => {
   assert.equal(lyricSeekSeconds({ timeMs: 2500 }, 120), 2.5);
   assert.equal(lyricSeekSeconds({ timeMs: 150000 }, 120), 120);
-  assert.equal(lyricSeekSeconds({ timeMs: -100 }, 120), 0);
+  assert.equal(lyricSeekSeconds({ timeMs: -100 }, 120), null);
   assert.equal(lyricSeekSeconds({ timeMs: null }, 120), null);
-  assert.equal(lyricSeekSeconds({ timeMs: 1000 }, 0), null);
-  assert.equal(lyricSeekSeconds({ timeMs: 1000 }, Number.NaN), null);
+  assert.equal(lyricSeekSeconds({ timeMs: 1000 }, 0), 1);
+  assert.equal(lyricSeekSeconds({ timeMs: 1000 }, Number.NaN), 1);
+  assert.equal(lyricSeekSeconds({ timeMs: 3418 }, undefined), 3.418);
+  assert.equal(lyricSeekSeconds({ timeMs: 3418 }, null, 100), 3.318);
+  assert.equal(lyricSeekSeconds({ timeMs: 100 }, 120, 500), 0);
+  assert.equal(lyricSeekSeconds({ timeMs: Number.NaN }, 120), null);
 });
 
 test('controller loads the Mac core contract once per track generation and retains plain lyrics', async () => {
@@ -44,13 +48,43 @@ test('controller loads the Mac core contract once per track generation and retai
   await settle();
   assert.deepEqual(calls[0], { command: 'get_lyrics', args: { videoId: 'a', title: 'Song', artists: 'Artist', album: 'Album', duration: 125.5 } });
   assert.equal(published.status, 'ready'); assert.equal(published.lyrics.isSynced, false);
-  controller.setTrack({ ...track('a'), album: 'Enriched album' }, 1, 125.5);
+  controller.setTrack(track('a'), 1, 125.51);
   await settle(); assert.equal(calls.length, 1);
-  await controller.retry(); assert.equal(calls[1].args.album, 'Enriched album');
+  controller.setTrack({ ...track('a'), album: 'Enriched album' }, 1, 125.5);
+  await settle(); assert.equal(calls.length, 2); assert.equal(calls[1].args.album, 'Enriched album');
+  await controller.retry(); assert.equal(calls[2].args.album, 'Enriched album');
   published.lyrics.lines[0].text = 'consumer mutated';
   assert.equal(controller.snapshot.lyrics.lines[0].text, 'Line 0');
   controller.setTrack(track('a'), 2);
-  await settle(); assert.equal(calls.length, 3);
+  await settle(); assert.equal(calls.length, 4);
+});
+
+test('same-video occurrences reject the previous response and retain a valid fallback through refresh failure', async () => {
+  const a = deferred(), b = deferred(), refresh = deferred(); let published;
+  const requests = [a, b, refresh]; const calls = [];
+  const controller = new LyricsController(async (_, args) => { calls.push(args); return requests.shift().promise; }, state => published = state);
+  controller.setTrack(track('same'), 1, 0, 'entry-a');
+  controller.setTrack(track('same'), 1, 0, 'entry-b');
+  b.resolve(lyrics([3418])); await settle();
+  a.resolve(lyrics([1])); await settle();
+  assert.equal(published.lyrics.lines[0].timeMs, 3418);
+  assert.equal(published.trackKey, JSON.stringify(['same', 1, 'entry-b']));
+  const pending = controller.retry();
+  assert.equal(published.status, 'loading'); assert.equal(published.lyrics.lines[0].timeMs, 3418);
+  refresh.reject({message:'Try later'}); await pending;
+  assert.equal(published.status, 'error'); assert.equal(published.lyrics.lines[0].timeMs, 3418);
+  controller.reset(); assert.equal(published.lyrics, null);
+});
+
+test('provisional duration lookup is reconsidered once useful audio metadata arrives', async () => {
+  const calls=[]; const provisional=deferred(); let published;
+  const controller=new LyricsController(async (_,args)=>{calls.push(args);return calls.length===1?provisional.promise:lyrics([4000]);},s=>published=s);
+  const unknown={...track('a'),duration:null};
+  controller.setTrack(unknown,1,0,'entry');
+  controller.setTrack(unknown,1,240.2,'entry'); await settle();
+  provisional.resolve(lyrics([1000])); await settle();
+  assert.deepEqual(calls.map(c=>c.duration),[null,240.2]);
+  assert.equal(published.lyrics.lines[0].timeMs,4000);
 });
 
 test('late success and error from abandoned tracks or reset cannot populate new lyrics', async () => {

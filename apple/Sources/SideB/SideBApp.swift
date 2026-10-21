@@ -404,9 +404,9 @@ struct WindowRootView: View {
             // not cover the fullscreen backdrop on only one side of the window.
             HStack(alignment: .top, spacing: 0) {
                 // Reserve the same width as the floating sidebar overlay.
-                if isSidebarExpanded {
-                    Color.clear.frame(width: ShellLayout.sidebarReserveWidth(expanded: true))
-                }
+                Color.clear
+                    .frame(width: ShellLayout.sidebarReserveWidth(expanded: isSidebarExpanded))
+                    .allowsHitTesting(false)
 
                 // MARK: - Navegador de páginas
                 ZStack(alignment: .bottom) {
@@ -506,6 +506,7 @@ struct WindowRootView: View {
             // Both fullscreen layers remain above it throughout their transition.
             if isHomeSettingsPresented && canPresentHomeSettings {
                 HomeSettingsPanel(homeViewModel: homeViewModel,
+                                  rustCore: rustCore,
                                   titlebarHeight: titlebarHeight,
                                   toolbarBottom: homeToolbarBottom,
                                   onClose: { setHomeSettingsPresented(false) })
@@ -534,40 +535,42 @@ struct WindowRootView: View {
             // Separate overlays preserve one continuous background behind both
             // sidebar and content throughout fullscreen's presentation.
             HStack(alignment: .top, spacing: 0) {
-                if isSidebarExpanded {
-                    SidebarView(
-                        isExpanded: sidebarBinding,
-                        titlebarHeight: titlebarHeight,
-                        router: router,
-                        accountViewModel: accountViewModel,
-                        libraryViewModel: libraryViewModel,
-                        rustCore: rustCore,
-                        cookieStorage: cookieStorage,
-                        playerViewModel: playerViewModel,
-                        isSearchPresented: isSpotlightPresented,
-                        onOpenSearch: openSearch,
-                        onNavigate: navigateMain,
-                        onOpenLogin: {
-                            showLoginSheet = true
-                        },
-                        onLogout: {
-                            switchPersonalSession(to: "guest")
-                            libraryViewModel.clear()
-                            homeViewModel.prepareSession(identity: cookieStorage.homeCacheIdentity())
-                            homeSessionRevision &+= 1
-                            router.navigate(to: .home)
-                        }
-                    )
-                    // Resolve the moving surface as a unit before passing its
-                    // position to the fixed-width sidebar's controls.
-                    .geometryGroup()
-                    .windowGestureRegion(.excluded)
-                    .padding(ShellLayout.sidebarInset)
-                    .transition(reduceMotion ? .opacity : .move(edge: .leading).combined(with: .opacity))
-                    .zIndex(50)
-                }
+                SidebarView(
+                    isExpanded: sidebarBinding,
+                    titlebarHeight: titlebarHeight,
+                    router: router,
+                    accountViewModel: accountViewModel,
+                    libraryViewModel: libraryViewModel,
+                    rustCore: rustCore,
+                    cookieStorage: cookieStorage,
+                    playerViewModel: playerViewModel,
+                    isSearchPresented: isSpotlightPresented,
+                    onOpenSearch: openSearch,
+                    onNavigate: navigateMain,
+                    onOpenLogin: {
+                        showLoginSheet = true
+                    },
+                    onLogout: {
+                        switchPersonalSession(to: "guest")
+                        libraryViewModel.clear()
+                        homeViewModel.prepareSession(identity: cookieStorage.homeCacheIdentity())
+                        homeSessionRevision &+= 1
+                        router.navigate(to: .home)
+                    }
+                )
+                // Resolve the moving surface as a unit before passing its
+                // position to the fixed-width sidebar's controls.
+                .geometryGroup()
+                .windowGestureRegion(.excluded, active: isSidebarExpanded)
+                .padding(ShellLayout.sidebarInset)
+                .offset(x: isSidebarExpanded || reduceMotion ? 0 : -ShellLayout.sidebarReserveWidth(expanded: true))
+                .opacity(reduceMotion ? (isSidebarExpanded ? 1 : 0) : 1)
+                .allowsHitTesting(isSidebarExpanded)
+                .accessibilityHidden(!isSidebarExpanded)
+                .zIndex(50)
                 Spacer(minLength: 0)
             }
+            .allowsHitTesting(isSidebarExpanded)
             .zIndex(3)
 
             PlayerBarView(viewModel: playerViewModel, router: router)

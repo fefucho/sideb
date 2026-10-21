@@ -304,6 +304,14 @@ pub struct PlaybackStateDto {
     #[serde(default)]
     pub audio_revision: u64,
     #[serde(default)]
+    pub auth_generation: u64,
+    #[serde(default)]
+    pub seek_revision: u64,
+    #[serde(default)]
+    pub seek_pending: Option<f64>,
+    #[serde(default)]
+    pub seek_error: Option<String>,
+    #[serde(default)]
     pub exponential_volume: bool,
     pub current_track: Option<PlaybackTrackDto>,
     pub error: Option<String>,
@@ -339,6 +347,8 @@ mod playback_state_tests {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PlaybackProgressDto {
+    #[serde(default)]
+    pub seek_revision: u64,
     pub position: f64,
     pub duration: f64,
     pub generation: u64,

@@ -3,12 +3,14 @@
   import { t, language, setLanguage } from '$lib/i18n';
   import { providerHeading } from '$lib/i18n/presentation';
   import { onMount } from 'svelte';
+  import { clearAnimatedArtworkCacheSafely, getAnimatedArtworkCacheSize } from '$lib/artwork/animated';
   import { defaults, move, normalized, orderCategories, sourceLabels, type CollectionKind, type HomeSettings } from '$lib/home/settings';
   import VirtualStack from '../common/VirtualStack.svelte';
   interface Category { key:string; title:string }
   interface Props { settings:HomeSettings; kind:CollectionKind; categories:Category[]; libraryError:string|null; onChange:(settings:HomeSettings)=>void; onKind:(kind:CollectionKind)=>void; onRetryLibrary:()=>void; onClose:()=>void; exponentialVolume?:boolean; volumeModePending?:boolean; onExponentialVolume?:(enabled:boolean)=>void }
   let { settings, kind, categories, libraryError, onChange, onKind, onRetryLibrary, onClose, exponentialVolume=false, volumeModePending=false, onExponentialVolume }:Props=$props();
   let query=$state(''); let close:HTMLButtonElement; let dragSource:number|null=null; let dragCategory:string|null=null;
+  let artworkCacheSize=$state<number|null>(null); let artworkCachePending=$state(false); let artworkCacheError=$state(false);
   $effect(()=>{kind;dragSource=null;});
   const field=$derived(kind==='albums'?'albumSources':'playlistSources');
   const sources=$derived(settings[field]);
@@ -24,7 +26,15 @@
     event.currentTarget.checked = exponentialVolume;
     onExponentialVolume?.(requested);
   }
-  onMount(()=>{ close.focus(); });
+  onMount(()=>{ close.focus(); void refreshArtworkCacheSize(); });
+  async function refreshArtworkCacheSize() { try { artworkCacheSize=await getAnimatedArtworkCacheSize(); } catch { artworkCacheError=true; } }
+  async function clearArtworkCache() {
+    if (artworkCachePending) return;
+    artworkCachePending=true; artworkCacheError=false;
+    try { artworkCacheSize=await clearAnimatedArtworkCacheSafely(); artworkCacheError=artworkCacheSize > 0; }
+    catch { artworkCacheError=true; }
+    finally { artworkCachePending=false; }
+  }
 </script>
 <svelte:window onkeydown={event=>{if(event.key==='Escape'&&!event.defaultPrevented){event.preventDefault();event.stopPropagation();onClose();}}} />
 <aside class="settings" aria-label={$t('windows.ui.homeSettings')}>
@@ -46,6 +56,10 @@
         <option value="solid">{$t('settings.homeBackground.solid')}</option>
       </select>
       <p id="home-background-hint">{$t('settings.homeBackground.hint')}</p>
+      <label for="animated-artwork-toggle"><input id="animated-artwork-toggle" type="checkbox" checked={$appearance.animatedArtwork} onchange={event=>appearance.setAnimatedArtwork(event.currentTarget.checked)} /><span>{$t('settings.animatedArtwork')}</span></label>
+      <p id="animated-artwork-hint">{$t('settings.animatedArtwork.hint')}</p>
+      <button type="button" class="text-action" disabled={artworkCachePending || artworkCacheSize===null} onclick={clearArtworkCache}>{artworkCachePending ? $t('settings.animatedArtwork.cacheClearing') : $t('settings.animatedArtwork.clearCache', [artworkCacheSize===null ? '—' : (artworkCacheSize / (1024*1024)).toFixed(1)])}</button>
+      {#if artworkCacheError}<p class="error" role="status">{$t('settings.animatedArtwork.cacheFailure')}</p>{/if}
     </section>
     <section><h3>{$t('settings.featured')}</h3><div class="kinds" role="group" aria-label={$t('settings.featuredKind')}><button type="button" aria-pressed={kind==='albums'} onclick={()=>onKind('albums')}>{$t('sidebar.albums')}</button><button type="button" aria-pressed={kind==='playlists'} onclick={()=>onKind('playlists')}>{$t('windows.ui.playlists')}</button></div>
     <p>{$t('settings.sourcesHint')}</p>
@@ -91,6 +105,7 @@
   .category { height:52px; } .category label span { white-space:nowrap; } .filter { width:100%; box-sizing:border-box; margin:5px 0 8px; padding:8px; border:1px solid #fff3; border-radius:7px; background:#0003; color:white; }
   select { max-width:100%; padding:7px 8px; border:1px solid #ffffff33; border-radius:6px; background:#29262b; color:white; font:inherit; font-size:12px; }
   #home-background-picker, #sidebar-layout-picker { display:block; width:100%; margin:7px 0 12px; }
+  #animated-artwork-toggle { margin:0; }
   .text-action { display:block; font-size:12px; padding:7px 4px; text-align:left; } .error { color:#ffb9c0; }
   button:focus-visible,input:focus-visible,select:focus-visible { outline:2px solid var(--sideb-highlight); outline-offset:2px; }
   @media (prefers-reduced-transparency:reduce) { .settings { background:#24242a; backdrop-filter:none; } }

@@ -847,6 +847,74 @@ History: %@</string>
 	<string>Sign in to YouTube Music</string>
 	<key>login.passkey_unavailable</key>
 	<string>Passkey sign-in is unavailable in this window. Google will ask for your password or another sign-in method.</string>
+	<key>lyrics.experimental.badge</key>
+	<string>Experimental</string>
+	<key>lyrics.experimental.empty</key>
+	<string>No lyrics found for this track.</string>
+	<key>lyrics.experimental.emptyDetail</key>
+	<string>You can return to current lyrics or try refreshing.</string>
+	<key>lyrics.experimental.error</key>
+	<string>Lyrics could not be refreshed. Try again.</string>
+	<key>lyrics.experimental.instrumental</key>
+	<string>Instrumental</string>
+	<key>lyrics.experimental.instrumental.detail</key>
+	<string>This track has no lyrics.</string>
+	<key>lyrics.experimental.loading</key>
+	<string>Finding karaoke lyrics…</string>
+	<key>lyrics.experimental.mode.karaoke</key>
+	<string>Karaoke</string>
+	<key>lyrics.experimental.mode.reading</key>
+	<string>Reading</string>
+	<key>lyrics.experimental.noTrack</key>
+	<string>Play a song to try the new lyrics.</string>
+	<key>lyrics.experimental.offset</key>
+	<string>Timing offset</string>
+	<key>lyrics.experimental.offset.earlier</key>
+	<string>Show lyrics 0.1 s earlier</string>
+	<key>lyrics.experimental.offset.later</key>
+	<string>Show lyrics 0.1 s later</string>
+	<key>lyrics.experimental.offset.reset</key>
+	<string>Reset timing offset</string>
+	<key>lyrics.experimental.options</key>
+	<string>Lyrics options</string>
+	<key>lyrics.experimental.refresh</key>
+	<string>Refresh lyrics</string>
+	<key>lyrics.experimental.retry</key>
+	<string>Try again</string>
+	<key>lyrics.experimental.returnToCurrent</key>
+	<string>Original lyrics</string>
+	<key>lyrics.experimental.source</key>
+	<string>Source: %@</string>
+	<key>lyrics.experimental.switchHint</key>
+	<string>Try the new panel and return to current lyrics at any time.</string>
+	<key>lyrics.experimental.textSize</key>
+	<string>Text size</string>
+	<key>lyrics.experimental.textSize.larger</key>
+	<string>Larger</string>
+	<key>lyrics.experimental.textSize.smaller</key>
+	<string>Smaller</string>
+	<key>lyrics.experimental.timing.lines</key>
+	<string>Line synced</string>
+	<key>lyrics.experimental.timing.plain</key>
+	<string>Unsynced</string>
+	<key>lyrics.experimental.timing.words</key>
+	<string>Word synced</string>
+	<key>lyrics.experimental.translation</key>
+	<string>Show translation</string>
+	<key>lyrics.experimental.tryNew</key>
+	<string>Use new lyrics</string>
+	<key>lyrics.experimental.voice.background</key>
+	<string>Background vocal</string>
+	<key>lyrics.experimental.wait.interlude</key>
+	<string>Instrumental interlude. Vocals return shortly.</string>
+	<key>lyrics.experimental.wait.intro</key>
+	<string>Instrumental intro. Vocals begin shortly.</string>
+	<key>lyrics.experimental.wait.outro</key>
+	<string>Instrumental outro.</string>
+	<key>lyrics.experimental.wordMotion</key>
+	<string>Animate words</string>
+	<key>lyrics.experimental.wordMotion.help</key>
+	<string>Animate glow, lift and scale on sustained words.</string>
 	<key>menu.accept</key>
 	<string>OK</string>
 	<key>menu.account</key>
@@ -1291,6 +1359,16 @@ History: %@</string>
 	<string>Search</string>
 	<key>settings.albums</key>
 	<string>Albums</string>
+	<key>settings.animatedArtwork</key>
+	<string>Animated artwork in full screen</string>
+	<key>settings.animatedArtwork.cacheClearing</key>
+	<string>Clearing cache…</string>
+	<key>settings.animatedArtwork.cacheFailure</key>
+	<string>Could not clear the entire cache. Try again.</string>
+	<key>settings.animatedArtwork.clearCache</key>
+	<string>Clear animated artwork cache (%@ MB)</string>
+	<key>settings.animatedArtwork.hint</key>
+	<string>Show album animation when available.</string>
 	<key>settings.appearance</key>
 	<string>Appearance</string>
 	<key>settings.categories</key>

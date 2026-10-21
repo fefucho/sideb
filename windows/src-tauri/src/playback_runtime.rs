@@ -10,6 +10,7 @@ use tauri::{Emitter, Manager};
 
 #[derive(Default)]
 pub(crate) struct PlaybackRuntime {
+    pub seek: crate::seek_state::SeekState,
     pub identity: Option<String>,
     pub directory: Option<PathBuf>,
     pub last_audible: f64,
@@ -278,6 +279,7 @@ pub(crate) fn interrupt_auth_owner(playback: &mut PlaybackManager) {
         playback.is_loading = false;
         playback.is_playing = false;
     }
+    playback.runtime.seek.cancel();
     playback.runtime.interrupt_source();
     let source = playback.runtime.source.take();
     crate::invalidate_queue_owner(playback);

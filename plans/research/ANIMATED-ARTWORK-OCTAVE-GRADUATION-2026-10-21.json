@@ -1,0 +1,25 @@
+{
+  "date": "2026-10-21",
+  "scope": "Public bounded metadata/HTML inspection, no FPS profiling, no new video download for Graduation",
+  "octave": {
+    "endpoint": "https://api.octavestreaming.com/api/apple/motion?key=kanyewest~graduation",
+    "hasMotion": true,
+    "apple_square_host": "mvod.itunes.apple.com",
+    "relay_host": "api.octavestreaming.com",
+    "apple_square_equals_official_explicit_header_url": true
+  },
+  "apple": {
+    "storefront": "us",
+    "artist": "Kanye West",
+    "album": "Graduation",
+    "search_explicit_yes_and_no_selected": "1442845779",
+    "selected_edition": "cleaned",
+    "selected_videoArtwork": null,
+    "official_other_version_id": "1451901307",
+    "other_edition": "explicit",
+    "other_has_motion_square": true,
+    "other_version_link_present_in_selected_album_html": true
+  },
+  "diagnosis": "Provider checks one matched edition and negative-caches the whole request for7days without checking officially related same-album editions. Do not interpret null from clean edition as absence across editions.",
+  "implementation_status": "Investigated; provider correction not implemented in0153. Preserve title/artist/edition/artwork matching when following bounded other-versions; do not choose editorial/recommendation videos."
+}

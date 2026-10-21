@@ -48,6 +48,7 @@ public final class PlayerViewModel {
     public var currentTrack: SongItemRecord? {
         didSet {
             if currentTrack?.videoId != oldValue?.videoId { volumeScroll.cancel() }
+            if currentTrack?.videoId != oldValue?.videoId { pendingLyricSeek = nil }
             schedulePlaybackSave()
             if currentTrack == nil { genius.reset() }
         }
@@ -144,12 +145,26 @@ public final class PlayerViewModel {
     private var likedHydrationTask: Task<Void, Never>?
     private var accountGeneration = UUID()
     var mediaSessionIdentity: UUID { accountGeneration }
+    /// Read-only occurrence identity for the optional lyrics experiment.
+    var experimentalLyricsPlaybackIdentity: UUID { currentPlaybackToken }
     private var playlistRequest = UUID()
     private var playlistContinuationTask: Task<Void, Never>?
     public private(set) var isLoadingPlaylistContinuation: Bool = false
     private var currentPlaybackToken: UUID = UUID() {
-        didSet { if oldValue != currentPlaybackToken { volumeScroll.cancel() } }
+        didSet {
+            if oldValue != currentPlaybackToken {
+                volumeScroll.cancel()
+                pendingLyricSeek = nil
+            }
+        }
     }
+    struct PendingLyricSeek: Equatable {
+        let playbackID: UUID
+        let sessionID: UUID
+        let videoID: String
+        let seconds: Double
+    }
+    private(set) var pendingLyricSeek: PendingLyricSeek?
     private var searchRecentIntent: (id: UUID, playbackID: UUID, videoID: String)?
     private var pendingTailSkipToken: UUID?
     private var currentRadioToken: UUID = UUID()
@@ -914,12 +929,14 @@ public final class PlayerViewModel {
                     expectedDuration: expectedSecs,
                     playbackID: token
                 )
+                self.applyPendingLyricSeek(playbackID: token, videoID: song.videoId)
                 self.rememberCurrentTrackDuration(self.audioService.duration)
                 self.genius.playbackStarted(identity: token)
                 self.updateNowPlayingInfo()
             } catch {
                 guard !Task.isCancelled, self.currentPlaybackToken == token else { return }
                 self.failSearchRecentIntent()
+                self.pendingLyricSeek = nil
                 self.isLoadingStream = false
                 self.errorDescriptor = AppMessage(key: "player.error.resolveStream", args: [error.localizedDescription])
                 print("[PlayerViewModel] ❌ Error: \(error)")
@@ -1578,6 +1595,32 @@ public final class PlayerViewModel {
 
     public func seek(toFraction fraction: Double) {
         audioService.seek(toFraction: fraction)
+    }
+
+    /// Lyrics name an absolute media cue even before duration is known. Loaded
+    /// playback keeps its paused/playing state; a restored track resolves once.
+    @discardableResult
+    func seekToLyric(seconds: Double) -> Bool {
+        guard seconds.isFinite, seconds >= 0, let track = currentTrack else { return false }
+        if audioService.avPlayer.currentItem != nil && !isLoadingStream {
+            pendingLyricSeek = nil
+            return audioService.seek(toSeconds: seconds)
+        }
+        guard rustCore != nil else { return false }
+        if !isLoadingStream { playSongNow(track) }
+        guard isLoadingStream, currentTrack?.videoId == track.videoId else { return false }
+        pendingLyricSeek = PendingLyricSeek(playbackID: currentPlaybackToken, sessionID: accountGeneration,
+                                           videoID: track.videoId, seconds: seconds)
+        return true
+    }
+
+    private func applyPendingLyricSeek(playbackID: UUID, videoID: String) {
+        guard let intent = pendingLyricSeek else { return }
+        pendingLyricSeek = nil
+        guard intent.playbackID == playbackID, playbackID == currentPlaybackToken,
+              intent.sessionID == accountGeneration, intent.videoID == videoID,
+              currentTrack?.videoId == videoID else { return }
+        audioService.seek(toSeconds: intent.seconds)
     }
 
     // MARK: - Formateo de Tiempo

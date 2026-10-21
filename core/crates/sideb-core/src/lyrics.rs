@@ -19,6 +19,9 @@
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
+/// Opt-in detailed lyrics pipeline with independent records and cache keys.
+pub(crate) mod karaoke;
+
 pub struct LyricsContext<'a> {
     pub db: &'a crate::db::Db,
     pub it: &'a innertube::InnerTube,
@@ -180,9 +183,12 @@ async fn fetch(state: &LyricsContext<'_>, mut req: LyricsRequest) -> (Option<Lyr
     //    timings, and those are what the karaoke sweep renders. Going first also means it is the
     //    one provider that sees every track played rather than only the ones LRCLIB misses, so it
     //    is behind a setting. Off falls straight through to the chain as it was before.
+    let mut boidu_plain = None;
     if state.db.get_setting("lyrics_boidu").as_deref() != Some("false") {
         if let Ok(Some(l)) = boidu_get(req).await {
-            return (Some(l), req.duration.is_some());
+            if let Some(synced) = synced_boidu_or_hold_plain(l, &mut boidu_plain) {
+                return (Some(synced), req.duration.is_some());
+            }
         }
     }
 
@@ -252,6 +258,11 @@ async fn fetch(state: &LyricsContext<'_>, mut req: LyricsRequest) -> (Option<Lyr
 
     // --- plain tier -------------------------------------------------------------------------
 
+    // Boidu plain is useful text, but must not block later synchronized lyrics.
+    if let Some(plain) = boidu_plain {
+        return (Some(plain), req.duration.is_some());
+    }
+
     // 4a. Plain from LRCLIB's exact match.
     if let Ok(Some(hit)) = &lr {
         if let Some(l) = plain_from_text(hit.plain_lyrics.as_deref(), "LRCLIB") {
@@ -287,6 +298,15 @@ async fn fetch(state: &LyricsContext<'_>, mut req: LyricsRequest) -> (Option<Lyr
 }
 
 // --- LRCLIB (https://lrclib.net/docs) -------------------------------------------------------
+
+fn synced_boidu_or_hold_plain(hit: Lyrics, plain: &mut Option<Lyrics>) -> Option<Lyrics> {
+    if hit.synced || hit.instrumental {
+        Some(hit)
+    } else {
+        *plain = Some(hit);
+        None
+    }
+}
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -1201,6 +1221,35 @@ fn strip_xml_tags(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn boidu_plain_is_held_while_later_synced_lyrics_can_win() {
+        let mut fallback = None;
+        let plain = from_parsed("Better Lyrics", vec![LyricLine::simple(None, "Plain text".into())]).unwrap();
+        assert!(synced_boidu_or_hold_plain(plain, &mut fallback).is_none());
+        assert_eq!(fallback.as_ref().unwrap().source, "Better Lyrics");
+        let track: LrclibTrack = serde_json::from_value(serde_json::json!({
+            "syncedLyrics":"[00:01.00]Synced text", "duration":200
+        })).unwrap();
+        let chosen = lrclib_to_lyrics(&track).filter(|lyrics| lyrics.synced).or(fallback).unwrap();
+        assert_eq!(chosen.source, "LRCLIB");
+        assert!(chosen.synced);
+    }
+
+    #[test]
+    fn boidu_timed_results_keep_priority_and_plain_stays_available_as_fallback() {
+        let mut fallback = None;
+        let timed = from_parsed("Better Lyrics", parse_lrc("[00:01.00]Synced text")).unwrap();
+        assert!(synced_boidu_or_hold_plain(timed, &mut fallback).unwrap().synced);
+        assert!(fallback.is_none());
+        let plain = from_parsed("Better Lyrics", vec![LyricLine::simple(None, "Plain text".into())]).unwrap();
+        assert!(synced_boidu_or_hold_plain(plain, &mut fallback).is_none());
+        assert_eq!(fallback.unwrap().lines[0].text, "Plain text");
+        let instrumental = Lyrics { source:"Better Lyrics".into(), synced:false, instrumental:true, lines:vec![] };
+        let mut fallback = None;
+        assert!(synced_boidu_or_hold_plain(instrumental, &mut fallback).unwrap().instrumental);
+        assert!(fallback.is_none());
+    }
 
     #[test]
     fn parses_basic_lrc() {

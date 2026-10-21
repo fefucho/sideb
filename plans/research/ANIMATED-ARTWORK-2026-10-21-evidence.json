@@ -1,0 +1,415 @@
+{
+  "date": "2026-10-21",
+  "timezone": "America/Montevideo",
+  "purpose": "Revisión de viabilidad y riesgos del plan de carátulas animadas; no implementación ni benchmark de reproducción.",
+  "method": {
+    "transport": "curl, validación TLS del sistema, HTTP público sin cookies ni autenticación",
+    "body_limits_bytes": {
+      "album_html": 6291456,
+      "hls_manifest": 131072
+    },
+    "timeout_seconds_per_request": 15,
+    "media_request": "HEAD al recurso exacto del manifiesto; no GET del video",
+    "user_agents": [
+      "SideB-ArchitectureReview/1.0 en búsqueda iTunes",
+      "curl predeterminado en las primeras páginas de álbum",
+      "Safari macOS en segunda consulta"
+    ]
+  },
+  "itunes_search": {
+    "endpoint": "https://itunes.apple.com/search",
+    "parameters": {
+      "term": "Bad Bunny Debi Tirar Mas Fotos",
+      "entity": "album",
+      "media": "music",
+      "country": "us",
+      "limit": 5
+    },
+    "results": [
+      {
+        "collection_id": 1857298712,
+        "artist": "Dilon Baby",
+        "album": "Debi Tirar Mas Fotos (feat. Jayc La Sensacion) - Single"
+      },
+      {
+        "collection_id": 1791447625,
+        "artist": "joeusb",
+        "album": "DeBÍ TiRAR MáS FOToS (Cover House) - Single"
+      },
+      {
+        "collection_id": 1792515396,
+        "artist": "Versión Prohibida",
+        "album": "DeBÍ TiRAR MáS FOToS - DiSCO TRoPICAL MiX"
+      },
+      {
+        "collection_id": 1820472475,
+        "artist": "Piano Sueños",
+        "album": "DeBÍ TiRAR Más FOToS (Piano Version)"
+      },
+      {
+        "collection_id": 1805007524,
+        "artist": "El Piano de México",
+        "album": "Debi Tirar Mas Fotos (Piano Version) - Single"
+      }
+    ],
+    "conclusion": "Ningún candidato pertenece a Bad Bunny; no aceptar primero ni cachear ausencia de motion a partir de este fallo de matching."
+  },
+  "album_response_probes": [
+    {
+      "collection_id": 1787022393,
+      "html_bytes": 507091,
+      "html_sha256": "252f4c11c5fdc58bcef5d1fa44fcc2a42e05c87493a58ac0ba88416026745669",
+      "motions": [
+        {
+          "path": "/data/0/data/sections/0/items/0",
+          "keys": "NoneType",
+          "master_paths": []
+        }
+      ]
+    },
+    {
+      "collection_id": 1739659134,
+      "html_bytes": 450383,
+      "html_sha256": "f525cab28476924a4dc59fee52ab447a4c08e959eb91c4ecfb3805785122eb33",
+      "motions": [
+        {
+          "path": "/data/0/data/sections/0/items/0",
+          "keys": "NoneType",
+          "master_paths": []
+        }
+      ]
+    },
+    {
+      "collection_id": 1499378108,
+      "ua": "Safari macOS",
+      "html_bytes": 531579,
+      "motions": [
+        {
+          "path": "/data/0/data/sections/0/items/0",
+          "keys": [
+            "dictionary",
+            "cropStyle"
+          ],
+          "master_paths": [
+            "/dictionary/motionDetailSquare/video"
+          ],
+          "master_bytes": 14996,
+          "variants": [
+            {
+              "AVERAGE-BANDWIDTH": "2125654",
+              "BANDWIDTH": "2499558",
+              "VIDEO-RANGE": "SDR",
+              "CODECS": "\"avc1.64001f\"",
+              "FRAME-RATE": "30.000",
+              "RESOLUTION": "768x768"
+            },
+            {
+              "AVERAGE-BANDWIDTH": "1859556",
+              "BANDWIDTH": "2177387",
+              "VIDEO-RANGE": "SDR",
+              "CODECS": "\"hvc1.2.20000000.L123.B0\"",
+              "FRAME-RATE": "30.000",
+              "RESOLUTION": "768x768"
+            },
+            {
+              "AVERAGE-BANDWIDTH": "260081",
+              "BANDWIDTH": "293430",
+              "VIDEO-RANGE": "SDR",
+              "CODECS": "\"avc1.64001f\"",
+              "FRAME-RATE": "30.000",
+              "RESOLUTION": "360x360"
+            },
+            {
+              "AVERAGE-BANDWIDTH": "360652",
+              "BANDWIDTH": "397341",
+              "VIDEO-RANGE": "SDR",
+              "CODECS": "\"avc1.64001f\"",
+              "FRAME-RATE": "30.000",
+              "RESOLUTION": "408x408"
+            },
+            {
+              "AVERAGE-BANDWIDTH": "518763",
+              "BANDWIDTH": "596194",
+              "VIDEO-RANGE": "SDR",
+              "CODECS": "\"avc1.64001f\"",
+              "FRAME-RATE": "30.000",
+              "RESOLUTION": "456x456"
+            },
+            {
+              "AVERAGE-BANDWIDTH": "766942",
+              "BANDWIDTH": "887529",
+              "VIDEO-RANGE": "SDR",
+              "CODECS": "\"avc1.64001f\"",
+              "FRAME-RATE": "30.000",
+              "RESOLUTION": "486x486"
+            },
+            {
+              "AVERAGE-BANDWIDTH": "1111422",
+              "BANDWIDTH": "1275073",
+              "VIDEO-RANGE": "SDR",
+              "CODECS": "\"avc1.64001f\"",
+              "FRAME-RATE": "30.000",
+              "RESOLUTION": "486x486"
+            },
+            {
+              "AVERAGE-BANDWIDTH": "1519581",
+              "BANDWIDTH": "1777800",
+              "VIDEO-RANGE": "SDR",
+              "CODECS": "\"avc1.64001f\"",
+              "FRAME-RATE": "30.000",
+              "RESOLUTION": "486x486"
+            },
+            {
+              "AVERAGE-BANDWIDTH": "2876870",
+              "BANDWIDTH": "3322441",
+              "VIDEO-RANGE": "SDR",
+              "CODECS": "\"avc1.64001f\"",
+              "FRAME-RATE": "30.000",
+              "RESOLUTION": "960x960"
+            },
+            {
+              "AVERAGE-BANDWIDTH": "3891954",
+              "BANDWIDTH": "4674519",
+              "VIDEO-RANGE": "SDR",
+              "CODECS": "\"avc1.64001f\"",
+              "FRAME-RATE": "30.000",
+              "RESOLUTION": "960x960"
+            },
+            {
+              "AVERAGE-BANDWIDTH": "3897254",
+              "BANDWIDTH": "4635000",
+              "VIDEO-RANGE": "SDR",
+              "CODECS": "\"avc1.640020\"",
+              "FRAME-RATE": "30.000",
+              "RESOLUTION": "1080x1080"
+            },
+            {
+              "AVERAGE-BANDWIDTH": "5129134",
+              "BANDWIDTH": "6311731",
+              "VIDEO-RANGE": "SDR",
+              "CODECS": "\"avc1.640020\"",
+              "FRAME-RATE": "30.000",
+              "RESOLUTION": "1080x1080"
+            },
+            {
+              "AVERAGE-BANDWIDTH": "6622443",
+              "BANDWIDTH": "8385793",
+              "VIDEO-RANGE": "SDR",
+              "CODECS": "\"avc1.640020\"",
+              "FRAME-RATE": "30.000",
+              "RESOLUTION": "1080x1080"
+            },
+            {
+              "AVERAGE-BANDWIDTH": "9993800",
+              "BANDWIDTH": "12894431",
+              "VIDEO-RANGE": "SDR",
+              "CODECS": "\"avc1.640020\"",
+              "FRAME-RATE": "30.000",
+              "RESOLUTION": "1080x1080"
+            },
+            {
+              "AVERAGE-BANDWIDTH": "286700",
+              "BANDWIDTH": "312639",
+              "VIDEO-RANGE": "SDR",
+              "CODECS": "\"hvc1.2.20000000.L123.B0\"",
+              "FRAME-RATE": "30.000",
+              "RESOLUTION": "360x360"
+            },
+            {
+              "AVERAGE-BANDWIDTH": "486112",
+              "BANDWIDTH": "538557",
+              "VIDEO-RANGE": "SDR",
+              "CODECS": "\"hvc1.2.20000000.L123.B0\"",
+              "FRAME-RATE": "30.000",
+              "RESOLUTION": "456x456"
+            },
+            {
+              "AVERAGE-BANDWIDTH": "693520",
+              "BANDWIDTH": "756382",
+              "VIDEO-RANGE": "SDR",
+              "CODECS": "\"hvc1.2.20000000.L123.B0\"",
+              "FRAME-RATE": "30.000",
+              "RESOLUTION": "486x486"
+            },
+            {
+              "AVERAGE-BANDWIDTH": "999004",
+              "BANDWIDTH": "1135896",
+              "VIDEO-RANGE": "SDR",
+              "CODECS": "\"hvc1.2.20000000.L123.B0\"",
+              "FRAME-RATE": "30.000",
+              "RESOLUTION": "486x486"
+            },
+            {
+              "AVERAGE-BANDWIDTH": "1308691",
+              "BANDWIDTH": "1511575",
+              "VIDEO-RANGE": "SDR",
+              "CODECS": "\"hvc1.2.20000000.L123.B0\"",
+              "FRAME-RATE": "30.000",
+              "RESOLUTION": "486x486"
+            },
+            {
+              "AVERAGE-BANDWIDTH": "2555577",
+              "BANDWIDTH": "3155782",
+              "VIDEO-RANGE": "SDR",
+              "CODECS": "\"hvc1.2.20000000.L123.B0\"",
+              "FRAME-RATE": "30.000",
+              "RESOLUTION": "960x960"
+            },
+            {
+              "AVERAGE-BANDWIDTH": "3281048",
+              "BANDWIDTH": "3985018",
+              "VIDEO-RANGE": "SDR",
+              "CODECS": "\"hvc1.2.20000000.L123.B0\"",
+              "FRAME-RATE": "30.000",
+              "RESOLUTION": "960x960"
+            },
+            {
+              "AVERAGE-BANDWIDTH": "3265326",
+              "BANDWIDTH": "4033356",
+              "VIDEO-RANGE": "SDR",
+              "CODECS": "\"hvc1.2.20000000.L123.B0\"",
+              "FRAME-RATE": "30.000",
+              "RESOLUTION": "1080x1080"
+            },
+            {
+              "AVERAGE-BANDWIDTH": "4628940",
+              "BANDWIDTH": "5760396",
+              "VIDEO-RANGE": "SDR",
+              "CODECS": "\"hvc1.2.20000000.L123.B0\"",
+              "FRAME-RATE": "30.000",
+              "RESOLUTION": "1080x1080"
+            },
+            {
+              "AVERAGE-BANDWIDTH": "5963807",
+              "BANDWIDTH": "7405148",
+              "VIDEO-RANGE": "SDR",
+              "CODECS": "\"hvc1.2.20000000.L123.B0\"",
+              "FRAME-RATE": "30.000",
+              "RESOLUTION": "1080x1080"
+            },
+            {
+              "AVERAGE-BANDWIDTH": "8317802",
+              "BANDWIDTH": "10525165",
+              "VIDEO-RANGE": "SDR",
+              "CODECS": "\"hvc1.2.20000000.L123.B0\"",
+              "FRAME-RATE": "30.000",
+              "RESOLUTION": "1080x1080"
+            },
+            {
+              "AVERAGE-BANDWIDTH": "14445274",
+              "BANDWIDTH": "18475957",
+              "VIDEO-RANGE": "SDR",
+              "CODECS": "\"hvc1.2.20000000.H150.B0\"",
+              "FRAME-RATE": "30.000",
+              "RESOLUTION": "1920x1920"
+            },
+            {
+              "AVERAGE-BANDWIDTH": "8305314",
+              "BANDWIDTH": "10653473",
+              "VIDEO-RANGE": "SDR",
+              "CODECS": "\"hvc1.2.20000000.H150.B0\"",
+              "FRAME-RATE": "30.000",
+              "RESOLUTION": "2160x2160"
+            },
+            {
+              "AVERAGE-BANDWIDTH": "14262650",
+              "BANDWIDTH": "19006068",
+              "VIDEO-RANGE": "SDR",
+              "CODECS": "\"hvc1.2.20000000.H150.B0\"",
+              "FRAME-RATE": "30.000",
+              "RESOLUTION": "2160x2160"
+            },
+            {
+              "AVERAGE-BANDWIDTH": "24970306",
+              "BANDWIDTH": "30635508",
+              "VIDEO-RANGE": "SDR",
+              "CODECS": "\"hvc1.2.20000000.H150.B0\"",
+              "FRAME-RATE": "30.000",
+              "RESOLUTION": "2160x2160"
+            }
+          ],
+          "selected": [
+            {
+              "codec": "hvc1",
+              "variant": {
+                "AVERAGE-BANDWIDTH": "1859556",
+                "BANDWIDTH": "2177387",
+                "VIDEO-RANGE": "SDR",
+                "CODECS": "\"hvc1.2.20000000.L123.B0\"",
+                "FRAME-RATE": "30.000",
+                "RESOLUTION": "768x768"
+              },
+              "manifest_bytes": 701,
+              "segments": 5,
+              "unique_resources": 1,
+              "has_endlist": true,
+              "encrypted": false,
+              "uses_byterange": true,
+              "suffix_guess_matches_resource": true,
+              "headers": {
+                "content-type": "video/mp4",
+                "content-length": "4648890",
+                "accept-ranges": "bytes"
+              }
+            },
+            {
+              "codec": "avc1",
+              "variant": {
+                "AVERAGE-BANDWIDTH": "2125654",
+                "BANDWIDTH": "2499558",
+                "VIDEO-RANGE": "SDR",
+                "CODECS": "\"avc1.64001f\"",
+                "FRAME-RATE": "30.000",
+                "RESOLUTION": "768x768"
+              },
+              "manifest_bytes": 702,
+              "segments": 5,
+              "unique_resources": 1,
+              "has_endlist": true,
+              "encrypted": false,
+              "uses_byterange": true,
+              "suffix_guess_matches_resource": true,
+              "headers": {
+                "content-type": "video/mp4",
+                "content-length": "5314135",
+                "accept-ranges": "bytes"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "collection_id": 1739659134,
+      "ua": "Safari macOS",
+      "html_bytes": 450383,
+      "motions": [
+        {
+          "path": "/data/0/data/sections/0/items/0",
+          "keys": "NoneType",
+          "master_paths": [],
+          "variants": []
+        }
+      ]
+    }
+  ],
+  "interpretation": {
+    "positive_album": {
+      "collection_id": 1499378108,
+      "title": "After Hours",
+      "artist": "The Weeknd",
+      "page": "https://music.apple.com/us/album/after-hours/1499378108",
+      "confidence": "Objeto de motion y playlists/HEAD confirmados en la respuesta consultada; reproducción no verificada."
+    },
+    "null_results": "videoArtwork null describe sólo aquella respuesta/entidad/storefront. No se probó que User-Agent causara diferencias ni disponibilidad universal.",
+    "mp4_rule": "Cambio de sufijo coincidió con la URI real en dos variantes del mismo álbum. No usarlo como contrato general; leer playlists.",
+    "performance": "No se midieron FPS, hitches, CPU/GPU, energía, RAM, tiempo hasta primer frame ni continuidad de loop."
+  },
+  "primary_documentation": [
+    "https://developer.apple.com/documentation/avfoundation/avplayerlayer/isreadyfordisplay",
+    "https://developer.apple.com/documentation/avfoundation/avplayerlooper",
+    "https://www.rfc-editor.org/rfc/rfc8216.html",
+    "https://performance-partners.apple.com/search-api"
+  ],
+  "excluded_material": "Sin HTML completo, videos, URLs CDN, credenciales, cookies o datos de la cuenta del usuario."
+}

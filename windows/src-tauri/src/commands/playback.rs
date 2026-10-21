@@ -699,7 +699,12 @@ pub(crate) async fn play_song(
                 "No se pudo preparar el reproductor para otra pista.",
             ));
         }
+        let previous_generation = pb.generation;
         pb.generation += 1;
+        let seek_owner = crate::seek_state::SeekOwner {
+            auth: my_auth_generation, generation: pb.generation, entry_id: active_entry.entry_id.clone(),
+        };
+        pb.runtime.seek.adopt(previous_generation, &seek_owner);
         pb.loaded_generation = None;
         pb.is_loading = true;
         pb.is_playing = false;
@@ -1312,6 +1317,16 @@ pub(crate) fn handle_track_ended(app: tauri::AppHandle) {
         if playback.loaded_generation.is_none() {
             return;
         }
+        // An EOF already in the engine queue must not consume the occurrence
+        // while a lyric cue is being applied. One waiter resolves it against
+        // the actual idle state after the bounded seek has completed or failed.
+        if playback.runtime.seek.pending.is_some() {
+            if !playback.runtime.seek.deferred_eof {
+                playback.runtime.seek.deferred_eof = true;
+                defer_track_end(app.clone(), playback.generation, playback.observed_auth_generation);
+            }
+            return;
+        }
         let generation = playback.generation;
         playback.is_playing = false;
         playback.is_loading = false;
@@ -1626,65 +1641,275 @@ pub(crate) async fn resume_playback(
     Ok(dto)
 }
 
-#[tauri::command]
+/// System media controls capture the native owner when their event is handled.
+/// WebView callers must use the identified command below.
 pub(crate) async fn seek_playback(
     app: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
     seconds: f64,
 ) -> Result<PlaybackStateDto, CommandError> {
+    let owner = {
+        let pb = state
+            .playback
+            .lock()
+            .map_err(|_| CommandError::new("LOCK_ERROR", "No se pudo leer la reproducción."))?;
+        seek_owner(&pb)
+            .ok_or_else(|| CommandError::new("NOT_READY", "No hay una ocurrencia seleccionada."))?
+    };
+    seek_playback_identified(
+        app,
+        state,
+        seconds,
+        owner.generation,
+        owner.auth,
+        owner.entry_id,
+    )
+    .await
+}
+
+#[tauri::command]
+pub(crate) async fn seek_playback_identified(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+    seconds: f64,
+    expected_generation: u64,
+    expected_auth_generation: u64,
+    expected_entry_id: String,
+) -> Result<PlaybackStateDto, CommandError> {
     if !seconds.is_finite() || seconds < 0.0 {
         return Err(CommandError::new(
             "INVALID_SEEK",
-            "La posición de seek debe ser un número finito no negativo.",
+            "La posición debe ser un número finito no negativo.",
         ));
     }
-
-    let player = {
-        let lock = state.player.read().map_err(|_| {
-            CommandError::new(
-                "LOCK_ERROR",
-                "Error de concurrencia al acceder al reproductor.",
-            )
-        })?;
-        lock.clone().ok_or_else(|| {
-            CommandError::new(
-                "PLAYER_NOT_INITIALIZED",
-                "El reproductor de audio no está listo.",
-            )
-        })?
+    let (revision, restore, dto) = {
+        let mut pb = state
+            .playback
+            .lock()
+            .map_err(|_| CommandError::new("LOCK_ERROR", "No se pudo leer la reproducción."))?;
+        let owner = seek_owner(&pb)
+            .ok_or_else(|| CommandError::new("NOT_READY", "No hay una ocurrencia seleccionada."))?;
+        if owner.generation != expected_generation
+            || owner.auth != expected_auth_generation
+            || owner.auth != state.auth_generation.load(Ordering::SeqCst)
+            || owner.entry_id != expected_entry_id
+        {
+            return Err(CommandError::new(
+                "STALE_SEEK",
+                "La posición pertenece a otra ocurrencia o cuenta.",
+            ));
+        }
+        if pb.error.is_some() || pb.is_ended {
+            return Err(CommandError::new(
+                "NOT_READY",
+                "La reproducción no está disponible para cambiar de posición.",
+            ));
+        }
+        let restore = pb.loaded_generation.is_none()
+            && !pb.is_loading
+            && !pb
+                .runtime
+                .seek
+                .pending
+                .as_ref()
+                .is_some_and(|seek| seek.resuming);
+        // Keep the adoption reservation when a second cue replaces the first
+        // before the restored item has entered play_song.
+        let resuming = restore
+            || pb
+                .runtime
+                .seek
+                .pending
+                .as_ref()
+                .is_some_and(|seek| seek.resuming && seek.owner == owner);
+        let duration = pb.duration;
+        let revision = pb.runtime.seek.begin(
+            owner,
+            seconds,
+            duration,
+            std::time::Instant::now(),
+            resuming,
+        );
+        (revision, restore, pb.to_dto())
     };
-
-    let mut pb = state.playback.lock().map_err(|_| {
-        CommandError::new(
-            "LOCK_ERROR",
-            "Error de concurrencia al actualizar reproducción.",
-        )
-    })?;
-
-    // Bloquear seek si no hay pista cargada o está cargando
-    if pb.loaded_generation.is_none()
-        || pb.is_loading
-        || pb.current_track.is_none()
-        || player.is_idle()
-    {
-        return Err(CommandError::new(
-            "NOT_READY",
-            "No se puede cambiar la posición: no hay pista cargada en reproducción.",
-        ));
-    }
-
-    player.seek(seconds).map_err(|_| {
-        CommandError::new(
-            "SEEK_FAILED",
-            "No se pudo cambiar la posición de reproducción.",
-        )
-    })?;
-
-    pb.position = seconds;
-    pb.is_ended = false;
-    let dto = pb.to_dto();
     let _ = app.emit("playback-state-changed", &dto);
+    if restore {
+        let resume_app = app.clone();
+        tauri::async_runtime::spawn(async move {
+            // A restored selection has no playing item. Adopt it paused, retaining
+            // that state while the cue is applied; loaded items never toggle pause.
+            if start_queue_entry(
+                resume_app.clone(),
+                expected_entry_id,
+                expected_generation,
+                true,
+            )
+            .await
+            .is_err()
+            {
+                finish_seek_failure(
+                    &resume_app,
+                    revision,
+                    "No se pudo cargar la canción para cambiar de posición.",
+                );
+            }
+        });
+    }
+    watch_seek(app, revision);
     Ok(dto)
+}
+
+fn seek_owner(pb: &PlaybackManager) -> Option<crate::seek_state::SeekOwner> {
+    Some(crate::seek_state::SeekOwner {
+        auth: pb.observed_auth_generation,
+        generation: pb.generation,
+        entry_id: pb.queue.current()?.entry_id,
+    })
+}
+
+fn defer_track_end(app: tauri::AppHandle, generation: u64, auth: u64) {
+    tauri::async_runtime::spawn(async move {
+        loop {
+            let ready = {
+                let state = app.state::<AppState>();
+                let Ok(mut pb) = state.playback.lock() else {
+                    return;
+                };
+                if pb.generation != generation
+                    || state.auth_generation.load(Ordering::SeqCst) != auth
+                    || !pb.runtime.seek.deferred_eof
+                {
+                    return;
+                }
+                if pb.runtime.seek.pending.is_none() {
+                    pb.runtime.seek.deferred_eof = false;
+                    let player = state.player.read().ok().and_then(|player| player.clone());
+                    player.is_some_and(|player| player.is_idle())
+                } else {
+                    if pb.runtime.seek.pending.as_ref().is_some_and(|seek| {
+                        std::time::Instant::now()
+                            >= seek.deadline + std::time::Duration::from_secs(1)
+                    }) {
+                        pb.runtime.seek.deferred_eof = false;
+                        return;
+                    }
+                    false
+                }
+            };
+            if ready {
+                handle_track_ended(app);
+                return;
+            }
+            {
+                let state = app.state::<AppState>();
+                let waiting = state
+                    .playback
+                    .lock()
+                    .map(|pb| pb.runtime.seek.deferred_eof)
+                    .unwrap_or(false);
+                if !waiting {
+                    return;
+                }
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        }
+    });
+}
+
+/// Called only with a fresh Position event from the engine, never an RPC target.
+pub(crate) fn observe_seek(pb: &mut PlaybackManager, position: f64) -> bool {
+    let Some(owner) = seek_owner(pb) else {
+        return false;
+    };
+    pb.runtime
+        .seek
+        .observe(&owner, position, std::time::Instant::now())
+}
+
+pub(crate) fn seek_snapshot(pb: &PlaybackManager) -> (u64, Option<f64>, Option<String>) {
+    let seek = &pb.runtime.seek;
+    let pending = seek
+        .pending
+        .as_ref()
+        .filter(|pending| seek_owner(pb).as_ref() == Some(&pending.owner))
+        .map(|pending| pending.target);
+    (seek.revision, pending, seek.error.clone())
+}
+
+fn finish_seek_failure(app: &tauri::AppHandle, revision: u64, message: &str) {
+    let state = app.state::<AppState>();
+    let Ok(mut pb) = state.playback.lock() else {
+        return;
+    };
+    if pb.runtime.seek.fail(revision, message) {
+        let _ = app.emit("playback-state-changed", pb.to_dto());
+    }
+}
+
+fn watch_seek(app: tauri::AppHandle, revision: u64) {
+    tauri::async_runtime::spawn(async move {
+        loop {
+            {
+                let state = app.state::<AppState>();
+                let Ok(mut pb) = state.playback.lock() else {
+                    return;
+                };
+                if pb.runtime.seek.revision != revision {
+                    return;
+                }
+                let Some(pending) = pb.runtime.seek.pending.clone() else {
+                    return;
+                };
+                if seek_owner(&pb).as_ref() != Some(&pending.owner)
+                    || state.auth_generation.load(Ordering::SeqCst) != pending.owner.auth
+                {
+                    pb.runtime.seek.cancel();
+                    let _ = app.emit("playback-state-changed", pb.to_dto());
+                    return;
+                }
+                if std::time::Instant::now() >= pending.deadline
+                    || pb.error.is_some()
+                    || pb.is_ended
+                {
+                    pb.runtime.seek.fail(
+                        revision,
+                        "No se pudo confirmar la posición solicitada a tiempo.",
+                    );
+                    let _ = app.emit("playback-state-changed", pb.to_dto());
+                    return;
+                }
+                if !pending.dispatched && pb.loaded_generation == Some(pb.generation) {
+                    if let Some(player) = state.player.read().ok().and_then(|player| player.clone())
+                    {
+                        if !player.is_idle() {
+                            // Clamp again after adoption: VOD metadata can arrive after
+                            // the cue. Unknown duration remains a valid absolute target.
+                            let target = if pb.duration.is_finite() && pb.duration > 0.0 {
+                                pending.target.min(pb.duration)
+                            } else {
+                                pending.target
+                            };
+                            if player.seek(target).is_err() {
+                                pb.runtime.seek.fail(
+                                    revision,
+                                    "No se pudo cambiar la posición de reproducción.",
+                                );
+                                let _ = app.emit("playback-state-changed", pb.to_dto());
+                                return;
+                            }
+                            if let Some(pending) = pb.runtime.seek.pending.as_mut() {
+                                pending.target = target;
+                                pending.dispatched = true;
+                            }
+                            // No assignment to pb.position: acceptance is not arrival.
+                            let _ = app.emit("playback-state-changed", pb.to_dto());
+                        }
+                    }
+                }
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        }
+    });
 }
 
 #[tauri::command]

@@ -2,10 +2,14 @@
 
 - [Sidebar y Apariencia: entrega compartida](../../plans/PLAN-010-sidebar-delivery.md) — FIX-224/225 publicada Latest 1.2.6/build 19 sobre GitHub 23f1df5; nueva sidebar y opciones sincronizadas, 764 pruebas Mac/793 Windows y cinco descargas públicas verificadas. PAR-036; aceptación física pendiente.
 
+- [Auditoría de rendimiento de Letras — 2026-10-21](research/LYRICS-PERFORMANCE-2026-10-21.md) — reporte original de carga, renderer, sidebar y actividad de fondo sobre0146; insumo del PLAN-026 consolidado, con microbenchmarks aislados y sin optimizaciones aplicadas.
+
 [Formato](../../.agents/WORKFLOW.md#planes), [fixes](../../FIXES.md), [paridad](../../PARIDAD.md).
 
 | Plan | Estado | Referencia |
 |---|---|---|
+| [PLAN-026: rendimiento integral de Fullscreen y Letras](PLAN-026-fullscreen-lyrics-performance.md) | FIX-236/build0150 Release aprobada: contexto nativo, Text preparado y reloj por viewport; aceptación FPS pendiente | Baseline CPU de scroll continuo en0147 y microbench antes/después; perfil comparable de0150 bloqueado por automatización. [Resultados](research/LYRICS-PLAN026-RESULTS-2026-10-21.md). Conserva FIX-233/234/235; red secundaria y Recomendados fuera de modificaciones |
+| [PLAN-025: letras por palabra y karaoke](PLAN-025-word-synced-lyrics.md) | FIX-235/build0147 empaquetada: nuevas letras por defecto, alto original y menú de tres puntos; pruebas detenidas por pedido del usuario. FIX-234/build0146 conserva corrección de tiempos | FIX-228 a234, PAR-037/038: Karaoke/Lectura, palabras/sílabas/voces TTML, interludios y estilo36pt; seek coordinado con AVPlayer, restauración y prioridad sincronizada/cachév4. Build0145 Release:889 pruebas ejecutadas aprobadas/15 omitidas, fuentes estables y firma verificada  FIX-239/build0155: Original/nuevo con estilo y ajustes compartidos, fallback automático y blur sólo siguiendo;959 pruebas aprobadas, QA/FPS pendientes. |
 | [PLAN-022: ancho y cabeceras con scroll](PLAN-022-page-width-and-scrolling-headers.md) | FIX-208/build0132 y release1.2.2/FIX-209;761pruebas/firma/hashes aprobados; QA visible aislada parcial | Explorar con ancho/título coherentes; Biblioteca y Búsqueda desplazan su cabecera; Biblioteca con cuenta/VoiceOver/trackpad físico pendientes |
 | [PLAN-021: volumen con scroll](PLAN-021-volume-scroll-feedback.md) | FIX-199/build0130:747 pruebas; QA física pendiente | FIX-198/199: volumen sólo sobre control abierto/carátula, cancelación independiente del descenso, porcentaje sobre portada y arbitraje de gestos; complemento Windows en [PLAN-009](../../windows/plans/PLAN-009-volume-scroll-feedback.md) |
 | [PLAN-020: búsqueda en TopNav](PLAN-020-topnav-search-integration.md) | Implementado0127/FIX-196;728pruebas; QA física diferida | Margen inferior, cierre exterior, acceso a Configuración y plan para integrar Spotlight |

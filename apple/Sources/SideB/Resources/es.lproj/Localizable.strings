@@ -847,6 +847,74 @@ Historial: %@</string>
 	<string>Iniciar sesión en YouTube Music</string>
 	<key>login.passkey_unavailable</key>
 	<string>La opción de iniciar sesión con llave de acceso no está disponible en esta ventana. Google te pedirá la contraseña u otro método de inicio de sesión.</string>
+	<key>lyrics.experimental.badge</key>
+	<string>En prueba</string>
+	<key>lyrics.experimental.empty</key>
+	<string>No encontramos letras para esta canción.</string>
+	<key>lyrics.experimental.emptyDetail</key>
+	<string>Podés volver a las letras actuales o intentar actualizar.</string>
+	<key>lyrics.experimental.error</key>
+	<string>No se pudieron actualizar las letras. Intentá de nuevo.</string>
+	<key>lyrics.experimental.instrumental</key>
+	<string>Instrumental</string>
+	<key>lyrics.experimental.instrumental.detail</key>
+	<string>Esta canción no tiene letra.</string>
+	<key>lyrics.experimental.loading</key>
+	<string>Buscando letras para karaoke…</string>
+	<key>lyrics.experimental.mode.karaoke</key>
+	<string>Karaoke</string>
+	<key>lyrics.experimental.mode.reading</key>
+	<string>Lectura</string>
+	<key>lyrics.experimental.noTrack</key>
+	<string>Reproducí una canción para probar las nuevas letras.</string>
+	<key>lyrics.experimental.offset</key>
+	<string>Desfase</string>
+	<key>lyrics.experimental.offset.earlier</key>
+	<string>Adelantar letras 0,1 s</string>
+	<key>lyrics.experimental.offset.later</key>
+	<string>Retrasar letras 0,1 s</string>
+	<key>lyrics.experimental.offset.reset</key>
+	<string>Restablecer desfase</string>
+	<key>lyrics.experimental.options</key>
+	<string>Opciones de letras</string>
+	<key>lyrics.experimental.refresh</key>
+	<string>Actualizar letras</string>
+	<key>lyrics.experimental.retry</key>
+	<string>Intentar de nuevo</string>
+	<key>lyrics.experimental.returnToCurrent</key>
+	<string>Letras originales</string>
+	<key>lyrics.experimental.source</key>
+	<string>Fuente: %@</string>
+	<key>lyrics.experimental.switchHint</key>
+	<string>Probá el nuevo panel y volvé a las letras actuales cuando quieras.</string>
+	<key>lyrics.experimental.textSize</key>
+	<string>Tamaño del texto</string>
+	<key>lyrics.experimental.textSize.larger</key>
+	<string>Más grande</string>
+	<key>lyrics.experimental.textSize.smaller</key>
+	<string>Más pequeño</string>
+	<key>lyrics.experimental.timing.lines</key>
+	<string>Por línea</string>
+	<key>lyrics.experimental.timing.plain</key>
+	<string>Sin sincronización</string>
+	<key>lyrics.experimental.timing.words</key>
+	<string>Por palabra</string>
+	<key>lyrics.experimental.translation</key>
+	<string>Mostrar traducción</string>
+	<key>lyrics.experimental.tryNew</key>
+	<string>Usar nuevas letras</string>
+	<key>lyrics.experimental.voice.background</key>
+	<string>Voz de fondo</string>
+	<key>lyrics.experimental.wait.interlude</key>
+	<string>Interludio instrumental. La voz vuelve en breve.</string>
+	<key>lyrics.experimental.wait.intro</key>
+	<string>Introducción instrumental. La voz comienza en breve.</string>
+	<key>lyrics.experimental.wait.outro</key>
+	<string>Final instrumental.</string>
+	<key>lyrics.experimental.wordMotion</key>
+	<string>Animar palabras</string>
+	<key>lyrics.experimental.wordMotion.help</key>
+	<string>Anima el brillo, la elevación y la ampliación de las palabras sostenidas.</string>
 	<key>menu.accept</key>
 	<string>Aceptar</string>
 	<key>menu.account</key>
@@ -1291,6 +1359,16 @@ Historial: %@</string>
 	<string>Buscar</string>
 	<key>settings.albums</key>
 	<string>Álbumes</string>
+	<key>settings.animatedArtwork</key>
+	<string>Carátulas animadas en pantalla completa</string>
+	<key>settings.animatedArtwork.cacheClearing</key>
+	<string>Vaciando caché…</string>
+	<key>settings.animatedArtwork.cacheFailure</key>
+	<string>No se pudo vaciar toda la caché. Intentá de nuevo.</string>
+	<key>settings.animatedArtwork.clearCache</key>
+	<string>Vaciar caché de carátulas animadas (%@ MB)</string>
+	<key>settings.animatedArtwork.hint</key>
+	<string>Mostrá la animación del álbum cuando esté disponible.</string>
 	<key>settings.appearance</key>
 	<string>Apariencia</string>
 	<key>settings.categories</key>

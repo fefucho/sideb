@@ -1,0 +1,138 @@
+{
+  "lyrics.experimental.badge": {
+    "es": "En prueba",
+    "en": "Experimental"
+  },
+  "lyrics.experimental.tryNew": {
+    "es": "Usar nuevas letras",
+    "en": "Use new lyrics"
+  },
+  "lyrics.experimental.returnToCurrent": {
+    "es": "Letras originales",
+    "en": "Original lyrics"
+  },
+  "lyrics.experimental.switchHint": {
+    "es": "Probá el nuevo panel y volvé a las letras actuales cuando quieras.",
+    "en": "Try the new panel and return to current lyrics at any time."
+  },
+  "lyrics.experimental.loading": {
+    "es": "Buscando letras para karaoke…",
+    "en": "Finding karaoke lyrics…"
+  },
+  "lyrics.experimental.refresh": {
+    "es": "Actualizar letras",
+    "en": "Refresh lyrics"
+  },
+  "lyrics.experimental.error": {
+    "es": "No se pudieron actualizar las letras. Intentá de nuevo.",
+    "en": "Lyrics could not be refreshed. Try again."
+  },
+  "lyrics.experimental.retry": {
+    "es": "Intentar de nuevo",
+    "en": "Try again"
+  },
+  "lyrics.experimental.noTrack": {
+    "es": "Reproducí una canción para probar las nuevas letras.",
+    "en": "Play a song to try the new lyrics."
+  },
+  "lyrics.experimental.empty": {
+    "es": "No encontramos letras para esta canción.",
+    "en": "No lyrics found for this track."
+  },
+  "lyrics.experimental.emptyDetail": {
+    "es": "Podés volver a las letras actuales o intentar actualizar.",
+    "en": "You can return to current lyrics or try refreshing."
+  },
+  "lyrics.experimental.mode.karaoke": {
+    "es": "Karaoke",
+    "en": "Karaoke"
+  },
+  "lyrics.experimental.mode.reading": {
+    "es": "Lectura",
+    "en": "Reading"
+  },
+  "lyrics.experimental.options": {
+    "es": "Opciones de letras",
+    "en": "Lyrics options"
+  },
+  "lyrics.experimental.translation": {
+    "es": "Mostrar traducción",
+    "en": "Show translation"
+  },
+  "lyrics.experimental.wordMotion": {
+    "es": "Animar palabras",
+    "en": "Animate words"
+  },
+  "lyrics.experimental.wordMotion.help": {
+    "es": "Anima el brillo, la elevación y la ampliación de las palabras sostenidas.",
+    "en": "Animate glow, lift and scale on sustained words."
+  },
+  "lyrics.experimental.textSize": {
+    "es": "Tamaño del texto",
+    "en": "Text size"
+  },
+  "lyrics.experimental.textSize.smaller": {
+    "es": "Más pequeño",
+    "en": "Smaller"
+  },
+  "lyrics.experimental.textSize.larger": {
+    "es": "Más grande",
+    "en": "Larger"
+  },
+  "lyrics.experimental.offset": {
+    "es": "Desfase",
+    "en": "Timing offset"
+  },
+  "lyrics.experimental.offset.earlier": {
+    "es": "Adelantar letras 0,1 s",
+    "en": "Show lyrics 0.1 s earlier"
+  },
+  "lyrics.experimental.offset.later": {
+    "es": "Retrasar letras 0,1 s",
+    "en": "Show lyrics 0.1 s later"
+  },
+  "lyrics.experimental.offset.reset": {
+    "es": "Restablecer desfase",
+    "en": "Reset timing offset"
+  },
+  "lyrics.experimental.instrumental": {
+    "es": "Instrumental",
+    "en": "Instrumental"
+  },
+  "lyrics.experimental.instrumental.detail": {
+    "es": "Esta canción no tiene letra.",
+    "en": "This track has no lyrics."
+  },
+  "lyrics.experimental.timing.words": {
+    "es": "Por palabra",
+    "en": "Word synced"
+  },
+  "lyrics.experimental.timing.lines": {
+    "es": "Por línea",
+    "en": "Line synced"
+  },
+  "lyrics.experimental.timing.plain": {
+    "es": "Sin sincronización",
+    "en": "Unsynced"
+  },
+  "lyrics.experimental.source": {
+    "es": "Fuente: %@",
+    "en": "Source: %@"
+  },
+  "lyrics.experimental.voice.background": {
+    "es": "Voz de fondo",
+    "en": "Background vocal"
+  },
+  "lyrics.experimental.wait.intro": {
+    "es": "Introducción instrumental. La voz comienza en breve.",
+    "en": "Instrumental intro. Vocals begin shortly."
+  },
+  "lyrics.experimental.wait.interlude": {
+    "es": "Interludio instrumental. La voz vuelve en breve.",
+    "en": "Instrumental interlude. Vocals return shortly."
+  },
+  "lyrics.experimental.wait.outro": {
+    "es": "Final instrumental.",
+    "en": "Instrumental outro."
+  }
+}

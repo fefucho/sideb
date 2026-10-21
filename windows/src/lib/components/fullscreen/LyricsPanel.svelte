@@ -1,137 +1,181 @@
 <script lang="ts">
-  import { t , language, resolveMessage } from '$lib/i18n';
-  import { onDestroy, tick } from 'svelte';
-  import PlayerIcon from '../player/PlayerIcon.svelte';
-  import { activeLyricIndex, lyricSeekSeconds, type LyricsState } from '$lib/player/lyrics';
+  import { t } from '$lib/i18n';
+  import { onMount, onDestroy, tick, untrack } from 'svelte';
+  import { invoke } from '@tauri-apps/api/core';
+  import type { PlaybackStateDto } from '$lib/types';
+  import type { LyricsState } from '$lib/player/lyrics';
+  import { KaraokeController, prepareKaraoke, karaokeFocus, seekSeconds, type KaraokeState } from '$lib/player/karaoke';
+  import { KaraokeClock } from '$lib/player/karaoke-clock';
   import { LyricScroller } from '$lib/player/lyric-scroll';
-
-  interface Props {
-    state: LyricsState;
-    position: number;
-    duration: number;
-    onSeek: (seconds: number) => void;
-    onRetry: () => void;
-  }
-  let { state: lyricState, position, duration, onSeek, onRetry }: Props = $props();
-  let container = $state<HTMLDivElement | null>(null);
-  let following = $state(true);
-  const scroller = new LyricScroller();
-  let centeredTrack: string | null = null;
-  onDestroy(() => scroller.cancel());
-  const activeIndex = $derived(lyricState.lyrics ? activeLyricIndex(lyricState.lyrics, position) : null);
-
-  function centerCurrent(animate = true) {
-    if (!container || activeIndex === null) return;
-    const line = container.querySelector<HTMLElement>(`[data-line="${activeIndex}"]`);
-    if (!line) return;
-    const containerRect = container.getBoundingClientRect();
-    const lineRect = line.getBoundingClientRect();
-    const top = container.scrollTop + lineRect.top - containerRect.top - container.clientHeight / 2 + lineRect.height / 2;
-    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    // Scroll this panel only: scrollIntoView would also move the artwork and app shell.
-    scroller.center(container, top, animate && !reduceMotion);
-  }
-  function pauseFollowing() {
-    scroller.cancel();
-    if (activeIndex !== null) following = false;
-  }
-  function onScrollKey(event: KeyboardEvent) {
-    if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '].includes(event.key)) pauseFollowing();
-  }
-  function onPointerDown(event: PointerEvent) {
-    // Scrollbar interaction only; pressing a lyric keeps normal line seeking.
-    if (!container || event.target !== container) return;
-    const rect = container.getBoundingClientRect();
-    if (event.clientX >= rect.left + container.clientWidth) pauseFollowing();
-  }
-  function resumeFollowing() { following = true; }
-  function seekLine(seconds: number) { scroller.cancel(); following = true; onSeek(seconds); }
-
-  $effect(() => {
-    lyricState.trackKey;
-    scroller.cancel();
-    centeredTrack = null;
-    following = true;
-    if (container) container.scrollTop = 0;
+  import KaraokePhrase from './KaraokePhrase.svelte';
+  import LyricsWait from './LyricsWait.svelte';
+  interface Props { state: LyricsState; playback: PlaybackStateDto; session: number; active?: boolean; onSeek: (seconds:number)=>void; onRetry: ()=>void }
+  let { state:classicState, playback, session, active=true, onSeek, onRetry }: Props = $props();
+  let rich = $state<KaraokeState>({occurrence:null,status:'idle',refreshing:false,document:null,error:null});
+  const controller = new KaraokeController(invoke, next => rich=next);
+  const clock = new KaraokeClock(), scroller = new LyricScroller();
+  let original=$state(false), reading=$state(false), size=$state(36), following=$state(true), menu=$state(false);
+  let motion=$state(true), translations=$state(true), offset=$state(0), reduced=$state(false), contrast=$state(false);
+  let focus=$state<number|null>(null), gapIndex=$state(-1), container=$state<HTMLDivElement|null>(null), height=$state(0);
+  let centerRevision=0, centered=false, lastOccurrence='', savedScrollTop=0;
+  const occurrence=$derived(JSON.stringify([session,playback.queue.items[playback.queue.currentIndex??-1]?.entryId,playback.generation,playback.currentTrack?.videoId]));
+  const duration=$derived(Number.isFinite(playback.duration)&&playback.duration>0?playback.duration:playback.currentTrack?.duration??0);
+  const currentClassic=$derived.by(()=>{
+    if(!classicState.lyrics||!classicState.trackKey||!playback.currentTrack)return null;
+    try {
+      const [video,generation,scope]=JSON.parse(classicState.trackKey);
+      if(video!==playback.currentTrack.videoId||generation!==playback.generation)return null;
+      if(typeof scope==='string') {
+        const entry=JSON.parse(scope)[1]??null;
+        if(entry!==(playback.queue.items[playback.queue.currentIndex??-1]?.entryId??null))return null;
+      }
+      return classicState.lyrics;
+    }catch{return null;}
   });
-  $effect(() => {
-    const index = activeIndex;
-    const key = lyricState.trackKey;
-    const element = container;
-    const ready = lyricState.status === 'ready';
-    const shouldFollow = following;
-    if (ready && shouldFollow && element && index !== null) {
-      void tick().then(() => {
-        if (following && container === element && index === activeIndex && key === lyricState.trackKey) {
-          centerCurrent(centeredTrack === key);
-          centeredTrack = key;
-        }
-      });
+  const classic=$derived(currentClassic?prepareKaraoke({...currentClassic,instrumental:false,lines:currentClassic.lines.map(line=>({...line,words:[]}))},duration):null);
+  const lyricDocument=$derived(!original&&rich.occurrence===occurrence&&rich.document?rich.document:classic);
+  const isRich=$derived(!original&&rich.occurrence===occurrence&&!!rich.document);
+  const geometry=$derived(JSON.stringify([size,reading,translations]));
+  const effectiveOffset=$derived(isRich?offset:0);
+  const busy=$derived(original?classicState.status==='loading':rich.refreshing);
+  const groupOrdinal=$derived(focus===null?-1:lyricDocument?.ordinals.get(focus)??-1);
+  function manual() { ++centerRevision; scroller.cancel(); following=false; }
+  function resume() { following=true; centered=false; }
+  function seek(ms:number|null) {
+    const seconds=seekSeconds(ms,duration,effectiveOffset); if(seconds===null)return;
+    ++centerRevision; scroller.cancel(); resume(); onSeek(seconds);
+  }
+  function scrollKey(event:KeyboardEvent) {
+    if(event.target instanceof HTMLInputElement || (event.key===' ' && event.target!==container))return;
+    if(['ArrowUp','ArrowDown','PageUp','PageDown','Home','End',' '].includes(event.key))manual();
+  }
+  function useNew() { original=false; motion=true; translations=true; offset=0; void controller.retry(); }
+  function refresh() { if(original)onRetry();else void controller.retry(); }
+  function selectSource() { if(isRich){original=true;offset=0;}else useNew(); }
+  $effect(()=>{
+    const track=playback.currentTrack,key=occurrence,seconds=duration,enabled=active&&!original;
+    untrack(()=>controller.setContext(track,key,seconds,enabled));
+  });
+  $effect(()=>{
+    const key=occurrence;
+    if(key!==lastOccurrence) { lastOccurrence=key; ++centerRevision; scroller.cancel(); following=true;offset=0;motion=true;translations=true;centered=false;savedScrollTop=0; if(container)container.scrollTop=0; }
+  });
+  $effect(()=>{
+    const pending=typeof playback.seekPending==='number';
+    // Pending is a fixed visual preview only; audio position stays engine-observed.
+    const position=pending?playback.seekPending!:playback.position,playing=active&&playback.isPlaying&&!playback.isLoading,key=`${occurrence}:${playback.seekRevision??0}`;
+    untrack(()=>clock.observe(position,playing,pending,key));
+  });
+  $effect(()=>{
+    if(!active)return;
+    const doc=lyricDocument,shift=effectiveOffset;
+    return untrack(()=>clock.subscribe(ms=>{
+      const next=doc?karaokeFocus(doc,ms+shift):null;if(focus!==next)focus=next;
+      const gap=doc?.gaps.findIndex(item=>ms+shift>=item.start&&ms+shift<item.end)??-1;if(gapIndex!==gap)gapIndex=gap;
+      return false;
+    }));
+  });
+  $effect(()=>{
+    if(!active){++centerRevision;scroller.cancel();if(container)savedScrollTop=container.scrollTop;return;}
+    const doc=lyricDocument,index=focus,follow=following,element=container,layout=geometry,h=height,gap=gapIndex;
+    const revision=++centerRevision;scroller.cancel();
+    if(!follow||!element||!doc||index===null)return;
+    void tick().then(()=>{
+      if(revision!==centerRevision||!following||container!==element)return;
+      const row=element.querySelector<HTMLElement>(gap>=0?`[data-gap="${gap}"]`:`[data-line="${index}"]`);if(!row)return;
+      const top=element.scrollTop+row.getBoundingClientRect().top-element.getBoundingClientRect().top-element.clientHeight/2+row.clientHeight/2;
+      scroller.center(element,top,centered&&!reduced);centered=true;
+    });
+  });
+  $effect(()=>{
+    if(active&&container&&!following) {
+      const element=container,top=savedScrollTop;
+      untrack(()=>{if(top>0&&element.scrollTop===0)element.scrollTop=top;});
     }
   });
+  onMount(()=>{
+    const media=window.matchMedia('(prefers-reduced-motion:reduce)'),high=window.matchMedia('(prefers-contrast:more)');
+    const sync=()=>{reduced=media.matches;contrast=high.matches;};sync();
+    media.addEventListener('change',sync);high.addEventListener('change',sync);
+    return()=>{media.removeEventListener('change',sync);high.removeEventListener('change',sync);};
+  });
+  onDestroy(()=>{controller.dispose();clock.dispose();scroller.cancel();});
 </script>
-
-<section class="lyrics-panel" aria-label={$t('windows.ui.songLyrics')}>
-  {#if lyricState.status === 'loading'}
-    <div class="message" role="status"><span class="spinner" aria-hidden="true"></span><p>{$t('windows.ui.searchingForSynchronizedLyrics')}</p></div>
-  {:else if lyricState.status === 'error'}
-    <div class="message" role="status"><PlayerIcon name="lyrics" size={36} /><p>{resolveMessage(lyricState.error, $language)}</p><button type="button" class="retry" onclick={onRetry}>{$t('sidebar.retry')}</button></div>
-  {:else if lyricState.status === 'ready' && lyricState.lyrics}
-    <!-- A scrollable named region must accept focus for keyboard reading of plain lyrics. -->
-    <!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
-    <div class="lyrics-scroll" bind:this={container} tabindex="0" role="region" aria-label={$t('windows.ui.lyricsText')}
-      onwheel={pauseFollowing} ontouchstart={pauseFollowing} onkeydown={onScrollKey} onpointerdown={onPointerDown}>
-      <div class="lines">
-        {#each lyricState.lyrics.lines as line, index}
-          {@const seconds = lyricSeekSeconds(line, duration)}
-          {@const active = index === activeIndex}
-          {@const opacity = activeIndex === null ? 0.82 : active ? 1 : Math.abs(index - activeIndex) === 1 ? 0.60 : 0.36}
-          {#if seconds !== null}
-            <button type="button" class="line" class:active data-line={index} style={`--line-opacity: ${opacity}`}
-              aria-current={active ? 'true' : undefined} title={$t('fullscreen.goToLyricLine')} onclick={() => seekLine(seconds)}>{line.text || '•••'}</button>
-          {:else}
-            <p class="line" class:active data-line={index} style={`--line-opacity: ${opacity}`}>{line.text || '•••'}</p>
+<section class="lyrics-panel" class:reading class:contrast class:manual={!following} class:reduced hidden={!active}
+  style={`--size:${size}px;--edge:${active&&lyricDocument?.hasTiming&&!reading?height/2:12}px;--reserve:${reading?0:48}px`} aria-label={$t('windows.ui.songLyrics')}>
+  {#if active}
+  <div class="options">
+    <button class="more" type="button" aria-label={$t('lyrics.experimental.options')} aria-expanded={menu} onclick={()=>menu=!menu}>•••</button>
+    {#if menu}
+      <div class="menu" role="dialog" tabindex="-1" aria-label={$t('lyrics.experimental.options')} onkeydown={event=>{if(event.key==='Escape')menu=false;}}>
+        <button type="button" aria-pressed={!reading} onclick={()=>reading=false}>{$t('lyrics.experimental.mode.karaoke')}</button>
+        <button type="button" aria-pressed={reading} onclick={()=>reading=true}>{$t('lyrics.experimental.mode.reading')}</button>
+        <label>{$t('lyrics.experimental.textSize')}<input aria-label={$t('lyrics.experimental.textSize')} type="range" min="20" max="48" step="2" bind:value={size}/><output>{size}</output></label>
+        {#if isRich}
+          {#if lyricDocument?.hasWords}<label><input type="checkbox" bind:checked={motion}/>{$t('lyrics.experimental.wordMotion')}</label>{/if}
+          {#if lyricDocument?.hasTranslations}<label><input type="checkbox" bind:checked={translations}/>{$t('lyrics.experimental.translation')}</label>{/if}
+          {#if lyricDocument?.hasTiming}
+            <label>{$t('lyrics.experimental.offset')}<input aria-label={$t('lyrics.experimental.offset')} type="range" min="-5000" max="5000" step="100" bind:value={offset}/><output>{offset>=0?'+':''}{(offset/1000).toFixed(1)} s</output></label>
+            <button type="button" onclick={()=>offset=Math.min(5000,offset+100)} disabled={offset>=5000}>{$t('lyrics.experimental.offset.earlier')}</button>
+            <button type="button" onclick={()=>offset=Math.max(-5000,offset-100)} disabled={offset<=-5000}>{$t('lyrics.experimental.offset.later')}</button>
+            <button type="button" onclick={()=>offset=0} disabled={offset===0}>{$t('lyrics.experimental.offset.reset')}</button>
           {/if}
+        {/if}
+        <small>{$t('lyrics.experimental.source',[lyricDocument?.provider??'—'])} · {$t(lyricDocument?.hasWords?'lyrics.experimental.timing.words':lyricDocument?.hasTiming?'lyrics.experimental.timing.lines':'lyrics.experimental.timing.plain')}</small>
+        <button type="button" disabled={busy} onclick={refresh}>{$t('lyrics.experimental.refresh')}</button>
+        <button type="button" disabled={!isRich&&rich.refreshing} onclick={selectSource}>{$t(isRich?'lyrics.experimental.returnToCurrent':'lyrics.experimental.tryNew')}</button>
+      </div>
+    {/if}
+  </div>
+  {#if lyricDocument?.instrumental}
+    <div class="message" role="status"><p>{$t('lyrics.experimental.instrumental')}</p><small>{$t('lyrics.experimental.instrumental.detail')}</small></div>
+  {:else if lyricDocument?.lines.length}
+    <!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
+    <div class="lyrics-scroll" bind:this={container} bind:clientHeight={height} tabindex="0" role="region" aria-label={$t('windows.ui.lyricsText')}
+      onscroll={()=>{if(!following&&container)savedScrollTop=container.scrollTop;}} onwheel={manual} ontouchstart={manual} onkeydown={scrollKey} onpointerdown={event=>{if(event.target===container)manual();}}>
+      <div class="lines">
+        {#each lyricDocument.groups as group, ordinal (group.anchor)}
+          {#each lyricDocument.gaps as gap,i}{#if gap.before===ordinal}<LyricsWait {gap} index={i} {clock} offset={effectiveOffset} animate={!reading&&!reduced&&motion&&active}/>{/if}{/each}
+          {@const distance=groupOrdinal<0?0:Math.min(3,Math.abs(groupOrdinal-ordinal))}
+          {@const blur=!reading&&following&&!reduced&&!contrast&&distance>0?[0,1.2,2.1,3][distance]:0}
+          <div class="group" class:focused={following&&group.anchor===focus} style={`--blur:${blur}px;--opacity:${distance===0||reading?1:contrast?.78:.40};--scale:${distance===0||reduced||reading?1:.98}`}>
+            {#each group.indices as index}
+              {@const line=lyricDocument.lines[index]}
+              <div class="row" class:background={line.background} data-line={index} data-agent={line.agent??undefined} data-section={line.section??undefined}>
+                {#if seekSeconds(line.start,duration,effectiveOffset)!==null}
+                  <button type="button" class="line" aria-label={`${line.background?$t('lyrics.experimental.voice.background')+'. ':''}${line.text}${isRich&&translations&&line.translation?'. '+line.translation:''}`} aria-current={focus===group.anchor?'true':undefined} title={$t('fullscreen.goToLyricLine')} onclick={()=>seek(line.start)}>
+                    <KaraokePhrase {line} {clock} enabled={isRich&&!reading} {motion} {reduced} offset={effectiveOffset} {geometry}/>
+                  </button>
+                {:else}<div class="line"><KaraokePhrase {line} {clock} enabled={false} {motion} {reduced} offset={effectiveOffset} {geometry}/></div>{/if}
+                {#if isRich&&translations&&line.translation}<p class="translation">{line.translation}</p>{/if}
+              </div>
+            {/each}
+          </div>
         {/each}
-        {#if lyricState.lyrics.provider}<p class="provider">{$t('windows.lyrics.provider', [lyricState.lyrics.provider])}</p>{/if}
+        {#each lyricDocument.gaps as gap,i}{#if gap.before===lyricDocument.groups.length}<LyricsWait {gap} index={i} {clock} offset={effectiveOffset} animate={!reading&&!reduced&&motion&&active}/>{/if}{/each}
       </div>
     </div>
-    {#if activeIndex !== null && !following}
-      <button type="button" class="follow" onclick={resumeFollowing} title={$t('fullscreen.resumeLyricsTracking')}>
-        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="m3 10 18-7-7 18-3-8-8-3Z" /></svg>{$t('fullscreen.returnToCurrentLyric')}
-      </button>
-    {/if}
+    {#if !following}<button type="button" class="follow" onclick={resume}>{$t('fullscreen.returnToCurrentLyric')}</button>{/if}
   {:else}
-    <div class="message"><PlayerIcon name="lyrics" size={36} /><p>{$t('fullscreen.noLyrics')}</p><small>{$t('windows.ui.noLyricsFoundForThisTrack')}</small>
-      {#if lyricState.status === 'empty'}<button type="button" class="retry" onclick={onRetry}>{$t('windows.ui.searchAgain')}</button>{/if}
-    </div>
+    <div class="message" role="status"><p>{$t(!playback.currentTrack?'lyrics.experimental.noTrack':rich.status==='loading'||classicState.status==='loading'?'lyrics.experimental.loading':rich.status==='error'||classicState.status==='error'?'lyrics.experimental.error':'lyrics.experimental.empty')}</p><button type="button" disabled={busy} onclick={()=>{useNew();onRetry();}}>{$t('lyrics.experimental.retry')}</button></div>
+  {/if}
+  {#if rich.error&&lyricDocument&&!original}<span class="refresh-error" role="status">{$t('lyrics.experimental.error')}</span>{/if}
+  {#if playback.seekError}<span class="refresh-error" role="status">{playback.seekError}</span>{/if}
   {/if}
 </section>
-
 <style>
-  .lyrics-panel { flex: 1; width: 100%; height: 100%; min-height: 0; min-width: 0; position: relative; }
-  .lyrics-scroll { height: 100%; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; scrollbar-width: none; }
-  .lyrics-scroll::-webkit-scrollbar { display: none; }
-  .lines { display: flex; flex-direction: column; gap: 20px; padding: 12px 8px; }
-  .line { display: block; width: 100%; margin: 0; padding: 0; border: 0; background: transparent; color: rgb(255 255 255 / var(--line-opacity)); font-family: inherit; font-size: 25.2px; font-weight: 500; line-height: 1.35; text-align: left; overflow-wrap: anywhere; transform-origin: left center; transition: color .48s ease, transform .48s ease, text-shadow .48s ease; }
-  button.line { cursor: pointer; }
-  button.line:hover { color: #fff; }
-  .line.active { font-weight: 600; transform: scale(1.025); text-shadow: 0 0 9px rgb(255 255 255 / .22); }
-  .line:focus-visible { outline: 2px solid rgb(255 255 255 / .7); outline-offset: 5px; border-radius: 3px; }
-  .provider { margin: 10px 0; color: rgb(255 255 255 / .45); font-size: 11.5px; }
-  .message { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; color: rgb(255 255 255 / .55); text-align: center; padding: 20px; box-sizing: border-box; font-size: 14.5px; }
-  .message p { margin: 0; }
-  .message small { color: rgb(255 255 255 / .35); font-size: 11.5px; }
-  .message :global(svg) { opacity: .45; }
-  .spinner { width: 22px; height: 22px; border: 2px solid rgb(255 255 255 / .15); border-top-color: rgb(255 255 255 / .75); border-radius: 50%; animation: spin 1s linear infinite; }
-  .retry { border: 0; background: transparent; color: rgb(255 255 255 / .75); padding: 7px 12px; font: inherit; cursor: pointer; }
-  .retry:hover { color: #fff; }
-  .follow { position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 8px; white-space: nowrap; padding: 10px 17px; color: #fff; font-family: inherit; font-size: 13px; font-weight: 600; background: var(--sideb-acrylic-fallback, #2c292a); border: 1px solid var(--sideb-acrylic-border, rgb(255 255 255 / .18)); border-radius: 50px; box-shadow: 0 5px 12px rgb(0 0 0 / .3); cursor: pointer; }
-  @supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-    .follow { background: var(--sideb-acrylic-surface); backdrop-filter: var(--sideb-acrylic-blur); -webkit-backdrop-filter: var(--sideb-acrylic-blur); }
-  }
-  .follow svg { width: 14px; height: 14px; }
-  @keyframes spin { to { transform: rotate(360deg); } }
-  @media (prefers-reduced-motion: reduce) { .line { transition: none; } .spinner { animation: none; } }
-  @media (forced-colors: active) { .follow { color: ButtonText; background: ButtonFace; border-color: ButtonText; backdrop-filter: none; -webkit-backdrop-filter: none; } }
+  .lyrics-panel{position:relative;flex:1;width:100%;height:100%;min-width:0;min-height:0;container-type:inline-size;}.lyrics-panel[hidden]{display:none;}
+  .lyrics-scroll{height:100%;overflow:auto;overscroll-behavior:contain;scrollbar-width:none;mask-image:linear-gradient(to bottom,transparent,#000 48px,#000 calc(100% - 88px),transparent);}.lyrics-scroll::-webkit-scrollbar{display:none;}
+  .lines{padding:var(--edge) calc(32px + var(--reserve)) var(--edge) 32px;}@container(max-width:329px){.lines{padding-inline-start:20px;padding-inline-end:calc(20px + var(--reserve));}}
+  .group{content-visibility:auto;contain-intrinsic-size:auto 90px;}.group.focused{content-visibility:visible;}.row{filter:blur(var(--blur));opacity:var(--opacity);transform:scale(var(--scale));transform-origin:left center;transition:opacity .788s,transform .788s,filter .788s;padding-block:10px;}
+  .manual .row{filter:none;transition:opacity .788s,transform .788s;}.row:has(:global(.voice-active)){filter:none;opacity:1;transform:none;}.row+.row{padding-top:8px;}
+  .line{display:block;width:100%;border:0;background:transparent;padding:0;margin:0;color:inherit;font-family:inherit;font-size:var(--size);font-weight:700;letter-spacing:-.18px;line-height:1.25;text-align:start;}button.line{cursor:pointer;}.background{--row-size:max(18px,calc(var(--size)*.68));}.background .line{font-size:var(--row-size);}
+  .translation{font-size:max(13px,calc(var(--size)*.57));line-height:1.25;margin:7px 0 0;opacity:.8;font-weight:500;letter-spacing:0;}.background .translation{font-size:max(13px,calc(var(--row-size)*.57));}.reading .line{font-weight:500;letter-spacing:0;}.reading .row{padding-block:8px;}
+  .options{position:absolute;right:8px;top:4px;z-index:3;}.more{width:32px;height:30px;border:0;border-radius:8px;background:#2228;color:white;cursor:pointer;}
+  .menu{position:absolute;right:0;top:34px;width:260px;max-height:calc(100dvh - 220px);overflow:auto;display:flex;flex-direction:column;gap:6px;padding:12px;border-radius:10px;border:1px solid #ffffff30;background:#242326f5;box-shadow:0 8px 24px #0006;font-size:13px;}
+  .menu button,.message button{color:white;background:#ffffff0c;border:0;padding:8px;text-align:start;border-radius:5px;cursor:pointer;}.menu button[aria-pressed=true]{background:#ffffff25;}.menu label{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:6px 0;}.menu input[type=range]{width:125px;}.menu small{opacity:.65;padding:6px 0;}button:disabled{opacity:.4;cursor:default;}
+  .follow{position:absolute;bottom:12px;left:50%;transform:translateX(-50%);white-space:nowrap;padding:10px 17px;background:#2c292aee;border:1px solid #ffffff30;border-radius:50px;color:white;cursor:pointer;}
+  .message{height:100%;box-sizing:border-box;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:12px;padding:32px;color:#ffffffa0;}.message p{margin:0;}.refresh-error{position:absolute;bottom:12px;left:12px;font-size:12px;color:#fff9;pointer-events:none;}
+  button:focus-visible{outline:2px solid white;outline-offset:3px;}.contrast .lyrics-scroll{mask-image:none;}.contrast .row,.reduced .row{filter:none;}.contrast .translation{opacity:.95;}.reduced .row{transition:none;}
+  @media(forced-colors:active){.lyrics-scroll{mask-image:none;}.row{filter:none!important;opacity:1!important;}.menu{background:Canvas;color:CanvasText;}.line{color:CanvasText;}}
 </style>

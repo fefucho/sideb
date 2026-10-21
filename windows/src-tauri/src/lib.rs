@@ -8,9 +8,12 @@ mod cipher_runtime;
 #[cfg(windows)]
 mod media_controls;
 mod playback_runtime;
+mod seek_state;
+mod artwork_runtime;
 mod volume;
 mod queue;
 mod commands {
+    pub(crate) mod animated_artwork;
     pub(crate) mod account;
     pub(crate) mod catalog;
     pub(crate) mod explore;
@@ -214,7 +217,12 @@ impl PlaybackManager {
 
     pub fn to_dto(&self) -> PlaybackStateDto {
         self.runtime.persist(self);
+        let (seek_revision, seek_pending, seek_error) = commands::playback::seek_snapshot(self);
         PlaybackStateDto {
+            auth_generation: self.observed_auth_generation,
+            seek_revision,
+            seek_pending,
+            seek_error,
             can_next: self.can_next(),
             source_load: self.runtime.source_load(self.queue.items.len()),
             is_playing: self.is_playing,
@@ -797,13 +805,19 @@ pub fn run() {
                                     // Sólo procesar eventos de posición si hay una pista efectivamente cargada para la generación activa
                                     if pb.loaded_generation.is_some() && !pb.is_ended {
                                         pb.position = pos;
+                                        let seek_changed = commands::playback::observe_seek(&mut pb, pos);
                                         if pb.is_loading && pos > 0.0 {
                                             pb.is_loading = false;
                                             pb.is_playing = true;
                                         }
                                         let dur = pb.duration;
                                         let gen = pb.generation;
+                                        let seek_revision = pb.runtime.seek.revision;
+                                        let seek_dto = seek_changed.then(|| pb.to_dto());
                                         drop(pb);
+                                        if let Some(dto) = seek_dto {
+                                            let _ = app_handle.emit("playback-state-changed", dto);
+                                        }
                                         playback_runtime::record_progress(
                                             &app_handle,
                                             gen,
@@ -815,6 +829,7 @@ pub fn run() {
                                                 position: pos,
                                                 duration: dur,
                                                 generation: gen,
+                                                seek_revision,
                                             };
                                             let _ = app_handle.emit("playback-progress", &prog);
                                             last_progress_emit = std::time::Instant::now();
@@ -898,6 +913,7 @@ pub fn run() {
 
             let core_to_restore = state.core.read().ok().and_then(|lock| lock.clone());
             app.manage(state);
+            artwork_runtime::initialize(app.handle());
             #[cfg(windows)]
             {
                 let _ = media_controls::initialize(app.handle());
@@ -910,6 +926,7 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|window, event| {
+            artwork_runtime::on_window_event(window, event);
             if window.label() == "main"
                 && matches!(event, tauri::WindowEvent::CloseRequested { .. })
             {
@@ -991,13 +1008,19 @@ pub fn run() {
             commands::playback::remove_queue_entry,
             commands::playback::move_queue_entry,
             commands::lyrics::get_lyrics,
+            commands::lyrics::get_karaoke_lyrics,
+            commands::animated_artwork::prepare_animated_artwork,
+            commands::animated_artwork::cancel_animated_artwork,
+            commands::animated_artwork::get_animated_artwork_cache_size,
+            commands::animated_artwork::clear_animated_artwork_cache,
             commands::recommendations::get_related_tracks,
             commands::recommendations::get_related_artists,
             commands::playback::next_track,
             commands::playback::previous_track,
             commands::playback::pause_playback,
             commands::playback::resume_playback,
-            commands::playback::seek_playback,
+            commands::playback::seek_playback_identified,
+            artwork_runtime::get_animated_artwork_runtime_state,
             commands::playback::set_playback_volume,
             commands::playback::set_exponential_volume,
             commands::playback::set_shuffle,

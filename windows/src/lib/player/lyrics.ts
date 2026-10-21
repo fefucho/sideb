@@ -26,9 +26,10 @@ export function activeLyricIndex(lyrics: LyricsDto, seconds: number): number | n
   return (active ?? first)?.index ?? null;
 }
 
-export function lyricSeekSeconds(line: LyricLineDto, duration: number): number | null {
-  if (line.timeMs === null || !Number.isFinite(line.timeMs) || !Number.isFinite(duration) || duration <= 0) return null;
-  return Math.min(duration, Math.max(0, line.timeMs / 1000));
+export function lyricSeekSeconds(line: LyricLineDto, duration?: number | null, offsetMs = 0): number | null {
+  if (line.timeMs === null || !Number.isFinite(line.timeMs) || line.timeMs < 0 || !Number.isFinite(offsetMs)) return null;
+  const target = Math.max(0, (line.timeMs - offsetMs) / 1000);
+  return typeof duration === 'number' && Number.isFinite(duration) && duration > 0 ? Math.min(duration, target) : target;
 }
 
 /** Track generations invalidate pending lyrics without touching audio or queue state. */
@@ -38,6 +39,7 @@ export class LyricsController {
   private duration: number | null = null;
   private revision = 0;
   private disposed = false;
+  private signature: string | null = null;
 
   constructor(private rpc: LyricsRpc, private publish: (state: LyricsState) => void) { this.emit(); }
   get snapshot(): LyricsState {
@@ -45,13 +47,21 @@ export class LyricsController {
   }
   private emit() { if (!this.disposed) this.publish(this.snapshot); }
 
-  setTrack(track: PlaybackTrackDto | null, generation: number, duration?: number): void {
+  setTrack(track: PlaybackTrackDto | null, generation: number, duration?: number, occurrence?: string): void {
     if (this.disposed) return;
-    const key = track ? JSON.stringify([track.videoId, generation]) : null;
+    const key = track ? JSON.stringify(occurrence === undefined ? [track.videoId, generation] : [track.videoId, generation, occurrence]) : null;
     this.track = track ? { ...track } : null;
-    const candidate = duration && duration > 0 ? duration : track?.duration;
+    const candidate = typeof duration === 'number' && Number.isFinite(duration) && duration > 0 ? duration : track?.duration;
     this.duration = candidate && Number.isFinite(candidate) && candidate > 0 ? candidate : null;
-    if (this.state.trackKey === key) return;
+    const signature = track ? JSON.stringify([track.title, track.artists, track.album ?? null, this.duration === null ? null : Math.round(this.duration)]) : null;
+    if (this.state.trackKey === key) {
+      if (signature !== this.signature) {
+        this.signature = signature;
+        if (track) void this.load();
+      }
+      return;
+    }
+    this.signature = signature;
     ++this.revision;
     this.state = { ...emptyLyricsState(), trackKey: key };
     if (track) void this.load(); else this.emit();
@@ -62,6 +72,7 @@ export class LyricsController {
     ++this.revision;
     this.track = null;
     this.duration = null;
+    this.signature = null;
     this.state = emptyLyricsState();
     this.emit();
   }
@@ -72,7 +83,8 @@ export class LyricsController {
     if (!track || this.disposed) return;
     const revision = ++this.revision;
     const key = this.state.trackKey;
-    this.state = { status: 'loading', trackKey: key, lyrics: null, error: null };
+    const previous = this.state.lyrics;
+    this.state = { status: 'loading', trackKey: key, lyrics: previous, error: null };
     this.emit();
     try {
       const lyrics = await this.rpc<LyricsDto | null>('get_lyrics', {
@@ -80,12 +92,13 @@ export class LyricsController {
         album: track.album ?? null, duration: this.duration,
       });
       if (revision !== this.revision || this.disposed) return;
-      this.state = { status: lyrics?.lines.length ? 'ready' : 'empty', trackKey: key, lyrics, error: null };
+      const visible = lyrics?.lines.length ? lyrics : previous;
+      this.state = { status: visible?.lines.length ? 'ready' : 'empty', trackKey: key, lyrics: visible, error: null };
     } catch (error) {
       if (revision !== this.revision || this.disposed) return;
       const message = error && typeof error === 'object' && 'message' in error && typeof error.message === 'string'
         ? error.message : 'No se pudieron cargar las letras. Comprobá la conexión e intentá de nuevo.';
-      this.state = { status: 'error', trackKey: key, lyrics: null, error: message };
+      this.state = { status: 'error', trackKey: key, lyrics: previous, error: message };
     }
     this.emit();
   }
