@@ -1,5 +1,11 @@
 # Planes Windows
 
+- [PLAN-016: Duplicación de karaoke](PLAN-016-karaoke-fragment-rendering.md) — FIX-242: base/relleno se mueven juntos; ancla por palabra/renglón y límites de vecinos como Mac. FIX-243 recupera halo izquierdo del blur por contención CSS;9casos karaoke/6blur aprobados. Entrega build-0020 x64 Release compiled/fuentes estables/check0/0/987pruebas aprobadas/20live ignoradas/cuatro hashes revalidados, con Inter y ambos fixes. Aceptación WebView2 pendiente;0019 previa al ajuste conservada.
+
+- [PLAN-015: Sidebar oculta y topnav](PLAN-015-sidebar-hidden-topnav.md) — planificado por pedido del usuario, sin implementación. Opción al contraer: iconos o cero ancho; topnav Mac, búsqueda expandible, cuenta/Settings accesibles y estado persistido. Contratos, archivos, etapas y matriz funcional/visual/nativa definidos. PAR-007 se reabre sólo para este modo opcional; no está en build-0018.
+
+- [PLAN-014: Homecoming e Inter](PLAN-014-homecoming-inter.md) — FIX-241: Homecoming público trae frases sin palabras; United in Grief sí tiene901segmentos temporizados. Renderer intacto. Inter4.1 normal/italic y licencia locales; frontend/fixture y build-0018 x64 Release aprobados,987pruebas/check0/0/fuentes estables/cuatro hashes verificados. Aceptación humana pendiente; sin publicación.
+
 - [PLAN-013: Letras y carátulas animadas](PLAN-013-lyrics-motion-parity.md) — FIX-240 implementa renderer rico/Original compartido, opciones/blur/manual/fallback, seek identificado y cierre de ciclo motion30s/clear/políticas. Check0/0,430tests frontend/1omitido, build frontend y8contratos Rust aislados aprobados; fixture Chromium con wrapping y blur. Verify/EXE/audio/WebView2/DPI Windows y límites de oclusión pendientes. PAR-037/038/039 siguen abiertos.
 
 - [Sidebar y Apariencia: entrega compartida](../../plans/PLAN-010-sidebar-delivery.md) — FIX-224/225 publicada Latest 1.2.6/build 19 sobre GitHub 23f1df5; nueva sidebar y opciones sincronizadas, 764 pruebas Mac/793 Windows y cinco descargas públicas verificadas. PAR-036; aceptación física pendiente.

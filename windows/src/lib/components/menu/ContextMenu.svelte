@@ -141,7 +141,7 @@
 
 <style>
   .menu-layer { position: fixed; z-index: 1000; min-width: 208px; max-width: min(320px, calc(100vw - 16px)); }
-  .menu { box-sizing: border-box; min-width: 208px; max-width: min(320px, calc(100vw - 16px)); max-height: min(420px, calc(100vh - 16px)); overflow: auto; margin: 0; padding: 5px; list-style: none; border: 1px solid rgb(255 255 255 / 12%); border-radius: 9px; color: #f3f1f2; background: #29292f; box-shadow: 0 10px 30px rgb(0 0 0 / 45%); font: 13px/1.35 system-ui, "Segoe UI", sans-serif; }
+  .menu { box-sizing: border-box; min-width: 208px; max-width: min(320px, calc(100vw - 16px)); max-height: min(420px, calc(100vh - 16px)); overflow: auto; margin: 0; padding: 5px; list-style: none; border: 1px solid rgb(255 255 255 / 12%); border-radius: 9px; color: #f3f1f2; background: #29292f; box-shadow: 0 10px 30px rgb(0 0 0 / 45%); font: 13px/1.35 var(--sideb-font-family); }
   .menu-entry { position: relative; }
   .menu-item { display: flex; width: 100%; min-height: 32px; align-items: center; justify-content: space-between; gap: 20px; padding: 6px 9px; border: 0; border-radius: 5px; color: inherit; background: transparent; text-align: left; font: inherit; cursor: pointer; white-space: nowrap; }
   .item-content { display: flex; min-width: 0; align-items: center; gap: 9px; }

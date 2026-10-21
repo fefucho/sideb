@@ -14,6 +14,8 @@ Side B's Rust workspace and Windows package already declare GPL-3.0-or-later. Th
 
 ## Libraries and services
 
+The Windows app bundles [Inter 4.1](https://github.com/rsms/inter/releases/tag/v4.1), by Rasmus Andersson and the Inter Project Authors, under the SIL Open Font License 1.1. The unmodified normal and italic variable WOFF2 files and their [license](windows/static/fonts/inter/LICENSE.txt) are included in the app's local assets; no font download is required at runtime.
+
 Side B also uses RustyPipe, UniFFI, Tauri, Svelte, mpv/libmpv, SQLite, and other dependencies declared in its package manifests and lockfiles. These retain their respective licenses. Windows portable packages include the Vulkan runtime license alongside the runtime.
 
 YouTube Music supplies the catalog and audio; lyric providers and Genius supply their corresponding text and song information. Music, artwork, trademarks, and provider content remain the property of their respective owners.

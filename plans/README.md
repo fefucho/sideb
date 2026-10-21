@@ -4,6 +4,7 @@ Herramientas compartidas o fixes para ambas plataformas. [Formato](../.agents/WO
 
 | Plan | Estado |
 |---|---|
+| [Release 1.2.7 — Lyrics Update](RELEASE-1.2.7.md) | Preparación autorizada: letras y carátulas compartidas, Inter Windows, FIX-241/242/243; publicación conjunta Mac/Windows desde el commit exacto, FIX-244 |
 | [Indicadores de explícito y censurado](PLAN-013-explicit-content-indicators.md) | Plan propuesto, sin implementar: conservar metadata por entidad, distinguir explicit/clean/unknown y mostrar indicadores en artista/catálogo, búsqueda, álbum, filas y playback. PAR-040 |
 | [Preferencia de versiones de audio](PLAN-014-content-version-preference.md) | Plan propuesto, sin implementar: preferir explícitas por defecto, opción censuradas/catálogo y respetar álbumes/IDs elegidos manualmente. Búsqueda y selecciones automáticas con equivalencias verificadas. PAR-041 |
 | [Carátulas animadas en Fullscreen](PLAN-012-animated-artwork.md) | FIX-237/238, PAR-039: core y consumidores hasta1080/60;0154 Mac aprobada/956 pruebas. Graduation resuelto mediante otras ediciones oficiales y negativos antiguos revalidados. QA del usuario, rendimiento y Windows nativo pendientes |

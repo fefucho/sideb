@@ -437,7 +437,8 @@
   }
 
   .percentage {
-    font-family: monospace;
+    font-family: inherit;
+    font-variant-numeric: tabular-nums;
     color: #d06c70;
   }
 

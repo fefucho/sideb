@@ -1168,7 +1168,7 @@
   }
 
   :global(:root) {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-family: var(--sideb-font-family);
     font-size: 15px;
     line-height: 1.5;
     color: #e4e4e7;
