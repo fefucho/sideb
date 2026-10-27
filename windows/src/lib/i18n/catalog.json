@@ -2659,6 +2659,34 @@
     "es": "Reproducir ahora",
     "en": "Play now"
   },
+  "search.provider.hide_related": {
+    "es": "Mostrar menos",
+    "en": "Show less"
+  },
+  "search.provider.load_more": {
+    "es": "Cargar más resultados",
+    "en": "Load more results"
+  },
+  "search.provider.other_results": {
+    "es": "Otros resultados del bloque",
+    "en": "Other results in this group"
+  },
+  "search.provider.related": {
+    "es": "Relacionadas",
+    "en": "Related results"
+  },
+  "search.provider.remove_history": {
+    "es": "Quitar del historial de YouTube Music",
+    "en": "Remove from YouTube Music history"
+  },
+  "search.provider.show_all": {
+    "es": "Mostrar todo",
+    "en": "Show all"
+  },
+  "search.provider.show_related": {
+    "es": "Mostrar las %@ relacionadas",
+    "en": "Show all %@ related results"
+  },
   "search.recents.clear": {
     "es": "Borrar recientes de Side B",
     "en": "Clear Side B recents"

@@ -1,3 +1,4 @@
+mod search_page;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 use tauri::{Emitter, Manager};
@@ -970,6 +971,11 @@ pub fn run() {
             commands::playback::start_source_radio,
             commands::playback::set_playback_muted,
             commands::playback::filter_disliked_recommendations,
+            commands::catalog::search_action,
+            commands::catalog::search_page,
+            commands::catalog::search_page_continuation,
+            commands::catalog::search_suggestions_page,
+            commands::catalog::remove_search_suggestion,
             commands::catalog::search_all,
             commands::catalog::search_suggestions,
             commands::catalog::search_catalog,

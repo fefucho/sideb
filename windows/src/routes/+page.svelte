@@ -1,6 +1,6 @@
 <script lang="ts">
   import { FEATURED_ARTIST_CONTEXT, FeaturedArtistService } from '$lib/featured/artists';
-  import { SearchRecentStore, type SearchRecent, type SearchOrigin, recordsSearch } from '$lib/search/recents';
+  import { type SearchOrigin } from '$lib/search/recents';
   import { onMount, tick, setContext, untrack } from "svelte";
   import { t, language, translateOwnText, resolveMessage } from '$lib/i18n';
   import { captureTrackOccurrence, findTrackOccurrence, projectedPlayback, type TrackOrder } from '$lib/detail/projection';
@@ -25,6 +25,7 @@
   import HistoryView from "$lib/components/library/HistoryView.svelte";
   import { AccountController, emptyAccountData, type AccountNavigationSnapshot } from "$lib/account/controller";
   import TitleBar from "$lib/components/shell/TitleBar.svelte";
+  import RetainedPage from "$lib/components/shell/RetainedPage.svelte";
   import { NavigationHistory } from "$lib/navigation/history";
   import { WindowController } from "$lib/window/controller";
   import { MENU_CONTEXT, songFromHome, songFromQueue, type MenuService, type MenuOrigin, type MenuTarget } from "$lib/menu/types";
@@ -46,8 +47,9 @@
   import { normalizeHomeSongCard } from "$lib/home/songMetadata";
   import { HomeController, emptyHomeData } from "$lib/home/controller";
   import SearchView from "$lib/components/search/SearchView.svelte";
-  import { SearchController, emptySearchData, type SearchMode, type SearchData } from "$lib/search/controller";
-  import { SearchPreviewController, emptySearchPreviewData } from "$lib/search/preview";
+  import { type SearchMode, type SearchData } from "$lib/search/controller";
+  import {ProviderSearchController as SearchController,emptyProviderSearchData as emptySearchData} from "$lib/search/provider";
+  import {ProviderPreviewController as SearchPreviewController,emptySearchPreviewData} from "$lib/search/provider-preview";
   import SpotlightSearch from "$lib/components/search/SpotlightSearch.svelte";
   import { PlaybackController, emptyPlaybackData, prepareCollectionPlayback } from "$lib/player/controller";
   import { LyricsController, emptyLyricsState } from '$lib/player/lyrics';
@@ -73,6 +75,8 @@
   let primaryNav = $state<PrimaryNav>("home");
   let activeView = $state<ActiveView>("feed");
   let sidebarCollapsed = $state(false);
+  let searchScrollElement = $state<HTMLElement>();
+  const retainedDestination = $derived(['feed', 'explore', 'library', 'search_results'].includes(activeView));
   let isFullscreenOpen = $state(false);
   let selectedPanel = $state<'queue' | 'lyrics' | 'related'>('queue');
   let lyricsMode = $state<'synced' | 'genius'>('synced');
@@ -108,11 +112,6 @@
   const explore = new ExploreController((command,args)=>invoke(command,args),data=>exploreData=data);
   let geniusState = $state(emptyGeniusState());
   const genius = new GeniusController((command,args)=>invoke(command,args),data=>geniusState=data,typeof localStorage!=='undefined'?localStorage:undefined);
-  let recentEntries = $state<SearchRecent[]>([]);
-  let canUndoRecents = $state(false);
-  let unavailableRecent = $state<SongDto|null>(null);
-  let searchIntentRevision = -1;
-  const recents = new SearchRecentStore(typeof localStorage !== 'undefined' ? localStorage : {getItem:()=>null,setItem:()=>{}}, (entries,canUndo,unavailable)=>{recentEntries=entries;canUndoRecents=canUndo;unavailableRecent=unavailable??null;});
   const featuredArtists = new FeaturedArtistService({search:query=>invoke<BrowseCardDto[]>('search_cards',{query,category:'artists'}),scope:'guest',onSearch:name=>executeSearch(name,'artists','artistResolution')});
   setContext(FEATURED_ARTIST_CONTEXT,featuredArtists);
   let searchData = $state(emptySearchData());
@@ -202,8 +201,6 @@
   $effect(()=>{confirmedVolume;untrack(()=>volumeFeedback.confirmedChanged());});
   const player = new PlaybackController((command, args) => invoke(command, args),
     (name, handler) => listen(name, handler), snapshot => {
-      if (searchIntentRevision !== collectionPlayRevision) recents.cancelTrack();
-      recents.confirmPlayback(snapshot.state);
       playbackState = snapshot.state;
       confirmedVolume = snapshot.confirmedVolume;
       playbackError = snapshot.error;
@@ -223,7 +220,11 @@
   };
   setContext(MEDIA_CONTEXT, mediaService);
   setContext<PresentationService>(PRESENTATION_CONTEXT, {
-    active: element => !isFullscreenOpen || !element?.closest('.shell'),
+    active: element => {
+      const view=activeView;
+      const page=element?.closest<HTMLElement>('[data-retained-page]');
+      return !element?.closest('.shell') || (!isFullscreenOpen && !spotlightOpen && (!page || page.dataset.retainedPage===view));
+    },
   });
   const playerBarState = $derived({ ...playbackState, error: playbackError || playbackState.error });
   let lyricsState = $state(emptyLyricsState());
@@ -240,14 +241,14 @@
     if(playbackState.isPlaying)genius.playbackStarted();
     if(isFullscreenOpen&&selectedPanel==='lyrics'&&lyricsMode==='genius')void genius.ensureNow();
     const lyricEntry = playbackState.queue.currentIndex === null ? null : playbackState.queue.items[playbackState.queue.currentIndex]?.entryId;
-    lyrics.setTrack(acceptedTrack, playbackState.generation, playbackState.duration, JSON.stringify([homeSession, lyricEntry ?? null]));
+    lyrics.setTrack(acceptedTrack, playbackState.generation, playbackState.duration, JSON.stringify([sessionRevision, lyricEntry ?? null]));
     recommendations.setTrack(acceptedTrack);
     if (isFullscreenOpen && selectedPanel === 'related') void recommendations.load();
   });
 
   let sessionRevision = $state(0);
   let requestedRecentAlbums = false;
-  $effect(() => { const identity=authStatus.state === 'ready' ? `account:${authStatus.channelId || authStatus.email || authStatus.handle || ''}` : 'guest'; recents.setAccount(identity); featuredArtists.resetScope(identity); });
+  $effect(() => { const identity=authStatus.state === 'ready' ? `account:${authStatus.channelId || authStatus.email || authStatus.handle || ''}` : 'guest';  featuredArtists.resetScope(identity); });
   const homeSession = $derived(authStatus.state === 'ready' ? `account:${authStatus.channelId || authStatus.email || authStatus.handle || authStatus.name || 'authenticated'}` : 'guest');
   $effect(() => {
     const identity = homeSession;
@@ -292,7 +293,7 @@
     authStatus = next;
     if (changedAccount) {
       const identity=next.state==='ready'?`account:${next.channelId||next.email||next.handle||''}`:'guest';
-      recents.setAccount(identity);featuredArtists.resetScope(identity);
+      featuredArtists.resetScope(identity);
       const previousExploreRoute = exploreData.route;
       const wasExploring = activeView === 'explore' || primaryNav === 'explore';
       home.reset();
@@ -395,7 +396,6 @@
     if (!targetQuery.trim()) return;
     const query = targetQuery.trim();
     const searchOrigin = typeof origin === 'boolean' ? origin ? 'submit' : 'refresh' : origin;
-    if (recordsSearch(searchOrigin)) recents.recordQuery(query);
     setPlayerFullscreen(false);
     draftQuery = query;
     spotlightOpen = false; searchPreview.cancel();
@@ -426,7 +426,6 @@
     } else {
       activeView = "search_results";
     }
-    scrollContentToTop();
   }
 
   async function navigateExplore(route:ExploreRoute) {
@@ -442,9 +441,10 @@
   }
 
   function contentScrollElement(view: ActiveView = activeView) {
-    return view === 'search_results'
-      ? document.querySelector<HTMLElement>('.search-page .results-scroll')
-      : document.querySelector<HTMLElement>('.content-column');
+    if (view === 'search_results') return searchScrollElement;
+    const page = document.querySelector<HTMLElement>(`[data-retained-page="${view}"]`);
+    if (page) return view === 'explore' ? page.querySelector<HTMLElement>('.explore-scroll') : page;
+    return document.querySelector<HTMLElement>('.content-column');
   }
 
   async function handleWindowKeydown(event: KeyboardEvent) {
@@ -486,6 +486,7 @@
     draftQuery = '';
     searchPreview.reset();
     spotlightOpen = true;
+    searchPreview.setQuery('');
   }
   function handleDraftChange(query: string) { draftQuery = query; searchPreview.setQuery(query); }
   function dismissSearchPreview() { spotlightOpen = false; searchPreview.cancel(); }
@@ -503,12 +504,33 @@
         isVideo: card.isVideo ?? card.kind === 'video', isUpload:card.isUpload, artistId: card.artistId ?? null, albumId: card.albumId ?? null });
     } else executeSearch(card.title,'all','navigationRestore');
   }
+  async function playProviderSearchAction(action:import('$lib/types').SearchActionDto,section:import('$lib/types').SearchSectionDto) {
+    const revision=++collectionPlayRevision,session=sessionRevision;
+    try {
+      if(action.videoId||action.playlistId){
+        const next=await invoke<import('$lib/types').SearchNextDto>('search_action',{videoId:action.videoId,playlistId:action.playlistId,params:action.params});
+        if(revision!==collectionPlayRevision||session!==sessionRevision)return;
+        const startingAt=Math.max(0,next.items.findIndex(song=>song.videoId===action.videoId));
+        const playlistId=action.playlistId??next.automixPlaylistId;
+        const radio=Boolean(playlistId?.startsWith('RD')||(!action.playlistId&&action.videoId));
+        const source={kind:radio?'search-radio' as const:'search' as const,id:playlistId??action.videoId??section.id,title:section.title};
+        if(radio&&!next.continuation&&playlistId) {
+          await player.startSourceRadio(next.items,source,playlistId,startingAt);
+        } else {
+          await playCollection(next.items,startingAt,source);
+          if(revision!==collectionPlayRevision||session!==sessionRevision)return;
+          if(next.continuation)await player.beginProgressiveSource({kind:source.kind,id:source.id,continuation:next.continuation});
+        }
+      } else if(action.browseId) {
+        const card=section.items.find(card=>card.id===action.browseId);
+        if(card&&!action.params)selectSearchCard(card);else await openCatalog(action.browseId,action.params,section.title);
+      }
+    } catch(error){if(revision===collectionPlayRevision&&session===sessionRevision)shellError=extractErrorMessage(error,'No se pudo reproducir el resultado.');}
+  }
   function playSearchPreviewSong(song: SongDto) {
     setPlayerFullscreen(false);
     dismissSearchPreview(); ++collectionPlayRevision;
-    searchIntentRevision = collectionPlayRevision;
-    const intent = recents.beginTrack(song);
-    void player.startRadio(song,generation=>{recents.bindTrack(intent,generation);recents.confirmPlayback(playbackState);}).catch(error => {recents.failTrack(intent);shellError = extractErrorMessage(error, 'No se pudo iniciar la radio.');});
+    void player.startRadio(song).catch(error => {shellError = extractErrorMessage(error, 'No se pudo iniciar la radio.');});
   }
 
   function invalidateDetails() { catalog.invalidate(); }
@@ -926,7 +948,7 @@
 </script>
 
 <div class="app-frame" class:sidebar-collapsed={sidebarCollapsed} class:fullscreen-open={isFullscreenOpen}>
-  {#if activeView==='feed'}<HomeBackground artwork={homeArtwork} session={homeSession} active={!isFullscreenOpen} />{:else if activeView==='album_detail'||activeView==='playlist_detail'}<HomeAmbient artwork={[(activeView==='album_detail'?selectedAlbum?.thumbnail:accountData.playlist?.thumbnail)??''].filter(Boolean)} session={homeSession} active={!isFullscreenOpen} collection />{/if}
+  {#if activeView==='feed'}<HomeBackground artwork={homeArtwork} session={homeSession} active={!isFullscreenOpen&&!spotlightOpen} />{:else if activeView==='album_detail'||activeView==='playlist_detail'}<HomeAmbient artwork={[(activeView==='album_detail'?selectedAlbum?.thumbnail:accountData.playlist?.thumbnail)??''].filter(Boolean)} session={homeSession} active={!isFullscreenOpen&&!spotlightOpen} visible={!isFullscreenOpen} collection />{/if}
   <TitleBar onBack={goBackFromDetail} onForward={goForward} {canBack} {canForward} modalOpen={spotlightOpen} />
   {#if gestureProgress.phase==='tracking'||gestureProgress.phase==='armed'}<div class="gesture-progress" role="status">{gestureProgress.action==='dismiss-fullscreen'?$t('windows.ui.closePlayer'):gestureProgress.action==='back'?'‹ '+$t('navigation.back'):$t('navigation.forward')+' ›'}<progress max="1" value={gestureProgress.progress}></progress></div>{/if}
   <div class="sidebar-host" inert={spotlightOpen}>
@@ -951,8 +973,8 @@
     onCheckUpdates={() => void updater.checkForUpdates(true)}
   />
   </div>
-  <div class="content-column" class:home-content={activeView==='feed'&&!isFullscreenOpen}>
-<main class="shell" class:home-shell={activeView !== "search_results"} class:search-shell={activeView === 'search_results'} class:explore-shell={activeView === 'explore'} class:player-covered={isFullscreenOpen} inert={isFullscreenOpen || spotlightOpen}>
+  <div class="content-column" class:retained-content={retainedDestination}>
+<main class="shell" class:home-shell={activeView !== "search_results"} class:search-shell={activeView === 'search_results'} class:explore-shell={activeView === 'explore'} class:retained-shell={retainedDestination} class:player-covered={isFullscreenOpen} inert={isFullscreenOpen || spotlightOpen}>
 
   {#if (backendStatus && !backendStatus.ready) || statusError}
   <div class="backend-notice" role="status">
@@ -989,10 +1011,15 @@
   {#if preferenceError}<div class="account-action-error" role="alert">{resolveMessage(preferenceError,$language)}</div>{/if}
   {#if accountData.actionError}<div class="account-action-error" role="alert">{resolveMessage(accountData.actionError,$language)}</div>{/if}
   {#if shellError}<div class="account-action-error shell-error" role="alert">{resolveMessage(shellError,$language)}<button type="button" aria-label={$t('windows.ui.dismissError')} onclick={() => shellError = null}>×</button></div>{/if}
-  {#if activeView === 'explore'}
-    <ExploreView data={exploreData} onNavigate={navigateExplore} onRefresh={()=>void explore.navigate(exploreData.route,true)} onOpenCard={openExploreCard} onScrollTop={offset=>explore.setScrollTop(offset)} active={!isFullscreenOpen&&!spotlightOpen} />
-  {:else if activeView === 'library'}
-    <LibraryView accountKey={authStatus.state === 'ready' ? `account:${authStatus.channelId || authStatus.email || authStatus.handle || ''}` : 'guest'} loggedIn={authStatus.state === 'ready'} tab={accountData.tab}
+  {#key sessionRevision}
+    <RetainedPage id="explore" selected={activeView==='explore'} covered={isFullscreenOpen||spotlightOpen} scrollable={false}>
+      {#snippet children(pageActive)}
+    <ExploreView data={exploreData} onNavigate={navigateExplore} onRefresh={()=>void explore.navigate(exploreData.route,true)} onOpenCard={openExploreCard} onScrollTop={offset=>explore.setScrollTop(offset)} active={pageActive} />
+      {/snippet}
+    </RetainedPage>
+    <RetainedPage id="library" selected={activeView==='library'} covered={isFullscreenOpen||spotlightOpen}>
+      {#snippet children(pageActive)}
+    <LibraryView active={pageActive} accountKey={authStatus.state === 'ready' ? `account:${authStatus.channelId || authStatus.email || authStatus.handle || ''}` : 'guest'} loggedIn={authStatus.state === 'ready'} tab={accountData.tab}
       songs={accountData.songs} playlists={accountData.playlists} albums={accountData.originalAlbums} artists={accountData.artists}
       loading={accountData.tab==='all'?(['playlists','albums','artists'] as const).some(channel=>accountData.loading[channel]):accountData.loading[accountData.tab]} loadingMore={accountData.loadingMore} error={accountData.tab==='all'?(['playlists','albums','artists'] as const).map(channel=>accountData.errors[channel]).filter(Boolean).join(' · ')||null:accountData.errors[accountData.tab]}
       continuation={accountData.tab === 'songs' ? accountData.songContinuation : null}
@@ -1002,7 +1029,57 @@
       onPlay={playLibrarySong} onOpenCard={openLibraryCard} onOpenArtist={openArtistDetail} onOpenAlbum={openAlbumDetail}
       onToggleLike={(song) => account.toggleLike(song)} onToggleSaved={(song) => account.toggleSaved(song)}
       onCreatePlaylist={() => openNewPlaylist()} onLogin={handleLogin} />
-  {:else if activeView === 'playlist_detail'}
+      {/snippet}
+    </RetainedPage>
+    <RetainedPage id="feed" selected={activeView==='feed'} covered={isFullscreenOpen||spotlightOpen}>
+      {#snippet children(pageActive)}
+    <HomeView
+      chips={homePage?.chips ?? []}
+      sections={homePage?.sections ?? []}
+      selectedChipParams={homeData.chipParams}
+      isLoading={homeData.loading}
+      error={homeData.error}
+      hasMore={Boolean(homePage?.continuation)}
+      isLoadingMore={homeData.loadingMore}
+      moreError={homeData.moreError}
+      moreNotice={homeData.moreNotice}
+      auth={authStatus} session={homeSession} settings={homeSettings} kind={featuredKind}
+      albums={accountData.albums} playlists={accountData.playlists} history={accountData.history}
+      onSettings={changeHomeSettings} onKind={changeFeaturedKind}
+      exponentialVolume={playbackState.exponentialVolume ?? false} {volumeModePending} onExponentialVolume={changeExponentialVolume}
+      interactive={pageActive && preferencesReady}
+      libraryError={accountData.errors.albums || accountData.errors.playlists || accountData.errors.history}
+      onRetryLibrary={() => { void account.initialize(); if (homeSettings.albumSources.some(row => row.source === 'recentAlbums' && row.enabled)) void account.load('history'); }}
+      metadata={featuredMetadata} onVisibleCollections={items => homeMetadata.visible(items)} onCapacity={slots => featuredSlots = slots}
+      onLoadMore={() => loadMoreHome()}
+      onOpenArtist={openArtistDetail}
+      onOpenPlaylist={openPlaylist}
+      onOpenCatalog={openCatalog}
+      onSelectChip={(params) => loadHomePage(params)}
+      onRetry={() => loadHomePage(homeData.chipParams)}
+      onOpenAlbum={(browseId) => openAlbumDetail(browseId, "home")}
+      onPlaySong={(item) => { ++collectionPlayRevision; void player.startRadio(songFromHome(item)).catch(() => {}); }}
+    />
+
+      {/snippet}
+    </RetainedPage>
+    <RetainedPage id="search_results" selected={activeView==='search_results'} covered={isFullscreenOpen||spotlightOpen} scrollable={false}>
+      {#snippet children(pageActive)}
+    <SearchView active={pageActive} bind:contentScrollElement={searchScrollElement} onAction={playProviderSearchAction} data={searchData} backendReady={backendStatus?.ready ?? false} draftQuery={draftQuery} preview={previewData}
+      currentTrackId={playbackState.currentTrack?.videoId ?? null} isPlaying={playbackState.isPlaying}
+      onRetrySection={()=>void search.retryBlock()} onSelectParams={params=>void search.selectParams(params)} onLoadMore={()=>void search.loadMore()} onMore={section=>{if(section.moreBrowseId)void openCatalog(section.moreBrowseId,section.moreParams,section.title);else void search.more(section);}} onRemoveSuggestion={token=>void searchPreview.remove(token)} onSubmit={executeSearch} onRetry={(query: string, mode: SearchMode) => executeSearch(query, mode, 'refresh')} onDraftChange={handleDraftChange}
+      onSearchOriginal={() => search.execute(searchData.lastSearchedQuery, 'all', 'refresh', true)}
+      onPlayPreviewSong={playSearchPreviewSong}
+      onPreviewFocus={focusInlinePreview} onPreviewDismiss={dismissInlinePreview}
+      onModeChange={handleSwitchSearchMode}
+      onPlaySong={(song: SongDto) => { ++collectionPlayRevision; void player.startRadio(song).catch(error => shellError = extractErrorMessage(error, 'No se pudo iniciar la radio.')); }}
+      onOpenArtist={openArtistDetail}
+      onOpenAlbum={(album: AlbumCardDto) => openAlbumDetail(album.id, "search")}
+      onOpenPlaylist={(id: string) => openPlaylist(id)} />
+      {/snippet}
+    </RetainedPage>
+  {/key}
+  {#if activeView === 'playlist_detail'}
     {#key lastPlaylistId}
       <PlaylistDetailView playlist={accountData.playlist} session={homeSession} loading={accountData.playlistLoading} loadingMore={accountData.playlistLoadingMore}
         error={accountData.playlistError} loggedIn={authStatus.state === 'ready'}
@@ -1053,49 +1130,6 @@
         onPlaySong={playBrowseSong} />
     {/key}
 
-  <!-- VISTA 2: Inicio como en macOS -->
-  {:else if primaryNav === "home"}
-    <HomeView
-      chips={homePage?.chips ?? []}
-      sections={homePage?.sections ?? []}
-      selectedChipParams={homeData.chipParams}
-      isLoading={homeData.loading}
-      error={homeData.error}
-      hasMore={Boolean(homePage?.continuation)}
-      isLoadingMore={homeData.loadingMore}
-      moreError={homeData.moreError}
-      moreNotice={homeData.moreNotice}
-      auth={authStatus} session={homeSession} settings={homeSettings} kind={featuredKind}
-      albums={accountData.albums} playlists={accountData.playlists} history={accountData.history}
-      onSettings={changeHomeSettings} onKind={changeFeaturedKind}
-      exponentialVolume={playbackState.exponentialVolume ?? false} {volumeModePending} onExponentialVolume={changeExponentialVolume}
-      interactive={!isFullscreenOpen && !spotlightOpen && preferencesReady}
-      libraryError={accountData.errors.albums || accountData.errors.playlists || accountData.errors.history}
-      onRetryLibrary={() => { void account.initialize(); if (homeSettings.albumSources.some(row => row.source === 'recentAlbums' && row.enabled)) void account.load('history'); }}
-      metadata={featuredMetadata} onVisibleCollections={items => homeMetadata.visible(items)} onCapacity={slots => featuredSlots = slots}
-      onLoadMore={() => loadMoreHome()}
-      onOpenArtist={openArtistDetail}
-      onOpenPlaylist={openPlaylist}
-      onOpenCatalog={openCatalog}
-      onSelectChip={(params) => loadHomePage(params)}
-      onRetry={() => loadHomePage(homeData.chipParams)}
-      onOpenAlbum={(browseId) => openAlbumDetail(browseId, "home")}
-      onPlaySong={(item) => { ++collectionPlayRevision; void player.startRadio(songFromHome(item)).catch(() => {}); }}
-    />
-
-  <!-- VISTA 3: BUSCAR (Canciones y Álbumes con detalle W03/W04) -->
-  {:else}
-    <SearchView data={searchData} backendReady={backendStatus?.ready ?? false} draftQuery={draftQuery} preview={previewData}
-      currentTrackId={playbackState.currentTrack?.videoId ?? null} isPlaying={playbackState.isPlaying}
-      onRetrySection={block=>void search.retryBlock(block)} onSubmit={executeSearch} onRetry={(query: string, mode: SearchMode) => executeSearch(query, mode, 'refresh')} onDraftChange={handleDraftChange}
-      onSearchOriginal={() => search.execute(searchData.lastSearchedQuery, 'all', 'refresh', true)}
-      onPlayPreviewSong={playSearchPreviewSong}
-      onPreviewFocus={focusInlinePreview} onPreviewDismiss={dismissInlinePreview}
-      onModeChange={handleSwitchSearchMode}
-      onPlaySong={(song: SongDto) => { ++collectionPlayRevision; void player.startRadio(song).catch(error => shellError = extractErrorMessage(error, 'No se pudo iniciar la radio.')); }}
-      onOpenArtist={openArtistDetail}
-      onOpenAlbum={(album: AlbumCardDto) => openAlbumDetail(album.id, "search")}
-      onOpenPlaylist={(id: string) => openPlaylist(id)} />
   {/if}
 </main>
 
@@ -1119,6 +1153,7 @@
       {geniusState} geniusController={genius} {lyricsMode} onShowGenius={()=>{lyricsMode='genius';selectedPanel='lyrics';void genius.ensureNow();}} onOpenExternal={url=>void invoke('open_external_url',{url}).catch(()=>{})}
       {lyricsState} {recommendationsState} onSeek={handleSeek} onRetryLyrics={() => { void lyrics.retry(); }}
       onRefreshRecommendations={() => { void recommendations.load(true); }}
+      onSuspendRecommendations={() => recommendations.suspend()}
       onPlayRecommendation={(song) => { ++collectionPlayRevision; void player.startRadio(song).catch(() => {}); }}
       onEnqueueRecommendation={(song) => { void player.enqueue([song], 'next').catch(error => shellError = extractErrorMessage(error, 'No se pudo agregar a la cola.')); }}
       onSongContextMenu={(event, song) => menuService.open(event, {kind:'song', song})}
@@ -1144,7 +1179,7 @@
     onSave={details => saveCreatedPlaylist(details, creationRevision)} onClose={() => closeNewPlaylist(creationRevision)} />{/if}
   {#if menuNotice}<div class="menu-notice" role="status">{resolveMessage(menuNotice,$language)}<button type="button" aria-label={$t('windows.ui.dismissNotice')} onclick={() => menuNotice = null}>×</button></div>{/if}
   {#if spotlightOpen}
-    <SpotlightSearch unavailableTrack={unavailableRecent} recents={recentEntries} canUndo={canUndoRecents} onRecentQuery={query=>executeSearch(query,'all','recentQuery')} onRemoveRecent={key=>recents.remove(key)} onClearRecents={()=>recents.clear()} onUndoRecents={()=>recents.undo()} preview={previewData} backendReady={backendStatus?.ready ?? false}
+    <SpotlightSearch onRemoveSuggestion={token=>void searchPreview.remove(token)} preview={previewData} backendReady={backendStatus?.ready ?? false}
       onQueryChange={handleDraftChange} onCommit={(query) => executeSearch(query)} onDismiss={dismissSearchPreview}
       onSelectCard={selectSearchCard} onPlaySong={playSearchPreviewSong} />
   {/if}
@@ -1208,7 +1243,8 @@
   }
 
 
-  .content-column.home-content { padding-top:0; }
+  .content-column.retained-content { overflow:hidden; }
+  .shell.retained-shell { height:100%; min-height:0; }
 
   .shell {
     max-width: 900px;

@@ -92,6 +92,10 @@
   onMount(()=>{
     const saved=retained.get(selectionKey);if(saved){songPage=saved.songPage;collectionAnchor=saved.collectionAnchor;shelfOffsets={...saved.shelfOffsets};}
     lastSelectionKey=selectionKey;lastCollectionIds=projection.collections.map(item=>`${item.kind}|${item.id}`);lastSongIds=JSON.stringify(projection.songs.map(item=>item.id));retentionReady=true;
+  });
+  $effect(()=>{
+    if(!retentionReady||!interactive)return;
+    pendingWidth=root.getBoundingClientRect().width; width=pendingWidth;
     const observer=new ResizeObserver(([entry])=>{pendingWidth=entry.contentRect.width;if(interactive)width=pendingWidth;});observer.observe(root);
     return()=>observer.disconnect();
   });

@@ -1327,6 +1327,20 @@ Historial: %@</string>
 	<string>Reproducir %@</string>
 	<key>search.play_now</key>
 	<string>Reproducir ahora</string>
+	<key>search.provider.hide_related</key>
+	<string>Mostrar menos</string>
+	<key>search.provider.load_more</key>
+	<string>Cargar más resultados</string>
+	<key>search.provider.other_results</key>
+	<string>Otros resultados del bloque</string>
+	<key>search.provider.related</key>
+	<string>Relacionadas</string>
+	<key>search.provider.remove_history</key>
+	<string>Quitar del historial de YouTube Music</string>
+	<key>search.provider.show_all</key>
+	<string>Mostrar todo</string>
+	<key>search.provider.show_related</key>
+	<string>Mostrar las %@ relacionadas</string>
 	<key>search.recents.clear</key>
 	<string>Borrar recientes de Side B</string>
 	<key>search.recents.remove</key>

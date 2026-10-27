@@ -13,7 +13,7 @@ import '$lib/styles/fonts.css';import Panel from '$panel';
 let values=$state({width:650,size:36,position:12.2});
 const lines=Array.from({length:40},(_,i)=>({text:'Porque la noche de anoche fue',timeMs:1000+i*1000,endTimeMs:1900+i*1000,words:[]}));
 window.__TAURI_INTERNALS__={invoke:async()=>({provider:'fixture',isSynced:true,instrumental:false,lines})};
-const classic={status:'ready',trackKey:JSON.stringify(['fixture',1]),lyrics:{provider:'fixture',isSynced:true,lines},error:null};
+const classic={status:'ready',trackKey:JSON.stringify(['fixture',1,JSON.stringify([1,'fixture'])]),lyrics:{provider:'fixture',isSynced:true,lines},error:null};
 const playback=$derived({isPlaying:false,isLoading:false,position:values.position,duration:60,generation:1,queue:{items:[{entryId:'fixture'}],currentIndex:0},currentTrack:{videoId:'fixture',title:'Fixture',artists:'Fixture',duration:60}});
 export function configure(next){values={...values,...next}}
 </script>

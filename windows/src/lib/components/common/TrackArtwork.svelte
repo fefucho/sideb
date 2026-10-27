@@ -1,22 +1,33 @@
 <script lang="ts">
   import { t } from '$lib/i18n';
-  import { onMount } from 'svelte';
+  import { getContext, onMount } from 'svelte';
+  import { PRESENTATION_CONTEXT, type PresentationService } from './presentation';
   import { cardArtworkCandidates, nextArtworkUrl, rejectArtworkAttempt, type ArtworkFailures } from '$lib/images/artwork';
   let { title, thumbnail, active, playing, pending = false, size = 40, showPlayOverlay = true, onPlay }: {
     title: string; thumbnail: string | null; active: boolean; playing: boolean;
     pending?: boolean; size?: number; showPlayOverlay?: boolean; onPlay: (event: MouseEvent) => void;
   } = $props();
   let pixelRatio = $state(1); let failures = $state<ArtworkFailures>({key:'',urls:[]});
+  let root = $state<HTMLButtonElement>();
+  const presentation = getContext<PresentationService | undefined>(PRESENTATION_CONTEXT);
+  const foreground = $derived(presentation?.active(root) ?? true);
   const candidates = $derived(cardArtworkCandidates(thumbnail, size, pixelRatio));
   const requestKey = $derived(JSON.stringify(candidates));
   const selectedUrl = $derived(nextArtworkUrl(candidates, failures.key === requestKey ? failures.urls : []));
   $effect(() => { if(failures.key !== requestKey)failures={key:requestKey,urls:[]}; });
   function reject(key: string, url: string) { failures = rejectArtworkAttempt(failures, requestKey, candidates, key, url); }
-  onMount(() => { const sync=()=>pixelRatio=window.devicePixelRatio||1;sync();window.addEventListener('resize',sync);return()=>window.removeEventListener('resize',sync); });
+  let mounted = $state(false);
+  onMount(() => { mounted = true; });
+  $effect(() => {
+    if (!mounted || !foreground) return;
+    const sync = () => { if (foreground) pixelRatio = window.devicePixelRatio || 1; };
+    sync(); window.addEventListener('resize', sync);
+    return () => window.removeEventListener('resize', sync);
+  });
 </script>
-{#snippet imageAttempt(key: string, url: string)}<img src={url} alt="" loading="lazy" decoding="async" onerror={() => reject(key, url)} />{/snippet}
+{#snippet imageAttempt(key: string, url: string)}<img src={url} alt="" loading="lazy" decoding="async" onerror={event => { if (event.currentTarget.parentElement === root) reject(key, event.currentTarget.getAttribute('src') ?? url); }} />{/snippet}
 
-<button class="track-artwork" type="button" style={`--art-size:${size}px`} disabled={pending} aria-busy={pending}
+<button bind:this={root} class="track-artwork" type="button" style={`--art-size:${size}px`} disabled={pending} aria-busy={pending}
   aria-label={`${pending ? $t('common.loading') : active && playing ? $t('player.pause') : $t('player.play')} ${title}`} onclick={onPlay}>
   {#if selectedUrl}{#key `${requestKey}\u0000${selectedUrl}`}{@render imageAttempt(requestKey, selectedUrl)}{/key}
   {:else}<span class="fallback" aria-hidden="true">♪</span>{/if}

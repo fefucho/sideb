@@ -9,17 +9,19 @@ export interface ArtworkTrackIdentity {
 }
 
 export function animatedArtworkPrimaryArtist(track: ArtworkTrackIdentity | null | undefined): string {
-  return track?.artistRuns?.find(run => run.text.trim())?.text.trim() || track?.artists?.trim() || '';
+  return track?.artistRuns?.find(run => run.id?.trim() && run.text.trim())?.text.trim() || track?.artists?.trim() || '';
 }
+
+const normalizedIdentity = (value: string | null | undefined) => value?.normalize('NFC').trim().toLowerCase().replace(/\s+/gu, ' ') ?? '';
 
 /** Stable album key makes track changes on one record reuse its existing video/player. */
 export function animatedArtworkAlbumKey(track: ArtworkTrackIdentity | null | undefined): string {
   if (!track) return '';
   const id = track.albumId?.trim();
   if (id) return `id:${id}`;
-  const album = track.album?.trim().toLowerCase();
-  const artist = animatedArtworkPrimaryArtist(track).toLowerCase();
-  return album ? `name:${album}\u0000${artist}` : track.videoId?.trim() ? `track:${track.videoId.trim()}` : `track-name:${track.title?.trim().toLowerCase() ?? ''}\u0000${artist}`;
+  const album = normalizedIdentity(track.album);
+  const artist = normalizedIdentity(animatedArtworkPrimaryArtist(track));
+  return album ? `name:${album}\u0000${artist}` : track.videoId?.trim() ? `track:${track.videoId.trim()}` : `track-name:${normalizedIdentity(track.title)}\u0000${artist}`;
 }
 
 /** Rejects late preparations from an older album/session revision. */

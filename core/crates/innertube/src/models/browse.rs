@@ -573,7 +573,7 @@ pub struct SearchSuggestions {
 
 /// The generic playlist subtitle parser can interpret a search play-count as an album.
 /// A linked album column is stronger evidence and must keep its provider title intact.
-fn search_song_payload(node: &Value) -> Option<SongItem> {
+pub(super) fn search_song_payload(node: &Value) -> Option<SongItem> {
     let mut song = parse_list_item(node)?;
     if let Some(album_id) = song.album_id.as_deref() {
         if let Some(columns) = node.get("flexColumns").and_then(Value::as_array) {
@@ -703,7 +703,7 @@ pub fn parse_search_cards(root: &Value) -> Vec<BrowseItem> {
 
 /// A search-result list row → a card. Album/artist/playlist rows navigate (item-level
 /// `browseEndpoint`); a plain song row plays (`videoId`).
-fn list_item_to_browse_item(node: &Value) -> Option<BrowseItem> {
+pub(super) fn list_item_to_browse_item(node: &Value) -> Option<BrowseItem> {
     let title = flex_column_text(node, 0)?;
     let subtitle = flex_column_text(node, 1);
     let thumbnail = last_thumbnail(node);
@@ -758,7 +758,7 @@ fn list_item_to_browse_item(node: &Value) -> Option<BrowseItem> {
 }
 
 /// The primary match of a top-result card shelf.
-fn card_shelf_main(card: &Value) -> Option<BrowseItem> {
+pub(super) fn card_shelf_main(card: &Value) -> Option<BrowseItem> {
     let title = runs_text(card.get("title"))?;
     let subtitle = runs_text(card.get("subtitle"));
     let thumbnail = card.get("thumbnail").and_then(last_thumbnail);
@@ -1139,7 +1139,7 @@ fn first_album_name(runs: &[Value]) -> Option<String> {
 }
 
 /// A `musicTwoRowItemRenderer` → one card. Kind inferred from its navigation endpoint.
-fn parse_two_row_item(node: &Value) -> Option<BrowseItem> {
+pub(super) fn parse_two_row_item(node: &Value) -> Option<BrowseItem> {
     let title = runs_text(node.get("title"))?;
     let subtitle = runs_text(node.get("subtitle"));
     let thumbnail = last_thumbnail(node);

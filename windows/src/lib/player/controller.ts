@@ -288,12 +288,12 @@ export class PlaybackController {
   async moveQueueEntry(entryId: string, beforeEntryId: string | null) {
     return this.queueCommand('move_queue_entry', { entryId, beforeEntryId });
   }
-  async beginProgressiveSource(source: {kind: 'playlist' | 'library'; id: string | null; continuation: string | null}) {
+  async beginProgressiveSource(source: {kind: 'playlist' | 'library' | 'search' | 'search-radio'; id: string | null; continuation: string | null}) {
     return this.queueCommand('begin_queue_source', { ...source, expectedGeneration: this.state.generation });
   }
   async retrySource() { return this.queueCommand('retry_queue_source', {}); }
-  async startSourceRadio(items: PlayerSong[], source: PlaybackQueueSource, playlistId: string) {
-    return this.queueCommand('start_source_radio', { items: items.map(entryFor), source, playlistId });
+  async startSourceRadio(items: PlayerSong[], source: PlaybackQueueSource, playlistId: string, selectedIndex = 0) {
+    return this.queueCommand('start_source_radio', { items: items.map(entryFor), source, playlistId, selectedIndex });
   }
   async filterDislikedRecommendations(videoId: string) { return this.queueCommand('filter_disliked_recommendations', { videoId, expectedGeneration: this.state.generation }); }
   setMuted(muted: boolean): Promise<void> {

@@ -3,6 +3,8 @@ import type { AlbumDetailDto, ArtistDetailDto, BrowseCardDto, PlaybackTrackDto, 
 export type RecommendationsRpc = <T>(command: string, args?: Record<string, unknown>) => Promise<T>;
 export interface RecommendedData {
   loadedVideoId: string;
+  contextKey?: string;
+  requestIdentity?: string;
   artistName: string | null;
   artistBrowseId: string | null;
   artistSongs: SongDto[];
@@ -19,7 +21,7 @@ function cloneData(data: RecommendedData): RecommendedData {
   return { ...data, artistSongs: data.artistSongs.map(cloneSong), albumSongs: data.albumSongs.map(cloneSong),
     similarSongs: data.similarSongs.map(cloneSong), relatedArtists: data.relatedArtists.map(card => ({ ...card, artistRuns: card.artistRuns?.map(run => ({ ...run })) })) };
 }
-function identity(track: PlaybackTrackDto | null): string {
+export function recommendationIdentity(track: PlaybackTrackDto | null): string {
   return track ? JSON.stringify([track.videoId, track.artistId ?? null, track.albumId ?? null]) : '';
 }
 function artistFallback(detail: ArtistDetailDto | null): BrowseCardDto[] {
@@ -60,16 +62,17 @@ export class RecommendationsController {
   private reloadCount = 0;
   private loadedIdentity = '';
   private pending: Promise<void> | null = null;
+  private contextRevision=0;
 
   constructor(private rpc: RecommendationsRpc, private publish: (snapshot: RecommendationsSnapshot) => void) { this.emit(); }
   get snapshot(): RecommendationsSnapshot { return { ...this.state, data: this.state.data ? cloneData(this.state.data) : null }; }
   private emit() { this.publish(this.snapshot); }
 
   setTrack(track: PlaybackTrackDto | null): void {
-    const changed = identity(track) !== identity(this.track);
+    const changed = recommendationIdentity(track) !== recommendationIdentity(this.track);
     this.track = track ? { ...track, artistRuns: track.artistRuns?.map(run => ({ ...run })) } : null;
     if (changed) {
-      this.revision++; this.pending = null; this.loadedIdentity = ''; this.reloadCount = 0;
+      this.contextRevision++;this.revision++; this.pending = null; this.loadedIdentity = ''; this.reloadCount = 0;
       this.state = emptyRecommendationsSnapshot(); this.emit();
     } else if (this.state.data && track) {
       // Radio can enrich display metadata without changing the song or issuing more requests.
@@ -87,7 +90,7 @@ export class RecommendationsController {
   }
   load(forceRefresh = false): Promise<void> {
     if (!this.track?.videoId.trim()) return Promise.resolve();
-    const key = identity(this.track);
+    const key = recommendationIdentity(this.track);
     if (!forceRefresh && this.pending) return this.pending;
     // An error is retried explicitly; playback progress must not repeatedly hit the provider.
     if (!forceRefresh && this.loadedIdentity === key) return Promise.resolve();
@@ -108,7 +111,7 @@ export class RecommendationsController {
       track.artistId ? this.rpc<ArtistDetailDto>('get_artist', { browseId: track.artistId }) : Promise.resolve(null),
       track.albumId ? this.rpc<AlbumDetailDto>('get_album', { browseId: track.albumId }) : Promise.resolve(null),
     ]);
-    if (revision !== this.revision || identity(this.track) !== key) return;
+    if (revision !== this.revision || recommendationIdentity(this.track) !== key) return;
     const [similarResult, artistsResult, artistResult, albumResult] = requests;
     const previous = this.state.data?.loadedVideoId === track.videoId ? this.state.data : null;
     const artist = artistResult.status === 'fulfilled' ? artistResult.value : null;
@@ -121,6 +124,8 @@ export class RecommendationsController {
     const related = artistsResult.status === 'fulfilled' ? artistsResult.value.filter(card => card.kind.toLowerCase() === 'artist') : previous?.relatedArtists ?? [];
     const data: RecommendedData = {
       loadedVideoId: track.videoId,
+      contextKey:JSON.stringify([this.contextRevision,key]),
+      requestIdentity:key,
       artistName: artist?.name || previous?.artistName || this.track?.artists || null,
       artistBrowseId: track.artistId ?? null,
       artistSongs: (artist?.topSongs ?? (artistResult.status === 'rejected' ? previous?.artistSongs : []) ?? []).filter(song => song.videoId !== track.videoId)
@@ -139,8 +144,14 @@ export class RecommendationsController {
     this.state = { loading: false, error, data }; this.emit();
   }
 
+  /** Stop accepting a hidden panel's requests without losing useful cached shelves. */
+  suspend(): void {
+    if(!this.pending&&!this.state.loading)return;
+    ++this.revision;this.pending=null;
+    this.state={...this.state,loading:false};this.emit();
+  }
   reset(): void {
-    this.revision++; this.pending = null; this.track = null; this.loadedIdentity = ''; this.reloadCount = 0;
+    this.contextRevision++;this.revision++; this.pending = null; this.track = null; this.loadedIdentity = ''; this.reloadCount = 0;
     this.state = emptyRecommendationsSnapshot(); this.emit();
   }
   dispose(): void { this.reset(); }

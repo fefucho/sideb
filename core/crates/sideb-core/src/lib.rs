@@ -13,6 +13,9 @@ pub mod lyrics;
 pub mod orchestrator;
 pub mod potoken;
 
+mod search;
+pub use search::*;
+
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -1468,6 +1471,47 @@ impl SideBCore {
         })
     }
 
+    pub async fn search_action(
+        &self,
+        video_id: Option<String>,
+        playlist_id: Option<String>,
+        params: Option<String>,
+    ) -> Result<NextResultRecord, SideBError> {
+        if video_id.as_deref().is_none_or(str::is_empty) && playlist_id.as_deref().is_none_or(str::is_empty) {
+            return Err(SideBError::Other { message: "Search action has no playback endpoint".into() });
+        }
+        let client = self
+            .clients
+            .get(METADATA_CLIENT)
+            .ok_or_else(|| SideBError::Other {
+                message: "Metadata client missing".into(),
+            })?;
+        let next = self
+            .it
+            .next_with_params(client, video_id.as_deref(), playlist_id.as_deref(), params.as_deref())
+            .await?;
+        Ok(NextResultRecord {
+            items: next.items.into_iter().map(SongItemRecord::from).collect(),
+            lyrics_browse_id: next.lyrics_browse_id,
+            related_browse_id: next.related_browse_id,
+            automix_playlist_id: next.automix_playlist_id,
+            continuation: next.continuation,
+        })
+    }
+
+    /// Continue an opaque queue token returned by `search_action` / `get_next`.
+    pub async fn get_next_continuation(&self, token: String) -> Result<NextResultRecord, SideBError> {
+        let client = self.clients.get(METADATA_CLIENT).ok_or_else(|| SideBError::Other { message: "Metadata client missing".into() })?;
+        let next = self.it.next_continuation(client, &token).await?;
+        Ok(NextResultRecord {
+            items: next.items.into_iter().map(SongItemRecord::from).collect(),
+            lyrics_browse_id: next.lyrics_browse_id,
+            related_browse_id: next.related_browse_id,
+            automix_playlist_id: next.automix_playlist_id,
+            continuation: next.continuation,
+        })
+    }
+
     /// Get dynamic radio for a track.
     /// First tries the canonical YouTube Music radio RDAMVM{video_id}.
     /// If empty or only 1 item, falls back to bare /next + automix_playlist_id.
@@ -1687,6 +1731,24 @@ impl SideBCore {
             })?;
         let results = self.it.search_songs(client, &query, record_history).await?;
         serde_json::to_string(&results.items).map_err(Into::into)
+    }
+
+    pub async fn search_page(&self, query: String, params: Option<String>, record_history: bool, ignore_spelling: bool) -> Result<SearchPageRecord, SideBError> {
+        let client = self.clients.get(METADATA_CLIENT).ok_or_else(|| SideBError::Other { message: "Metadata client missing".into() })?;
+        Ok(self.it.search_page(client, &query, params.as_deref(), record_history, ignore_spelling).await?.into())
+    }
+    pub async fn search_page_continuation(&self, continuation: String) -> Result<SearchPageRecord, SideBError> {
+        let client = self.clients.get(METADATA_CLIENT).ok_or_else(|| SideBError::Other { message: "Metadata client missing".into() })?;
+        Ok(self.it.search_page_continuation(client, &continuation).await?.into())
+    }
+    pub async fn search_suggestions_page(&self, query: String) -> Result<SearchSuggestionsPageRecord, SideBError> {
+        let client = self.clients.get(METADATA_CLIENT).ok_or_else(|| SideBError::Other { message: "Metadata client missing".into() })?;
+        Ok(self.it.search_suggestions_page(client, &query).await?.into())
+    }
+    pub async fn remove_search_suggestion(&self, token: String) -> Result<(), SideBError> {
+        let client = self.clients.get(METADATA_CLIENT).ok_or_else(|| SideBError::Other { message: "Metadata client missing".into() })?;
+        self.it.remove_search_suggestion(client, &token).await?;
+        Ok(())
     }
 
     /// Full search across songs, albums, artists, playlists (typed).

@@ -199,3 +199,13 @@ export interface PlaybackProgressDto {
   duration: number;
   generation: number;
 }
+
+export interface SearchChipDto {id:string;title:string;params:string|null;selected:boolean}
+export interface SearchPageCorrectionDto extends SearchCorrectionDto {params:string|null;originalQuery:string|null;originalParams:string|null}
+export interface SearchActionDto {title:string;videoId:string|null;playlistId:string|null;browseId:string|null;params:string|null}
+export interface SearchSectionDto {id:string;title:string;layout:string;items:BrowseCardDto[];songs:SongDto[];primaryItemIndex?:number|null;relatedItemIndices?:number[];moreQuery:string|null;moreParams:string|null;moreBrowseId:string|null;actions:SearchActionDto[]}
+export interface SearchPageDto {chips:SearchChipDto[];correction:SearchPageCorrectionDto|null;sections:SearchSectionDto[];continuation:string|null}
+export interface SearchSuggestionEntryDto {id:string;kind:string;query:string|null;runs:{text:string;bold:boolean}[];feedbackToken:string|null;card:BrowseCardDto|null;song:SongDto|null}
+export interface SearchSuggestionsPageDto {entries:SearchSuggestionEntryDto[]}
+
+export interface SearchNextDto {items:SongDto[];continuation:string|null;automixPlaylistId:string|null}

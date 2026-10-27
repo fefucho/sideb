@@ -1,7 +1,7 @@
 <script lang="ts" generics="T">
   import { onMount, type Snippet } from 'svelte';
   interface Props { items: T[]; height: (item: T, width: number) => number; key: (item: T) => string; children: Snippet<[T, number]>; scrollSelector?: string; active?: boolean }
-  let { items, height, key, children, scrollSelector = '.content-column', active = true }: Props = $props();
+  let { items, height, key, children, scrollSelector = '[data-page-scroll], .content-column', active = true }: Props = $props();
   let host: HTMLDivElement; let width = $state(1000); let top = $state(0); let viewport = $state(800);
   let measure = () => {};
   $effect(() => { items; active; if(!active)return; const frame = requestAnimationFrame(() => measure()); return () => cancelAnimationFrame(frame); });
@@ -11,7 +11,10 @@
     let end = start; while (end < items.length && offsets[end] < top + viewport + 320) end++;
     return { start, end };
   });
-  onMount(() => {
+  let mounted=$state(false);
+  onMount(() => { mounted=true; });
+  $effect(() => {
+    if(!mounted||!active)return;
     const root = host.closest<HTMLElement>(scrollSelector) ?? document.querySelector<HTMLElement>(scrollSelector);
     const sync = () => { if(!active)return; const rect = host.getBoundingClientRect(); const rootRect = root?.getBoundingClientRect(); width = rect.width; top = (rootRect?.top ?? 0) - rect.top; viewport = root?.clientHeight ?? window.innerHeight; };
     measure = sync;

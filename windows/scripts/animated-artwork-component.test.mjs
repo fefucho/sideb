@@ -12,13 +12,15 @@ const root=fileURLToPath(new URL('../',import.meta.url)),cache=path.join(root,'.
 await mkdir(cache,{recursive:true});
 const window=new Window({url:'http://tauri.localhost'});
 for(const key of ['window','document','navigator','HTMLElement','HTMLMediaElement','HTMLVideoElement','Element','Node','Text','Comment','Event','CustomEvent','MutationObserver']) Object.defineProperty(globalThis,key,{value:key==='window'?window:window[key],configurable:true});
+// happy-dom omits the browser's media ready-state constants.
+Object.defineProperty(window.HTMLMediaElement,'HAVE_CURRENT_DATA',{value:2,configurable:true});
 window.document.hasFocus=()=>true;
 window.matchMedia=()=>({matches:false,addEventListener(){},removeEventListener(){}});
 globalThis.requestAnimationFrame=callback=>setTimeout(callback,0); globalThis.cancelAnimationFrame=clearTimeout;
 const clientUrl=pathToFileURL(path.join(root,'node_modules/svelte/src/index-client.js')).href;
 const {mount,unmount,flushSync}=await import(clientUrl);
 const jobs=[],cancels=[],callbacks=new Map();let nextFrame=0;
-window.HTMLMediaElement.prototype.play=function(){Object.defineProperty(this,'paused',{value:false,configurable:true});return Promise.resolve();};
+window.HTMLMediaElement.prototype.play=function(){Object.defineProperty(this,'paused',{value:false,configurable:true});return globalThis.__motionTest?.play?.(this) ?? Promise.resolve();};
 window.HTMLMediaElement.prototype.pause=function(){Object.defineProperty(this,'paused',{value:true,configurable:true});};
 window.HTMLMediaElement.prototype.load=function(){};
 window.HTMLVideoElement.prototype.requestVideoFrameCallback=function(callback){const id=++nextFrame;callbacks.set(id,callback);return id;};
@@ -133,5 +135,62 @@ test('native power saver and memory pressure immediately detach and cancel a war
   globalThis.__motionTest.publishRuntime({visible:true,minimized:false,cloaked:false,powerSaver:false,memoryPressure:false,[signal]:true});flushSync();await settle();
   assert.equal(document.querySelector('video'),null);assert.ok(cancels.includes(jobs[before].id));
   await unmount(app);await settle();
+ }
+});
+
+
+test('a first frame received during pause waits for resume before fading in',async()=>{
+ const before=jobs.length;
+ globalThis.__motionProps={track:track('frame-while-paused'),session:1,isPlaying:true,flipped:false};
+ const Harness=(await import(pathToFileURL(path.join(cache,'Harness.mjs')).href)).default;
+ const app=mount(Harness,{target:document.body});flushSync();await settle(330);
+ jobs[before].resolve(asset('frame-while-paused'));await settle();const video=document.querySelector('video');metadata(video);
+ const frame=[...callbacks.values()].at(-1);
+ globalThis.__setMotionProps({isPlaying:false});flushSync();await settle();frame();flushSync();
+ assert.equal(video.classList.contains('shown'),false);
+ globalThis.__setMotionProps({isPlaying:true});flushSync();await settle();
+ assert.equal(document.querySelector('video'),video);assert.equal(video.classList.contains('shown'),true);assert.equal(jobs.length,before+1);
+ await unmount(app);await settle();
+});
+
+test('a rejected play from an interrupted attempt cannot discard the resumed player',async()=>{
+ const before=jobs.length;const playAttempts=[];
+ globalThis.__motionTest.play=()=>new Promise((resolve,reject)=>playAttempts.push({resolve,reject}));
+ try{
+  globalThis.__motionProps={track:track('play-race'),session:1,isPlaying:true,flipped:false};
+  const Harness=(await import(pathToFileURL(path.join(cache,'Harness.mjs')).href)).default;
+  const app=mount(Harness,{target:document.body});flushSync();await settle(330);
+  jobs[before].resolve(asset('play-race'));await settle();const video=document.querySelector('video');assert.equal(playAttempts.length,1);
+  globalThis.__setMotionProps({isPlaying:false});flushSync();await settle();
+  globalThis.__setMotionProps({isPlaying:true});flushSync();await settle();assert.equal(playAttempts.length,2);
+  playAttempts[0].reject(new DOMException('The play request was interrupted by pause','AbortError'));await settle();
+  assert.equal(document.querySelector('video'),video);assert.equal(cancels.includes(jobs[before].id),false);
+  playAttempts[1].resolve();await unmount(app);await settle();
+ }finally{delete globalThis.__motionTest.play;}
+});
+
+test('without video-frame callbacks the current-data fallback also defers presentation until visible again',async()=>{
+ const requestFrame=window.HTMLVideoElement.prototype.requestVideoFrameCallback;
+ const originalRaf=globalThis.requestAnimationFrame,originalCancel=globalThis.cancelAnimationFrame;
+ const frames=new Map();let sequence=0;
+ delete window.HTMLVideoElement.prototype.requestVideoFrameCallback;
+ globalThis.requestAnimationFrame=callback=>{frames.set(++sequence,callback);return sequence;};
+ globalThis.cancelAnimationFrame=id=>frames.delete(id);
+ let app;
+ try{
+  const before=jobs.length;
+  globalThis.__motionProps={track:track('fallback-frame'),session:1,isPlaying:true,flipped:false};
+  const Harness=(await import(pathToFileURL(path.join(cache,'Harness.mjs')).href)).default;
+  app=mount(Harness,{target:document.body});flushSync();await settle(330);
+  jobs[before].resolve(asset('fallback-frame'));await settle();const video=document.querySelector('video');metadata(video);
+  assert.equal(frames.size,1);const frame=[...frames.values()][0];
+  globalThis.__motionTest.publishRuntime({visible:false,minimized:false,cloaked:true,powerSaver:false,memoryPressure:false});flushSync();await settle();
+  frame();flushSync();assert.equal(video.classList.contains('shown'),false);
+  globalThis.__motionTest.publishRuntime({visible:true,minimized:false,cloaked:false,powerSaver:false,memoryPressure:false});flushSync();await settle();
+  assert.equal(document.querySelector('video'),video);assert.equal(video.classList.contains('shown'),true);assert.equal(video.paused,false);assert.equal(jobs.length,before+1);
+ }finally{
+  if(app)await unmount(app);await settle();assert.equal(frames.size,0);
+  window.HTMLVideoElement.prototype.requestVideoFrameCallback=requestFrame;
+  globalThis.requestAnimationFrame=originalRaf;globalThis.cancelAnimationFrame=originalCancel;
  }
 });

@@ -1,5 +1,8 @@
 # Planes Apple
 
+| [PLAN-028: Relacionado en fullscreen](PLAN-028-fullscreen-related.md) | Implementado;build0166 Release,1029 pruebas aprobadas | Cuatro estantes, columnas recicladas y créditos/controles comunes; peticiones por contexto/cuenta y cancelación. FIX-247/PAR-043; FPS y cuenta real pendientes |
+| [PLAN-027: búsqueda compacta y reciclada](PLAN-027-search-density-and-performance.md) | FIX-258/244/245/246 / Mac0165 compilada;1024 pruebas aprobadas | Sólo Mac; cuenta real0165: ancho completo con margen28, Play/menú centrados y visibles tras sidebar, categorías sin corte negro; preview flotante/cierre exterior/3 completados conservados |
+
 - [Sidebar y Apariencia: entrega compartida](../../plans/PLAN-010-sidebar-delivery.md) — FIX-224/225 publicada Latest 1.2.6/build 19 sobre GitHub 23f1df5; nueva sidebar y opciones sincronizadas, 764 pruebas Mac/793 Windows y cinco descargas públicas verificadas. PAR-036; aceptación física pendiente.
 
 - [Auditoría de rendimiento de Letras — 2026-10-21](research/LYRICS-PERFORMANCE-2026-10-21.md) — reporte original de carga, renderer, sidebar y actividad de fondo sobre0146; insumo del PLAN-026 consolidado, con microbenchmarks aislados y sin optimizaciones aplicadas.

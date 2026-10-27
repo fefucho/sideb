@@ -28,6 +28,13 @@ test('late result is accepted only for the current revision and retained request
   assert.equal(policy.isCurrentAnimatedArtworkRequest(4, 4, 'album-a', 'album-b'), false);
 });
 
+test('album identity matches Mac normalization and skips non-artist credit runs', () => {
+  const credits = { album: ' Re\u0301cord   One ', artists: 'Main Artist & Guest', artistRuns: [{ text: 'feat.' }, { text: 'Main Artist', id: 'main' }, { text: 'Guest', id: 'guest' }] };
+  assert.equal(policy.animatedArtworkPrimaryArtist(credits), 'Main Artist');
+  assert.equal(policy.animatedArtworkAlbumKey(credits), policy.animatedArtworkAlbumKey({ album: 'Récord One', artists: ' Main   Artist ' }));
+  assert.equal(policy.animatedArtworkPrimaryArtist({ artists: 'Complete Artist', artistRuns: [{ text: 'Unlinked fragment' }] }), 'Complete Artist');
+});
+
 test('cache clear waits for source release and coalesces concurrent clears', async () => {
   const coordinator = new clearing.AnimatedArtworkClearCoordinator();
   const sourceRemoved = deferred(); const order = []; let clearCalls = 0;
@@ -136,4 +143,20 @@ test('cache deletion waits for a consumer mounted while an earlier detach is pen
  const pending=coordinator.clear(async()=>{deleted=true;return 0;});
  coordinator.register(()=>late.promise);first.resolve();await flush();assert.equal(deleted,false);
  late.resolve();await pending;assert.equal(deleted,true);
+});
+
+test('clear remains active until a consumer mounted during filesystem deletion has detached',async()=>{
+ const coordinator=new clearing.AnimatedArtworkClearCoordinator();const deletion=deferred(),late=deferred();let completed=false;
+ const pending=coordinator.clear(()=>deletion.promise).then(()=>completed=true);
+ await flush();coordinator.register(()=>late.promise);deletion.resolve(17);await flush();
+ assert.equal(completed,false);assert.equal(coordinator.clearing,true);
+ late.resolve();await pending;assert.equal(completed,true);assert.equal(coordinator.clearing,false);
+});
+
+test('late teardown failure is reported by its clear and does not poison the next clear',async()=>{
+ const coordinator=new clearing.AnimatedArtworkClearCoordinator();const deletion=deferred(),late=deferred();
+ const pending=coordinator.clear(()=>deletion.promise);await flush();const unregister=coordinator.register(()=>late.promise);
+ late.reject(new Error('detach failed'));deletion.resolve(0);
+ await assert.rejects(pending,/detach failed/);assert.equal(coordinator.clearing,false);unregister();
+ assert.equal(await coordinator.clear(async()=>31),31);
 });

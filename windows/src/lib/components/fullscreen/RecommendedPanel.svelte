@@ -1,8 +1,12 @@
 <script lang="ts">
+  import {onDestroy,untrack} from 'svelte';
+  import RecommendedViewport from './RecommendedViewport.svelte';
+  import RecommendedSongRow from './RecommendedSongRow.svelte';
+  import {recommendedShelves,type RecommendedShelf,type RecommendedColumn} from '$lib/player/recommended-viewport';
   import { t , language, resolveMessage } from '$lib/i18n';
   import MediaCard from "../common/MediaCard.svelte";
-  import { songCard } from "$lib/player/media";
   import type { BrowseCardDto, PlaybackTrackDto, SongDto } from '$lib/types';
+  import {recommendationIdentity} from '$lib/player/recommendations';
   import type { RecommendationsSnapshot } from '$lib/player/recommendations';
 
   interface Props {
@@ -10,6 +14,7 @@
     currentTrack: PlaybackTrackDto | null;
     isPlaying: boolean;
     onRefresh: () => void;
+    onSuspend?: () => void;
     onPlaySong: (song: SongDto) => void;
     onPlayNext?: (song: SongDto) => void;
     onOpenAlbum?: (id: string) => void;
@@ -17,23 +22,18 @@
     onSongContextMenu?: (event: MouseEvent, song: SongDto) => void;
     onArtistContextMenu?: (event: MouseEvent, artist: BrowseCardDto) => void;
   }
-  let { snapshot, currentTrack, isPlaying, onRefresh, onPlaySong, onPlayNext, onOpenAlbum, onOpenArtist,
+  let { snapshot, currentTrack, isPlaying, onRefresh, onSuspend, onPlaySong, onPlayNext, onOpenAlbum, onOpenArtist,
     onSongContextMenu, onArtistContextMenu }: Props = $props();
-  const shelves = $derived(snapshot.data ? [
-    { title: snapshot.data.artistName ? $t('fullscreen.moreByArtist', [snapshot.data.artistName]) : $t('fullscreen.moreByThisArtist'),
-      songs: snapshot.data.artistSongs, browseId: snapshot.data.artistBrowseId, kind: 'artist' },
-    { title: snapshot.data.albumTitle ? $t('fullscreen.fromAlbum', [snapshot.data.albumTitle]) : $t('fullscreen.fromSameAlbum'),
-      songs: snapshot.data.albumSongs, browseId: snapshot.data.albumBrowseId, kind: 'album' },
-    { title: $t('fullscreen.similarSongs'), songs: snapshot.data.similarSongs, browseId: null, kind: 'song' },
-  ].filter(shelf => shelf.songs.length) : []);
-  const artists = $derived(snapshot.data?.relatedArtists ?? []);
-  const hasData = $derived(shelves.length > 0 || artists.length > 0);
-
-  function chunks(songs: SongDto[]) {
-    const columns: SongDto[][] = [];
-    for (let index = 0; index < songs.length; index += 3) columns.push(songs.slice(index, index + 3));
-    return columns;
-  }
+  const currentData=$derived(snapshot.data?.loadedVideoId===currentTrack?.videoId&&(!snapshot.data?.requestIdentity||snapshot.data.requestIdentity===recommendationIdentity(currentTrack))?snapshot.data:null);
+  const shelves=$derived(currentData?recommendedShelves(currentData).map(shelf=>({...shelf,key:shelf.kind})):[]);
+  const contextKey=$derived(currentData?.contextKey??JSON.stringify([currentTrack?.videoId,currentTrack?.artistId,currentTrack?.albumId]));
+  const hasData=$derived(shelves.length>0);
+  let offsets=new Map<string,number>(),verticalOffset=$state(0),lastContext='';
+  $effect(()=>{const key=contextKey;untrack(()=>{if(lastContext!==key){lastContext=key;offsets.clear();verticalOffset=0;}});});
+  const shelfHeight=(shelf:RecommendedShelf)=>shelf.kind==='relatedArtists'?168:218;
+  const columnWidth=(_column:RecommendedColumn)=>270,artistWidth=(_column:RecommendedColumn)=>86;
+  function title(shelf:RecommendedShelf){return shelf.kind==='artist'?$t(shelf.name?'fullscreen.moreByArtist':'fullscreen.moreByThisArtist',shelf.name?[shelf.name]:[]):shelf.kind==='album'?$t(shelf.name?'fullscreen.fromAlbum':'fullscreen.fromSameAlbum',shelf.name?[shelf.name]:[]):$t(shelf.kind==='similar'?'fullscreen.similarSongs':'fullscreen.fansAlsoLike');}
+  onDestroy(()=>onSuspend?.());
 
 </script>
 
@@ -47,7 +47,7 @@
   {#if snapshot.error}
     <div class="error" role="alert"><span>{resolveMessage(snapshot.error, $language)}</span><button type="button" disabled={snapshot.loading} onclick={onRefresh}>{$t('sidebar.retry')}</button></div>
   {/if}
-  {#if snapshot.loading && !snapshot.data}
+  {#if snapshot.loading && !currentData}
     <div class="shelves skeleton" role="status" aria-label={$t('windows.ui.loadingRecommendations')}>
       {#each [0, 1] as section}
         <div class="skeleton-shelf"><span class="skeleton-heading"></span><div class="skeleton-columns">
@@ -56,42 +56,32 @@
       {/each}
     </div>
   {:else if hasData}
-    <div class="shelves">
-      {#each shelves as shelf (shelf.kind)}
-        <section class="shelf" aria-label={shelf.title}>
-          <div class="shelf-heading"><h2 title={shelf.title}>{shelf.title}</h2>
-            {#if shelf.browseId && ((shelf.kind === 'artist' && onOpenArtist) || (shelf.kind === 'album' && onOpenAlbum))}
-              <button type="button" class="browse-link" onclick={() => shelf.kind === 'artist' ? onOpenArtist?.(shelf.browseId!) : onOpenAlbum?.(shelf.browseId!)}>{shelf.kind === 'artist' ? $t('menu.view_artist') : $t('menu.view_album')}<span aria-hidden="true">›</span></button>
-            {/if}
-          </div>
-          <div class="song-columns">
-            {#each chunks(shelf.songs) as column, columnIndex (columnIndex)}
-              <div class="song-column">
-                {#each column as song, songIndex (`${song.videoId}:${songIndex}`)}
-                  <MediaCard card={songCard(song)} layout="compact" onPlay={()=>onPlaySong(song)} {onOpenArtist} {onOpenAlbum} />
-                {/each}
-              </div>
-            {/each}
-          </div>
-        </section>
-      {/each}
-      {#if artists.length}
-        <section class="shelf artist-shelf" aria-label={$t('fullscreen.fansAlsoLike')}>
-          <h2>{$t('fullscreen.fansAlsoLike')}</h2>
-          <div class="artist-cards">
-            {#each artists as artist, artistIndex (`${artist.id}:${artistIndex}`)}
-              <div class="artist-card"><MediaCard card={{...artist,kind:'artist'}} onOpen={()=>onOpenArtist?.(artist.id)} /></div>
-            {/each}
-          </div>
-        </section>
-      {/if}
+    <div class="shelves virtual-shelves">
+      <RecommendedViewport items={shelves} size={shelfHeight} axis="y" {contextKey} initialOffset={verticalOffset} onOffset={offset=>verticalOffset=offset} label={$t('fullscreen.recommendations')}>
+        {#snippet children(shelf)}
+          <section class="shelf" aria-label={title(shelf)} data-rec-shelf={shelf.kind}>
+            <div class="shelf-heading"><h2 title={title(shelf)}>{title(shelf)}</h2>
+              {#if shelf.browseId&&((shelf.kind==='artist'&&onOpenArtist)||(shelf.kind==='album'&&onOpenAlbum))}<button type="button" class="browse-link" onclick={()=>shelf.kind==='artist'?onOpenArtist?.(shelf.browseId!):onOpenAlbum?.(shelf.browseId!)}>{$t(shelf.kind==='artist'?'menu.view_artist':'menu.view_album')}<span aria-hidden="true">›</span></button>{/if}
+            </div>
+            <div class="shelf-content" class:artists={shelf.kind==='relatedArtists'}>
+              <RecommendedViewport items={shelf.columns} size={shelf.kind==='relatedArtists'?artistWidth:columnWidth} axis="x" gap={shelf.kind==='relatedArtists'?16:14} contextKey={`${contextKey}:${shelf.kind}`} initialOffset={offsets.get(shelf.kind)??0} onOffset={offset=>offsets.set(shelf.kind,offset)} label={title(shelf)}>
+                {#snippet children(column,columnIndex)}
+                  {#if column.artist}{@const artist=column.artist}<article class="artist-card" oncontextmenu={event=>{if(!event.defaultPrevented)onArtistContextMenu?.(event,artist);}}><MediaCard card={{...artist,kind:'artist'}} onOpen={()=>onOpenArtist?.(artist.id)}/></article>
+                  {:else}<div class="song-column" data-rec-column={columnIndex}>{#each column.songs as occurrence (occurrence.index)}<RecommendedSongRow song={occurrence.song} index={occurrence.index} currentTrackId={currentTrack?.videoId??null} {isPlaying} {onPlaySong} {onOpenArtist} {onOpenAlbum} {onSongContextMenu}/>{/each}</div>{/if}
+                {/snippet}
+              </RecommendedViewport>
+            </div>
+          </section>
+        {/snippet}
+      </RecommendedViewport>
     </div>
   {:else}
     <div class="empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3 5h10M3 10h10M3 15h8M18 17V4l5-2v5l-5 2"/><ellipse cx="15" cy="18" rx="3" ry="2"/></svg><p>{currentTrack ? $t('fullscreen.noRecommendations') : $t('windows.ui.selectASongToSeeRecommendations')}</p>{#if currentTrack && !snapshot.error}<button type="button" onclick={onRefresh}>{$t('sidebar.retry')}</button>{/if}</div>
   {/if}
 </section>
 
-<style>.recommendations { flex:1; width:100%; min-width:0; min-height:0; height:100%; display:flex; flex-direction:column; gap:10px; color:rgba(255,255,255,.92); }header { display:flex; align-items:center; gap:8px; padding:2px 8px 0; flex:none; }.heading { display:flex; align-items:center; gap:8px; font-size:13px; font-weight:600; }.heading svg { width:13px; height:13px; }button { font:inherit; color:inherit; border:0; cursor:pointer; }button:disabled { opacity:.45; cursor:default; }button:focus-visible { outline:2px solid var(--sideb-highlight,#d06c70); outline-offset:2px; border-radius:6px; }.refresh { margin-left:auto; display:flex; align-items:center; gap:5px; background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.12); border-radius:999px; padding:4px 10px; font-size:11.5px; font-weight:500; color:rgba(255,255,255,.8); }.refresh svg { width:12px; height:12px; }.refresh:not(:disabled):hover { background:rgba(255,255,255,.14); color:#fff; }.spinning { animation:spin 1s linear infinite; }.error { display:flex; gap:8px; align-items:center; padding:6px 8px; color:rgba(255,255,255,.7); font-size:12px; }.error button, .empty button { padding:0; background:transparent; color:rgba(255,255,255,.88); font-size:12px; font-weight:600; }.error button:hover, .empty button:hover { color:#fff; }.shelves { min-height:0; min-width:0; flex:1; overflow-y:auto; overflow-x:hidden; padding:0 4px 24px; overscroll-behavior:contain; scrollbar-width:thin; scrollbar-color:rgba(255,255,255,.25) transparent; }.shelf+.shelf { margin-top:22px; }.shelf-heading { display:flex; align-items:center; gap:8px; margin-bottom:10px; }h2 { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin:0; font-size:14.5px; font-weight:700; color:rgba(255,255,255,.95); }.browse-link { flex:none; margin-left:auto; display:flex; gap:3px; align-items:center; background:transparent; padding:0; color:rgba(255,255,255,.75); font-size:11.5px; font-weight:500; }.browse-link:hover { color:#fff; }.browse-link span { font-size:18px; line-height:14px; }.song-columns { display:flex; align-items:flex-start; gap:14px; min-width:0; overflow-x:auto; padding:2px 2px 6px; scrollbar-width:thin; scrollbar-color:rgba(255,255,255,.2) transparent; }.song-column { width:270px; flex:none; display:flex; flex-direction:column; gap:6px; }.artist-shelf h2 { margin-bottom:12px; }.artist-cards { display:flex; gap:16px; overflow-x:auto; padding:2px 2px 6px; scrollbar-width:thin; scrollbar-color:rgba(255,255,255,.2) transparent; }.artist-card { flex:none; width:86px; padding:0; display:flex; flex-direction:column; align-items:center; gap:7px; text-align:center; background:transparent; }.empty { flex:1; min-height:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; text-align:center; color:rgba(255,255,255,.6); font-size:14px; }.empty svg { width:36px; height:36px; color:rgba(255,255,255,.25); }.empty p { margin:0; }.skeleton-shelf+.skeleton-shelf { margin-top:20px; }.skeleton-heading { display:block; width:140px; height:16px; border-radius:4px; background:rgba(255,255,255,.12); margin-bottom:10px; }.skeleton-columns { display:flex; gap:12px; }.skeleton-row { display:flex; gap:10px; align-items:center; height:44px; }.skeleton-art { width:44px; height:44px; border-radius:6px; background:rgba(255,255,255,.1); }.skeleton-lines { display:flex; flex-direction:column; gap:4px; }.skeleton-lines i { width:120px; height:12px; border-radius:3px; background:rgba(255,255,255,.12); }.skeleton-lines i+i { width:80px; height:10px; background:rgba(255,255,255,.08); }
+<style>.recommendations { flex:1; width:100%; min-width:0; min-height:0; height:100%; display:flex; flex-direction:column; gap:10px; color:rgba(255,255,255,.92); }header { display:flex; align-items:center; gap:8px; padding:2px 8px 0; flex:none; }.heading { display:flex; align-items:center; gap:8px; font-size:13px; font-weight:600; }.heading svg { width:13px; height:13px; }button { font:inherit; color:inherit; border:0; cursor:pointer; }button:disabled { opacity:.45; cursor:default; }button:focus-visible { outline:2px solid var(--sideb-highlight,#d06c70); outline-offset:2px; border-radius:6px; }.refresh { margin-left:auto; display:flex; align-items:center; gap:5px; background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.12); border-radius:999px; padding:4px 10px; font-size:11.5px; font-weight:500; color:rgba(255,255,255,.8); }.refresh svg { width:12px; height:12px; }.refresh:not(:disabled):hover { background:rgba(255,255,255,.14); color:#fff; }.spinning { animation:spin 1s linear infinite; }.error { display:flex; gap:8px; align-items:center; padding:6px 8px; color:rgba(255,255,255,.7); font-size:12px; }.error button, .empty button { padding:0; background:transparent; color:rgba(255,255,255,.88); font-size:12px; font-weight:600; }.error button:hover, .empty button:hover { color:#fff; }.shelves { min-height:0; min-width:0; flex:1; overflow-y:auto; overflow-x:hidden; padding:0 4px 24px; overscroll-behavior:contain; scrollbar-width:thin; scrollbar-color:rgba(255,255,255,.25) transparent; }.shelf-heading { display:flex; align-items:center; gap:8px; margin-bottom:10px; }h2 { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin:0; font-size:14.5px; font-weight:700; color:rgba(255,255,255,.95); }.browse-link { flex:none; margin-left:auto; display:flex; gap:3px; align-items:center; background:transparent; padding:0; color:rgba(255,255,255,.75); font-size:11.5px; font-weight:500; }.browse-link:hover { color:#fff; }.browse-link span { font-size:18px; line-height:14px; }.song-column { width:270px; flex:none; display:flex; flex-direction:column; gap:6px; }.artist-card { flex:none; width:86px; padding:0; display:flex; flex-direction:column; align-items:center; gap:7px; text-align:center; background:transparent; }.empty { flex:1; min-height:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; text-align:center; color:rgba(255,255,255,.6); font-size:14px; }.empty svg { width:36px; height:36px; color:rgba(255,255,255,.25); }.empty p { margin:0; }.skeleton-shelf+.skeleton-shelf { margin-top:20px; }.skeleton-heading { display:block; width:140px; height:16px; border-radius:4px; background:rgba(255,255,255,.12); margin-bottom:10px; }.skeleton-columns { display:flex; gap:12px; }.skeleton-row { display:flex; gap:10px; align-items:center; height:44px; }.skeleton-art { width:44px; height:44px; border-radius:6px; background:rgba(255,255,255,.1); }.skeleton-lines { display:flex; flex-direction:column; gap:4px; }.skeleton-lines i { width:120px; height:12px; border-radius:3px; background:rgba(255,255,255,.12); }.skeleton-lines i+i { width:80px; height:10px; background:rgba(255,255,255,.08); }
+  .virtual-shelves{overflow:hidden;padding-bottom:2px}.shelf-content{height:168px;min-width:0}.shelf-content.artists{height:118px}.virtual-shelves .shelf-heading{height:22px;margin-bottom:6px}.virtual-shelves .shelf{height:100%;box-sizing:border-box;padding-bottom:22px}.virtual-shelves .song-column{height:168px}.virtual-shelves .artist-card{height:118px}.virtual-shelves .artist-card :global(.art){width:76px;height:76px;margin-inline:auto}.virtual-shelves .artist-card :global(h3){font-size:11.5px;line-height:14px;font-weight:500}.virtual-shelves .artist-card :global(.copy){padding-top:7px}.virtual-shelves .artist-card :global(.credits),.virtual-shelves .artist-card :global(p){display:none}
   @keyframes spin {to { transform:rotate(360deg); } }
   @media (prefers-reduced-motion:reduce) {.spinning { animation:none; } }
 </style>

@@ -17,15 +17,18 @@
   function reject(key: string, url: string) { failures = rejectArtworkAttempt(failures, requestKey, candidates, key, url); }
   function measure() { if (!foreground || !root) return; const width = root.getBoundingClientRect().width; if(width>0)imageSize=Math.ceil(width/32)*32; pixelRatio=window.devicePixelRatio || 1; }
   $effect(() => { if(foreground)measure(); });
-  onMount(() => {
+  let mounted = $state(false);
+  onMount(() => { mounted = true; });
+  $effect(() => {
+    if (!mounted || !foreground) { awake = false; visible = false; return; }
     const sync = () => awake = !document.hidden && document.hasFocus(); sync();
-    const observer = new IntersectionObserver(([entry]) => visible = entry.isIntersecting);
+    const observer = new IntersectionObserver(([entry]) => { if (foreground) visible = entry.isIntersecting; });
     const resize = new ResizeObserver(measure); if(root)resize.observe(root); measure();
     if (root) observer.observe(root); document.addEventListener('visibilitychange', sync); window.addEventListener('focus', sync); window.addEventListener('blur', sync);
     return () => { observer.disconnect(); resize.disconnect(); document.removeEventListener('visibilitychange', sync); window.removeEventListener('focus', sync); window.removeEventListener('blur', sync); };
   });
 </script>
-{#snippet imageAttempt(key: string, url: string)}<img src={url} alt="" loading="lazy" decoding="async" onerror={() => reject(key, url)} />{/snippet}
+{#snippet imageAttempt(key: string, url: string)}<img src={url} alt="" loading="lazy" decoding="async" onerror={event => { if (event.currentTarget.parentElement === root) reject(key, event.currentTarget.getAttribute('src') ?? url); }} />{/snippet}
 <div class="artwork" class:round class:song class:active class:pending bind:this={root}>
   {#if selectedUrl}{#key `${requestKey}\u0000${selectedUrl}`}{@render imageAttempt(requestKey, selectedUrl)}{/key}{:else}<span class="fallback" aria-hidden="true">{round ? '♙' : '♫'}</span>{/if}
   {#if active}<span class="bars" class:moving={playing && visible && awake && foreground} class:paused={!playing} aria-label={playing ? $t('windows.ui.playingFromThisSource') : $t('windows.ui.sourcePaused')}>{#each [0,1,2,3,4] as bar}<i style={`--bar:${bar}`} ></i>{/each}</span>{/if}

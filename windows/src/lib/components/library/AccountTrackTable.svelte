@@ -3,7 +3,7 @@
   import TrackList from '../common/TrackList.svelte';
   type MenuEvent = MouseEvent | KeyboardEvent;
   interface Props {
-    source?: { kind: string; id: string }; indexOffset?: number; occurrenceIndices?: number[]; occurrenceKeys?: string[]; detail?: boolean;
+    active?: boolean; source?: { kind: string; id: string }; indexOffset?: number; occurrenceIndices?: number[]; occurrenceKeys?: string[]; detail?: boolean;
     items: AccountSongDto[]; currentTrackId: string | null; isPlaying: boolean;
     onPlay: (index: number) => void; onOpenArtist?: (id: string) => void;
     onOpenAlbum?: (id: string) => void; hideAlbumColumn?: boolean; numbered?: boolean;

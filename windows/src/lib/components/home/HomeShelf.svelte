@@ -16,8 +16,10 @@
   const start=$derived(Math.max(0,Math.floor(left/stride)-1));const end=$derived(Math.min(columns,Math.ceil((left+width)/stride)+1));
   const visible=$derived(section.items.slice(start*rows,end*rows));
   function sync(){if(!track||!active)return;width=track.clientWidth;left=track.scrollLeft;narrow=(track.closest('.home')?.getBoundingClientRect().width??width)<760;onScroll?.(left);}
-  $effect(()=>{if(active)requestAnimationFrame(sync);});
-  onMount(()=>{track.scrollLeft=initialScroll;sync();const observer=new ResizeObserver(sync);observer.observe(track);return()=>observer.disconnect();});
+  $effect(()=>{if(active){const frame=requestAnimationFrame(sync);return()=>cancelAnimationFrame(frame);}});
+  let mounted=$state(false);
+  onMount(()=>{track.scrollLeft=initialScroll;mounted=true;});
+  $effect(()=>{if(!mounted||!active)return;sync();const observer=new ResizeObserver(sync);observer.observe(track);return()=>observer.disconnect();});
 </script>
 <section class="shelf" aria-label={providerHeading(section.title, $language)}>
   <header><h2>{providerHeading(section.title, $language)}</h2>{#if section.moreBrowseId&&!section.moreBrowseId.startsWith('FE')&&onOpenCatalog}<ControlButton emphasis="quiet" size="utility"  type="button" onclick={()=>onOpenCatalog?.(section.moreBrowseId!,section.moreParams,section.title)}>{$t('detail.viewAll')}</ControlButton>{/if}</header>

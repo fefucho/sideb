@@ -1,5 +1,11 @@
 # Planes Windows
 
+- [PLAN-019: Traspaso GitHub → PC Windows](PLAN-019-windows-github-handoff.md) — empezar aquí: código integrado sobre1.2.7/Inter, comandos para bajar/compilar y checklist nativo priorizado, con mensaje listo para el agente de Windows. FIX-260; no es una nueva release.
+
+- [PLAN-018: Plan integral para llevar la experiencia actual a Windows](PLAN-018-windows-current-parity-roadmap.md) — ejecución2026-10-26 con subagentes: FIX-248…255 implementan búsqueda actual, reloj/Original, ciclo motion, retención/Biblioteca, Relacionado y correcciones de teclado/fullscreen. Suite final479aprobadas/1omitida, check0/0/build frontend; Rust+bridge284aprobadas/10omitidas en Mac. QA sintética28evidencias/errors[] con geometría real; verify/EXE/WebView2/audio Windows pendientes. Indicadores/versiones siguen como entrega común posterior; PARIDAD conserva aceptación y límites.
+
+- [PLAN-017: Búsqueda del proveedor](PLAN-017-provider-search.md) — página y sugerencias autenticadas, filtros/acciones/paginación remotos; validación nativa Windows pendiente.
+
 - [PLAN-016: Duplicación de karaoke](PLAN-016-karaoke-fragment-rendering.md) — FIX-242: base/relleno se mueven juntos; ancla por palabra/renglón y límites de vecinos como Mac. FIX-243 recupera halo izquierdo del blur por contención CSS;9casos karaoke/6blur aprobados. Entrega build-0020 x64 Release compiled/fuentes estables/check0/0/987pruebas aprobadas/20live ignoradas/cuatro hashes revalidados, con Inter y ambos fixes. Aceptación WebView2 pendiente;0019 previa al ajuste conservada.
 
 - [PLAN-015: Sidebar oculta y topnav](PLAN-015-sidebar-hidden-topnav.md) — planificado por pedido del usuario, sin implementación. Opción al contraer: iconos o cero ancho; topnav Mac, búsqueda expandible, cuenta/Settings accesibles y estado persistido. Contratos, archivos, etapas y matriz funcional/visual/nativa definidos. PAR-007 se reabre sólo para este modo opcional; no está en build-0018.

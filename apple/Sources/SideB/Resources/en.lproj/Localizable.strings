@@ -1327,6 +1327,20 @@ History: %@</string>
 	<string>Play %@</string>
 	<key>search.play_now</key>
 	<string>Play now</string>
+	<key>search.provider.hide_related</key>
+	<string>Show less</string>
+	<key>search.provider.load_more</key>
+	<string>Load more results</string>
+	<key>search.provider.other_results</key>
+	<string>Other results in this group</string>
+	<key>search.provider.related</key>
+	<string>Related results</string>
+	<key>search.provider.remove_history</key>
+	<string>Remove from YouTube Music history</string>
+	<key>search.provider.show_all</key>
+	<string>Show all</string>
+	<key>search.provider.show_related</key>
+	<string>Show all %@ related results</string>
 	<key>search.recents.clear</key>
 	<string>Clear Side B recents</string>
 	<key>search.recents.remove</key>

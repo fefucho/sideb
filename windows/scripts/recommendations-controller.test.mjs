@@ -127,3 +127,11 @@ test('failed explicit refresh retains previously loaded usable shelves', async (
   controller.setTrack(track('current')); await controller.load(); failed = true; await controller.load(true);
   assert.equal(snapshot().data.similarSongs[0].videoId, 'retained'); assert.match(snapshot().error, /reintentar/);
 });
+
+test('suspend is idempotent, preserves a valid context and ignores cancelled refresh completion',async()=>{
+ const refresh=deferred();let waiting=false;const {controller,calls,snapshot}=setup(command=>command==='get_related_tracks'?(waiting?refresh.promise:[song('retained')]):emptyHandler(command));
+ controller.setTrack(track('current'));await controller.load();const key=snapshot().data.contextKey;waiting=true;const pending=controller.load(true);controller.suspend();const count=calls.length;controller.suspend();await controller.load();assert.equal(calls.length,count);assert.equal(snapshot().data.contextKey,key);assert.equal(snapshot().loading,false);refresh.resolve([song('cancelled')]);await pending;assert.equal(snapshot().data.similarSongs[0].videoId,'retained');controller.reset();controller.setTrack(track('current'));waiting=false;await controller.load();assert.notEqual(snapshot().data.contextKey,key,'account reset changes context even for the same video');
+});
+test('suspended initial request retries on reentry and old A→B→A or metadata replies cannot replace the new owner',async()=>{
+ const pending=[];const {controller,snapshot}=setup(command=>{if(command==='get_related_tracks'){const result=deferred();pending.push(result);return result.promise;}return emptyHandler(command);});controller.setTrack(track('A'));const first=controller.load();controller.suspend();controller.suspend();const resumed=controller.load();assert.notEqual(first,resumed);controller.setTrack(track('B'));const second=controller.load();controller.setTrack(track('A',{albumId:'new-album'}));const latest=controller.load();pending[3].resolve([song('latest')]);await latest;pending[0].resolve([song('stale-original')]);pending[1].resolve([song('stale-resumed')]);pending[2].resolve([song('stale-B')]);await Promise.all([first,resumed,second]);assert.equal(snapshot().data.similarSongs[0].videoId,'latest');assert.equal(snapshot().data.albumBrowseId,'new-album');assert.equal(snapshot().data.requestIdentity,JSON.stringify(['A','artist','new-album']));
+});

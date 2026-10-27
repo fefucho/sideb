@@ -3,7 +3,7 @@
   import MenuIcon from '$lib/components/menu/MenuIcon.svelte';
   import ControlFilter from '$lib/components/common/ControlFilter.svelte';
 
-  import {tick} from 'svelte';
+  import {tick,untrack} from 'svelte';
   import type {BrowseCardDto} from '$lib/types';
   import type {ExploreData} from '$lib/explore/controller';
   import {tabs,genres,moods,selectedTab,countryName,type ExploreRoute,type ExploreCategory} from '$lib/explore/catalog';
@@ -11,9 +11,19 @@
   import VirtualCatalog from './VirtualCatalog.svelte';
   import MediaCard from '../common/MediaCard.svelte';
   interface Props {data:ExploreData;onNavigate:(route:ExploreRoute)=>void;onRefresh:()=>void;onOpenCard:(card:BrowseCardDto)=>void;onScrollTop?:(offset:number)=>void;currentTrackId?:string|null;isPlaying?:boolean;active?:boolean}
-  let {data,onNavigate,onRefresh,onOpenCard,onScrollTop,active=true}:Props=$props();
+  let {data:liveData,onNavigate,onRefresh,onOpenCard,onScrollTop,active=true}:Props=$props();
+  let rendered=$state(untrack(()=>liveData));
+  $effect(()=>{const next=liveData;if(active)rendered=next;});
+  const data=$derived(rendered);
   let scroll:HTMLDivElement;
-  $effect(()=>{const route=data.route;const offset=data.scrollTop;void tick().then(()=>{if(scroll&&data.route===route)scroll.scrollTop=offset;});});
+  let lastSnapshot:ExploreData|null=null, savedOffset=0, wasActive=false;
+  $effect.pre(()=>{if(wasActive&&!active&&scroll)savedOffset=scroll.scrollTop;wasActive=active;});
+  $effect(()=>{
+    if(!active)return;
+    const snapshot=data,offset=lastSnapshot===snapshot?savedOffset:snapshot.scrollTop;
+    lastSnapshot=snapshot;
+    void tick().then(()=>{if(active&&scroll&&data===snapshot)scroll.scrollTop=offset;});
+  });
   const tab=$derived(selectedTab(data.route));
   const title=$derived(data.route.startsWith('category:')?$t(`explore.category.${data.route.slice(9)}.title`):data.route.startsWith('country:')?$t('explore.route.chart_country',[countryName(data.route.slice(8),$language)]):$t(`explore.route.${data.route}`));
   function open(card:BrowseCardDto){if(active)onOpenCard(card);}

@@ -33,7 +33,8 @@
     let changing = false;
     for (const word of words) {
       const progress = Math.min(1, Math.max(0, (ms - word.start) / (word.end - word.start)));
-      const active = progress > 0 && progress < 1;
+      // An exact start boundary must wake the first sweep even at zero fill.
+      const active = ms >= word.start && ms < word.end;
       if (word.progress === progress && !active) continue;
       const animated = active && motion && !reduced;
       const duration = word.end - word.start;

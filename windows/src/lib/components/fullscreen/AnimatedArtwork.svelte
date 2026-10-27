@@ -14,6 +14,7 @@
   let runtime = $state(initialAnimatedArtworkRuntimeState);
   let source = $state<{ url: string; id: string; asset: AnimatedArtworkAsset } | null>(null);
   let ready = $state(false);
+  let hasFrame = $state(false);
   let frameCancel: (() => void) | undefined;
   const albumKey = $derived(`${session}\u0000${animatedArtworkAlbumKey(track)}`);
   const preferenceEnabled = $derived(enabled && $appearance.animatedArtwork);
@@ -22,7 +23,7 @@
   const canPlay = $derived(isPlaying && !flipped && !reduced && visible && nativeVisible && resourceAllowed);
 
   function detachVideo() {
-    frameCancel?.(); frameCancel = undefined; ready = false;
+    frameCancel?.(); frameCancel = undefined; ready = false; hasFrame = false;
     if (video) { video.pause(); video.removeAttribute('src'); video.load(); }
   }
   const controller = new AnimatedArtworkController<AnimatedArtworkRequest, AnimatedArtworkAsset>({
@@ -75,7 +76,19 @@
     const current = source; const element = video; const playing = canPlay;
     if (!current || !element) return;
     if (!playing) { element.pause(); return; }
-    void element.play().catch(() => { if (source === current && video === element) void controller.fail().catch(() => {}); });
+    // pause()/load() can reject an older play promise after this source resumes.
+    // Only the currently eligible attempt may classify that rejection as failure.
+    let interrupted = false;
+    void element.play().catch(() => {
+      if (!interrupted && canPlay && source === current && video === element) void controller.fail().catch(() => {});
+    });
+    return () => { interrupted = true; };
+  });
+
+  $effect(() => {
+    // Match the Mac presentation contract: retain a late first frame during
+    // pause/flip/hidden, but begin its fade only when playback becomes eligible.
+    if (source && canPlay && hasFrame) ready = true;
   });
 
   // One cancellable startup deadline, including a player that never emits loadeddata.
@@ -112,7 +125,7 @@
     };
     const reveal = () => {
       if (!isCurrent()) return;
-      ready = true;
+      hasFrame = true;
     };
     if (frameVideo.requestVideoFrameCallback) callbackId = frameVideo.requestVideoFrameCallback(reveal);
     else raf = requestAnimationFrame(() => {

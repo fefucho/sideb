@@ -4,6 +4,8 @@ Herramientas compartidas o fixes para ambas plataformas. [Formato](../.agents/WO
 
 | Plan | Estado |
 |---|---|
+| [Presentación de búsqueda adaptada al ancho](PLAN-016-search-presentation.md) | Principal y relacionadas implementado para canción, artista y álbum en Mac/Windows (FIX-257); contrato por ocurrencia y componentes adaptables. Mac0159/990 pruebas, Windows453+check/build y capturas AppKit revisadas; aceptación con cuenta y Windows nativo pendiente |
+| [Búsqueda con contexto de YouTube Music](PLAN-015-ytmusic-native-search.md) | FIX-256/PAR-042: implementado; Mac0158 compilada/984pruebas ejecutadas, Rust/bridge y450frontend Windows aprobadas. Contrato ordenado, sugerencias/chips/paginación/acciones con sesión; cuenta real y Windows nativo pendientes |
 | [Release 1.2.7 — Lyrics Update](RELEASE-1.2.7.md) | Publicada Latest1.2.7/build20: letras/carátulas compartidas, Inter y FIX-241/242/243 Windows; CI Mac959/Windows987 aprobadas, fuentes estables y cinco descargas públicas verificadas. FIX-244; aceptación física pendiente |
 | [Indicadores de explícito y censurado](PLAN-013-explicit-content-indicators.md) | Plan propuesto, sin implementar: conservar metadata por entidad, distinguir explicit/clean/unknown y mostrar indicadores en artista/catálogo, búsqueda, álbum, filas y playback. PAR-040 |
 | [Preferencia de versiones de audio](PLAN-014-content-version-preference.md) | Plan propuesto, sin implementar: preferir explícitas por defecto, opción censuradas/catálogo y respetar álbumes/IDs elegidos manualmente. Búsqueda y selecciones automáticas con equivalencias verificadas. PAR-041 |

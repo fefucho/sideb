@@ -1,4 +1,11 @@
 import type {BrowseCardDto,SearchResultsDto,SongDto} from '../types';
+/** Safe fallback only for a card that has no matched occurrence payload. */
+export function songFromSearchCard(card:BrowseCardDto|null):SongDto|null {
+ if(!card||!['song','video'].includes(card.kind))return null;
+ return {videoId:card.id,title:card.title,artists:card.artists??card.subtitle??'',artistRuns:card.artistRuns,
+  artistId:card.artistId??null,album:card.album??null,albumId:card.albumId??null,
+  thumbnail:card.thumbnail,duration:card.duration,isVideo:card.kind==='video'};
+}
 /** Resolve original DTO instead of losing occurrence/library tokens by rebuilding a card. */
 export function resolveSearchSong(card:BrowseCardDto,results:Pick<SearchResultsDto,'songs'|'topSongs'>|null|undefined,videos:SongDto[]=[]):SongDto|null {
  if(!['song','video'].includes(card.kind))return null;

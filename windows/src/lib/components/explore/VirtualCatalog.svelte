@@ -12,7 +12,10 @@
   const end=$derived(Math.min(count,horizontal?Math.ceil((left+width)/180)+1:Math.ceil((top+viewport)/rowHeight)+1));
   const visible=$derived(items.slice(horizontal?start:start*columns,horizontal?end:end*columns));
   $effect(()=>{items;horizontal;active;if(active){const frame=requestAnimationFrame(()=>measure());return()=>cancelAnimationFrame(frame);}});
-  onMount(()=>{
+  let mounted=$state(false);
+  onMount(()=>{mounted=true;});
+  $effect(()=>{
+    if(!mounted||!active)return;
     const root=host.closest<HTMLElement>(scrollSelector);
     const sync=()=>{if(!active)return;const rect=host.getBoundingClientRect();const boundary=root?.getBoundingClientRect();width=host.clientWidth||800;top=Math.max(0,(boundary?.top??0)-rect.top);viewport=root?.clientHeight??window.innerHeight;left=host.scrollLeft;};
     measure=sync;sync();root?.addEventListener('scroll',sync,{passive:true});host.addEventListener('scroll',sync,{passive:true});window.addEventListener('resize',sync);
