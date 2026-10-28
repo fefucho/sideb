@@ -1,7 +1,7 @@
 <script lang="ts">
   import { t , language, resolveMessage } from '$lib/i18n';
   import ReleaseNotes from './ReleaseNotes.svelte';
-  import { onMount, tick } from 'svelte';
+  import { tick } from 'svelte';
   import type { UpdaterController, UpdaterSnapshot } from '$lib/updater/controller';
 
   interface Props {
@@ -17,7 +17,8 @@
     isModalOpen: false,
   });
   let closeButton: HTMLButtonElement | undefined = $state();
-  let previousFocus: HTMLElement | null = null;
+  let dialog: HTMLDivElement | undefined = $state();
+  const modalOpen = $derived(snapshot.isModalOpen);
 
   $effect(() => {
     snapshot = controller.getSnapshot();
@@ -27,45 +28,48 @@
     return unsubscribe;
   });
 
-  onMount(() => {
-    previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    closeButton?.focus();
+  // This component stays mounted for the lifetime of the shell. Only an open
+  // updater owns Escape/Tab and focus; a closed updater must leave other dialogs alone.
+  $effect(() => {
+    if (!modalOpen) return;
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    let current = true;
+    void tick().then(() => { if (current) (closeButton ?? dialog)?.focus(); });
 
     const handleKeydown = (event: KeyboardEvent) => {
-      if (snapshot.state.type === 'installing') return;
-
+      if (!snapshot.isModalOpen || event.defaultPrevented || event.isComposing) return;
       if (event.key === 'Escape') {
+        event.preventDefault();
         event.stopPropagation();
-        controller.closeModal();
+        if (snapshot.state.type !== 'installing') controller.closeModal();
+        return;
       }
-      if (event.key === 'Tab') {
-        const focusable = Array.from(
-          document.querySelectorAll<HTMLElement>('[role=dialog] button:not(:disabled)')
-        );
-        if (focusable.length === 0) {
-          event.preventDefault();
-          return;
-        }
-        if (focusable.length === 1) {
-          event.preventDefault();
-          focusable[0].focus();
-          return;
-        }
-        if (event.shiftKey && document.activeElement === focusable[0]) {
-          event.preventDefault();
-          focusable.at(-1)?.focus();
-        } else if (!event.shiftKey && document.activeElement === focusable.at(-1)) {
-          event.preventDefault();
-          focusable[0]?.focus();
-        }
+      if (event.key !== 'Tab' || !dialog) return;
+      const focusable = [...dialog.querySelectorAll<HTMLElement>(
+        'button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])'
+      )].filter(element => !element.closest('[hidden], [inert]') && getComputedStyle(element).display !== 'none');
+      const first = focusable[0], last = focusable.at(-1);
+      if (!first || !last) {
+        event.preventDefault(); dialog.focus();
+      } else if (event.shiftKey && (document.activeElement === first || !dialog.contains(document.activeElement))) {
+        event.preventDefault(); last.focus();
+      } else if (!event.shiftKey && (document.activeElement === last || !dialog.contains(document.activeElement))) {
+        event.preventDefault(); first.focus();
       }
     };
-
     document.addEventListener('keydown', handleKeydown);
     return () => {
+      current = false;
       document.removeEventListener('keydown', handleKeydown);
-      void tick().then(() => previousFocus?.focus());
+      void tick().then(() => { if (!snapshot.isModalOpen && previousFocus?.isConnected) previousFocus.focus(); });
     };
+  });
+
+  $effect(() => {
+    if (!modalOpen || snapshot.state.type !== 'installing') return;
+    void tick().then(() => {
+      if (snapshot.isModalOpen && snapshot.state.type === 'installing' && !dialog?.contains(document.activeElement)) dialog?.focus();
+    });
   });
 
   function handleScrimClick(event: MouseEvent) {
@@ -92,7 +96,7 @@
 
 {#if snapshot.isModalOpen}
   <div class="scrim" role="presentation" onclick={handleScrimClick}>
-    <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="updater-title">
+    <div class="dialog" bind:this={dialog} tabindex="-1" role="dialog" aria-modal="true" aria-labelledby="updater-title">
       <!-- HEADER -->
       <div class="header">
         <div class="icon-badge" class:accent={snapshot.state.type === 'available'} class:success={snapshot.state.type === 'upToDate'}>
@@ -437,7 +441,8 @@
   }
 
   .percentage {
-    font-family: monospace;
+    font-family: inherit;
+    font-variant-numeric: tabular-nums;
     color: #d06c70;
   }
 

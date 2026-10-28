@@ -2,6 +2,7 @@
   const presentations = new Map<string,string>();
 </script>
 <script lang="ts">
+  import HorizontalNavigation from '../common/HorizontalNavigation.svelte';
   import ControlButton from '$lib/components/common/ControlButton.svelte';
 
   import { untrack } from 'svelte';
@@ -87,11 +88,13 @@
                     <ControlButton emphasis="quiet" size="utility"  type="button" class="see-more" onclick={() => onOpenCatalog(section.moreBrowseId!, section.moreParams, section.title)}>{$t('detail.viewAll')} <span aria-hidden="true">›</span></ControlButton>
                   {/if}
                 </div>
-                <div class="cards">
+                <HorizontalNavigation label={providerHeading(section.title,$language)} revision={album.browseId} center="90px">
+                <div class="cards" data-horizontal-scroll>
                   {#each section.items as card, cardIndex (`${card.kind}-${card.id}-${cardIndex}`)}
                     <div class="card"><MediaCard {card} onOpen={()=>openCard(card)} onPlay={()=>onPlaySong?.(card)} {onOpenArtist} {onOpenAlbum} /></div>
                   {/each}
                 </div>
+                </HorizontalNavigation>
               </section>
             {/if}
           {/each}

@@ -29,23 +29,26 @@ struct PlayerBarView: View {
                 }
 
                 // MARK: - 2. Fila Principal de Controles
-                HStack(spacing: 14) {
+                HStack(spacing: 0) {
                     // (a) Controles de Transporte (100% sin reborde)
-                    transportControlsSection
+                    transportControlsSection(isCompact: isCompact)
+                        .fixedSize()
+                        .padding(.trailing, 14)
 
-                    Divider()
-                        .frame(height: 22)
-                        .opacity(0.18)
+                    Color.clear
+                        .frame(width: 15, height: 22)
+                        .accessibilityHidden(true)
 
                     // (b) Información de la Pista + Corazón para Likear + Opciones
                     trackInfoSection(isCompact: isCompact)
 
-                    Spacer(minLength: 12)
+                    Color.clear.frame(width: 17, height: 22).accessibilityHidden(true)
 
                     // (c) Atajos (Letras y Cola), AirPlay, Volumen Adaptativo y Flecha Fullscreen
-                    rightControlsSection
+                    rightControlsSection(isCompact: isCompact)
+                        .fixedSize()
                 }
-                .padding(.horizontal, 20)
+                .padding(.horizontal, isCompact ? 16 : 20)
                 .padding(.bottom, 2)
             }
             .frame(width: geometry.size.width, height: geometry.size.height)
@@ -57,8 +60,8 @@ struct PlayerBarView: View {
     }
 
     // MARK: - 2. Controles de Transporte (Izquierda - Sin rebordes, botones más amplios y proporcionados)
-    private var transportControlsSection: some View {
-        HStack(spacing: 10) {
+    private func transportControlsSection(isCompact: Bool) -> some View {
+        HStack(spacing: isCompact ? 4 : 10) {
             // Shuffle
             Button {
                 viewModel.queueManager.toggleShuffle()
@@ -66,7 +69,7 @@ struct PlayerBarView: View {
                 Image(systemName: "shuffle")
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(viewModel.queueManager.isShuffle ? Color.sidebAccentHighlight : Color.white.opacity(0.60))
-                    .frame(width: 32, height: 32)
+                    .frame(width: isCompact ? 24 : 32, height: 32)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -84,7 +87,7 @@ struct PlayerBarView: View {
                 Image(systemName: "backward.fill")
                     .font(.system(size: 16))
                     .foregroundStyle(viewModel.currentTrack == nil ? Color.white.opacity(0.25) : Color.white.opacity(0.85))
-                    .frame(width: 32, height: 32)
+                    .frame(width: isCompact ? 24 : 32, height: 32)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -124,7 +127,7 @@ struct PlayerBarView: View {
                         }
                     }
                 }
-                .frame(width: 40, height: 40)
+                .frame(width: isCompact ? 32 : 40, height: 40)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -139,7 +142,7 @@ struct PlayerBarView: View {
                 Image(systemName: "forward.fill")
                     .font(.system(size: 16))
                     .foregroundStyle(viewModel.queueManager.hasNext ? Color.white.opacity(0.85) : Color.white.opacity(0.25))
-                    .frame(width: 32, height: 32)
+                    .frame(width: isCompact ? 24 : 32, height: 32)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -154,7 +157,7 @@ struct PlayerBarView: View {
                 Image(systemName: "repeat")
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(viewModel.queueManager.isRepeat ? Color.sidebAccentHighlight : Color.white.opacity(0.60))
-                    .frame(width: 32, height: 32)
+                    .frame(width: isCompact ? 24 : 32, height: 32)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -163,7 +166,7 @@ struct PlayerBarView: View {
         }
     }
 
-    // MARK: - 3. Track Info (Centro: Carátula 46x46, Título + Corazón, Subtítulo Artista • Álbum y Menú ...)
+    // MARK: - 3. Portada, metadata flexible y acciones de la pista
     private func trackInfoSection(isCompact: Bool) -> some View {
         let artworkSize: CGFloat = isCompact ? 40 : 46
         return HStack(spacing: isCompact ? 8 : 12) {
@@ -189,117 +192,130 @@ struct PlayerBarView: View {
                 fallbackArtwork(size: artworkSize)
             }
 
-            // Título con Corazón y Subtítulo Artista • Álbum (sin subrayado)
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 7) {
-                    Group {
-                        if let track = viewModel.currentTrack {
-                            FeaturedTrackTitle(track:track,font:.system(size:14,weight:.semibold),color:.primary) { id,name in navigateToArtist(track:track,artistId:id,name:name) }
-                        } else { ScrollingTrackTitle(title:L10n.text("player.noPlayback")) }
-                    }
+            PlayerBarMetadataActionLayout {
+                // Both lines share their ideal width; actions sit after the longer line.
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 7) {
+                        Group {
+                            if let track = viewModel.currentTrack {
+                                FeaturedTrackTitle(track:track,font:.system(size:14,weight:.semibold),color:.primary, scrollsOnOverflow:true) { id,name in navigateToArtist(track:track,artistId:id,name:name) }
+                            } else { Text(L10n.text("player.noPlayback")).font(.system(size:13.5,weight:.semibold)).lineLimit(1) }
+                        }
                         .frame(maxWidth: .infinity)
                         .layoutPriority(1)
 
-                    if viewModel.currentTrack != nil && (!isCompact || viewModel.errorMessage != nil) {
-                        likeButton
                     }
-                }
 
-                if let error = viewModel.errorMessage {
-                    HStack(spacing: 6) {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .font(.system(size: 10))
-                            .foregroundStyle(Color.yellow)
-
-                        Text(error)
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundStyle(Color.yellow.opacity(0.95))
-                            .lineLimit(1)
-
-                        Button {
-                            viewModel.retryPlayback()
-                        } label: {
-                            Text(L10n.text("common.retry"))
-                                .font(.system(size: 10, weight: .semibold))
-                                .foregroundStyle(Color.white)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 1.5)
-                                .background(Color.white.opacity(0.18))
-                                .clipShape(Capsule())
-                        }
-                        .buttonStyle(.plain)
-                        .help(L10n.text("player.retryPlayback"))
-                        .accessibilityLabel(L10n.text("player.retryPlayback"))
-                    }
-                } else {
-                    HStack(spacing: 6) {
-                        if let track = viewModel.currentTrack, !track.displayArtist.isEmpty {
-                            TrackArtistLinks(track: track, font: .system(size: 11.5, weight: .medium), color: .secondary, hoverColor: .primary) { id, name in
-                                navigateToArtist(track: track, artistId: id, name: name)
-                            }
-                        } else {
-                            Text(L10n.text("player.selectTrack"))
-                                .font(.system(size: 11.5, weight: .regular))
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
-                        }
-
-                        if let track = viewModel.currentTrack, let album = track.displayAlbum, !album.isEmpty {
-                            Text("•")
+                    if let error = viewModel.errorMessage {
+                        HStack(spacing: 6) {
+                            Image(systemName: "exclamationmark.triangle.fill")
                                 .font(.system(size: 10))
-                                .foregroundStyle(.secondary.opacity(0.50))
+                                .foregroundStyle(Color.yellow)
+
+                            Text(error)
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(Color.yellow.opacity(0.95))
+                                .lineLimit(1)
 
                             Button {
-                                navigateToAlbum(track: track)
+                                viewModel.retryPlayback()
                             } label: {
-                                Text(album)
-                                    .font(.system(size: 11.5, weight: .medium))
-                                    .foregroundStyle(isHoveringAlbum ? Color.primary : Color.secondary)
-                                    .lineLimit(1)
+                                Text(L10n.text("common.retry"))
+                                    .font(.system(size: 10, weight: .semibold))
+                                    .foregroundStyle(Color.white)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 1.5)
+                                    .background(Color.white.opacity(0.18))
+                                    .clipShape(Capsule())
                             }
                             .buttonStyle(.plain)
-                            .onHover { isHoveringAlbum = $0 }
-                            .help(L10n.text("player.viewAlbum", args: [album]))
-                            .accessibilityLabel(L10n.text("player.viewAlbum", args: [album]))
+                            .help(L10n.text("player.retryPlayback"))
+                            .accessibilityLabel(L10n.text("player.retryPlayback"))
                         }
+                    } else {
+                        ContentRatedMetadata(rating: viewModel.currentTrack?.contentRating ?? .unknown, fontSize: 11.5) {
+                            HStack(spacing: 6) {
+                                if let track = viewModel.currentTrack, !track.displayArtist.isEmpty {
+                                    TrackArtistLinks(track: track, font: .system(size: 11.5, weight: .medium), color: .secondary, hoverColor: .primary) { id, name in
+                                        navigateToArtist(track: track, artistId: id, name: name)
+                                    }
+                                } else {
+                                    Text(L10n.text("player.selectTrack"))
+                                        .font(.system(size: 11.5, weight: .regular))
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(1)
+                                }
 
-                        if isCompact && viewModel.currentTrack != nil {
-                            Spacer(minLength: 2)
-                            likeButton
+                                if let track = viewModel.currentTrack, let album = track.displayAlbum, !album.isEmpty {
+                                    Text("•")
+                                        .font(.system(size: 10))
+                                        .foregroundStyle(.secondary.opacity(0.50))
+
+                                    Button {
+                                        navigateToAlbum(track: track)
+                                    } label: {
+                                        Text(album)
+                                            .font(.system(size: 11.5, weight: .medium))
+                                            .foregroundStyle(isHoveringAlbum ? Color.primary : Color.secondary)
+                                            .lineLimit(1)
+                                    }
+                                    .buttonStyle(.plain)
+                                    .onHover { isHoveringAlbum = $0 }
+                                    .help(L10n.text("player.viewAlbum", args: [album]))
+                                    .accessibilityLabel(L10n.text("player.viewAlbum", args: [album]))
+                                }
+
+                            }
                         }
                     }
                 }
-            }
-            .frame(maxWidth: 340, alignment: .leading)
-            .contextMenu {
-                if let track = viewModel.currentTrack {
-                    SongMenuItems(song: track, player: viewModel, router: router, core: viewModel.rustCore, origin: .nowPlaying)
+                .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+                .contextMenu {
+                    if let track = viewModel.currentTrack {
+                        SongMenuItems(song: track, player: viewModel, router: router, core: viewModel.rustCore, origin: .nowPlaying)
+                    }
                 }
-            }
 
-            // Menú contextual de opciones "..."
-            if let track = viewModel.currentTrack {
-                Menu {
-                    SongMenuItems(song: track, player: viewModel, router: router, core: viewModel.rustCore, origin: .nowPlaying)
-                } label: {
-                    SideBEllipsisLabel()
+                HStack(spacing: 4) {
+                    likeButton.disabled(viewModel.currentTrack == nil || viewModel.rustCore?.isLoggedIn() != true)
+                    VStack(spacing: 2) {
+                        dislikeButton
+                        if let track = viewModel.currentTrack {
+                            Menu {
+                                SongMenuItems(song: track, player: viewModel, router: router, core: viewModel.rustCore, origin: .nowPlaying)
+                            } label: {
+                                Image(systemName: "ellipsis")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundStyle(Color.white.opacity(0.78))
+                                    .frame(width: 24, height: 22)
+                                    .contentShape(Rectangle())
+                            }
+                            .menuStyle(.borderlessButton)
+                            .menuIndicator(.hidden)
+                            .accessibilityLabel(L10n.text("common.moreOptions"))
+                            .frame(width: 24, height: 22)
+                        } else {
+                            Color.clear.frame(width: 24, height: 22).accessibilityHidden(true)
+                        }
+                    }
+                    .frame(width: 24, height: 46)
                 }
-                .menuStyle(.borderlessButton)
-                .menuIndicator(.hidden)
-                .accessibilityLabel(L10n.text("common.moreOptions"))
-                .frame(width: 28, height: 28)
+                .frame(width: 60, height: 46)
             }
+            .frame(minWidth: 0, maxWidth: .infinity)
         }
+        .frame(minWidth: 0, maxWidth: .infinity)
     }
 
     private var likeButton: some View {
         Button {
+            guard viewModel.rustCore?.isLoggedIn() == true else { return }
             viewModel.toggleCurrentTrackLike()
         } label: {
             Image(systemName: viewModel.isCurrentTrackLiked ? "heart.fill" : "heart")
-                .font(.system(size: 13, weight: .medium))
+                .font(.system(size: 25, weight: .medium))
                 .foregroundStyle(viewModel.isCurrentTrackLiked ? Color.sidebAccentHighlight : Color.white.opacity(0.60))
-                .frame(width: 22, height: 22)
+                .frame(width: 32, height: 44)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -307,12 +323,29 @@ struct PlayerBarView: View {
         .accessibilityLabel(L10n.text(viewModel.isCurrentTrackLiked ? "detail.track.unlike" : "detail.track.like"))
     }
 
+    private var dislikeButton: some View {
+        Button {
+            guard viewModel.rustCore?.isLoggedIn() == true, let track = viewModel.currentTrack else { return }
+            viewModel.dislikeTrack(track)
+        } label: {
+            Image(systemName: "hand.thumbsdown")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(Color.white.opacity(0.60))
+                .frame(width: 24, height: 22)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(viewModel.currentTrack == nil || viewModel.rustCore?.isLoggedIn() != true)
+        .help(L10n.text("queue.track.dislikeRemove"))
+        .accessibilityLabel(L10n.text("queue.track.dislikeRemoveAX"))
+    }
+
     // MARK: - 4. Controles Derechos (Shortcuts Letras/Cola, AirPlay, Volumen y Flecha)
-    private var rightControlsSection: some View {
+    private func rightControlsSection(isCompact: Bool) -> some View {
         let isVolumeExpanded = self.isVolumeExpanded || isDraggingVolume
         let expandedCapsuleWidth: CGFloat = 152
 
-        return HStack(spacing: 8) {
+        return HStack(spacing: isCompact ? 4 : 8) {
             // (a) Shortcut a Letras Sincronizadas
             lyricsShortcutButton
                 .opacity(isVolumeExpanded ? 0 : 1)
@@ -583,68 +616,4 @@ struct PlayerBarView: View {
     }
 
     private var volumeIcon: String { PlayerVolumePresentation.icon(volume: viewModel.volume) }
-}
-
-private struct TrackTitleWidthKey: PreferenceKey {
-    static let defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = nextValue()
-    }
-}
-
-private struct ScrollingTrackTitle: View {
-    let title: String
-
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var textWidth: CGFloat = 0
-    @State private var offset: CGFloat = 0
-    @State private var isHovered = false
-
-    private struct AnimationKey: Hashable {
-        let title: String
-        let overflow: Int
-        let isHovered: Bool
-        let reduceMotion: Bool
-    }
-
-    var body: some View {
-        GeometryReader { proxy in
-            let overflow = max(0, textWidth - proxy.size.width)
-            Text(title)
-                .font(.system(size: 13.5, weight: .semibold))
-                .foregroundStyle(.primary)
-                .fixedSize(horizontal: true, vertical: false)
-                .background {
-                    GeometryReader { measurement in
-                        Color.clear.preference(key: TrackTitleWidthKey.self, value: measurement.size.width)
-                    }
-                }
-                .offset(x: offset)
-                .frame(width: proxy.size.width, height: proxy.size.height, alignment: .leading)
-                .clipped()
-                .contentShape(Rectangle())
-                .onHover { isHovered = $0 }
-                .task(id: AnimationKey(
-                    title: title,
-                    overflow: Int(overflow.rounded()),
-                    isHovered: isHovered,
-                    reduceMotion: reduceMotion
-                )) {
-                    withTransaction(Transaction(animation: nil)) { offset = 0 }
-                    guard overflow > 1, !isHovered, !reduceMotion else { return }
-                    while !Task.isCancelled {
-                        do { try await Task.sleep(for: .seconds(1)) } catch { return }
-                        guard !Task.isCancelled else { return }
-                        let travelTime = max(3.5, Double(overflow) / 24)
-                        withAnimation(.linear(duration: travelTime)) { offset = -overflow }
-                        do { try await Task.sleep(for: .seconds(travelTime + 1.3)) } catch { return }
-                        guard !Task.isCancelled else { return }
-                        withTransaction(Transaction(animation: nil)) { offset = 0 }
-                    }
-                }
-        }
-        .frame(height: 18)
-        .onPreferenceChange(TrackTitleWidthKey.self) { textWidth = $0 }
-        .accessibilityLabel(title)
-    }
 }

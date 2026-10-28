@@ -260,7 +260,7 @@
     width: var(--sidebar-width, 253px); min-width: var(--sidebar-width, 253px); height: 100%; min-height: 0;
     box-sizing: border-box; color: #fff; background: var(--sidebar-surface);
     box-shadow: inset -1px 0 0 rgb(255 255 255 / 8%);
-    font: 13px/1.3 system-ui, "Segoe UI", sans-serif;
+    font: 13px/1.3 var(--sideb-font-family);
   }
   .sidebar-drag-region { position:absolute; inset:0 0 auto; height:var(--titlebar-height,32px); }
   .sidebar-toolbar { position:relative; display:flex; flex:none; align-items:center; padding:10px; pointer-events:none; }
@@ -276,7 +276,7 @@
   .icon { display:flex; flex:0 0 20px; align-items:center; justify-content:center; }
   .icon :global(svg) { width:18px; height:18px; }
   .row-label { overflow:hidden; text-overflow:ellipsis; }
-  .shortcut { margin-left:auto; padding:2px 5px; border-radius:4px; background:rgb(255 255 255 / 8%); color:rgb(255 255 255 / 80%); font:600 10px system-ui,"Segoe UI",sans-serif; }
+  .shortcut { margin-left:auto; padding:2px 5px; border-radius:4px; background:rgb(255 255 255 / 8%); color:rgb(255 255 255 / 80%); font:600 10px var(--sideb-font-family); }
   .collection-section { display:flex; flex:none; gap:3px; padding:8px 0; border-block:1px solid rgb(255 255 255 / 10%); }
   .collection-section .sidebar-row { flex:1; min-width:0; min-height:32px; padding:5px 3px; justify-content:center; gap:6px; font-size:12px; }
   .collection-section .icon { flex-basis:15px; }
@@ -290,7 +290,7 @@
   .collection-action:disabled { opacity:.35; cursor:default; }
   .toolbar-button:hover, .collection-action:hover:not(:disabled) { background:var(--sideb-surface-hover, #ffffff14); }
   .library-tabs { display:flex; flex:none; gap:2px; padding:8px 8px 6px; }
-  .library-tabs button { border:0; border-radius:5px; padding:5px 9px; background:transparent; color:#fff; font:500 12px system-ui,"Segoe UI",sans-serif; cursor:pointer; }
+  .library-tabs button { border:0; border-radius:5px; padding:5px 9px; background:transparent; color:#fff; font:500 12px var(--sideb-font-family); cursor:pointer; }
   .library-tabs button.selected { background:rgb(255 255 255 / 12%); color:var(--sideb-highlight, #d06c70); font-weight:600; }
   .scroll-region { flex:1; min-height:0; overflow-y:auto; overflow-x:hidden; padding:3px 0 10px; scrollbar-width:thin; scrollbar-color:#ffffff40 transparent; }
   .guest-message { margin:8px; color:rgb(255 255 255 / 80%); font-size:12px; line-height:1.4; }

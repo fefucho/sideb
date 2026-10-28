@@ -479,6 +479,11 @@ uint64_t uniffi_sideb_core_fn_method_sidebcore_get_lyrics(void*_Nonnull ptr, Rus
 uint64_t uniffi_sideb_core_fn_method_sidebcore_get_next(void*_Nonnull ptr, RustBuffer video_id, RustBuffer playlist_id
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_FN_METHOD_SIDEBCORE_GET_NEXT_CONTINUATION
+#define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_FN_METHOD_SIDEBCORE_GET_NEXT_CONTINUATION
+uint64_t uniffi_sideb_core_fn_method_sidebcore_get_next_continuation(void*_Nonnull ptr, RustBuffer token
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_FN_METHOD_SIDEBCORE_GET_PINNED_ITEMS
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_FN_METHOD_SIDEBCORE_GET_PINNED_ITEMS
 RustBuffer uniffi_sideb_core_fn_method_sidebcore_get_pinned_items(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
@@ -574,6 +579,11 @@ uint64_t uniffi_sideb_core_fn_method_sidebcore_record_playback(void*_Nonnull ptr
 uint64_t uniffi_sideb_core_fn_method_sidebcore_remove_from_playlist(void*_Nonnull ptr, RustBuffer playlist_id, RustBuffer video_id, RustBuffer set_video_id
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_FN_METHOD_SIDEBCORE_REMOVE_SEARCH_SUGGESTION
+#define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_FN_METHOD_SIDEBCORE_REMOVE_SEARCH_SUGGESTION
+uint64_t uniffi_sideb_core_fn_method_sidebcore_remove_search_suggestion(void*_Nonnull ptr, RustBuffer token
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_FN_METHOD_SIDEBCORE_REPORT_GENIUS_MISS
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_FN_METHOD_SIDEBCORE_REPORT_GENIUS_MISS
 void uniffi_sideb_core_fn_method_sidebcore_report_genius_miss(void*_Nonnull ptr, RustBuffer track, RustBuffer status, RustBuffer candidate_ids, RustCallStatus *_Nonnull out_status
@@ -587,6 +597,11 @@ uint64_t uniffi_sideb_core_fn_method_sidebcore_resolve_genius(void*_Nonnull ptr,
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_FN_METHOD_SIDEBCORE_RESOLVE_STREAM
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_FN_METHOD_SIDEBCORE_RESOLVE_STREAM
 uint64_t uniffi_sideb_core_fn_method_sidebcore_resolve_stream(void*_Nonnull ptr, RustBuffer video_id, int8_t is_upload
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_FN_METHOD_SIDEBCORE_SEARCH_ACTION
+#define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_FN_METHOD_SIDEBCORE_SEARCH_ACTION
+uint64_t uniffi_sideb_core_fn_method_sidebcore_search_action(void*_Nonnull ptr, RustBuffer video_id, RustBuffer playlist_id, RustBuffer params
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_FN_METHOD_SIDEBCORE_SEARCH_ALL
@@ -614,6 +629,16 @@ uint64_t uniffi_sideb_core_fn_method_sidebcore_search_catalog(void*_Nonnull ptr,
 uint64_t uniffi_sideb_core_fn_method_sidebcore_search_genius(void*_Nonnull ptr, RustBuffer query
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_FN_METHOD_SIDEBCORE_SEARCH_PAGE
+#define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_FN_METHOD_SIDEBCORE_SEARCH_PAGE
+uint64_t uniffi_sideb_core_fn_method_sidebcore_search_page(void*_Nonnull ptr, RustBuffer query, RustBuffer params, int8_t record_history, int8_t ignore_spelling
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_FN_METHOD_SIDEBCORE_SEARCH_PAGE_CONTINUATION
+#define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_FN_METHOD_SIDEBCORE_SEARCH_PAGE_CONTINUATION
+uint64_t uniffi_sideb_core_fn_method_sidebcore_search_page_continuation(void*_Nonnull ptr, RustBuffer continuation
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_FN_METHOD_SIDEBCORE_SEARCH_SONGS
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_FN_METHOD_SIDEBCORE_SEARCH_SONGS
 uint64_t uniffi_sideb_core_fn_method_sidebcore_search_songs(void*_Nonnull ptr, RustBuffer query, int8_t record_history
@@ -627,6 +652,11 @@ uint64_t uniffi_sideb_core_fn_method_sidebcore_search_songs_json(void*_Nonnull p
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_FN_METHOD_SIDEBCORE_SEARCH_SUGGESTIONS
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_FN_METHOD_SIDEBCORE_SEARCH_SUGGESTIONS
 uint64_t uniffi_sideb_core_fn_method_sidebcore_search_suggestions(void*_Nonnull ptr, RustBuffer query
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_FN_METHOD_SIDEBCORE_SEARCH_SUGGESTIONS_PAGE
+#define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_FN_METHOD_SIDEBCORE_SEARCH_SUGGESTIONS_PAGE
+uint64_t uniffi_sideb_core_fn_method_sidebcore_search_suggestions_page(void*_Nonnull ptr, RustBuffer query
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_FN_METHOD_SIDEBCORE_SEARCH_VIDEOS
@@ -1177,6 +1207,12 @@ uint16_t uniffi_sideb_core_checksum_method_sidebcore_get_next(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_GET_NEXT_CONTINUATION
+#define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_GET_NEXT_CONTINUATION
+uint16_t uniffi_sideb_core_checksum_method_sidebcore_get_next_continuation(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_GET_PINNED_ITEMS
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_GET_PINNED_ITEMS
 uint16_t uniffi_sideb_core_checksum_method_sidebcore_get_pinned_items(void
@@ -1291,6 +1327,12 @@ uint16_t uniffi_sideb_core_checksum_method_sidebcore_remove_from_playlist(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_REMOVE_SEARCH_SUGGESTION
+#define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_REMOVE_SEARCH_SUGGESTION
+uint16_t uniffi_sideb_core_checksum_method_sidebcore_remove_search_suggestion(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_REPORT_GENIUS_MISS
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_REPORT_GENIUS_MISS
 uint16_t uniffi_sideb_core_checksum_method_sidebcore_report_genius_miss(void
@@ -1306,6 +1348,12 @@ uint16_t uniffi_sideb_core_checksum_method_sidebcore_resolve_genius(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_RESOLVE_STREAM
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_RESOLVE_STREAM
 uint16_t uniffi_sideb_core_checksum_method_sidebcore_resolve_stream(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_SEARCH_ACTION
+#define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_SEARCH_ACTION
+uint16_t uniffi_sideb_core_checksum_method_sidebcore_search_action(void
     
 );
 #endif
@@ -1339,6 +1387,18 @@ uint16_t uniffi_sideb_core_checksum_method_sidebcore_search_genius(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_SEARCH_PAGE
+#define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_SEARCH_PAGE
+uint16_t uniffi_sideb_core_checksum_method_sidebcore_search_page(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_SEARCH_PAGE_CONTINUATION
+#define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_SEARCH_PAGE_CONTINUATION
+uint16_t uniffi_sideb_core_checksum_method_sidebcore_search_page_continuation(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_SEARCH_SONGS
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_SEARCH_SONGS
 uint16_t uniffi_sideb_core_checksum_method_sidebcore_search_songs(void
@@ -1354,6 +1414,12 @@ uint16_t uniffi_sideb_core_checksum_method_sidebcore_search_songs_json(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_SEARCH_SUGGESTIONS
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_SEARCH_SUGGESTIONS
 uint16_t uniffi_sideb_core_checksum_method_sidebcore_search_suggestions(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_SEARCH_SUGGESTIONS_PAGE
+#define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_SEARCH_SUGGESTIONS_PAGE
+uint16_t uniffi_sideb_core_checksum_method_sidebcore_search_suggestions_page(void
     
 );
 #endif

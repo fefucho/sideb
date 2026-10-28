@@ -10,6 +10,7 @@ import XCTest
     var retired: [String: Int] = [:]
     var updates: [String: Int] = [:]
     var active: [String: Bool] = [:]
+    var retainsInactiveVisuals: [String: Bool] = [:]
     var menus: [String: AppMenuContext] = [:]
     var backgrounds: [String: CollectionBackgroundController] = [:]
 }
@@ -18,6 +19,7 @@ private struct PageProbe: NSViewRepresentable {
     let name: String
     let probes: PageProbes
     @Environment(\.sideBPageIsActive) private var active
+    @Environment(\.sideBPageRetainsInactiveVisuals) private var retainsInactiveVisuals
     @Environment(\.sideBMenuContext) private var menuContext
     @Environment(\.collectionBackgroundController) private var backgroundController
     func makeCoordinator() -> Coordinator { Coordinator(name: name, probes: probes) }
@@ -32,9 +34,11 @@ private struct PageProbe: NSViewRepresentable {
     func updateNSView(_ scroll: NSScrollView, context: Context) {
         probes.updates[name, default: 0] += 1
         probes.active[name] = active
+        probes.retainsInactiveVisuals[name] = retainsInactiveVisuals
         probes.menus[name] = menuContext
         probes.backgrounds[name] = backgroundController
-        scroll.isHidden = !active
+        scroll.isHidden = !active && !retainsInactiveVisuals
+        scroll.setAccessibilityHidden(!active)
     }
     func sizeThatFits(_ proposal: ProposedViewSize, nsView: NSScrollView, context: Context) -> CGSize? {
         CGSize(width: proposal.width ?? 800, height: proposal.height ?? 600)
@@ -50,6 +54,47 @@ private struct PageProbe: NSViewRepresentable {
 }
 
 @MainActor final class RetainedMainPagesTests: XCTestCase {
+    func testSpotlightRetainsSelectedPixelsWhilePageActivityAndAccessibilityStaySuspended() throws {
+        let probes = PageProbes()
+        func shell(_ page: PageDestination, covered: Bool, retainVisuals: Bool) -> some View {
+            RetainedMainPages(page: page, isCovered: covered, retainInactiveVisuals: retainVisuals,
+                home: { PageProbe(name: "home", probes: probes) },
+                explore: { _ in PageProbe(name: "explore", probes: probes) },
+                library: { PageProbe(name: "library", probes: probes) },
+                detail: { EmptyView() })
+        }
+        let host = NSHostingView(rootView: shell(.home, covered: false, retainVisuals: false))
+        host.sizingOptions = []
+        host.frame = NSRect(x: 0, y: 0, width: 900, height: 600)
+        host.layoutSubtreeIfNeeded()
+        let home = try XCTUnwrap(probes.views["home"])
+
+        host.rootView = shell(.home, covered: true, retainVisuals: true)
+        host.layoutSubtreeIfNeeded()
+        XCTAssertFalse(home.isHidden)
+        XCTAssertTrue(home.isAccessibilityHidden())
+        XCTAssertEqual(probes.active["home"], false)
+        XCTAssertEqual(probes.retainsInactiveVisuals["home"], true)
+
+        // Fullscreen uses the same suspension without revealing the covered page.
+        host.rootView = shell(.home, covered: true, retainVisuals: false)
+        host.layoutSubtreeIfNeeded()
+        XCTAssertTrue(home.isHidden)
+        XCTAssertTrue(home.isAccessibilityHidden())
+        XCTAssertEqual(probes.active["home"], false)
+        XCTAssertEqual(probes.retainsInactiveVisuals["home"], false)
+
+        // Only the selected retained page receives visual retention.
+        host.rootView = shell(.explore(.discover), covered: true, retainVisuals: true)
+        host.layoutSubtreeIfNeeded()
+        let explore = try XCTUnwrap(probes.views["explore"])
+        XCTAssertTrue(home.isHidden)
+        XCTAssertFalse(explore.isHidden)
+        XCTAssertTrue(explore.isAccessibilityHidden())
+        XCTAssertEqual(probes.active["explore"], false)
+        XCTAssertEqual(probes.retainsInactiveVisuals["explore"], true)
+    }
+
     func testViewportResizesKeepNativePageIdentityAndScroll() throws {
         let probes = PageProbes()
         let host = NSHostingView(rootView: RetainedMainPages(page: .home,

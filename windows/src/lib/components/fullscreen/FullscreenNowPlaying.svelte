@@ -36,6 +36,7 @@
     onSeek: (seconds: number) => void;
     onRetryLyrics: () => void;
     onRefreshRecommendations: () => void;
+    onSuspendRecommendations?: () => void;
     onPlayRecommendation: (song: SongDto) => void;
     onEnqueueRecommendation: (song: SongDto) => void;
     onSongContextMenu: (event: MouseEvent, song: SongDto) => void;
@@ -68,7 +69,7 @@
     onToggleLike, onRetryRadio, onRetrySource, likedIds = new Set<string>(), pendingIds = new Set<string>(), likesLoading = false,
     onToggleQueueLike, onDislikeQueueEntry,
     onMoveQueue, lyricsState, recommendationsState, onSeek, onRetryLyrics,
-    onRefreshRecommendations, onPlayRecommendation, onEnqueueRecommendation,
+    onRefreshRecommendations, onSuspendRecommendations, onPlayRecommendation, onEnqueueRecommendation,
     onSongContextMenu, onArtistContextMenu,
   }: Props = $props();
   let showInformation=$state(false);
@@ -122,10 +123,6 @@
 <section id="fullscreen-now-playing" class="fullscreen" class:pulling style:transform={`translateY(${reduced?0:Math.max(0,pullDistance)}px)`} transition:fade={{duration:reduced?0:160}} aria-label={$t('windows.fullscreen.region')}>
   <FullscreenBackdrop thumbnail={currentTrack?.thumbnail} trackKey={artworkTrackKey} />
 
-  <button type="button" class="close-button" onclick={onClose} aria-label={$t('player.closeFullscreen')} title={$t('player.closeFullscreen')}>
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6 18 18M18 6 6 18" /></svg>
-  </button>
-
   <div class="pull-surface" data-gesture-pull aria-hidden="true"></div>
   <div class="layout">
     <div class="art-column">
@@ -168,17 +165,24 @@
             </button>
           </div>
           <div class="artist-line">
-            <ArtistCredits track={currentTrack ?? undefined} artistRuns={currentTrack?.artistRuns} artists={currentTrack?.artists ?? $t('player.selectTrack')} artistId={currentTrack?.artistId} {onOpenArtist} album={currentTrack?.album} albumId={currentTrack?.albumId} {onOpenAlbum} />
+            <ArtistCredits showContentRating={false} track={currentTrack ?? undefined} artistRuns={currentTrack?.artistRuns} artists={currentTrack?.artists ?? $t('player.selectTrack')} artistId={currentTrack?.artistId} {onOpenArtist} album={currentTrack?.album} albumId={currentTrack?.albumId} {onOpenAlbum} />
           </div>
         </div>
       </div>
     </div>
 
     <div class="side-column" data-volume-excluded>
-      <ControlSegments appearance="toolbar" id="fullscreen-tab" panelId="fullscreen-panel" label={$t('windows.fullscreen.panel')}
-        options={panels} value={panel} onChange={selectPanel} collapseLabels>
-        {#snippet icon(id)}<PlayerIcon name={id} size={14} />{/snippet}
-      </ControlSegments>
+      <div class="panel-toolbar">
+        <div class="panel-tabs">
+          <ControlSegments appearance="toolbar" id="fullscreen-tab" panelId="fullscreen-panel" label={$t('windows.fullscreen.panel')}
+            options={panels} value={panel} onChange={selectPanel} collapseLabels>
+            {#snippet icon(id)}<PlayerIcon name={id} size={14} />{/snippet}
+          </ControlSegments>
+        </div>
+        <button type="button" class="close-button" onclick={onClose} aria-label={$t('player.closeFullscreen')} title={$t('player.closeFullscreen')}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6 18 18M18 6 6 18" /></svg>
+        </button>
+      </div>
 
       <div id="fullscreen-panel" class="panel" role="tabpanel" tabindex="0" aria-labelledby={`fullscreen-tab-${panel}`}>
         <LyricsPanel state={lyricsState} {playback} {session} active={panel==='lyrics'&&lyricsMode!=='genius'} {onSeek} onRetry={onRetryLyrics} />
@@ -190,7 +194,7 @@
           {/if}
         {:else}
           <RecommendedPanel snapshot={recommendationsState} {currentTrack} isPlaying={playback.isPlaying}
-            onRefresh={onRefreshRecommendations} onPlaySong={onPlayRecommendation} onPlayNext={onEnqueueRecommendation}
+            onRefresh={onRefreshRecommendations} onSuspend={onSuspendRecommendations} onPlaySong={onPlayRecommendation} onPlayNext={onEnqueueRecommendation}
             {onOpenArtist} {onOpenAlbum} {onSongContextMenu} {onArtistContextMenu} />
         {/if}
       </div>
@@ -211,7 +215,7 @@
   @media(prefers-reduced-motion:reduce){.artwork-front,.artwork-back{transition:none;}}
 
   .fullscreen { position: fixed; inset: 0 0 0 var(--sidebar-width, 0px); z-index: 80; box-sizing: border-box; container-type: inline-size; height: 100dvh; max-height: 100dvh; overflow: hidden; isolation: isolate; color: #fff; background: #1b1b1e; }
-  .close-button { position: absolute; top: 44px; right: 12px; z-index: 2; display: grid; place-items: center; width: 32px; height: 32px; padding: 6px; border: 0; border-radius: 8px; color: rgb(255 255 255 / 75%); background: rgb(255 255 255 / 9%); cursor: pointer; }
+  .close-button { position: relative; z-index: 2; flex: none; display: grid; place-items: center; width: 32px; height: 32px; padding: 6px; border: 0; border-radius: 8px; color: rgb(255 255 255 / 75%); background: rgb(255 255 255 / 9%); cursor: pointer; }
   .close-button:hover { color: #fff; background: rgb(255 255 255 / 16%); }.close-button svg { width: 18px; height: 18px; }
   .layout {
     --inset: clamp(24px, 3.5cqw, 48px);
@@ -277,6 +281,8 @@
   .side-column { container-type:inline-size; container-name:panel-column; display: flex; min-width: 0; min-height: 0; height: 100%; flex-direction: column; align-items: center; gap: 14px; overflow: hidden; }
 
 
+  .panel-toolbar { display:grid; grid-template-columns:minmax(0,1fr) 32px; align-items:center; gap:12px; width:100%; min-width:0; flex:none; }
+  .panel-tabs { container-type:inline-size; display:flex; justify-content:center; min-width:0; }
   .panel { box-sizing: border-box; display: flex; width: 100%; min-width: 0; min-height: 0; flex: 1; overflow: hidden; }
   button:focus-visible { outline: 2px solid #d06c70; outline-offset: 3px; }
 

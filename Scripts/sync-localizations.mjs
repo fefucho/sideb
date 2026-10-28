@@ -5,10 +5,12 @@ import { existsSync, readFileSync, readdirSync, mkdirSync, mkdtempSync, rmSync, 
 import { dirname, join, relative } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { nativeLocalizationResources } from './localization-resources.mjs';
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const check = process.argv.includes('--check');
-if (process.argv.slice(2).some(arg => arg !== '--check')) throw new Error('Uso: node Scripts/sync-localizations.mjs [--check]');
+const portable = process.argv.includes('--portable');
+if (process.argv.slice(2).some(arg => !['--check', '--portable'].includes(arg))) throw new Error('Uso: node Scripts/sync-localizations.mjs [--check] [--portable]');
 const source = join(root, 'apple', 'Localization');
 const resources = join(root, 'apple', 'Sources', 'SideB', 'Resources');
 const entries = {};
@@ -54,8 +56,16 @@ const temporary = mkdtempSync(join(tmpdir(), 'sideb-localizations-'));
 try {
     const catalogPath = join(temporary, 'Localizable.xcstrings');
     writeFileSync(catalogPath, catalog);
-    const result = spawnSync('xcrun', ['xcstringstool', 'compile', catalogPath, '--output-directory', temporary, '--serialization-format', 'text'], { encoding: 'utf8' });
-    if (result.status !== 0) throw new Error(result.stderr || result.stdout || 'Falló xcstringstool');
+    if (portable) {
+        for (const language of ['es', 'en']) {
+            const folder = join(temporary, `${language}.lproj`);
+            mkdirSync(folder);
+            for (const [file, data] of Object.entries(nativeLocalizationResources(entries, language))) writeFileSync(join(folder, file), data);
+        }
+    } else {
+        const result = spawnSync('xcrun', ['xcstringstool', 'compile', catalogPath, '--output-directory', temporary, '--serialization-format', 'text'], { encoding: 'utf8' });
+        if (result.status !== 0) throw new Error(result.stderr || result.stdout || 'Falló xcstringstool');
+    }
     const outputs = [[catalogPath, join(source, 'Localizable.xcstrings')]];
     for (const lang of ['es', 'en']) {
         const folder = join(temporary, `${lang}.lproj`);

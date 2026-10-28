@@ -1,0 +1,26 @@
+/* Official Inter 4.1, bundled locally under the SIL Open Font License. */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('/fonts/inter/InterVariable.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Inter';
+  font-style: italic;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('/fonts/inter/InterVariable-Italic.woff2') format('woff2');
+}
+
+:root {
+  --sideb-font-family: 'Inter', sans-serif;
+  font-family: var(--sideb-font-family);
+  font-optical-sizing: auto;
+}
+
+button, input, select, textarea, option, optgroup {
+  font-family: inherit;
+}

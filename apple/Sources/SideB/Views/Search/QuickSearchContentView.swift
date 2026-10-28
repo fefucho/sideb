@@ -47,7 +47,6 @@ struct QuickSearchContentView: View {
 
     @State private var previewOwner = UUID()
     @State private var isActive = false
-    @State private var recentStore = SearchRecentStore.shared
     @State private var selectedRecentKey: String?
     @State private var restoresFocusOnDismiss = false
     @FocusState private var isFieldFocused: Bool
@@ -89,7 +88,7 @@ struct QuickSearchContentView: View {
             selectedRecentKey = nil
             requestPreview()
         }
-        .onChange(of: keyboardActions.map(\.key)) { _, keys in
+        .onChange(of: keyboardActions.map(\.id)) { _, keys in
             selectedRecentKey = QuickSearchSelection.retainedKey(in: keys, selected: selectedRecentKey)
         }
         .onChange(of: keyboardSelectionLabel) { _, label in onSelectionLabelChange?(label) }
@@ -125,7 +124,7 @@ struct QuickSearchContentView: View {
             let playerBarTotalHeight: CGFloat = 94.0
             let availableHeight = max(280, totalHeight - playerBarTotalHeight)
             let hasQuery = !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            let recentHeight = min(540, max(220, 96 + recentStore.entries.reduce(0) { $0 + ($1.kind == "track" ? 66 : 50) } + (recentStore.unavailableTrack == nil ? 0 : 86)))
+            let recentHeight = min(540, max(220, 96 + searchViewModel.visibleProviderSuggestions.count * 58))
             let modalHeight = min(hasQuery ? 540 : CGFloat(recentHeight), max(180, availableHeight - 80))
             let modalWidth = min(max(proxy.size.width - 48, 360), 780)
 
@@ -181,88 +180,40 @@ struct QuickSearchContentView: View {
         }
     }
 
-    private var recentResults: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Text(L10n.text("search.recents.title")).font(.system(size: 12, weight: .semibold))
-                Spacer()
-                if !recentStore.entries.isEmpty { Button(L10n.text("search.recents.clear")) { recentStore.clear(); selectedRecentKey = nil }.buttonStyle(.plain) }
-                if recentStore.canUndo { Button(L10n.text("common.undo")) { recentStore.undo() }.buttonStyle(.plain) }
-            }.font(.system(size: 11)).padding(.horizontal, 8).padding(.bottom, 6)
-            ForEach(recentStore.entries) { recent in
-                HStack(spacing: 8) {
-                    if let track = recent.track {
-                        quickSongRow(track.song)
-                    } else {
-                        Button { activateRecent(recent) } label: {
-                            HStack(spacing: 12) {
-                                Image(systemName: "magnifyingglass").frame(width: 42)
-                                Text(recent.query ?? "").lineLimit(1)
-                                Spacer()
-                            }.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
-                        }.buttonStyle(.plain)
-                    }
-                    Button { recentStore.remove(recent.key); selectedRecentKey = nil } label: { Image(systemName: "xmark").font(.system(size: 11)) }
-                        .buttonStyle(.plain).padding(8).accessibilityLabel(L10n.text("search.recents.remove"))
-                }.padding(8).background(selectedRecentKey == recent.key ? Color.white.opacity(0.12) : Color.clear, in: RoundedRectangle(cornerRadius: 8)).id(recent.key).accessibilityAddTraits(selectedRecentKey == recent.key ? .isSelected : [])
-            }
-        }
-        .onKeyPress(.downArrow) { selectRecent(delta: 1); return .handled }
-        .onKeyPress(.upArrow) { selectRecent(delta: -1); return .handled }
-    }
-    private enum Action {
-        case recent(SearchRecentStore.Entry), suggestion(String), song(SongItemRecord), card(BrowseCardRecord, SearchResultsRecord)
-        var key: String {
-            switch self {
-            case .recent(let entry): return entry.key
-            case .suggestion(let text): return "query:" + text
-            case .song(let song): return (song.isVideo ? "video:" : "song:") + song.videoId
-            case .card(let card, _): return card.kind + ":" + card.id
-            }
-        }
-    }
-    private var keyboardActions: [Action] {
-        if draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return recentStore.entries.map(Action.recent) }
-        guard searchViewModel.associatedQuickQuery == draft.trimmingCharacters(in: .whitespacesAndNewlines), let source = searchViewModel.quickResults else { return [] }
-        let results = SearchProjection.suggestions(source, budget: 8)
-        return searchViewModel.querySuggestions.map(Action.suggestion) + results.top.map { card in
-            ["song", "video"].contains(card.kind.lowercased())
-                ? Action.song(searchViewModel.song(for: card, in: results)) : Action.card(card, results)
-        }
+    private var keyboardActions: [SearchSuggestionEntryRecord] {
+        guard searchViewModel.associatedQuickQuery == draft.trimmingCharacters(in: .whitespacesAndNewlines) else { return [] }
+        return searchViewModel.visibleProviderSuggestions
     }
     private var keyboardSelectionLabel: String? {
-        guard let selectedRecentKey, let action = keyboardActions.first(where: { $0.key == selectedRecentKey }) else { return nil }
-        switch action {
-        case .suggestion(let text): return text
-        case .recent(let entry): return entry.query ?? entry.track.map { $0.title + " · " + $0.artists }
-        case .song(let song): return song.title + " · " + song.artists
-        case .card(let card, _): return card.title
-        }
+        keyboardActions.first { $0.id == selectedRecentKey }?.displayTitle
     }
     private func selectRecent(delta: Int) {
-        selectedRecentKey = QuickSearchSelection.nextKey(in: keyboardActions.map(\.key), selected: selectedRecentKey, delta: delta)
+        selectedRecentKey = QuickSearchSelection.nextKey(in: keyboardActions.map(\.id), selected: selectedRecentKey, delta: delta)
     }
     private func activateSelected() -> Bool {
-        guard let key = selectedRecentKey, let action = keyboardActions.first(where: { $0.key == key }) else { return false }
-        switch action {
-        case .recent(let entry): activateRecent(entry)
-        case .song(let song): playerViewModel.activateSearchMediaRadio(song); dismiss()
-        case .suggestion(let text): draft = text; commitAndNavigate()
-        case .card(let card, let results): handleCardSelected(card, results: results)
-        }
+        guard let entry = keyboardActions.first(where: { $0.id == selectedRecentKey }) else { return false }
+        activate(entry)
         return true
     }
-
-    private func activateRecent(_ entry: SearchRecentStore.Entry) {
-        if let track = entry.track { playerViewModel.activateSearchMediaRadio(track.song); dismiss() }
-        else if let query = entry.query {
-            playerViewModel.dismissFullscreen(); dismiss()
-            searchViewModel.commitSearch(query: query, core: rustCore, origin: .recentQuery)
-            router.navigate(to: .search(query: query))
+    private func activate(_ entry: SearchSuggestionEntryRecord) {
+        if let song = entry.song {
+            playerViewModel.activateMediaRadio(song)
+            dismiss()
+        } else if let card = entry.card {
+            playerViewModel.dismissFullscreen()
+            dismiss()
+            switch card.kind {
+            case "artist": router.navigate(to: .artist(browseId: card.id))
+            case "album": router.navigate(to: .album(browseId: card.id))
+            case "playlist": router.navigate(to: .playlist(browseId: card.id))
+            case "song", "video": playerViewModel.activateMediaRadio(SongItemRecord(fromCard: card))
+            default: router.navigate(to: .search(query: card.title))
+            }
+        } else if let query = entry.query {
+            draft = query
+            commitAndNavigate()
         }
     }
-
-    // MARK: - Cabecera de Entrada de Búsqueda
 
     private var searchFieldHeader: some View {
         HStack(spacing: 14) {
@@ -312,245 +263,34 @@ struct QuickSearchContentView: View {
         }
     }
 
-    // MARK: - Resultados Rápidos con Categorías Dinámicas
-
     private var resultsScrollView: some View {
         ScrollViewReader { scroll in
-        ScrollView(.vertical, showsIndicators: true) {
-            VStack(alignment: .leading, spacing: 14) {
-                let trimmed = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-
-                if trimmed.isEmpty {
-                    if let unavailable = recentStore.unavailableTrack {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text(L10n.text("search.recents.unavailable")).font(.system(size: 12)).foregroundStyle(.secondary)
-                            HStack {
-                                Button(L10n.text("search.recents.search_track")) {
-                                    let query = unavailable.title + " " + unavailable.artists
-                                    dismiss(); searchViewModel.commitSearch(query: query, core: rustCore, origin: .submit)
-                                    router.navigate(to: .search(query: query))
-                                }
-                                Button(L10n.text("search.recents.remove")) { recentStore.remove("track:" + (unavailable.isUpload ? "upload:" : "youtube:") + unavailable.videoId) }
-                            }.buttonStyle(.plain).font(.system(size: 11))
-                        }.padding(8)
-                    }
-                    if recentStore.entries.isEmpty && !recentStore.canUndo { emptySearchPlaceholder }
-                    else { recentResults }
-                } else if searchViewModel.isQuickSearching && (searchViewModel.quickResults == nil || searchViewModel.associatedQuickQuery != trimmed) {
-                    searchLoadingPlaceholder
-                } else if let results = searchViewModel.quickResults, searchViewModel.associatedQuickQuery == trimmed {
-                    let results = SearchProjection.suggestions(results, budget: 8)
-                    let categories = searchViewModel.dynamicCategories(for: results)
-
-                    if !searchViewModel.querySuggestions.isEmpty {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(L10n.text("search.suggestions.title")).font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary).padding(.horizontal, 10)
-                            ForEach(searchViewModel.querySuggestions, id: \.self) { text in
-                                Button { draft = text; commitAndNavigate() } label: {
-                                    HStack(spacing: 12) {
-                                        Image(systemName: "magnifyingglass").foregroundStyle(.secondary).frame(width: 42)
-                                        Text(text).font(.system(size: 15)).lineLimit(1)
-                                        Spacer()
-                                        Image(systemName: "arrow.up.left").font(.system(size: 12)).foregroundStyle(.tertiary)
-                                    }.padding(.horizontal, 10).frame(minHeight: 48).contentShape(Rectangle())
-                                }.buttonStyle(.plain)
-                                .background(selectedRecentKey == "query:" + text ? Color.white.opacity(0.12) : Color.clear, in: RoundedRectangle(cornerRadius: 8))
-                                .id("query:" + text)
-                            }
+            ScrollView(.vertical, showsIndicators: true) {
+                LazyVStack(alignment: .leading, spacing: 4) {
+                    if searchViewModel.isQuickSearching {
+                        searchLoadingPlaceholder
+                    } else if searchViewModel.associatedQuickQuery == draft.trimmingCharacters(in: .whitespacesAndNewlines) {
+                        ForEach(searchViewModel.visibleProviderSuggestions, id: \.id) { entry in
+                            ProviderSearchSuggestionRow(entry: entry, selected: selectedRecentKey == entry.id,
+                                removing: searchViewModel.removingSuggestionIDs.contains(entry.id),
+                                player: playerViewModel, router: router, core: rustCore,
+                                onActivate: { activate(entry) },
+                                onRemove: { Task { await searchViewModel.removeProviderSuggestion(entry, core: rustCore) } },
+                                onNavigate: { destination in
+                                    playerViewModel.dismissFullscreen(); dismiss(); router.navigate(to: destination)
+                                })
                         }
+                        if searchViewModel.visibleProviderSuggestions.isEmpty { emptySearchPlaceholder }
                     }
-                    if categories.isEmpty && searchViewModel.querySuggestions.isEmpty {
-                        noResultsFoundView
-                    } else {
-                        ForEach(categories) { category in
-                            categorySection(category: category, results: results)
-                        }
+                    if let message = searchViewModel.quickErrorMessage {
+                        HStack {
+                            Label(message, systemImage: "exclamationmark.circle")
+                            Button(L10n.text("common.retry")) { requestPreview() }.buttonStyle(.plain)
+                        }.font(.system(size: 12)).foregroundStyle(.secondary).padding(8)
                     }
-                } else if searchViewModel.isQuickSearching {
-                    searchLoadingPlaceholder
-                } else if let message = searchViewModel.quickErrorMessage {
-                    HStack {
-                        Label(message, systemImage: "exclamationmark.circle")
-                        Button(L10n.text("common.retry")) { requestPreview() }.buttonStyle(.plain)
-                    }.font(.system(size: 12)).foregroundStyle(.secondary).padding(.horizontal, 8)
-                } else {
-                    noResultsFoundView
-                }
+                }.padding(.horizontal, 16).padding(.vertical, 14)
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 14)
-        }
-        .onChange(of: selectedRecentKey) { _, key in if let key { scroll.scrollTo(key, anchor: .center) } }
-        }
-    }
-
-    // MARK: - Secciones de Categorías
-
-    @ViewBuilder
-    private func categorySection(category: SearchCategory, results: SearchResultsRecord) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            if category != .topResult {
-                Text(category.displayTitle)
-                    .font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary)
-                    .padding(.horizontal, 10).padding(.bottom, 2)
-            }
-
-            // Contenido por Categoría
-            switch category {
-            case .topResult:
-                ForEach(results.top, id: \.searchEntityKey) { hero in
-                    if ["song", "video"].contains(hero.kind.lowercased()) {
-                        let song = searchViewModel.song(for: hero, in: results)
-                        quickSongRow(song)
-                            .songContextMenu(song: song, player: playerViewModel, router: router, core: rustCore, origin: .searchSpotlight)
-                    } else {
-                    let row = QuickResultCardRow(card: hero, isHero: true,
-                        isActive: MediaPlaybackIdentity.isCollectionActive(kind: hero.kind, id: hero.id, context: playerViewModel.queueManager.context),
-                        isPlaying: playerViewModel.isPlaying,
-                        onPlay: { playQuickCard(hero, results: results) },
-                        menuProvider: { quickCardMenu(hero, results: results) }) {
-                        handleCardSelected(hero, results: results)
-                    }
-                    .background(selectedRecentKey == hero.kind + ":" + hero.id ? Color.white.opacity(0.12) : Color.clear, in: RoundedRectangle(cornerRadius: 8))
-                    .id(hero.kind + ":" + hero.id)
-                    if hero.kind.lowercased() == "song" {
-                        row.songContextMenu(song: searchViewModel.song(for: hero, in: results), player: playerViewModel, router: router, core: rustCore, origin: .searchSpotlight)
-                    } else {
-                        row.browseCardContextMenu(card: hero, player: playerViewModel, router: router, core: rustCore, origin: .searchSpotlight)
-                    }
-                    }
-
-                }
-
-            case .artists:
-                ForEach(Array(results.artists.prefix(5)), id: \.id) { artist in
-                    QuickResultCardRow(card: artist) {
-                        playerViewModel.dismissFullscreen()
-                        dismiss()
-                        router.navigate(to: .artist(browseId: artist.id))
-                    }
-                    .browseCardContextMenu(card: artist, player: playerViewModel, router: router, core: rustCore, origin: .searchSpotlight)
-                    .background(selectedRecentKey == artist.kind + ":" + artist.id ? Color.white.opacity(0.12) : Color.clear, in: RoundedRectangle(cornerRadius: 8))
-                    .id(artist.kind + ":" + artist.id)
-                }
-
-            case .songs:
-                ForEach(Array(results.songs.prefix(8)), id: \.videoId) { song in
-                    quickSongRow(song)
-                    .songContextMenu(song: song, player: playerViewModel, router: router, core: rustCore, origin: .searchSpotlight)
-                }
-
-            case .albums:
-                ForEach(Array(results.albums.prefix(5)), id: \.id) { album in
-                    QuickResultCardRow(card: album,
-                        isActive: MediaPlaybackIdentity.isCollectionActive(kind: album.kind, id: album.id, context: playerViewModel.queueManager.context),
-                        isPlaying: playerViewModel.isPlaying,
-                        onPlay: { playerViewModel.activateMediaCollection(id: album.id, kind: album.kind) },
-                        menuProvider: { quickCardMenu(album, results: results) }) {
-                        playerViewModel.dismissFullscreen()
-                        dismiss()
-                        router.navigate(to: .album(browseId: album.id))
-                    }
-                    .browseCardContextMenu(card: album, player: playerViewModel, router: router, core: rustCore, origin: .searchSpotlight)
-                    .background(selectedRecentKey == album.kind + ":" + album.id ? Color.white.opacity(0.12) : Color.clear, in: RoundedRectangle(cornerRadius: 8))
-                    .id(album.kind + ":" + album.id)
-                }
-
-            case .playlists:
-                ForEach(Array(results.playlists.prefix(5)), id: \.id) { pl in
-                    QuickResultCardRow(card: pl,
-                        isActive: MediaPlaybackIdentity.isCollectionActive(kind: pl.kind, id: pl.id, context: playerViewModel.queueManager.context),
-                        isPlaying: playerViewModel.isPlaying,
-                        onPlay: { playerViewModel.activateMediaCollection(id: pl.id, kind: pl.kind) },
-                        menuProvider: { quickCardMenu(pl, results: results) }) {
-                        playerViewModel.dismissFullscreen()
-                        dismiss()
-                        router.navigate(to: .playlist(browseId: pl.id))
-                    }
-                    .browseCardContextMenu(card: pl, player: playerViewModel, router: router, core: rustCore, origin: .searchSpotlight)
-                    .background(selectedRecentKey == pl.kind + ":" + pl.id ? Color.white.opacity(0.12) : Color.clear, in: RoundedRectangle(cornerRadius: 8))
-                    .id(pl.kind + ":" + pl.id)
-                }
-            }
-        }
-    }
-
-    private func quickSongRow(_ song: SongItemRecord) -> some View {
-        let artistID = (song.artistId ?? song.artistRuns.first(where: { $0.id != nil })?.id)
-            .flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0 }
-        let albumID = song.albumId.flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0 }
-        return QuickResultSongRow(song: song, onFeatured: { id, name in openQuickFeatured(id: id, name: name) },
-            onArtist: artistID.map { id in { openQuickDestination(.artist(browseId: id)) } },
-            onAlbum: albumID.map { id in { openQuickDestination(.album(browseId: id)) } },
-            menuProvider: { AppContextMenuFactory.shared.buildSongNSMenu(song: song, player: playerViewModel,
-                router: router, core: rustCore, origin: .searchSpotlight) }) {
-                playerViewModel.activateSearchMediaRadio(song)
-                dismiss()
-            }
-            .background(selectedRecentKey == (song.isVideo ? "video:" : "song:") + song.videoId ? Color.white.opacity(0.12) : Color.clear, in: RoundedRectangle(cornerRadius: 8))
-            .id((song.isVideo ? "video:" : "song:") + song.videoId)
-    }
-
-    private func openQuickFeatured(id: String?, name: String) {
-        playerViewModel.dismissFullscreen(); dismiss()
-        if let id { router.navigate(to: .artist(browseId: id)) }
-        else { searchViewModel.commitSearch(query: name, core: rustCore, origin: .artistResolution); router.navigate(to: .search(query: name)) }
-    }
-
-    private func openQuickDestination(_ destination: PageDestination) {
-        playerViewModel.dismissFullscreen()
-        dismiss()
-        router.navigate(to: destination)
-    }
-
-    private func playQuickCard(_ card: BrowseCardRecord, results: SearchResultsRecord) {
-        if ["song", "video"].contains(card.kind.lowercased()) {
-            playerViewModel.activateSearchMediaRadio(searchViewModel.song(for: card, in: results))
-        } else {
-            playerViewModel.activateMediaCollection(id: card.id, kind: card.kind)
-        }
-    }
-
-    private func quickCardMenu(_ card: BrowseCardRecord, results: SearchResultsRecord) -> NSMenu {
-        switch card.kind.lowercased() {
-        case "song", "video":
-            return AppContextMenuFactory.shared.buildSongNSMenu(song: searchViewModel.song(for: card, in: results),
-                player: playerViewModel, router: router, core: rustCore, origin: .searchSpotlight)
-        case "album":
-            return AppContextMenuFactory.shared.buildAlbumNSMenu(browseId: card.id, playlistId: nil,
-                title: card.title, artist: card.subtitle, thumbnail: card.thumbnail,
-                origin: .searchSpotlight, player: playerViewModel, router: router, core: rustCore)
-        case "artist":
-            return AppContextMenuFactory.shared.buildArtistNSMenu(channelId: card.id, name: card.title,
-                thumbnail: card.thumbnail, radioPlaylistId: nil, origin: .searchSpotlight,
-                player: playerViewModel, router: router, core: rustCore)
-        default:
-            return AppContextMenuFactory.shared.buildPlaylistNSMenu(id: card.id, title: card.title,
-                subtitle: card.subtitle, thumbnail: card.thumbnail, origin: .searchSpotlight,
-                player: playerViewModel, router: router, core: rustCore)
-        }
-    }
-
-    // MARK: - Manejo de Clic en Tarjeta Top
-
-    private func handleCardSelected(_ card: BrowseCardRecord, results: SearchResultsRecord) {
-        playerViewModel.dismissFullscreen()
-        switch card.kind.lowercased() {
-        case "artist":
-            dismiss()
-            router.navigate(to: .artist(browseId: card.id))
-        case "album":
-            dismiss()
-            router.navigate(to: .album(browseId: card.id))
-        case "playlist":
-            dismiss()
-            router.navigate(to: .playlist(browseId: card.id))
-        case "song", "video":
-            playerViewModel.activateSearchMediaRadio(searchViewModel.song(for: card, in: results))
-            dismiss()
-        default:
-            dismiss()
-            router.navigate(to: .search(query: card.title))
+            .onChange(of: selectedRecentKey) { _, key in if let key { scroll.scrollTo(key, anchor: .center) } }
         }
     }
 

@@ -1,8 +1,9 @@
+import { resolveContentRatingImport } from './helpers/content-rating-module.mjs';
 import {readFile} from 'node:fs/promises';
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import ts from 'typescript';
-async function load(path){const source=await readFile(new URL(path,import.meta.url),'utf8');const output=ts.transpileModule(source,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText;return import(`data:text/javascript;base64,${Buffer.from(output).toString('base64')}`);}
+async function load(path){const source=await readFile(new URL(path,import.meta.url),'utf8');const output=ts.transpileModule(source,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText;return import(`data:text/javascript;base64,${Buffer.from(resolveContentRatingImport(output)).toString('base64')}`);}
 const {SearchRecentStore,recordsSearch}=await load('../src/lib/search/recents.ts');
 const {searchProjection}=await load('../src/lib/search/projection.ts');
 const song=id=>({videoId:id,title:id,artists:'Artist',album:null,duration:null,thumbnail:null,artistId:null,albumId:null,isVideo:false,library:{addToken:'NEVER-SAVE'},setVideoId:'NEVER-SAVE'});

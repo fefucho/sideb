@@ -186,6 +186,11 @@ pub(crate) fn flush() {
 impl PlaybackRuntime {
     pub(crate) fn interrupt_source(&mut self) {
         if let Some(source) = self.source.as_mut() {
+            if matches!(source.kind.as_str(), "search" | "search-radio") {
+                self.source = None;
+                self.pending_next = None;
+                return;
+            }
             if source.continuation.is_some() || source.needs_restart {
                 source.continuation = None;
                 source.consumed_continuations.clear();
@@ -255,7 +260,7 @@ impl PlaybackRuntime {
                 source_resume: self
                     .source
                     .as_ref()
-                    .filter(|source| source.continuation.is_some() || source.needs_restart)
+                    .filter(|source| !matches!(source.kind.as_str(), "search" | "search-radio") && (source.continuation.is_some() || source.needs_restart))
                     .map(|source| SourceResume {
                         kind: source.kind.clone(),
                         id: source.id.clone(),
@@ -437,7 +442,7 @@ pub(crate) fn record_progress(
         let metadata = serde_json::json!({ "video_id": track.video_id, "title": track.title, "artists": track.artists,
             "duration": track.duration.map(|duration| format!("{}:{:02}", duration.max(0.0) as u64 / 60, duration.max(0.0) as u64 % 60)).unwrap_or_default(), "thumbnail": track.thumbnail,
             "album": track.album, "album_id": track.album_id, "artist_id": track.artist_id, "artist_runs": track.artist_runs,
-            "is_upload": track.is_upload });
+            "is_upload": track.is_upload, "content_rating": track.content_rating });
         if core
             .record_playback(
                 track.video_id.clone(),
@@ -517,6 +522,7 @@ mod tests {
         );
         pb.is_shuffle = true;
         pb.current_track = Some(PlaybackTrackDto {
+            content_rating: sideb_core::ContentRating::Unknown,
             is_upload: true,
             video_id: "same".into(),
             title: "Upload".into(),
@@ -613,6 +619,23 @@ mod tests {
             std::fs::remove_file(entry.unwrap().path()).unwrap();
         }
         std::fs::remove_dir(directory).unwrap();
+    }
+    #[test]
+    fn provider_next_sources_drop_private_cursor_on_account_interruption() {
+        for kind in ["search", "search-radio"] {
+            let mut runtime = PlaybackRuntime::default();
+            runtime.source = Some(ProgressiveSource {
+                kind: kind.into(), id: Some("provider-source".into()),
+                continuation: Some("private-next-token".into()), loading: true,
+                error: false, needs_restart: false,
+                loaded_prefix: vec!["same".into(), "same".into()],
+                consumed_continuations: Default::default(),
+            });
+            runtime.pending_next = Some((1, 2));
+            runtime.interrupt_source();
+            assert!(runtime.source.is_none());
+            assert!(runtime.pending_next.is_none());
+        }
     }
     #[test]
     fn incomplete_source_roundtrip_keeps_prefix_without_private_continuation() {
@@ -719,6 +742,7 @@ mod tests {
         pb.loaded_generation = Some(5);
         pb.is_playing = true;
         pb.current_track = Some(PlaybackTrackDto {
+            content_rating: sideb_core::ContentRating::Unknown,
             is_upload: false,
             video_id: "video".into(),
             title: "Title".into(),

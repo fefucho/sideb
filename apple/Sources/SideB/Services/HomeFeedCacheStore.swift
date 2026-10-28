@@ -61,17 +61,20 @@ struct HomeCachedPage: Codable, Sendable {
         let albumId: String?
         let artistRuns: [ArtistRun]
         let explicit: Bool
+        let contentRating: String?
         init(_ record: HomeItemRecord) {
             kind = record.kind; id = record.id; title = record.title
             subtitle = record.subtitle; thumbnail = record.thumbnail; duration = record.duration
             artists = record.artists; artistId = record.artistId; album = record.album; albumId = record.albumId
             artistRuns = record.artistRuns.map { ArtistRun(text: $0.text, id: $0.id) }
             explicit = record.explicit
+            contentRating = ContentRatingMetadata.encode(record.effectiveContentRating)
         }
         var record: HomeItemRecord {
             HomeItemRecord(kind: kind, id: id, title: title, subtitle: subtitle, thumbnail: thumbnail,
                            duration: duration, artists: artists, artistId: artistId, album: album, albumId: albumId,
-                           artistRuns: artistRuns.map { HomeArtistRunRecord(text: $0.text, id: $0.id) }, explicit: explicit)
+                           artistRuns: artistRuns.map { HomeArtistRunRecord(text: $0.text, id: $0.id) }, explicit: explicit,
+                           contentRating: ContentRatingMetadata.decode(contentRating, legacyExplicit: explicit))
         }
     }
 

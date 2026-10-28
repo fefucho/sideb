@@ -271,6 +271,8 @@ pub(crate) fn durable_thumbnail(value: &Option<String>) -> Option<String> {
 #[serde(rename_all = "camelCase")]
 pub struct QueueEntryDto {
     #[serde(default)]
+    pub content_rating: sideb_core::ContentRating,
+    #[serde(default)]
     pub is_upload: bool,
     pub entry_id: String,
     /// Display identity in the source list, separate from fresh queue ownership.
@@ -342,6 +344,7 @@ impl QueueEntryDto {
     ) -> Self {
         let mut entry = Self {
             is_upload: false,
+            content_rating: sideb_core::ContentRating::Unknown,
             entry_id: new_entry_id(),
             source_occurrence_id: None,
             video_id,
@@ -370,9 +373,18 @@ impl QueueEntryDto {
     }
 
     fn enrich_missing_metadata(&mut self, source: &Self) -> bool {
+        if self.video_id != source.video_id {
+            return false;
+        }
         let mut source = source.clone();
         source.normalize_metadata();
         let mut changed = self.normalize_metadata();
+        if self.content_rating == sideb_core::ContentRating::Unknown
+            && source.content_rating != sideb_core::ContentRating::Unknown
+        {
+            self.content_rating = source.content_rating;
+            changed = true;
+        }
         if source.is_upload && !self.is_upload {
             self.is_upload = true;
             changed = true;
@@ -1296,6 +1308,32 @@ pub(crate) fn next_owner_epoch(epoch: u64) -> u64 {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn content_rating_survives_durable_queue_and_enriches_only_the_same_id() {
+        use sideb_core::ContentRating;
+        let mut original = queue();
+        original.items[0].content_rating = ContentRating::Explicit;
+        let entry_id = original.items[0].entry_id.clone();
+        let restored = original.durable().restore().unwrap();
+        assert_eq!(restored.items[0].content_rating, ContentRating::Explicit);
+        assert_eq!(restored.items[0].entry_id, entry_id);
+        let mut entry = restored.items[0].clone();
+        let mut source = entry.clone();
+        source.content_rating = ContentRating::Unknown;
+        assert!(!entry.enrich_missing_metadata(&source));
+        assert_eq!(entry.content_rating, ContentRating::Explicit);
+        entry.content_rating = ContentRating::Unknown;
+        source.content_rating = ContentRating::Explicit;
+        assert!(entry.enrich_missing_metadata(&source));
+        source.video_id = "other-edition".into();
+        source.content_rating = ContentRating::Clean;
+        assert!(!entry.enrich_missing_metadata(&source));
+        assert_eq!(entry.content_rating, ContentRating::Explicit);
+        let mut legacy = serde_json::to_value(&entry).unwrap();
+        legacy.as_object_mut().unwrap().remove("contentRating");
+        let legacy: super::QueueEntryDto = serde_json::from_value(legacy).unwrap();
+        assert_eq!(legacy.content_rating, ContentRating::Unknown);
+    }
     #[test]
     fn responsive_statistics_are_not_album_names_without_a_destination() {
         for value in [

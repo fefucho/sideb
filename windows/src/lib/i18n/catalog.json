@@ -199,6 +199,18 @@
     "es": "Sin título",
     "en": "Untitled"
   },
+  "content.clean": {
+    "es": "Versión limpia confirmada",
+    "en": "Confirmed clean version"
+  },
+  "content.clean_glyph": {
+    "es": "L",
+    "en": "C"
+  },
+  "content.unknown": {
+    "es": "Sin información de contenido",
+    "en": "Content information unavailable"
+  },
   "destination.album": {
     "es": "Álbum",
     "en": "Album"
@@ -2658,6 +2670,34 @@
   "search.play_now": {
     "es": "Reproducir ahora",
     "en": "Play now"
+  },
+  "search.provider.hide_related": {
+    "es": "Mostrar menos",
+    "en": "Show less"
+  },
+  "search.provider.load_more": {
+    "es": "Cargar más resultados",
+    "en": "Load more results"
+  },
+  "search.provider.other_results": {
+    "es": "Otros resultados del bloque",
+    "en": "Other results in this group"
+  },
+  "search.provider.related": {
+    "es": "Relacionadas",
+    "en": "Related results"
+  },
+  "search.provider.remove_history": {
+    "es": "Quitar del historial de YouTube Music",
+    "en": "Remove from YouTube Music history"
+  },
+  "search.provider.show_all": {
+    "es": "Mostrar todo",
+    "en": "Show all"
+  },
+  "search.provider.show_related": {
+    "es": "Mostrar las %@ relacionadas",
+    "en": "Show all %@ related results"
   },
   "search.recents.clear": {
     "es": "Borrar recientes de Side B",

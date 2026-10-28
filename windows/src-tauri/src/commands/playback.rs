@@ -49,6 +49,7 @@ fn queue_entry_from_song(song: SongDto) -> QueueEntryDto {
         song.artist_runs,
     );
     entry.is_upload = song.is_upload;
+    entry.content_rating = song.content_rating;
     entry
 }
 
@@ -68,6 +69,7 @@ fn queue_entry_from_record(song: sideb_core::SongItemRecord) -> QueueEntryDto {
             .collect(),
     );
     entry.is_upload = song.is_upload;
+    entry.content_rating = song.content_rating;
     entry
 }
 
@@ -542,6 +544,7 @@ pub(crate) async fn play_song(
     shuffle: Option<bool>,
     is_upload: Option<bool>,
     coalesce: Option<bool>,
+    content_rating: Option<sideb_core::ContentRating>,
 ) -> Result<PlaybackStateDto, CommandError> {
     let trimmed_id = video_id.trim();
     if trimmed_id.is_empty() {
@@ -655,6 +658,7 @@ pub(crate) async fn play_song(
                 artist_runs.unwrap_or_default(),
             );
             entry.is_upload = is_upload.unwrap_or(false);
+            entry.content_rating = content_rating.unwrap_or_default();
             let _ = pb.queue.replace(
                 vec![entry],
                 0,
@@ -713,6 +717,7 @@ pub(crate) async fn play_song(
         pb.duration = 0.0;
         pb.error = None;
         pb.current_track = Some(PlaybackTrackDto {
+            content_rating: active_entry.content_rating,
             is_upload: active_entry.is_upload || is_upload.unwrap_or(false),
             video_id: trimmed_id.to_string(),
             title: active_entry.title,
@@ -881,6 +886,7 @@ pub(crate) async fn play_song(
         .map(|track| track.artist_runs.clone())
         .unwrap_or_default();
     pb.current_track = Some(PlaybackTrackDto {
+        content_rating: pb.current_track.as_ref().map(|track| track.content_rating).unwrap_or_default(),
         is_upload: upload,
         video_id: trimmed_id.to_string(),
         title: resolved_title,
@@ -1025,6 +1031,7 @@ async fn start_queue_entry_mode(
         None,
         Some(entry.is_upload),
         Some(coalesce),
+        Some(entry.content_rating),
     )
     .await
 }
@@ -1069,6 +1076,7 @@ pub(crate) async fn start_song_radio(
         None,
         Some(entry.is_upload),
         None,
+        Some(entry.content_rating),
     )
     .await
 }
@@ -1232,6 +1240,7 @@ fn prepare_dismissed_current(
     playback.duration = entry.duration.unwrap_or(0.0);
     playback.error = None;
     playback.current_track = Some(PlaybackTrackDto {
+        content_rating: entry.content_rating,
         is_upload: entry.is_upload,
         video_id: entry.video_id.clone(),
         title: entry.title.clone(),
@@ -2132,6 +2141,7 @@ mod dismissal_tests {
             },
         );
         pb.current_track = Some(PlaybackTrackDto {
+            content_rating: sideb_core::ContentRating::Unknown,
             is_upload: false,
             video_id: "seed".into(),
             title: "Original".into(),
@@ -2418,6 +2428,7 @@ mod dismissal_tests {
             pb.queue.items[0].album = old_album.clone();
             let id = pb.queue.items[0].entry_id.clone();
             pb.current_track = Some(PlaybackTrackDto {
+                content_rating: sideb_core::ContentRating::Unknown,
                 is_upload: false,
                 video_id: "seed".into(),
                 title: "Original title".into(),
@@ -2678,7 +2689,7 @@ pub(crate) fn begin_queue_source(
     continuation: Option<String>,
     expected_generation: u64,
 ) -> Result<PlaybackStateDto, CommandError> {
-    if kind != "playlist" && kind != "library" {
+    if !matches!(kind.as_str(), "playlist" | "library" | "search" | "search-radio") {
         return Err(CommandError::new(
             "INVALID_SOURCE",
             "La fuente progresiva no es válida.",
@@ -2750,6 +2761,7 @@ async fn refresh_source_prefix(
     core: std::sync::Arc<sideb_core::SideBCore>,
     source: &crate::playback_runtime::ProgressiveSource,
 ) -> Result<sideb_core::PlaylistContinuationRecord, ()> {
+    if matches!(source.kind.as_str(), "search" | "search-radio") { return Err(()); }
     let mut page = if source.kind == "library" {
         core.get_library_songs().await.map_err(|_| ())?
     } else {
@@ -2820,6 +2832,10 @@ fn fetch_source_background(app: tauri::AppHandle) {
             if let Some(core) = core {
                 if request.1.needs_restart {
                     refresh_source_prefix(core, &request.1).await
+                } else if matches!(request.1.kind.as_str(), "search" | "search-radio") {
+                    core.get_next_continuation(request.1.continuation.clone().unwrap_or_default()).await
+                        .map(|page| sideb_core::PlaylistContinuationRecord {items:page.items,continuation:page.continuation})
+                        .map_err(|_| ())
                 } else {
                     core.get_playlist_continuation(
                         request.1.continuation.clone().unwrap_or_default(),
@@ -2862,13 +2878,10 @@ fn fetch_source_background(app: tauri::AppHandle) {
                             .extend(page.items.iter().map(|entry| entry.video_id.clone()));
                     }
                     let shuffled = pb.is_shuffle;
-                    pb.queue.append_source(
-                        page.items
-                            .into_iter()
-                            .map(queue_entry_from_record)
-                            .collect(),
-                        shuffled,
-                    );
+                    let items = page.items.into_iter()
+                        .filter(|item| request.1.kind != "search-radio" || !pb.runtime.disliked.contains(&item.video_id))
+                        .map(queue_entry_from_record).collect();
+                    pb.queue.append_source(items, shuffled);
                     if let Some(source) = pb.runtime.source.as_mut() {
                         source.loading = false;
                         source.error = false;
@@ -2907,8 +2920,10 @@ pub(crate) async fn start_source_radio(
     items: Vec<QueueEntryDto>,
     source: QueueSourceDto,
     playlist_id: String,
+    selected_index: Option<usize>,
 ) -> Result<PlaybackStateDto, CommandError> {
-    let Some(entry) = items.first().cloned() else {
+    let selected_index = selected_index.unwrap_or(0).min(items.len().saturating_sub(1));
+    let Some(entry) = items.get(selected_index).cloned() else {
         return Err(CommandError::new(
             "EMPTY_RADIO",
             "La radio no contiene canciones.",
@@ -2935,7 +2950,7 @@ pub(crate) async fn start_source_radio(
         Some(entry.artists),
         entry.thumbnail,
         Some(items),
-        Some(0),
+        Some(selected_index),
         Some(QueueSourceDto {
             kind: "radio-source".into(),
             id: source.id,
@@ -2952,6 +2967,7 @@ pub(crate) async fn start_source_radio(
         None,
         Some(entry.is_upload),
         None,
+        Some(entry.content_rating),
     )
     .await?;
     let snapshot = {
@@ -2996,7 +3012,7 @@ pub(crate) fn filter_disliked_recommendations(
         .queue
         .source
         .as_ref()
-        .is_some_and(|source| source.kind == "radio")
+        .is_some_and(|source| matches!(source.kind.as_str(), "radio" | "search-radio"))
     {
         pb.queue.filter_radio_recommendations(&video_id);
     }

@@ -10,7 +10,11 @@ private func queueCellTrack(_ id: String = "song", album: String? = "Mr. Morale 
 }
 
 @MainActor private func queueSubview<T: NSView>(_ cell: NativeQueueTrackCellView, _ id: String, as type: T.Type) throws -> T {
-    try #require(cell.subviews.first { $0.accessibilityIdentifier() == id } as? T)
+    func find(in view: NSView) -> T? {
+        if view.accessibilityIdentifier() == id, let match = view as? T { return match }
+        return view.subviews.lazy.compactMap { find(in: $0) }.first
+    }
+    return try #require(find(in: cell))
 }
 
 @MainActor private func configureQueueCell(_ cell: NativeQueueTrackCellView, track: SongItemRecord = queueCellTrack(), liked: Bool = false, current: Bool = false, playing: Bool = true) {
@@ -35,10 +39,12 @@ private func queueCellTrack(_ id: String = "song", album: String? = "Mr. Morale 
         widthConstraint.constant = width
         cell.setFrameSize(NSSize(width: width, height: 46))
         cell.layoutSubtreeIfNeeded()
-        #expect(abs(title.frame.minX - credits.frame.minX) < 0.1)
-        #expect(credits.frame.maxY < title.frame.minY)
-        #expect(credits.frame.maxX <= dislike.frame.minX - 9)
-        #expect(credits.frame.width > 100)
+        let titleRect = cell.convert(title.bounds, from: title)
+        let creditsRect = cell.convert(credits.bounds, from: credits)
+        #expect(abs(titleRect.minX - creditsRect.minX) < 0.1)
+        #expect(creditsRect.maxY < titleRect.minY)
+        #expect(creditsRect.maxX <= dislike.frame.minX - 9)
+        #expect(creditsRect.width > 100)
         for view in cell.subviews where !view.isHidden {
             #expect(view.frame.maxX <= width + 1, "width=\(width) id=\(view.accessibilityIdentifier() ?? String(describing: type(of: view))) frame=\(view.frame)")
         }

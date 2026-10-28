@@ -103,9 +103,10 @@ enum PlaybackAlbumMetadata {
     static func merging(_ current: SongItemRecord, radio: SongItemRecord) -> SongItemRecord {
         guard current.videoId == radio.videoId else { return current }
         var result = current
+        result.contentRating = ContentRatingMetadata.merging(current.contentRating, incoming: radio.contentRating)
         let currentID = HomeSongMetadata.clean(current.albumId)
         let canonicalID = HomeSongMetadata.clean(radio.albumId)
-        guard currentID == nil || canonicalID == nil || currentID == canonicalID else { return current }
+        guard currentID == nil || canonicalID == nil || currentID == canonicalID else { return result }
         // If a destination is already known, the incoming label needs that same destination.
         if HomeSongMetadata.clean(current.album) == nil,
            currentID == nil || currentID == canonicalID {
@@ -124,12 +125,13 @@ enum PlaybackAlbumMetadata {
     }
 
     static func merging(_ current: SongItemRecord, album: AlbumDetailRecord) -> SongItemRecord {
-        guard HomeSongMetadata.clean(current.album) == nil,
-              let target = HomeSongMetadata.clean(current.albumId), target == album.browseId,
-              album.items.contains(where: { $0.videoId == current.videoId }),
-              let title = HomeSongMetadata.clean(album.title) else { return current }
+        guard let target = HomeSongMetadata.clean(current.albumId), target == album.browseId,
+              let matchingTrack = album.items.first(where: { $0.videoId == current.videoId }) else { return current }
         var result = current
-        result.album = title // Canonical names such as "100 Plays" are never filtered.
+        result.contentRating = ContentRatingMetadata.merging(current.contentRating, incoming: matchingTrack.contentRating)
+        if HomeSongMetadata.clean(current.album) == nil, let title = HomeSongMetadata.clean(album.title) {
+            result.album = title // Canonical names such as "100 Plays" are never filtered.
+        }
         return result
     }
 }

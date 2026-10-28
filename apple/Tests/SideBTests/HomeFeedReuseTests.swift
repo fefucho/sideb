@@ -112,4 +112,48 @@ final class HomeFeedReuseTests: XCTestCase {
             XCTAssertNil(scroll.window)
         }
     }
+
+    func testSpotlightShowsRetainedFeedPixelsWithoutRefreshingOrReactivatingRows() throws {
+        let player = PlayerViewModel()
+        func fixture(_ sections: [HomeSectionPresentation], obscured: Bool) -> some View {
+            HomeFeedTableView(sections: sections, isObscured: obscured, revision: UInt64(sections.count),
+                selectedChip: nil, hasMore: false, isLoadingMore: false, currentTrackID: nil, isPlaying: false,
+                player: player, router: nil, onNavigate: { _ in }, onLoadMore: {})
+                .environment(\.sideBPageRetainsInactiveVisuals, true)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .overlay {
+                    if obscured { Color.black.opacity(0.45).ignoresSafeArea().allowsHitTesting(false) }
+                }
+        }
+        let one = [section("one", count: 4)]
+        let host = NSHostingView(rootView: fixture(one, obscured: false))
+        host.sizingOptions = []
+        host.frame = NSRect(x: 0, y: 0, width: 1000, height: 720)
+        host.layoutSubtreeIfNeeded()
+        let scroll = try XCTUnwrap(descendants(host).compactMap { $0 as? NSScrollView }
+            .first { $0.documentView is NSTableView })
+        let table = try XCTUnwrap(scroll.documentView as? NSTableView)
+        XCTAssertEqual(table.numberOfRows, 1)
+
+        host.rootView = fixture(one + [section("two", count: 4)], obscured: true)
+        host.layoutSubtreeIfNeeded()
+        XCTAssertFalse(scroll.isHidden, "Spotlight should reveal the retained native pixels")
+        XCTAssertTrue(scroll.isAccessibilityHidden())
+        XCTAssertEqual(table.numberOfRows, 1, "The suspended coordinator must retain its current row snapshot")
+
+        if let directory = ProcessInfo.processInfo.environment["SIDEB_LAYOUT_REVIEW_DIR"] {
+            let output = URL(fileURLWithPath: directory, isDirectory: true)
+            try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
+            let bitmap = try XCTUnwrap(host.bitmapImageRepForCachingDisplay(in: host.bounds))
+            host.cacheDisplay(in: host.bounds, to: bitmap)
+            let data = try XCTUnwrap(bitmap.representation(using: .png, properties: [:]))
+            try data.write(to: output.appendingPathComponent("spotlight-home-retained.png"))
+        }
+
+        host.rootView = fixture(one + [section("two", count: 4)], obscured: false)
+        host.layoutSubtreeIfNeeded()
+        XCTAssertFalse(scroll.isHidden)
+        XCTAssertFalse(scroll.isAccessibilityHidden())
+        XCTAssertEqual(table.numberOfRows, 2, "The latest snapshot applies when the page becomes active again")
+    }
 }

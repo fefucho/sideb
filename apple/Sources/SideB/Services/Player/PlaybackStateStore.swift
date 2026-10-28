@@ -34,12 +34,14 @@ struct SavedPlaybackState: Codable {
         let setVideoId: String?
         let isVideo: Bool
         let isUpload: Bool
+        let contentRating: String?
 
         init(_ song: SongItemRecord) {
             videoId = song.videoId; title = song.title; artists = song.artists
             album = song.album; duration = song.duration; thumbnail = song.thumbnail
             artistId = song.artistId; albumId = song.albumId; setVideoId = song.setVideoId
             isVideo = song.isVideo; isUpload = song.isUpload
+            contentRating = ContentRatingMetadata.encode(song.contentRating)
             artistRuns = song.artistRuns.map { Artist(text: $0.text, id: $0.id) }
         }
 
@@ -48,7 +50,7 @@ struct SavedPlaybackState: Codable {
                            duration: duration, thumbnail: thumbnail, artistId: artistId,
                            albumId: albumId, setVideoId: setVideoId, isVideo: isVideo,
                            isUpload: isUpload, library: nil,
-                           artistRuns: (artistRuns ?? []).map { HomeArtistRunRecord(text: $0.text, id: $0.id) })
+                           artistRuns: (artistRuns ?? []).map { HomeArtistRunRecord(text: $0.text, id: $0.id) }, contentRating: ContentRatingMetadata.decode(contentRating))
         }
     }
 

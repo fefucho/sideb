@@ -24,5 +24,5 @@
   {/if}
 </div>
 <style>
-  .collection-fixture {max-width:100%;min-width:0;color:#f7f7f8;font-family:Segoe UI,sans-serif;}
+  .collection-fixture {max-width:100%;min-width:0;color:#f7f7f8;font-family:inherit;}
 </style>

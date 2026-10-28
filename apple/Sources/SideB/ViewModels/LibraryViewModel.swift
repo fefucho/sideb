@@ -650,6 +650,7 @@ final class LibraryViewModel {
 }
 
 struct LibraryPin: Codable, Equatable {
+    let contentRating: String?
     let kind: String; let id: String; let title: String; let subtitle: String?; let thumbnail: String?
     var key: String { Self.key(card) }
     static func key(_ card: BrowseCardRecord) -> String {
@@ -661,8 +662,9 @@ struct LibraryPin: Codable, Equatable {
         kind = card.kind == "mix" ? "playlist" : card.kind
         id = kind == "playlist" ? MenuIDNormalizer.canonicalPlaylistId(card.id) : card.id.trimmingCharacters(in: .whitespacesAndNewlines)
         title = card.title; subtitle = card.subtitle; thumbnail = card.thumbnail
+        contentRating = ContentRatingMetadata.encode(card.contentRating)
     }
-    var card: BrowseCardRecord { BrowseCardRecord(kind: kind == "mix" ? "playlist" : kind, id: id, title: title, subtitle: subtitle, thumbnail: thumbnail, duration: nil) }
+    var card: BrowseCardRecord { BrowseCardRecord(kind: kind == "mix" ? "playlist" : kind, id: id, title: title, subtitle: subtitle, thumbnail: thumbnail, duration: nil, contentRating: ContentRatingMetadata.decode(contentRating)) }
 }
 private struct LibraryPreferences: Codable {
     let version: Int; let tab: String; let list: Bool; let order: String; let pins: [LibraryPin]

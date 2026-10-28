@@ -6,30 +6,43 @@ import SideBCore
 private enum SearchStubError: Error { case failed }
 
 private actor SearchRequestGate {
-    enum Route: Hashable { case mixed, suggestions, songs, videos, cards }
-    private var mixed: [(String, Bool, CheckedContinuation<SearchResultsRecord, Error>)] = []
-    private var spellingFlags: [Bool] = []
-    private var suggestions: [(String, CheckedContinuation<SearchSuggestionsRecord, Error>)] = []
+    enum Route: Hashable { case mixed, suggestions, songs, videos, cards, remove, continuation }
+    private var mixed: [(String, String?, Bool, Bool, CheckedContinuation<SearchPageRecord, Error>)] = []
+    private var suggestions: [(String, CheckedContinuation<SearchSuggestionsPageRecord, Error>)] = []
     private var songs: [(String, Bool, CheckedContinuation<[SongItemRecord], Error>)] = []
     private var videos: [(String, CheckedContinuation<[SongItemRecord], Error>)] = []
     private var cards: [(String, String, CheckedContinuation<[BrowseCardRecord], Error>)] = []
+    private var removals: [(String, CheckedContinuation<Void, Error>)] = []
+    private var continuations: [(String, CheckedContinuation<SearchPageRecord, Error>)] = []
     private var waiters: [Route: [(Int, CheckedContinuation<Void, Never>)]] = [:]
 
-    func requestMixed(query: String, recordHistory: Bool, ignoreSpelling: Bool) async throws -> SearchResultsRecord {
+    func requestMixed(query: String, params: String?, recordHistory: Bool, ignoreSpelling: Bool) async throws -> SearchPageRecord {
         try await withCheckedThrowingContinuation { continuation in
-            mixed.append((query, recordHistory, continuation))
-            spellingFlags.append(ignoreSpelling)
+            mixed.append((query, params, recordHistory, ignoreSpelling, continuation))
             notify(.mixed, count: mixed.count)
         }
     }
 
-    func requestSuggestions(query: String) async throws -> SearchSuggestionsRecord {
+    func requestSuggestions(query: String) async throws -> SearchSuggestionsPageRecord {
         try await withCheckedThrowingContinuation { continuation in
             suggestions.append((query, continuation)); notify(.suggestions, count: suggestions.count)
         }
     }
+    func succeedSuggestions(_ index: Int, entries: [SearchSuggestionEntryRecord]) {
+        suggestions[index].1.resume(returning: SearchSuggestionsPageRecord(entries: entries))
+    }
     func succeedSuggestions(_ index: Int, queries: [String], results: SearchResultsRecord) {
-        suggestions[index].1.resume(returning: SearchSuggestionsRecord(queries: queries, results: results))
+        let textEntries = queries.enumerated().map { i, query in
+            SearchSuggestionEntryRecord(id: "text-\(i)", kind: "text", query: query, runs: [], feedbackToken: nil, card: nil, song: nil)
+        }
+        let cards = results.top + results.albums + results.artists + results.playlists
+        let cardEntries = cards.enumerated().map { i, item in
+            SearchSuggestionEntryRecord(id: "media-\(i)", kind: "media", query: nil, runs: [], feedbackToken: nil, card: item, song: nil)
+        }
+        let songEntries = (results.topSongs + results.songs).enumerated().map { i, item in
+            SearchSuggestionEntryRecord(id: "song-\(i)", kind: "media", query: nil, runs: [], feedbackToken: nil, card: nil, song: item)
+        }
+        succeedSuggestions(index, entries: textEntries + cardEntries + songEntries)
     }
     func count(_ route: Route) -> Int { requestCount(route) }
 
@@ -54,6 +67,17 @@ private actor SearchRequestGate {
         }
     }
 
+    func requestRemove(token: String) async throws {
+        try await withCheckedThrowingContinuation { continuation in
+            removals.append((token, continuation)); notify(.remove, count: removals.count)
+        }
+    }
+    func requestContinuation(token: String) async throws -> SearchPageRecord {
+        try await withCheckedThrowingContinuation { continuation in
+            continuations.append((token, continuation)); notify(.continuation, count: continuations.count)
+        }
+    }
+
     func wait(_ route: Route, count: Int) async {
         if requestCount(route) >= count { return }
         await withCheckedContinuation { continuation in
@@ -61,19 +85,42 @@ private actor SearchRequestGate {
         }
     }
 
-    func ignoresSpelling(_ index: Int) -> Bool { spellingFlags[index] }
     func mixedCount() -> Int { mixed.count }
     func mixedQuery(_ index: Int) -> String { mixed[index].0 }
+    func suggestionsQuery(_ index: Int) -> String { suggestions[index].0 }
     func songsQuery(_ index: Int) -> String { songs[index].0 }
-    func mixedHistory(_ index: Int) -> Bool { mixed[index].1 }
-    func succeedMixed(_ index: Int, _ value: SearchResultsRecord) { mixed[index].2.resume(returning: value) }
-    func failMixed(_ index: Int) { mixed[index].2.resume(throwing: SearchStubError.failed) }
+    func mixedHistory(_ index: Int) -> Bool { mixed[index].2 }
+    func ignoresSpelling(_ index: Int) -> Bool { mixed[index].3 }
+    func succeedMixed(_ index: Int, _ value: SearchPageRecord) { mixed[index].4.resume(returning: value) }
+    func succeedMixed(_ index: Int, _ value: SearchResultsRecord, correction: SearchPageCorrectionRecord? = nil) {
+        let sections = [
+            SearchSectionRecord(id: "top", title: "Top result", layout: "top", items: value.top, songs: value.topSongs,
+                primaryItemIndex: nil, relatedItemIndices: [], moreQuery: nil, moreParams: nil, moreBrowseId: nil, actions: []),
+            SearchSectionRecord(id: "songs", title: "Songs", layout: "list", items: [], songs: value.songs,
+                primaryItemIndex: nil, relatedItemIndices: [], moreQuery: nil, moreParams: nil, moreBrowseId: nil, actions: []),
+            SearchSectionRecord(id: "albums", title: "Albums", layout: "list", items: value.albums, songs: [],
+                primaryItemIndex: nil, relatedItemIndices: [], moreQuery: nil, moreParams: nil, moreBrowseId: nil, actions: []),
+            SearchSectionRecord(id: "artists", title: "Artists", layout: "list", items: value.artists, songs: [],
+                primaryItemIndex: nil, relatedItemIndices: [], moreQuery: nil, moreParams: nil, moreBrowseId: nil, actions: []),
+            SearchSectionRecord(id: "playlists", title: "Playlists", layout: "list", items: value.playlists, songs: [],
+                primaryItemIndex: nil, relatedItemIndices: [], moreQuery: nil, moreParams: nil, moreBrowseId: nil, actions: [])
+        ].filter { !$0.items.isEmpty || !$0.songs.isEmpty }
+        mixed[index].4.resume(returning: SearchPageRecord(chips: [], correction: correction, sections: sections, continuation: nil))
+    }
+    func failMixed(_ index: Int) { mixed[index].4.resume(throwing: SearchStubError.failed) }
+    func mixedParams(_ index: Int) -> String? { mixed[index].1 }
+    func continuationToken(_ index: Int) -> String { continuations[index].0 }
+    func succeedContinuation(_ index: Int, _ page: SearchPageRecord) { continuations[index].1.resume(returning: page) }
+    func failContinuation(_ index: Int) { continuations[index].1.resume(throwing: SearchStubError.failed) }
     func succeedSongs(_ index: Int, _ value: [SongItemRecord]) { songs[index].2.resume(returning: value) }
     func failSongs(_ index: Int) { songs[index].2.resume(throwing: SearchStubError.failed) }
     func succeedVideos(_ index: Int, _ value: [SongItemRecord]) { videos[index].1.resume(returning: value) }
     func failVideos(_ index: Int) { videos[index].1.resume(throwing: SearchStubError.failed) }
     func succeedCards(_ index: Int, _ value: [BrowseCardRecord]) { cards[index].2.resume(returning: value) }
     func failCards(_ index: Int) { cards[index].2.resume(throwing: SearchStubError.failed) }
+    func removeToken(_ index: Int) -> String { removals[index].0 }
+    func succeedRemove(_ index: Int) { removals[index].1.resume() }
+    func failRemove(_ index: Int) { removals[index].1.resume(throwing: SearchStubError.failed) }
 
     private func requestCount(_ route: Route) -> Int {
         switch route {
@@ -82,6 +129,8 @@ private actor SearchRequestGate {
         case .songs: songs.count
         case .videos: videos.count
         case .cards: cards.count
+        case .remove: removals.count
+        case .continuation: continuations.count
         }
     }
 
@@ -101,12 +150,17 @@ private final class SearchCoreStub: SideBCore, @unchecked Sendable {
 
     init() { super.init(noPointer: .init()) }
 
-    override func searchCatalog(query: String, recordHistory: Bool, ignoreSpelling: Bool) async throws -> SearchCatalogRecord {
-        let value = try await gate.requestMixed(query: query, recordHistory: recordHistory, ignoreSpelling: ignoreSpelling)
-        return SearchCatalogRecord(results: value, correction: query == "typo" && !ignoreSpelling ? SearchCorrectionRecord(query: "corrected", applied: true) : nil)
+    override func searchPage(query: String, params: String?, recordHistory: Bool, ignoreSpelling: Bool) async throws -> SearchPageRecord {
+        try await gate.requestMixed(query: query, params: params, recordHistory: recordHistory, ignoreSpelling: ignoreSpelling)
     }
-    override func searchSuggestions(query: String) async throws -> SearchSuggestionsRecord {
+    override func searchSuggestionsPage(query: String) async throws -> SearchSuggestionsPageRecord {
         try await gate.requestSuggestions(query: query)
+    }
+    override func removeSearchSuggestion(token: String) async throws {
+        try await gate.requestRemove(token: token)
+    }
+    override func searchPageContinuation(continuation: String) async throws -> SearchPageRecord {
+        try await gate.requestContinuation(token: continuation)
     }
 
     override func searchSongs(query: String, recordHistory: Bool) async throws -> [SongItemRecord] {
@@ -136,6 +190,14 @@ private func results(top: [BrowseCardRecord] = [], topSongs: [SongItemRecord] = 
     SearchResultsRecord(topSongs: topSongs, top: top, songs: songs, albums: [], artists: [], playlists: [])
 }
 
+private func suggestion(_ id: String, kind: String, query: String? = nil, token: String? = nil) -> SearchSuggestionEntryRecord {
+    SearchSuggestionEntryRecord(id: id, kind: kind, query: query, runs: [], feedbackToken: token, card: nil, song: nil)
+}
+
+private func page(chips: [SearchChipRecord] = [], sections: [SearchSectionRecord] = [], continuation: String? = nil) -> SearchPageRecord {
+    SearchPageRecord(chips: chips, correction: nil, sections: sections, continuation: continuation)
+}
+
 @MainActor private func modelStore() -> SearchRecentStore {
     SearchRecentStore(directory: FileManager.default.temporaryDirectory.appendingPathComponent("sideb-search-model-tests-" + UUID().uuidString))
 }
@@ -148,7 +210,7 @@ private func results(top: [BrowseCardRecord] = [], topSongs: [SongItemRecord] = 
     #expect(await core.gate.mixedHistory(0))
     #expect(await core.gate.count(.songs) == 0)
     #expect(await core.gate.count(.videos) == 0)
-    #expect(store.entries.count == 1)
+    #expect(store.entries.isEmpty)
     await core.gate.succeedMixed(0, results(songs: [song("song"), song("video", isVideo: true)]))
     while model.isCommittedLoading { await Task.yield() }
     #expect(model.committedSongs.map(\.videoId) == ["song"])
@@ -159,7 +221,7 @@ private func results(top: [BrowseCardRecord] = [], topSongs: [SongItemRecord] = 
     while model.isSongsLoading { await Task.yield() }
     model.selectFilter(.all, core: core); model.selectFilter(.songs, core: core)
     #expect(await core.gate.count(.songs) == 1)
-    #expect(store.entries.count == 1)
+    #expect(store.entries.isEmpty)
     #expect(model.filteredSongs.first?.videoId == "category")
 }
 
@@ -189,6 +251,162 @@ private func results(top: [BrowseCardRecord] = [], topSongs: [SongItemRecord] = 
     #expect(model.querySuggestions == ["runaway"])
     #expect(model.associatedQuickQuery == "run")
     #expect(model.isTopdownVisible)
+}
+
+@Test @MainActor func emptyQueryLoadsProviderHistoryWithoutWritingLocalRecents() async {
+    let core = SearchCoreStub(), store = modelStore()
+    let model = SearchViewModel(recentStore: store)
+    model.onQueryChanged("", core: core)
+    await core.gate.wait(.suggestions, count: 1)
+    #expect(await core.gate.count(.mixed) == 0)
+    #expect(await core.gate.suggestionsQuery(0).isEmpty)
+    await core.gate.succeedSuggestions(0, entries: [suggestion("history-1", kind: "history", query: "older search", token: "opaque-delete-token")])
+    while model.isQuickSearching { await Task.yield() }
+    #expect(model.providerSuggestions.map(\.id) == ["history-1"])
+    #expect(model.querySuggestions == ["older search"])
+    #expect(store.entries.isEmpty)
+}
+
+@Test @MainActor func providerSuggestionOrderAndAllTextEntriesArePreserved() async {
+    let core = SearchCoreStub(), model = SearchViewModel(recentStore: modelStore())
+    let entries = [
+        suggestion("history", kind: "history", query: "past query", token: "opaque"),
+        suggestion("text-1", kind: "text", query: "one"),
+        SearchSuggestionEntryRecord(id: "same-occurrence-id", kind: "media", query: nil, runs: [], feedbackToken: nil,
+            card: card("same-occurrence-id", kind: "artist"), song: nil),
+        SearchSuggestionEntryRecord(id: "same-occurrence-id", kind: "media", query: nil, runs: [], feedbackToken: nil,
+            card: nil, song: song("same-occurrence-id")),
+        suggestion("text-2", kind: "text", query: "two"),
+        suggestion("text-3", kind: "text", query: "three"),
+        suggestion("text-4", kind: "text", query: "four")
+    ]
+    model.onQueryChanged("q", core: core)
+    await core.gate.wait(.suggestions, count: 1)
+    await core.gate.succeedSuggestions(0, entries: entries)
+    while model.isQuickSearching { await Task.yield() }
+    #expect(model.providerSuggestions.map(\.id) == entries.map(\.id))
+    #expect(model.querySuggestions == ["past query", "one", "two", "three", "four"])
+    #expect(model.visibleProviderSuggestions.map(\.id) == ["history", "text-1", "same-occurrence-id", "same-occurrence-id", "text-2"])
+    #expect(model.visibleProviderSuggestions.first?.feedbackToken == "opaque")
+}
+
+@Test @MainActor func shortQueryPreviewKeepsAllMediaButEmptyHistoryStaysComplete() async {
+    let core = SearchCoreStub(), model = SearchViewModel(recentStore: modelStore())
+    let history = (0..<6).map { suggestion("history-\($0)", kind: "history", query: "past \($0)", token: "token-\($0)") }
+    let media = SearchSuggestionEntryRecord(id: "song", kind: "media", query: nil, runs: [], feedbackToken: nil,
+        card: nil, song: song("song", title: "Homecoming"))
+    for (index, query) in ["homecoming", "   "].enumerated() {
+        model.onQueryChanged(query, core: core)
+        await core.gate.wait(.suggestions, count: index + 1)
+        await core.gate.succeedSuggestions(index, entries: history + [media])
+        while model.isQuickSearching { await Task.yield() }
+        let visible = model.visibleProviderSuggestions
+        #expect(visible.map(\.id) == (index == 0 ? Array(history.prefix(3)) : history).map(\.id) + ["song"])
+        #expect(visible.last?.song?.title == "Homecoming")
+        #expect(model.providerSuggestions.count == 7)
+        #expect(await core.gate.count(.mixed) == 0)
+        #expect(await core.gate.count(.remove) == 0)
+    }
+}
+
+@Test @MainActor func providerHistoryRemovalRunsOnlyAfterExplicitSelection() async {
+    let core = SearchCoreStub(), model = SearchViewModel(recentStore: modelStore())
+    let entry = suggestion("history", kind: "history", query: "remove me", token: "opaque-delete-token")
+    model.onQueryChanged("", core: core)
+    await core.gate.wait(.suggestions, count: 1)
+    await core.gate.succeedSuggestions(0, entries: [entry])
+    while model.isQuickSearching { await Task.yield() }
+    #expect(await core.gate.count(.remove) == 0, "Displaying a token must never issue a delete")
+    let removal = Task { await model.removeProviderSuggestion(entry, core: core) }
+    await core.gate.wait(.remove, count: 1)
+    #expect(await core.gate.removeToken(0) == "opaque-delete-token")
+    await core.gate.succeedRemove(0)
+    await removal.value
+    while model.providerSuggestions.contains(where: { $0.id == entry.id }) { await Task.yield() }
+}
+
+@Test @MainActor func providerChipPassesOpaqueParamsToSearchAndDoesNotRecordHistory() async {
+    let core = SearchCoreStub(), model = SearchViewModel(recentStore: modelStore())
+    let chip = SearchChipRecord(id: "songs", title: "Songs", params: "opaque-server-params", selected: false)
+    model.commitSearch(query: "query", core: core, origin: .submit)
+    await core.gate.wait(.mixed, count: 1)
+    await core.gate.succeedMixed(0, page(chips: [chip]))
+    while model.isCommittedLoading { await Task.yield() }
+    model.selectProviderChip(chip, core: core)
+    await core.gate.wait(.mixed, count: 2)
+    #expect(await core.gate.mixedParams(1) == "opaque-server-params")
+    #expect(!(await core.gate.mixedHistory(1)))
+    await core.gate.succeedMixed(1, page(chips: [SearchChipRecord(id: "songs", title: "Songs", params: "opaque-server-params", selected: true)]))
+    while model.isCommittedLoading { await Task.yield() }
+    #expect(model.providerPage?.chips.first?.selected == true)
+}
+
+@Test @MainActor func continuationFailureRetainsTokenAndRepeatedTokenStopsPaging() async {
+    let core = SearchCoreStub(), model = SearchViewModel(recentStore: modelStore())
+    let first = SearchSectionRecord(id: "section", title: "Songs", layout: "list", items: [], songs: [song("same")],
+        primaryItemIndex: nil, relatedItemIndices: [], moreQuery: nil, moreParams: nil, moreBrowseId: nil, actions: [])
+    model.commitSearch(query: "query", core: core)
+    await core.gate.wait(.mixed, count: 1)
+    await core.gate.succeedMixed(0, page(sections: [first], continuation: "cursor-1"))
+    while model.isCommittedLoading { await Task.yield() }
+    model.loadMore(core: core)
+    await core.gate.wait(.continuation, count: 1)
+    #expect(await core.gate.continuationToken(0) == "cursor-1")
+    await core.gate.failContinuation(0)
+    while model.isLoadingMore { await Task.yield() }
+    #expect(model.providerPage?.continuation == "cursor-1")
+    model.loadMore(core: core)
+    await core.gate.wait(.continuation, count: 2)
+    let repeated = SearchSectionRecord(id: "section", title: "Songs", layout: "list", items: [], songs: [song("same")],
+        primaryItemIndex: nil, relatedItemIndices: [], moreQuery: nil, moreParams: nil, moreBrowseId: nil, actions: [])
+    await core.gate.succeedContinuation(1, page(sections: [repeated], continuation: "cursor-1"))
+    while model.isLoadingMore { await Task.yield() }
+    #expect(model.providerPage?.sections.count == 2, "Repeated rows remain as distinct occurrences")
+    #expect(model.providerPage?.sections.map { $0.songs.first?.videoId } == ["same", "same"])
+    #expect(model.providerPage?.continuation == nil, "A consumed continuation must not be requested again")
+    model.loadMore(core: core)
+    #expect(await core.gate.count(.continuation) == 2)
+}
+
+@Test @MainActor func staleContinuationCannotReplaceTheNewSearchPage() async {
+    let core = SearchCoreStub(), model = SearchViewModel(recentStore: modelStore())
+    model.commitSearch(query: "old", core: core)
+    await core.gate.wait(.mixed, count: 1)
+    await core.gate.succeedMixed(0, page(sections: [], continuation: "old-cursor"))
+    while model.isCommittedLoading { await Task.yield() }
+    model.loadMore(core: core)
+    await core.gate.wait(.continuation, count: 1)
+    model.commitSearch(query: "new", core: core)
+    await core.gate.wait(.mixed, count: 2)
+    await core.gate.succeedMixed(1, page(sections: [], continuation: nil))
+    while model.isCommittedLoading { await Task.yield() }
+    await core.gate.succeedContinuation(0, page(sections: [SearchSectionRecord(id: "stale", title: "Old", layout: "list",
+        items: [], songs: [song("stale")], primaryItemIndex: nil, relatedItemIndices: [], moreQuery: nil, moreParams: nil, moreBrowseId: nil, actions: [])]))
+    #expect(model.committedQuery == "new")
+    #expect(model.providerPage?.sections.isEmpty == true)
+    #expect(model.committedSongs.isEmpty)
+}
+
+@Test @MainActor func failedAndRetiredSuggestionRemovalKeepsSessionScopedState() async {
+    let core = SearchCoreStub(), model = SearchViewModel(recentStore: modelStore())
+    let entry = suggestion("history", kind: "history", query: "keep", token: "opaque")
+    model.onQueryChanged("", core: core)
+    await core.gate.wait(.suggestions, count: 1)
+    await core.gate.succeedSuggestions(0, entries: [entry])
+    while model.isQuickSearching { await Task.yield() }
+    let failedRemoval = Task { await model.removeProviderSuggestion(entry, core: core) }
+    await core.gate.wait(.remove, count: 1)
+    await core.gate.failRemove(0)
+    await failedRemoval.value
+    #expect(model.providerSuggestions.map(\.id) == [entry.id])
+
+    let retiredRemoval = Task { await model.removeProviderSuggestion(entry, core: core) }
+    await core.gate.wait(.remove, count: 2)
+    model.clear()
+    await core.gate.succeedRemove(1)
+    await retiredRemoval.value
+    #expect(model.providerSuggestions.isEmpty)
+    #expect(model.querySuggestions.isEmpty)
 }
 
 @Test @MainActor func latePreviewCannotReopenDropdownAfterCommit() async {
@@ -240,6 +458,7 @@ private func results(top: [BrowseCardRecord] = [], topSongs: [SongItemRecord] = 
     await core.gate.succeedMixed(0, results(top: [card("stale")]))
     #expect(model.committedResults == nil)
     #expect(model.querySuggestions.isEmpty)
+    #expect(model.providerSuggestions.isEmpty)
     #expect(model.committedSongs.isEmpty)
     #expect(model.selectedFilter == .all)
     model.onQueryChanged("account", core: core)
@@ -267,7 +486,7 @@ private func results(top: [BrowseCardRecord] = [], topSongs: [SongItemRecord] = 
     await core.gate.succeedSongs(1, [song("retried")])
     while model.isSongsLoading { await Task.yield() }
     #expect(await core.gate.count(.mixed) == 1)
-    #expect(store.entries.count == 1)
+    #expect(store.entries.isEmpty)
     #expect(model.filteredSongs.first?.videoId == "retried")
 }
 
@@ -302,11 +521,12 @@ private func results(top: [BrowseCardRecord] = [], topSongs: [SongItemRecord] = 
     let model = SearchViewModel(recentStore: store)
     model.commitSearch(query: "typo", core: core, origin: .submit)
     await core.gate.wait(.mixed, count: 1)
-    await core.gate.succeedMixed(0, results())
+    await core.gate.succeedMixed(0, results(), correction: SearchPageCorrectionRecord(query: "corrected", applied: true,
+        params: nil, originalQuery: "typo", originalParams: nil))
     while model.isCommittedLoading { await Task.yield() }
     #expect(model.correction?.query == "corrected")
     #expect(model.query == "typo")
-    #expect(store.entries.first?.query == "typo")
+    #expect(store.entries.isEmpty)
     model.commitSearch(query: model.committedQuery, core: core, force: true, ignoreSpelling: true)
     await core.gate.wait(.mixed, count: 2)
     #expect(await core.gate.ignoresSpelling(1))
@@ -316,7 +536,7 @@ private func results(top: [BrowseCardRecord] = [], topSongs: [SongItemRecord] = 
     #expect(model.correction == nil)
     model.selectFilter(.songs, core: core)
     #expect(await core.gate.count(.songs) == 0)
-    #expect(store.entries.count == 1)
+    #expect(store.entries.isEmpty)
 }
 
 @Test @MainActor func previewCacheEvictsOldestEntryAtItsBound() async {
@@ -340,7 +560,8 @@ private func results(top: [BrowseCardRecord] = [], topSongs: [SongItemRecord] = 
     model.commitSearch(query: "typo", core: core)
     await core.gate.wait(.mixed, count: 1)
     #expect(await core.gate.count(.songs) == 0)
-    await core.gate.succeedMixed(0, results())
+    await core.gate.succeedMixed(0, results(), correction: SearchPageCorrectionRecord(query: "corrected", applied: true,
+        params: nil, originalQuery: "typo", originalParams: nil))
     await core.gate.wait(.songs, count: 1)
     #expect(await core.gate.songsQuery(0) == "corrected")
     await core.gate.succeedSongs(0, [])
@@ -379,7 +600,7 @@ private func results(top: [BrowseCardRecord] = [], topSongs: [SongItemRecord] = 
     await core.gate.succeedMixed(1, results())
     while model.isCommittedLoading { await Task.yield() }
     #expect(!model.isOriginalSearch)
-    #expect(store.entries.count == 1)
+    #expect(store.entries.isEmpty)
 }
 
 @Test @MainActor func retiredSearchEditorCannotCancelOrReplaceTheCurrentPreview() async {
@@ -398,7 +619,7 @@ private func results(top: [BrowseCardRecord] = [], topSongs: [SongItemRecord] = 
     await core.gate.succeedSuggestions(1, queries: ["current text"], results: results(songs: [song("current")]))
     while model.isQuickSearching { await Task.yield() }
     #expect(model.associatedQuickQuery == "current")
-    #expect(model.quickResults?.songs.map(\.videoId) == ["current"])
+    #expect(model.providerSuggestions.compactMap(\.song).map(\.videoId) == ["current"])
     model.onQueryChanged("stale input", core: core, owner: oldEditor)
     #expect(model.associatedQuickQuery == "current")
     #expect(model.query.isEmpty)

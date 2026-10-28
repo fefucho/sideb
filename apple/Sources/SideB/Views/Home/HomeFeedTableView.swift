@@ -67,6 +67,7 @@ struct HomeFeedRows {
 struct HomeFeedTableView: NSViewRepresentable {
     let localizationRevision = L10n.revision
     @Environment(\.sideBGesturePreviewVisible) var gesturePreviewVisible
+    @Environment(\.sideBPageRetainsInactiveVisuals) private var retainInactiveVisuals
     let headerContent: AnyView?
     let headerHeight: CGFloat
     let featuredContent: ((CGFloat) -> AnyView)?
@@ -162,7 +163,7 @@ struct HomeFeedTableView: NSViewRepresentable {
 
     func makeNativeScrollView(coordinator: Coordinator) -> NSScrollView {
         let scroll = HomeFeedScrollView()
-        scroll.isHidden = isObscured && !gesturePreviewVisible
+        scroll.isHidden = isObscured && !gesturePreviewVisible && !retainInactiveVisuals
         scroll.setAccessibilityHidden(isObscured)
         scroll.drawsBackground = false
         scroll.hasVerticalScroller = true
@@ -239,7 +240,7 @@ struct HomeFeedTableView: NSViewRepresentable {
                 coordinator.setFeedVisible(false)
             }
             coordinator.isObscured = true
-            scroll.isHidden = !gesturePreviewVisible
+            scroll.isHidden = !gesturePreviewVisible && !retainInactiveVisuals
             return
         }
         let old = coordinator.parent

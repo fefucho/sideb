@@ -15,6 +15,7 @@ struct ExploreCatalogHeaderIdentity: Equatable {
 struct ExploreCatalogGridView: NSViewRepresentable {
     let localizationRevision = L10n.revision
     @Environment(\.sideBGesturePreviewVisible) var gesturePreviewVisible
+    @Environment(\.sideBPageRetainsInactiveVisuals) private var retainInactiveVisuals
     enum Axis { case vertical, horizontal }
     let cards: [BrowseCardRecord]
     let route: ExploreRoute
@@ -50,7 +51,7 @@ struct ExploreCatalogGridView: NSViewRepresentable {
         scroll.verticalScrollElasticity = axis == .vertical ? .allowed : .none
         scroll.automaticallyAdjustsContentInsets = false
         scroll.contentInsets = NSEdgeInsets(top: 0, left: 0, bottom: axis == .vertical ? 140 : 0, right: 0)
-        scroll.isHidden = isObscured && !gesturePreviewVisible
+        scroll.isHidden = isObscured && !gesturePreviewVisible && !retainInactiveVisuals
         scroll.setAccessibilityHidden(isObscured)
 
         let layout = NSCollectionViewFlowLayout()
@@ -106,7 +107,7 @@ struct ExploreCatalogGridView: NSViewRepresentable {
                 }
             }
             coordinator.isSuspended = true
-            scroll.isHidden = !gesturePreviewVisible
+            scroll.isHidden = !gesturePreviewVisible && !retainInactiveVisuals
             return
         }
         let resumed = coordinator.isSuspended
@@ -115,7 +116,7 @@ struct ExploreCatalogGridView: NSViewRepresentable {
         coordinator.parent = self
         guard let collection = coordinator.collection else { return }
         let reset = old.route != route || old.sessionRevision != sessionRevision
-        scroll.isHidden = isObscured && !gesturePreviewVisible
+        scroll.isHidden = isObscured && !gesturePreviewVisible && !retainInactiveVisuals
         if resumed || old.isObscured != isObscured {
             coordinator.updateHover(at: nil)
             for case let item as HomeCollectionItem in collection.visibleItems() { item.content.setFeedVisible(!isObscured) }
@@ -219,7 +220,7 @@ struct ExploreCatalogGridView: NSViewRepresentable {
             configuredItems += 1
             let record = HomeItemRecord(kind: card.kind == "video" ? "song" : card.kind, id: card.id, title: card.title,
                 subtitle: card.subtitle, thumbnail: card.thumbnail, duration: card.duration,
-                artists: nil, artistId: nil, album: nil, albumId: nil, artistRuns: [], explicit: false)
+                artists: nil, artistId: nil, album: nil, albumId: nil, artistRuns: [], explicit: false, contentRating: card.contentRating)
             item.content.configure(record: record, style: .largeCard, currentTrackID: nil, isPlaying: parent.isPlaying,
                 queueContext: parent.queueContext,
                 onCard: { [weak self] in self?.open(card) },

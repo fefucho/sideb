@@ -12,7 +12,7 @@
   import { occurrenceKey, selectionFor, trackSegments, visibleTrackRange } from './trackList';
 
   interface Props {
-    items: SongDto[]; source?: { kind: string; id: string }; indexOffset?: number; occurrenceIndices?: number[]; occurrenceKeys?: string[];
+    active?: boolean; items: SongDto[]; source?: { kind: string; id: string }; indexOffset?: number; occurrenceIndices?: number[]; occurrenceKeys?: string[];
     currentTrackId: string | null; isPlaying: boolean; onPlay: (index: number) => void;
     onOpenArtist?: (id: string) => void; onOpenAlbum?: (id: string) => void;
     hideAlbumColumn?: boolean; showAlbumInSubtitle?: boolean; numbered?: boolean; flush?: boolean;
@@ -22,7 +22,7 @@
     canReorder?: boolean; mutationPending?: boolean; detail?: boolean;
     likedIds?: Set<string>; pendingIds?: Set<string>; onToggleLike?: (track: SongDto) => void;
   }
-  let { items, source, indexOffset = 0, currentTrackId, isPlaying, onPlay, onOpenArtist, onOpenAlbum,
+  let { active=true, items, source, indexOffset = 0, currentTrackId, isPlaying, onPlay, onOpenArtist, onOpenAlbum,
     hideAlbumColumn = false, showAlbumInSubtitle = false, numbered = true, flush = false, origin = {},
     onContextMenu, onRemoveTrack, onMoveTrack, canReorder = false, mutationPending = false, occurrenceIndices, occurrenceKeys,
     detail = false, likedIds, pendingIds, onToggleLike }: Props = $props();
@@ -123,7 +123,8 @@
   function findRow(key: string) {
     return [...root.querySelectorAll<HTMLTableRowElement>('[data-occurrence-key]')].find(row => row.dataset.occurrenceKey === key);
   }
-  function viewport(node: HTMLDivElement) {
+  function viewport(node: HTMLDivElement, enabled: boolean) {
+    if(!enabled)return {update(next:boolean){if(next){const owner=viewport(node,true);this.destroy=owner.destroy;this.update=owner.update;}},destroy(){}};
     let parent = node.parentElement;
     while (parent && !/(auto|scroll)/.test(getComputedStyle(parent).overflowY)) parent = parent.parentElement;
     const scroller = parent;
@@ -143,11 +144,15 @@
     measure = schedule;
     const resize = new ResizeObserver(schedule); resize.observe(node); if (scroller) resize.observe(scroller);
     target.addEventListener('scroll', schedule, { passive: true }); window.addEventListener('resize', schedule); update();
-    return { destroy() { cancelAnimationFrame(frame); resize.disconnect(); target.removeEventListener('scroll', schedule); window.removeEventListener('resize', schedule); measure = () => {}; } };
+    const destroy = () => { cancelAnimationFrame(frame); resize.disconnect(); target.removeEventListener('scroll', schedule); window.removeEventListener('resize', schedule); measure = () => {}; };
+    return { update(next:boolean) { if(!next) { destroy(); const suspended=viewport(node,false); this.destroy=suspended.destroy; this.update=suspended.update; } }, destroy };
   }
-  $effect(() => { items; rowHeight; measure(); });
+  $effect(() => { items; rowHeight; if(active)measure(); });
   $effect(() => { currentTrackId; selected = new Set(); });
-  onMount(() => {
+  let mounted=$state(false);
+  onMount(() => { mounted=true; });
+  $effect(() => {
+    if(!mounted||!active){awake=false;return;}
     const sync = () => awake = !document.hidden && document.hasFocus(); sync();
     document.addEventListener('visibilitychange', sync); window.addEventListener('focus', sync); window.addEventListener('blur', sync);
     return () => { document.removeEventListener('visibilitychange', sync); window.removeEventListener('focus', sync); window.removeEventListener('blur', sync); };
@@ -156,7 +161,7 @@
 
 <!-- The region retains focus after pointer playback; Space is handled by the app shortcut. -->
 <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-<div bind:this={root} use:viewport class="table-scroll" class:flush class:detail style={`--row-height:${rowHeight}px`} tabindex="0" role="region" aria-label={$t('search.filter.songs')}
+<div bind:this={root} use:viewport={active} class="table-scroll" class:flush class:detail style={`--row-height:${rowHeight}px`} tabindex="0" role="region" aria-label={$t('search.filter.songs')}
   onfocusin={event => focusedKey = (event.target as HTMLElement).closest<HTMLElement>('[data-occurrence-key]')?.dataset.occurrenceKey ?? null}
   onfocusout={event => { if (!(event.relatedTarget instanceof Node) || !root.contains(event.relatedTarget)) focusedKey = null; }}>
   <table aria-label={$t('search.filter.songs')} aria-rowcount={items.length} class:with-album={hasAlbum} class:editable style={`--track-actions-width:${actionWidth}px`}>

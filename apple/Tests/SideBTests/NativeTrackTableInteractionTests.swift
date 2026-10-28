@@ -98,7 +98,7 @@ private func tableTestTrack(_ id: String) -> SongItemRecord {
         let modifiedEvent = tableMouseDownEvent(flags: flags, number: number)
         cell.titleLabel.mouseDown(with: modifiedEvent)
         cell.artworkImageView.mouseDown(with: modifiedEvent)
-        let credits = cell.subviews.compactMap { $0 as? NativeTrackCreditField }
+        let credits = (cell.subviews + cell.subviews.flatMap(\.subviews)).compactMap { $0 as? NativeTrackCreditField }
         credits.forEach { $0.mouseDown(with: modifiedEvent) }
     }
     #expect(selectionDelegations == 12)
@@ -118,7 +118,7 @@ private func tableTestTrack(_ id: String) -> SongItemRecord {
     #expect(hoverControls.allSatisfy { $0.isHidden })
     #expect(selectionDelegations == 12)
 
-    let credits = cell.subviews.compactMap { $0 as? NativeTrackCreditField }
+    let credits = (cell.subviews + cell.subviews.flatMap(\.subviews)).compactMap { $0 as? NativeTrackCreditField }
     let artistLink = credits.first { $0.stringValue == "Artist" }
     let albumLink = credits.first { $0.stringValue == "• Album" }
     #expect(artistLink?.acceptsFirstResponder == true)

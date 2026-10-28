@@ -29,14 +29,26 @@ export class AnimatedArtworkClearCoordinator {
     this.active = (async () => {
       for (const release of this.releases) this.releaseDuringClear(release);
       let failure: unknown;
-      while (this.pendingReleases.size) {
-        const batch = [...this.pendingReleases];
-        const results = await Promise.allSettled(batch);
-        for (const operation of batch) this.pendingReleases.delete(operation);
-        for (const result of results) if (result.status === 'rejected') failure ??= result.reason;
+      const drain = async () => {
+        while (this.pendingReleases.size) {
+          const batch = [...this.pendingReleases];
+          const results = await Promise.allSettled(batch);
+          for (const operation of batch) this.pendingReleases.delete(operation);
+          for (const result of results) if (result.status === 'rejected') failure ??= result.reason;
+        }
+      };
+      await drain();
+      if (failure !== undefined) throw failure;
+      let size: number;
+      try { size = await clearFiles(); }
+      finally {
+        // A component can register while filesystem deletion is awaiting Rust.
+        // Its synchronous release blocks preparation; also await its teardown
+        // before declaring this clear complete and allowing another one.
+        await drain();
       }
       if (failure !== undefined) throw failure;
-      return clearFiles();
+      return size;
     })().finally(() => { this.active = null; this.clearing = false; });
     return this.active;
   }

@@ -31,12 +31,12 @@ final class NativeFeaturedArtistButton: NSButton, PlaybackSpaceControl {
     override func mouseExited(with event:NSEvent) { isLinkHovered = false; highlightChanged?() }
     override func becomeFirstResponder() -> Bool {
         let accepted = super.becomeFirstResponder()
-        if accepted { isLinkFocused = true; highlightChanged?() }
+        if accepted { isLinkFocused = true; highlightChanged?(); refreshPlayerTitleMotion() }
         return accepted
     }
     override func resignFirstResponder() -> Bool {
         let accepted = super.resignFirstResponder()
-        if accepted { isLinkFocused = false; highlightChanged?() }
+        if accepted { isLinkFocused = false; highlightChanged?(); refreshPlayerTitleMotion() }
         return accepted
     }
     override func menu(for event:NSEvent) -> NSMenu? { menuAction?() }
@@ -150,6 +150,7 @@ final class NativeFeaturedArtistMenuAction: NSObject {
     }
     func rebuild() {
         guard isVisible, let field else { return }
+        defer { (field as? NativeFeaturedLayoutObserver)?.featuredLayoutDidChange() }
         let text = field.stringValue as NSString, font = field.font ?? .systemFont(ofSize:14)
         let origin = field.cell?.titleRect(forBounds:field.bounds) ?? field.bounds
         let key = LayoutKey(text: field.stringValue, origin: origin, font: font,

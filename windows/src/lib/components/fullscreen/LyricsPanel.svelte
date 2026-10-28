@@ -4,8 +4,9 @@
   import { invoke } from '@tauri-apps/api/core';
   import type { PlaybackStateDto } from '$lib/types';
   import type { LyricsState } from '$lib/player/lyrics';
-  import { KaraokeController, prepareKaraoke, karaokeFocus, seekSeconds, type KaraokeState } from '$lib/player/karaoke';
+  import { KaraokeController, prepareKaraoke, karaokeFocus, karaokeGapIndex, seekSeconds, type KaraokeState } from '$lib/player/karaoke';
   import { KaraokeClock } from '$lib/player/karaoke-clock';
+  import { initialAnimatedArtworkRuntimeState, observeAnimatedArtworkRuntime } from '$lib/artwork/runtime';
   import { LyricScroller } from '$lib/player/lyric-scroll';
   import KaraokePhrase from './KaraokePhrase.svelte';
   import LyricsWait from './LyricsWait.svelte';
@@ -17,6 +18,9 @@
   let original=$state(false), reading=$state(false), size=$state(36), following=$state(true), menu=$state(false);
   let motion=$state(true), translations=$state(true), offset=$state(0), reduced=$state(false), contrast=$state(false);
   let focus=$state<number|null>(null), gapIndex=$state(-1), container=$state<HTMLDivElement|null>(null), height=$state(0);
+  let runtime=$state(initialAnimatedArtworkRuntimeState), webHidden=$state(false);
+  const visible=$derived(active&&!webHidden&&runtime.visible&&!runtime.minimized&&!runtime.cloaked);
+  let menuButton=$state<HTMLButtonElement>();
   let centerRevision=0, centered=false, lastOccurrence='', savedScrollTop=0;
   const occurrence=$derived(JSON.stringify([session,playback.queue.items[playback.queue.currentIndex??-1]?.entryId,playback.generation,playback.currentTrack?.videoId]));
   const duration=$derived(Number.isFinite(playback.duration)&&playback.duration>0?playback.duration:playback.currentTrack?.duration??0);
@@ -25,10 +29,9 @@
     try {
       const [video,generation,scope]=JSON.parse(classicState.trackKey);
       if(video!==playback.currentTrack.videoId||generation!==playback.generation)return null;
-      if(typeof scope==='string') {
-        const entry=JSON.parse(scope)[1]??null;
-        if(entry!==(playback.queue.items[playback.queue.currentIndex??-1]?.entryId??null))return null;
-      }
+      if(typeof scope!=='string')return null;
+      const [account,entry]=JSON.parse(scope);
+      if(account!==session||entry!==(playback.queue.items[playback.queue.currentIndex??-1]?.entryId??null))return null;
       return classicState.lyrics;
     }catch{return null;}
   });
@@ -51,7 +54,8 @@
   }
   function useNew() { original=false; motion=true; translations=true; offset=0; void controller.retry(); }
   function refresh() { if(original)onRetry();else void controller.retry(); }
-  function selectSource() { if(isRich){original=true;offset=0;}else useNew(); }
+  function selectSource() { if(!original){original=true;offset=0;}else useNew(); }
+  function closeMenu() { menu=false; menuButton?.focus(); }
   $effect(()=>{
     const track=playback.currentTrack,key=occurrence,seconds=duration,enabled=active&&!original;
     untrack(()=>controller.setContext(track,key,seconds,enabled));
@@ -60,10 +64,12 @@
     const key=occurrence;
     if(key!==lastOccurrence) { lastOccurrence=key; ++centerRevision; scroller.cancel(); following=true;offset=0;motion=true;translations=true;centered=false;savedScrollTop=0; if(container)container.scrollTop=0; }
   });
+  $effect(()=>{const slow=runtime.powerSaver||runtime.memoryPressure;untrack(()=>clock.setSlow(slow));});
+  $effect(()=>{const boundaries=lyricDocument?.boundaries??[],shift=effectiveOffset;untrack(()=>clock.setBoundaries(boundaries,shift));});
   $effect(()=>{
     const pending=typeof playback.seekPending==='number';
     // Pending is a fixed visual preview only; audio position stays engine-observed.
-    const position=pending?playback.seekPending!:playback.position,playing=active&&playback.isPlaying&&!playback.isLoading,key=`${occurrence}:${playback.seekRevision??0}`;
+    const position=pending?playback.seekPending!:playback.position,playing=visible&&playback.isPlaying&&!playback.isLoading,key=`${occurrence}:${playback.seekRevision??0}`;
     untrack(()=>clock.observe(position,playing,pending,key));
   });
   $effect(()=>{
@@ -71,7 +77,7 @@
     const doc=lyricDocument,shift=effectiveOffset;
     return untrack(()=>clock.subscribe(ms=>{
       const next=doc?karaokeFocus(doc,ms+shift):null;if(focus!==next)focus=next;
-      const gap=doc?.gaps.findIndex(item=>ms+shift>=item.start&&ms+shift<item.end)??-1;if(gapIndex!==gap)gapIndex=gap;
+      const gap=doc?karaokeGapIndex(doc,ms+shift):-1;if(gapIndex!==gap)gapIndex=gap;
       return false;
     }));
   });
@@ -94,10 +100,13 @@
     }
   });
   onMount(()=>{
-    const media=window.matchMedia('(prefers-reduced-motion:reduce)'),high=window.matchMedia('(prefers-contrast:more)');
-    const sync=()=>{reduced=media.matches;contrast=high.matches;};sync();
-    media.addEventListener('change',sync);high.addEventListener('change',sync);
-    return()=>{media.removeEventListener('change',sync);high.removeEventListener('change',sync);};
+    const media=window.matchMedia('(prefers-reduced-motion:reduce)'),high=window.matchMedia('(prefers-contrast:more)'),forced=window.matchMedia('(forced-colors:active)');
+    const visibility=()=>{webHidden=document.hidden;};visibility();
+    document.addEventListener('visibilitychange',visibility);
+    const stopRuntime=observeAnimatedArtworkRuntime(next=>runtime=next);
+    const sync=()=>{reduced=media.matches;contrast=high.matches||forced.matches;};sync();
+    media.addEventListener('change',sync);high.addEventListener('change',sync);forced.addEventListener('change',sync);
+    return()=>{media.removeEventListener('change',sync);high.removeEventListener('change',sync);forced.removeEventListener('change',sync);document.removeEventListener('visibilitychange',visibility);stopRuntime();};
   });
   onDestroy(()=>{controller.dispose();clock.dispose();scroller.cancel();});
 </script>
@@ -105,9 +114,9 @@
   style={`--size:${size}px;--edge:${active&&lyricDocument?.hasTiming&&!reading?height/2:12}px;--reserve:${reading?0:48}px`} aria-label={$t('windows.ui.songLyrics')}>
   {#if active}
   <div class="options">
-    <button class="more" type="button" aria-label={$t('lyrics.experimental.options')} aria-expanded={menu} onclick={()=>menu=!menu}>•••</button>
+    <button bind:this={menuButton} class="more" type="button" aria-label={$t('lyrics.experimental.options')} aria-expanded={menu} onclick={()=>menu=!menu}>•••</button>
     {#if menu}
-      <div class="menu" role="dialog" tabindex="-1" aria-label={$t('lyrics.experimental.options')} onkeydown={event=>{if(event.key==='Escape')menu=false;}}>
+      <div class="menu" role="dialog" tabindex="-1" aria-label={$t('lyrics.experimental.options')} onkeydown={event=>{if(event.key==='Escape'){event.preventDefault();event.stopPropagation();closeMenu();}}}>
         <button type="button" aria-pressed={!reading} onclick={()=>reading=false}>{$t('lyrics.experimental.mode.karaoke')}</button>
         <button type="button" aria-pressed={reading} onclick={()=>reading=true}>{$t('lyrics.experimental.mode.reading')}</button>
         <label>{$t('lyrics.experimental.textSize')}<input aria-label={$t('lyrics.experimental.textSize')} type="range" min="20" max="48" step="2" bind:value={size}/><output>{size}</output></label>
@@ -123,7 +132,7 @@
         {/if}
         <small>{$t('lyrics.experimental.source',[lyricDocument?.provider??'—'])} · {$t(lyricDocument?.hasWords?'lyrics.experimental.timing.words':lyricDocument?.hasTiming?'lyrics.experimental.timing.lines':'lyrics.experimental.timing.plain')}</small>
         <button type="button" disabled={busy} onclick={refresh}>{$t('lyrics.experimental.refresh')}</button>
-        <button type="button" disabled={!isRich&&rich.refreshing} onclick={selectSource}>{$t(isRich?'lyrics.experimental.returnToCurrent':'lyrics.experimental.tryNew')}</button>
+        <button type="button" disabled={original&&rich.refreshing} onclick={selectSource}>{$t(!original?'lyrics.experimental.returnToCurrent':'lyrics.experimental.tryNew')}</button>
       </div>
     {/if}
   </div>
@@ -135,7 +144,7 @@
       onscroll={()=>{if(!following&&container)savedScrollTop=container.scrollTop;}} onwheel={manual} ontouchstart={manual} onkeydown={scrollKey} onpointerdown={event=>{if(event.target===container)manual();}}>
       <div class="lines">
         {#each lyricDocument.groups as group, ordinal (group.anchor)}
-          {#each lyricDocument.gaps as gap,i}{#if gap.before===ordinal}<LyricsWait {gap} index={i} {clock} offset={effectiveOffset} animate={!reading&&!reduced&&motion&&active}/>{/if}{/each}
+          {#each lyricDocument.gapsByBefore.get(ordinal)??[] as item}<LyricsWait gap={item.gap} index={item.index} {clock} offset={effectiveOffset} animate={!reading&&!reduced&&motion&&visible}/>{/each}
           {@const distance=groupOrdinal<0?0:Math.min(3,Math.abs(groupOrdinal-ordinal))}
           {@const blur=!reading&&following&&!reduced&&!contrast&&distance>0?[0,1.2,2.1,3][distance]:0}
           <div class="group" class:focused={following&&group.anchor===focus} style={`--blur:${blur}px;--opacity:${distance===0||reading?1:contrast?.78:.40};--scale:${distance===0||reduced||reading?1:.98}`}>
@@ -152,7 +161,7 @@
             {/each}
           </div>
         {/each}
-        {#each lyricDocument.gaps as gap,i}{#if gap.before===lyricDocument.groups.length}<LyricsWait {gap} index={i} {clock} offset={effectiveOffset} animate={!reading&&!reduced&&motion&&active}/>{/if}{/each}
+        {#each lyricDocument.gapsByBefore.get(lyricDocument.groups.length)??[] as item}<LyricsWait gap={item.gap} index={item.index} {clock} offset={effectiveOffset} animate={!reading&&!reduced&&motion&&visible}/>{/each}
       </div>
     </div>
     {#if !following}<button type="button" class="follow" onclick={resume}>{$t('fullscreen.returnToCurrentLyric')}</button>{/if}
@@ -167,12 +176,13 @@
   .lyrics-panel{position:relative;flex:1;width:100%;height:100%;min-width:0;min-height:0;container-type:inline-size;}.lyrics-panel[hidden]{display:none;}
   .lyrics-scroll{height:100%;overflow:auto;overscroll-behavior:contain;scrollbar-width:none;mask-image:linear-gradient(to bottom,transparent,#000 48px,#000 calc(100% - 88px),transparent);}.lyrics-scroll::-webkit-scrollbar{display:none;}
   .lines{padding:var(--edge) calc(32px + var(--reserve)) var(--edge) 32px;}@container(max-width:329px){.lines{padding-inline-start:20px;padding-inline-end:calc(20px + var(--reserve));}}
-  .group{content-visibility:auto;contain-intrinsic-size:auto 90px;}.group.focused{content-visibility:visible;}.row{filter:blur(var(--blur));opacity:var(--opacity);transform:scale(var(--scale));transform-origin:left center;transition:opacity .788s,transform .788s,filter .788s;padding-block:10px;}
+  /* Paint containment must include the blur/glow outside the text's layout box. */
+  .group{content-visibility:auto;contain-intrinsic-size:auto 90px;overflow-clip-margin:24px;}.group.focused{content-visibility:visible;}.row{filter:blur(var(--blur));opacity:var(--opacity);transform:scale(var(--scale));transform-origin:left center;transition:opacity .788s,transform .788s,filter .788s;padding-block:10px;}
   .manual .row{filter:none;transition:opacity .788s,transform .788s;}.row:has(:global(.voice-active)){filter:none;opacity:1;transform:none;}.row+.row{padding-top:8px;}
   .line{display:block;width:100%;border:0;background:transparent;padding:0;margin:0;color:inherit;font-family:inherit;font-size:var(--size);font-weight:700;letter-spacing:-.18px;line-height:1.25;text-align:start;}button.line{cursor:pointer;}.background{--row-size:max(18px,calc(var(--size)*.68));}.background .line{font-size:var(--row-size);}
   .translation{font-size:max(13px,calc(var(--size)*.57));line-height:1.25;margin:7px 0 0;opacity:.8;font-weight:500;letter-spacing:0;}.background .translation{font-size:max(13px,calc(var(--row-size)*.57));}.reading .line{font-weight:500;letter-spacing:0;}.reading .row{padding-block:8px;}
-  .options{position:absolute;right:8px;top:4px;z-index:3;}.more{width:32px;height:30px;border:0;border-radius:8px;background:#2228;color:white;cursor:pointer;}
-  .menu{position:absolute;right:0;top:34px;width:260px;max-height:calc(100dvh - 220px);overflow:auto;display:flex;flex-direction:column;gap:6px;padding:12px;border-radius:10px;border:1px solid #ffffff30;background:#242326f5;box-shadow:0 8px 24px #0006;font-size:13px;}
+  .options{position:absolute;right:8px;top:4px;bottom:8px;z-index:3;pointer-events:none;}.options>*{pointer-events:auto;}.more{width:32px;height:30px;border:0;border-radius:8px;background:#2228;color:white;cursor:pointer;}
+  .menu{position:absolute;right:0;top:34px;box-sizing:border-box;width:286px;max-height:calc(100% - 34px);overflow:auto;display:flex;flex-direction:column;gap:6px;padding:12px;border-radius:10px;border:1px solid #ffffff30;background:#242326f5;box-shadow:0 8px 24px #0006;font-size:13px;}
   .menu button,.message button{color:white;background:#ffffff0c;border:0;padding:8px;text-align:start;border-radius:5px;cursor:pointer;}.menu button[aria-pressed=true]{background:#ffffff25;}.menu label{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:6px 0;}.menu input[type=range]{width:125px;}.menu small{opacity:.65;padding:6px 0;}button:disabled{opacity:.4;cursor:default;}
   .follow{position:absolute;bottom:12px;left:50%;transform:translateX(-50%);white-space:nowrap;padding:10px 17px;background:#2c292aee;border:1px solid #ffffff30;border-radius:50px;color:white;cursor:pointer;}
   .message{height:100%;box-sizing:border-box;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:12px;padding:32px;color:#ffffffa0;}.message p{margin:0;}.refresh-error{position:absolute;bottom:12px;left:12px;font-size:12px;color:#fff9;pointer-events:none;}

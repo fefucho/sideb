@@ -3,17 +3,28 @@
   import MenuIcon from '$lib/components/menu/MenuIcon.svelte';
   import ControlFilter from '$lib/components/common/ControlFilter.svelte';
 
-  import {tick} from 'svelte';
+  import {tick,untrack} from 'svelte';
   import type {BrowseCardDto} from '$lib/types';
   import type {ExploreData} from '$lib/explore/controller';
   import {tabs,genres,moods,selectedTab,countryName,type ExploreRoute,type ExploreCategory} from '$lib/explore/catalog';
   import {t,language} from '$lib/i18n';
   import VirtualCatalog from './VirtualCatalog.svelte';
+  import HorizontalNavigation from '../common/HorizontalNavigation.svelte';
   import MediaCard from '../common/MediaCard.svelte';
   interface Props {data:ExploreData;onNavigate:(route:ExploreRoute)=>void;onRefresh:()=>void;onOpenCard:(card:BrowseCardDto)=>void;onScrollTop?:(offset:number)=>void;currentTrackId?:string|null;isPlaying?:boolean;active?:boolean}
-  let {data,onNavigate,onRefresh,onOpenCard,onScrollTop,active=true}:Props=$props();
+  let {data:liveData,onNavigate,onRefresh,onOpenCard,onScrollTop,active=true}:Props=$props();
+  let rendered=$state(untrack(()=>liveData));
+  $effect(()=>{const next=liveData;if(active)rendered=next;});
+  const data=$derived(rendered);
   let scroll:HTMLDivElement;
-  $effect(()=>{const route=data.route;const offset=data.scrollTop;void tick().then(()=>{if(scroll&&data.route===route)scroll.scrollTop=offset;});});
+  let lastSnapshot:ExploreData|null=null, savedOffset=0, wasActive=false;
+  $effect.pre(()=>{if(wasActive&&!active&&scroll)savedOffset=scroll.scrollTop;wasActive=active;});
+  $effect(()=>{
+    if(!active)return;
+    const snapshot=data,offset=lastSnapshot===snapshot?savedOffset:snapshot.scrollTop;
+    lastSnapshot=snapshot;
+    void tick().then(()=>{if(active&&scroll&&data===snapshot)scroll.scrollTop=offset;});
+  });
   const tab=$derived(selectedTab(data.route));
   const title=$derived(data.route.startsWith('category:')?$t(`explore.category.${data.route.slice(9)}.title`):data.route.startsWith('country:')?$t('explore.route.chart_country',[countryName(data.route.slice(8),$language)]):$t(`explore.route.${data.route}`));
   function open(card:BrowseCardDto){if(active)onOpenCard(card);}
@@ -29,7 +40,7 @@
 <div class="explore-page" inert={!active}>
   <div class="explore-scroll" bind:this={scroll} onscroll={()=>{if(active)onScrollTop?.(scroll.scrollTop);}}>
     <header><h1>{data.route==='discover'?$t('navigation.explore'):title}</h1></header>
-    <nav aria-label={$t('explore.eyebrow')}>{#each tabs as item (item)}<ControlFilter selected={tab===item} onclick={()=>onNavigate(item)}>{$t(`explore.route.${item}`)}</ControlFilter>{/each}<ControlButton iconOnly type="button" disabled={data.isLoading} onclick={onRefresh} aria-label={$t('explore.refresh')}><MenuIcon name="refresh" /></ControlButton></nav>
+    <div class="explore-tabs"><HorizontalNavigation {active} small label={$t('explore.eyebrow')}><nav data-horizontal-scroll aria-label={$t('explore.eyebrow')}>{#each tabs as item (item)}<ControlFilter selected={tab===item} onclick={()=>onNavigate(item)}>{$t(`explore.route.${item}`)}</ControlFilter>{/each}</nav></HorizontalNavigation><ControlButton iconOnly type="button" disabled={data.isLoading} onclick={onRefresh} aria-label={$t('explore.refresh')}><MenuIcon name="refresh" /></ControlButton></div>
     {#if tab==='charts'}
       <label>{$t('explore.region.selector')} <select class="sideb-control-field" value={data.route} onchange={event=>onNavigate(event.currentTarget.value as ExploreRoute)}><option value="charts">{$t('explore.region.global_and_yours')}</option><option value="country:ZZ">{$t('explore.region.global')}</option>{#each data.countries.filter(c=>c.code!=='ZZ') as country (country.code)}<option value={`country:${country.code}`}>{countryName(country.code,$language)}</option>{/each}</select></label>
       {#if data.detectedCountry}<p class="hint">{$t('explore.region.detected',[countryName(data.detectedCountry,$language)])}</p>{/if}
@@ -63,7 +74,8 @@
   .explore-page{height:100%;min-height:0;min-width:0;color:var(--text-primary,#eee);container-type:inline-size;}
   .explore-scroll{height:100%;min-height:0;min-width:0;overflow:auto;box-sizing:border-box;padding:24px 28px 140px;}
   header h1{margin:0;min-height:52px;font-size:40px;line-height:52px;font-weight:700;overflow-wrap:anywhere;}
-  nav{display:flex;align-items:center;gap:var(--control-category-gap);margin-top:30px;padding:4px 2px;overflow-x:auto;}
+  .explore-tabs{display:flex;align-items:center;gap:8px;min-width:0;margin-top:30px;}
+  nav{display:flex;align-items:center;gap:var(--control-category-gap);padding:4px 2px;overflow-x:auto;scrollbar-width:none;}
   nav :global(button){flex:none;}
   .categories button,.shortcuts button{font:inherit;color:inherit;border:1px solid #ffffff12;border-radius:14px;background:var(--sideb-surface);cursor:pointer;}
   .categories button:hover,.shortcuts button:hover{filter:brightness(1.1);}

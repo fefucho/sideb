@@ -1,4 +1,5 @@
 <script lang="ts">
+  import "$lib/styles/fonts.css";
   import "$lib/styles/tokens.css";
   import type { Snippet } from "svelte";
 

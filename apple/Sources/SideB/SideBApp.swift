@@ -415,6 +415,7 @@ struct WindowRootView: View {
                         // Contenido de la Página según router.currentPage
                         RetainedMainPages(page: router.currentPage,
                             isCovered: playerViewModel.isFullscreenPresented || isSpotlightPresented,
+                            retainInactiveVisuals: isSpotlightPresented && !playerViewModel.isFullscreenPresented,
                             home: {
                                 HomeView(playerViewModel: playerViewModel, homeViewModel: homeViewModel,
                                     sessionRevision: homeSessionRevision,

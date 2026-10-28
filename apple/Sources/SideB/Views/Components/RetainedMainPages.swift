@@ -4,10 +4,19 @@ private struct PageActivityKey: EnvironmentKey {
     static let defaultValue = true
 }
 
+private struct RetainedInactiveVisualsKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
 extension EnvironmentValues {
     var sideBPageIsActive: Bool {
         get { self[PageActivityKey.self] }
         set { self[PageActivityKey.self] = newValue }
+    }
+
+    var sideBPageRetainsInactiveVisuals: Bool {
+        get { self[RetainedInactiveVisualsKey.self] }
+        set { self[RetainedInactiveVisualsKey.self] = newValue }
     }
 }
 
@@ -16,6 +25,7 @@ extension EnvironmentValues {
 struct RetainedMainPages<Home: View, Explore: View, Library: View, Detail: View>: View {
     let page: PageDestination
     var isCovered = false
+    var retainInactiveVisuals = false
     @ViewBuilder let home: () -> Home
     @ViewBuilder let explore: (ExploreRoute) -> Explore
     @ViewBuilder let library: () -> Library
@@ -33,16 +43,21 @@ struct RetainedMainPages<Home: View, Explore: View, Library: View, Detail: View>
 
     var body: some View {
         ZStack {
-            RetainedPageViewport(isSelected: page == .home, isCovered: isCovered, content: home())
+            RetainedPageViewport(isSelected: page == .home, isCovered: isCovered,
+                                 retainInactiveVisuals: retainInactiveVisuals, content: home())
             if visitedExplore || isExplore {
                 RetainedPageViewport(isSelected: isExplore, isCovered: isCovered,
+                                     retainInactiveVisuals: retainInactiveVisuals,
                                      content: explore(currentExploreRoute))
             }
             if visitedLibrary || page == .library {
-                RetainedPageViewport(isSelected: page == .library, isCovered: isCovered, content: library())
+                RetainedPageViewport(isSelected: page == .library, isCovered: isCovered,
+                                     retainInactiveVisuals: retainInactiveVisuals, content: library())
             }
             if !isPrimary {
-                detail().environment(\.sideBPageIsActive, !isCovered)
+                detail()
+                    .environment(\.sideBPageIsActive, !isCovered)
+                    .environment(\.sideBPageRetainsInactiveVisuals, retainInactiveVisuals)
             }
         }
         .onChange(of: page, initial: true) { _, page in
@@ -57,6 +72,7 @@ struct RetainedMainPages<Home: View, Explore: View, Library: View, Detail: View>
 private struct RetainedPageViewport<Content: View>: View {
     let isSelected: Bool
     let isCovered: Bool
+    let retainInactiveVisuals: Bool
     let content: Content
     var body: some View {
         // AppKit owns the hosted document's retained size. Feeding each native
@@ -65,6 +81,7 @@ private struct RetainedPageViewport<Content: View>: View {
                             accessibilityActive: isSelected && !isCovered)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .environment(\.sideBPageIsActive, isSelected && !isCovered)
+        .environment(\.sideBPageRetainsInactiveVisuals, isSelected && retainInactiveVisuals)
         .opacity(isSelected ? 1 : 0)
         .allowsHitTesting(isSelected && !isCovered)
         .disabled(!isSelected)
@@ -81,6 +98,7 @@ private struct RetainedPageContent<Content: View>: NSViewRepresentable {
     let isSelected: Bool
     let accessibilityActive: Bool
     @Environment(\.sideBPageIsActive) private var pageIsActive
+    @Environment(\.sideBPageRetainsInactiveVisuals) private var retainInactiveVisuals
     @Environment(\.sideBGesturePreviewVisible) private var gesturePreviewVisible
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.colorScheme) private var colorScheme
@@ -95,6 +113,7 @@ private struct RetainedPageContent<Content: View>: NSViewRepresentable {
     private var root: AnyView {
         AnyView(content
             .environment(\.sideBPageIsActive, pageIsActive)
+            .environment(\.sideBPageRetainsInactiveVisuals, retainInactiveVisuals)
             .environment(\.sideBGesturePreviewVisible, gesturePreviewVisible)
             .environment(\.scenePhase, scenePhase)
             .environment(\.colorScheme, colorScheme)

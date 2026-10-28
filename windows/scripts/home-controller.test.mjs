@@ -1,9 +1,10 @@
+import { resolveContentRatingImport } from './helpers/content-rating-module.mjs';
 import { readFile } from 'node:fs/promises';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import ts from 'typescript';
 const compile = text => ts.transpileModule(text, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText;
-const url = text => `data:text/javascript;base64,${Buffer.from(text).toString('base64')}`;
+const url = text => `data:text/javascript;base64,${Buffer.from(resolveContentRatingImport(text)).toString('base64')}`;
 const presentation = url(compile(await readFile(new URL('../src/lib/home/presentation.ts', import.meta.url), 'utf8')));
 const source = compile(await readFile(new URL('../src/lib/home/controller.ts', import.meta.url), 'utf8')).replace("'./presentation'", JSON.stringify(presentation));
 const { HomeController } = await import(url(source));

@@ -33,7 +33,8 @@ final class HomeItemHierarchyTests: XCTestCase {
         configure(card, id: "first", style: .compactSong, album: "Album", explicit: true,
                   onArtist: { actions.append("first artist") }, onAlbum: { actions.append("first album") })
         let album = try XCTUnwrap(card.subviews.compactMap { $0 as? NSButton }.first { $0.title == "Album" })
-        let badge = try XCTUnwrap(labels(in: card).first { $0.stringValue == "E" })
+        let badge = try XCTUnwrap(card.subviews.compactMap { $0 as? NativeContentRatingBadge }.first)
+        XCTAssertEqual(badge.rating, .explicit)
         artist.performClick(nil)
         album.performClick(nil)
 

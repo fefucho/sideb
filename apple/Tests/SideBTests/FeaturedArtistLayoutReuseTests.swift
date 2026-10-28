@@ -85,7 +85,8 @@ private func layoutSong(_ title: String, artist: String = "Guest") -> SongItemRe
     field.clearFeatured()
     field.layout()
     #expect(field.subviews.compactMap { $0 as? NativeFeaturedArtistButton }.isEmpty)
-    #expect(field.trackingAreas.isEmpty)
+    // NSTextField may keep AppKit-owned tooltip tracking; our overlay must release its own area.
+    #expect(field.trackingAreas.allSatisfy { ($0.owner as? NativeTrackActionField) !== field })
 }
 
 @Test @MainActor func featuredHiddenPageCancelsPendingNavigationAndDefersMeasurements() async throws {

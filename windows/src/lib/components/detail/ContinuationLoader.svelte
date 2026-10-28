@@ -12,11 +12,14 @@
   let nearBottom = $state(false);
   const gate = new ContinuationGate();
 
-  onMount(() => {
+  let mounted=$state(false);
+  onMount(() => { mounted=true; });
+  $effect(() => {
+    if(!mounted||disabled){nearBottom=false;return;}
     // Match the native list's threshold of approximately 15 regular rows.
     const observer = new IntersectionObserver(entries => {
       nearBottom = entries.some(entry => entry.isIntersecting);
-    }, { root: marker.closest('.content-column'), rootMargin: '780px 0px', threshold: 0 });
+    }, { root: marker.closest('[data-page-scroll], .content-column'), rootMargin: '780px 0px', threshold: 0 });
     observer.observe(marker);
     return () => observer.disconnect();
   });

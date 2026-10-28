@@ -1,9 +1,10 @@
 <script lang="ts">
+  import HorizontalNavigation from '../common/HorizontalNavigation.svelte';
   import ControlButton from '$lib/components/common/ControlButton.svelte';
   import ControlFilter from '$lib/components/common/ControlFilter.svelte';
   import ControlSegments from '$lib/components/common/ControlSegments.svelte';
 
-  import { onMount, tick } from 'svelte';
+  import { onMount, tick, untrack } from 'svelte';
   import { t, language, resolveMessage } from '$lib/i18n';
   import type { BrowseCardDto } from '$lib/types';
   import type { AccountSongDto as SongDto } from '$lib/account/types';
@@ -14,7 +15,7 @@
   import AccountTrackTable from './AccountTrackTable.svelte';
   import ContinuationLoader from '../detail/ContinuationLoader.svelte';
   interface Props {
-    accountKey?: string; loggedIn: boolean; tab: LibrarySection; songs: SongDto[];
+    active?: boolean; accountKey?: string; loggedIn: boolean; tab: LibrarySection; songs: SongDto[];
     playlists: BrowseCardDto[]; albums: BrowseCardDto[]; artists: BrowseCardDto[];
     loading: boolean; loadingMore: boolean; error: string | null; continuation: string | null;
     currentTrackId: string | null; isPlaying: boolean; likedIds: Set<string>; pendingIds: Set<string>;
@@ -24,9 +25,20 @@
     onToggleLike: (track: SongDto) => void; onToggleSaved: (track: SongDto) => void;
     onCreatePlaylist: () => void; onLogin: () => void;
   }
-  let { accountKey = 'guest', loggedIn, tab, songs, playlists, albums, artists, loading, loadingMore, error, continuation,
-    currentTrackId, isPlaying, likedIds, pendingIds, onTab, onRefresh, onLoadMore, onPlay,
+  let { active = true, accountKey = 'guest', loggedIn, tab: liveTab, songs: liveSongs, playlists: livePlaylists, albums: liveAlbums, artists: liveArtists, loading: liveLoading, loadingMore: liveLoadingMore, error: liveError, continuation: liveContinuation,
+    currentTrackId: liveTrack, isPlaying: livePlaying, likedIds: liveLikes, pendingIds: livePending, onTab, onRefresh, onLoadMore, onPlay,
     onOpenCard, onOpenArtist, onOpenAlbum, onToggleLike, onToggleSaved, onCreatePlaylist, onLogin }: Props = $props();
+  const currentInputs = () => ({tab:liveTab,songs:liveSongs,playlists:livePlaylists,albums:liveAlbums,artists:liveArtists,
+    loading:liveLoading,loadingMore:liveLoadingMore,error:liveError,continuation:liveContinuation,
+    currentTrackId:liveTrack,isPlaying:livePlaying,likedIds:liveLikes,pendingIds:livePending});
+  let rendered = $state(untrack(currentInputs));
+  $effect(() => { const next=currentInputs(); if(active)rendered=next; });
+  const tab=$derived(rendered.tab),songs=$derived(rendered.songs),playlists=$derived(rendered.playlists),albums=$derived(rendered.albums),artists=$derived(rendered.artists);
+  const loading=$derived(rendered.loading),loadingMore=$derived(rendered.loadingMore),error=$derived(rendered.error),continuation=$derived(rendered.continuation);
+  const currentTrackId=$derived(rendered.currentTrackId),isPlaying=$derived(rendered.isPlaying),likedIds=$derived(rendered.likedIds),pendingIds=$derived(rendered.pendingIds);
+  let root:HTMLElement;
+  const pageScroll = () => root?.closest<HTMLElement>('[data-page-scroll], .content-column');
+  $effect(() => { if(!active)cancelSearch(); });
   let prefs = $state<LibraryPreferences>(libraryDefaults());
   let query = $state('');
   let searching = $state(false);
@@ -55,10 +67,10 @@
   function movePin(card:BrowseCardDto,delta:number) { const list=[...prefs.pins]; const i=list.findIndex(p=>libraryKey(p)===libraryKey(card)); const next=i+delta; if(next<0||next>=list.length)return; [list[i],list[next]]=[list[next],list[i]]; prefs={...prefs,pins:list}; save(); }
   function cancelSearch() { searchGeneration++; searching=false; }
   async function searchRest() {
-    if(searching||loading||loadingMore)return;
+    if(!active||searching||loading||loadingMore)return;
     const generation=++searchGeneration; searching=true; searchedPages=0;
     for(let page=0;page<8;page++) {
-      if(generation!==searchGeneration||!continuation||error)break;
+      if(!active||generation!==searchGeneration||!continuation||error)break;
       const token=continuation; await onLoadMore(); await tick();
       if(generation!==searchGeneration||error)break;
       searchedPages++; if(continuation===token)break;
@@ -68,29 +80,32 @@
   $effect(()=>{ query; cancelSearch(); searchedPages=0; });
   $effect(()=>{ if(!mounted)return; const next=loggedIn&&accountKey!=='account:'?accountKey:'guest'; if(next===activeAccount)return;
     cancelSearch(); activeAccount=next; prefs=readLibraryPreferences(localStorage,next); query=libraryNavigation.get(next)?.query??'';
-    if(loggedIn&&tab!==prefs.tab)onTab(prefs.tab);
-    void tick().then(()=>{ const scroll=document.querySelector<HTMLElement>('.content-column'); if(scroll)scroll.scrollTop=libraryNavigation.get(next)?.scroll??0; });
+    if(active&&loggedIn&&tab!==prefs.tab)onTab(prefs.tab);
+    void tick().then(()=>{ const scroll=pageScroll(); if(scroll)scroll.scrollTop=libraryNavigation.get(next)?.scroll??0; });
   });
   onMount(()=>{
     mounted=true;
-    const scroll=document.querySelector<HTMLElement>('.content-column');
-    const remember=()=>{if(activeAccount)libraryNavigation.set(activeAccount,{query,scroll:scroll?.scrollTop??0});};
+    const scroll=pageScroll();
+    const remember=()=>{if(active&&activeAccount)libraryNavigation.set(activeAccount,{query,scroll:scroll?.scrollTop??0});};
     scroll?.addEventListener('scroll',remember,{passive:true});
     return()=>{ remember(); cancelSearch(); scroll?.removeEventListener('scroll',remember); };
   });
 </script>
 
-<main class="library" aria-busy={loading}>
+<main class="library" bind:this={root} inert={!active} aria-busy={loading}>
   <header class="heading">
     <h1>{$t('sidebar.library')}</h1>
+
+  </header>
+  <div class="category-toolbar">
+    <HorizontalNavigation {active} small label={$t('windows.ui.librarySections')}><nav class="tabs" data-horizontal-scroll aria-label={$t('windows.ui.librarySections')}>
+    {#each tabs as item (item.id)}<ControlFilter type="button" selected={tab===item.id} onclick={()=>selectTab(item.id)}><svg viewBox="0 0 24 24" aria-hidden="true">{#if item.id==='all'}<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>{:else if item.id==='songs'}<path d="M10 17V5l10-2v12M10 8l10-2"/><ellipse cx="6.5" cy="17.5" rx="3.5" ry="2.5"/><ellipse cx="16.5" cy="15.5" rx="3.5" ry="2.5"/>{:else if item.id==='playlists'}<path d="M4 5h15M4 10h15M4 15h8M17 14v7M13.5 17.5h7"/>{:else if item.id==='albums'}<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.5"/>{:else if item.id==='artists'}<circle cx="12" cy="7.5" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2"/>{/if}</svg>{item.label}</ControlFilter>{/each}
+  </nav></HorizontalNavigation>
     {#if loggedIn}<div class="heading-actions">
       <ControlButton type="button" onclick={onCreatePlaylist}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>{$t('detail.playlistEditor.createTitle')}</ControlButton>
       <ControlButton iconOnly type="button" aria-label={$t('library.refresh')} onclick={onRefresh}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7v5h-5M20 12a8 8 0 1 0-2.3 5.7M20 7l-2.3-2.7"/></svg></ControlButton>
     </div>{/if}
-  </header>
-  <nav class="tabs" aria-label={$t('windows.ui.librarySections')}>
-    {#each tabs as item (item.id)}<ControlFilter type="button" selected={tab===item.id} onclick={()=>selectTab(item.id)}><svg viewBox="0 0 24 24" aria-hidden="true">{#if item.id==='all'}<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>{:else if item.id==='songs'}<path d="M10 17V5l10-2v12M10 8l10-2"/><ellipse cx="6.5" cy="17.5" rx="3.5" ry="2.5"/><ellipse cx="16.5" cy="15.5" rx="3.5" ry="2.5"/>{:else if item.id==='playlists'}<path d="M4 5h15M4 10h15M4 15h8M17 14v7M13.5 17.5h7"/>{:else if item.id==='albums'}<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.5"/>{:else if item.id==='artists'}<circle cx="12" cy="7.5" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2"/>{/if}</svg>{item.label}</ControlFilter>{/each}
-  </nav>
+  </div>
   {#if loggedIn}
     <div class="toolbar">
       <div class="search glass"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg>
@@ -121,20 +136,20 @@
     {#if loading&&songs.length===0}<section class="state" role="status"><span class="spinner"></span><p>{$t('windows.ui.loadingSongs')}</p></section>
     {:else if error&&songs.length===0}<section class="state" role="alert"><h2>{$t('library.error.load_songs')}</h2><p>{resolveMessage(error,$language)}</p><ControlButton emphasis="prominent" type="button" onclick={onRefresh}>{$t('sidebar.retry')}</ControlButton></section>
     {:else if visibleSongs.length===0}<section class="state"><h2>{$t(query||continuation?'library.search.empty':'library.empty.songs')}</h2>{#if continuation}<p>{$t('library.search.pending')}</p>{/if}</section>
-    {:else}<AccountTrackTable items={visibleSongs.map(item=>item.song)} {currentTrackId} {isPlaying} onPlay={index=>onPlay(index,visibleSongs.map(item=>item.song),!query.trim()&&prefs.order==='original')} {likedIds} {pendingIds} {onToggleLike} {onToggleSaved} {onOpenArtist} {onOpenAlbum} />{/if}
+    {:else}<AccountTrackTable {active} items={visibleSongs.map(item=>item.song)} {currentTrackId} {isPlaying} onPlay={index=>onPlay(index,visibleSongs.map(item=>item.song),!query.trim()&&prefs.order==='original')} {likedIds} {pendingIds} {onToggleLike} {onToggleSaved} {onOpenArtist} {onOpenAlbum} />{/if}
   {:else if loading&&allCards.length===0}<section class="state" role="status"><span class="spinner"></span><p>{$t('common.loading')}</p></section>
   {:else if tab==='all'}
-    {#if pins.length}<section class="collection-section"><h2>{$t('library.pinned')}</h2><div class:listing={prefs.layout==='list'} class="overview-grid">{#each pins as card (libraryKey(card))}{@render collection(card,true)}{/each}</div></section>{/if}
+    {#if pins.length}<section class="collection-section"><h2>{$t('library.pinned')}</h2><HorizontalNavigation {active} enabled={prefs.layout!=='list'} label={$t('library.pinned')} center="90px"><div data-horizontal-scroll class:listing={prefs.layout==='list'} class="overview-grid">{#each pins as card (libraryKey(card))}{@render collection(card,true)}{/each}</div></HorizontalNavigation></section>{/if}
     {#each sections as section (section.id)}{@const matching=orderedLibraryCards(section.cards,query,effectiveOrder)}
-      {#if matching.length}<section class="collection-section"><div class="section-title"><h2>{section.label}</h2><ControlButton emphasis="quiet" size="utility"  type="button" onclick={()=>selectTab(section.id)}>{$t('library.see_all')} →</ControlButton></div><div class:listing={prefs.layout==='list'} class="overview-grid">{#each matching.slice(0,6) as card (libraryKey(card))}{@render collection(card)}{/each}</div></section>{/if}
+      {#if matching.length}<section class="collection-section"><div class="section-title"><h2>{section.label}</h2><ControlButton emphasis="quiet" size="utility"  type="button" onclick={()=>selectTab(section.id)}>{$t('library.see_all')} →</ControlButton></div><HorizontalNavigation {active} enabled={prefs.layout!=='list'} label={section.label} center="90px"><div data-horizontal-scroll class:listing={prefs.layout==='list'} class="overview-grid">{#each matching.slice(0,6) as card (libraryKey(card))}{@render collection(card)}{/each}</div></HorizontalNavigation></section>{/if}
     {/each}
     {#if !allCards.length&&!loading&&!error}<section class="state"><h2>{$t('library.empty.all')}</h2></section>{:else if query&&!pins.length&&!allCards.some(c=>libraryMatches(query,c.title,c.subtitle))}<section class="state"><h2>{$t('library.search.empty')}</h2></section>{/if}
   {:else if error&&cards.length===0&&!query}<section class="state" role="alert"><h2>{$t('library.error.load')}</h2><p>{resolveMessage(error,$language)}</p><ControlButton emphasis="prominent" type="button" onclick={onRefresh}>{$t('sidebar.retry')}</ControlButton></section>
   {:else if cards.length===0}<section class="state"><h2>{$t(query?'library.search.empty':tab==='playlists'?'library.empty.playlists':tab==='artists'?'library.empty.artists':'sidebar.no_saved_albums')}</h2></section>
-  {:else}<section class="card-content"><div class="grid">{#if prefs.layout==='grid'}<VirtualCatalog items={cards} rowExtra={132} scrollSelector=".content-column">{#snippet children(card)}{@render collection(card)}{/snippet}</VirtualCatalog>{:else}<VirtualStack items={cards} height={()=>92} key={libraryKey} scrollSelector=".content-column">{#snippet children(card)}{@render collection(card)}{/snippet}</VirtualStack>{/if}</div></section>{/if}
+  {:else}<section class="card-content"><div class="grid">{#if prefs.layout==='grid'}<VirtualCatalog {active} items={cards} rowExtra={132} scrollSelector="[data-page-scroll], .content-column">{#snippet children(card)}{@render collection(card)}{/snippet}</VirtualCatalog>{:else}<VirtualStack {active} items={cards} height={()=>92} key={libraryKey} scrollSelector="[data-page-scroll], .content-column">{#snippet children(card)}{@render collection(card)}{/snippet}</VirtualStack>{/if}</div></section>{/if}
   {#if loggedIn&&error}<div class="inline-error" role="alert">{resolveMessage(error,$language)}<ControlButton onclick={onRefresh}>{$t('sidebar.retry')}</ControlButton></div>{/if}
   {#if loggedIn&&loading&&allCards.length}<div class="updating" role="status">{$t('windows.ui.refreshing')}</div>{/if}
-  {#if loggedIn&&tab==='songs'&&!query.trim()}<ContinuationLoader context="library:songs" cursor={continuation} loading={loadingMore} disabled={loading} error={error} {onLoadMore} />{/if}
+  {#if loggedIn&&tab==='songs'&&!query.trim()}<ContinuationLoader context="library:songs" cursor={continuation} loading={loadingMore} disabled={!active||loading} error={error} {onLoadMore} />{/if}
   <div class="bottom-space" aria-hidden="true"></div>
 </main>
 {#snippet collection(card:BrowseCardDto,pinned=false)}
@@ -147,7 +162,7 @@
 {/snippet}
 <style>
   .library { position: relative; box-sizing: border-box; min-width: 0; min-height: 100%; color: #f7f7f8; background: var(--sideb-background, #1b1b1e); }
-  .heading { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:28px 142px 10px 32px; }
+  .heading { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:28px 28px 10px; }
   h1 { min-width:0; margin:0; font-size:38px; font-weight:700; line-height:1.12; overflow-wrap:anywhere; }
   .heading-actions { display:flex; align-items:center; gap:8px; }
   .glass { border:1px solid var(--control-border); border-radius:var(--control-radius); color:var(--control-foreground); background:var(--control-surface); box-shadow:var(--control-shadow); }
@@ -170,6 +185,10 @@
   .sort select { min-width:0; max-width:220px; padding:0 2px; border:0; color:inherit; background:transparent; font:inherit; font-size:var(--control-action-font); cursor:pointer; } .sort option { color:#f3f3f6; background:var(--sideb-background); }
 
 
+  .category-toolbar { display:flex; align-items:center; gap:16px; padding:0 28px; min-width:0; }
+  .category-toolbar .tabs { flex:1; min-width:0; padding:4px 0; }
+  .category-toolbar .heading-actions { flex:none; }
+  @media(max-width:760px){.category-toolbar{flex-wrap:wrap;gap:8px;padding-inline:20px}.category-toolbar .tabs{flex-basis:100%}.category-toolbar .heading-actions{margin-left:auto}}
   .divider { height:1px; margin:0 32px 8px; background:rgb(255 255 255 / 9%); }
   @supports ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))) {
     .glass { background:var(--sideb-acrylic-surface); backdrop-filter:var(--sideb-acrylic-blur); -webkit-backdrop-filter:var(--sideb-acrylic-blur); }
@@ -197,7 +216,7 @@
   .collection-item:not(.has-pin):hover .pin-actions,.collection-item:not(.has-pin):focus-within .pin-actions { opacity:1; pointer-events:auto; }
   @media(hover:none){.collection-item:not(.has-pin) .pin-actions { opacity:1; pointer-events:auto; }}
   @media(max-width:760px){.heading { align-items:flex-start; flex-wrap:wrap; }.overview-grid{grid-auto-columns:160px}}
-  @media(max-width:640px){.heading { padding:28px 142px 10px 20px; }.toolbar { padding-inline:20px; }.collection-section { padding-inline:20px; }.coverage { padding-inline:20px; }.tabs { scroll-padding-inline:20px; }.heading-actions { flex-wrap:wrap; }.view-tools { margin-left:0; }}
+  @media(max-width:640px){.heading { padding:28px 20px 10px; }.toolbar { padding-inline:20px; }.collection-section { padding-inline:20px; }.coverage { padding-inline:20px; }.tabs { scroll-padding-inline:20px; }.heading-actions { flex-wrap:wrap; }.view-tools { margin-left:0; }}
   @media(prefers-reduced-transparency:reduce){.glass{background:var(--sideb-acrylic-fallback);backdrop-filter:none;-webkit-backdrop-filter:none;}}
   @media(forced-colors:active){.glass { color:ButtonText; background:ButtonFace; border-color:ButtonText; backdrop-filter:none; -webkit-backdrop-filter:none; }}
 

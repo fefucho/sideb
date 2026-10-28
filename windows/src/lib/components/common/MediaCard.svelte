@@ -9,14 +9,13 @@
   import ArtistCredits from '$lib/components/ArtistCredits.svelte';
   import FeaturedTrackTitle from '$lib/components/FeaturedTrackTitle.svelte';
   import MediaArtwork from './MediaArtwork.svelte';
-  import ExplicitBadge from './ExplicitBadge.svelte';
   import MoreIcon from './MoreIcon.svelte';
   interface Props { card: BrowseCardDto; layout?: 'vertical' | 'horizontal' | 'tile' | 'compact'; featured?: boolean; onOpen?: () => void; onPlay?: () => void; onOpenArtist?: (id: string) => void; onOpenAlbum?: (id: string) => void; summary?: string | null }
   let { card, layout = 'vertical', featured = false, onOpen, onPlay, onOpenArtist, onOpenAlbum, summary }: Props = $props();
   const media = getContext<MediaService | undefined>(MEDIA_CONTEXT);
   const menu = createMenuHandlers()(() => targetFromCard(card));
   const song = $derived(['song', 'video'].includes(card.kind));
-  const creditTrack = $derived(song ? {videoId:card.id,title:card.title,artists:card.artists??'',artistRuns:card.artistRuns,artistId:card.artistId,album:card.album} : undefined);
+  const creditTrack = $derived(song ? {videoId:card.id,title:card.title,artists:card.artists??'',artistRuns:card.artistRuns,artistId:card.artistId,album:card.album,contentRating:card.contentRating,explicit:card.explicit} : undefined);
   const active = $derived(media && card.kind !== 'artist' ? sourceActive(media.state(), card.kind, card.id) : false);
   const pending = $derived(media?.pending() === mediaKey(card));
   const releaseType = $derived(albumCollectionType(card, summary ? { subtitle: summary } : null));
@@ -26,8 +25,8 @@
 <article class="media-card" class:featured class:horizontal={layout === 'horizontal'} class:compact={layout === 'compact'} class:tile={layout === 'tile'} class:vertical={layout === 'vertical'} aria-label={card.title} oncontextmenu={menu.onContextMenu}>
   <button type="button" class="primary" data-search-primary aria-label={`${song ? active && media?.state().isPlaying ? $t('player.pause') : $t('player.play') : $t('home.open')} ${card.title}`} onclick={primary} onkeydown={menu.onKeyDown}></button>
   <div class="art"><MediaArtwork thumbnail={card.thumbnail} title={card.title} {active} playing={media?.state().isPlaying ?? false} {pending} {song} round={card.kind === 'artist'} onPlay={card.kind !== 'artist' && (media || onPlay) ? play : undefined} onMenu={menu.onContextMenu} /></div>
-  <div class="copy">{#if featured}<p class="badge">{card.kind === 'album' ? releaseType === 'single' ? $t('metadata.single') : releaseType === 'ep' ? 'EP' : $t('detail.kind.album') : $t('detail.kind.playlist')}</p>{/if}<div class="title-row"><h3>{#if creditTrack}<FeaturedTrackTitle track={creditTrack} {onOpenArtist} onPlay={primary} />{:else}{card.title}{/if}</h3>{#if card.explicit}<ExplicitBadge />{/if}</div>
-    {#if card.artistRuns?.length || card.artists}<div class="credits"><ArtistCredits track={creditTrack} artistRuns={card.artistRuns} artists={card.artists ?? ''} artistId={card.artistId} {onOpenArtist} album={song && layout !== 'tile' ? card.album : null} albumId={song && layout !== 'tile' ? card.albumId : null} {onOpenAlbum} /></div>{:else if card.subtitle}<p>{card.subtitle}</p>{/if}
+  <div class="copy">{#if featured}<p class="badge">{card.kind === 'album' ? releaseType === 'single' ? $t('metadata.single') : releaseType === 'ep' ? 'EP' : $t('detail.kind.album') : $t('detail.kind.playlist')}</p>{/if}<div class="title-row"><h3>{#if creditTrack}<FeaturedTrackTitle track={creditTrack} {onOpenArtist} onPlay={primary} />{:else}{card.title}{/if}</h3></div>
+    <div class="metadata-line"><div class="credits"><ArtistCredits content={song || card.kind==='album' ? card : undefined} track={creditTrack} artistRuns={card.artistRuns} artists={card.artists ?? card.subtitle ?? ''} artistId={card.artistId} {onOpenArtist} album={song && layout !== 'tile' ? card.album : null} albumId={song && layout !== 'tile' ? card.albumId : null} {onOpenAlbum} /></div></div>
     {#if summary}<p class="summary">{summary}</p>{/if}
   </div>
   {#if layout==='compact'}<button type="button" class="compact-menu" aria-label={$t('common.moreOptionsFor', [card.title])} onclick={menu.onContextMenu}><MoreIcon /></button>{/if}
@@ -40,7 +39,8 @@
   .copy { pointer-events:none; min-width:0; padding-top:9px; } .copy :global(.featured-link),.copy :global(.title-text),.credits :global(button), .credits :global(a) { pointer-events:auto; }
   h3 { margin:0; font-size:14px; line-height:19px; font-weight:600; display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; line-clamp:2; overflow:hidden; }
   p,.credits { margin:4px 0 0; font-size:12px; line-height:17px; color:#b6b6bf; overflow:hidden; } p { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; line-clamp:2; }
-  .title-row { display:flex; align-items:center; gap:6px; min-width:0; } .title-row h3 { min-width:0; }
+  .metadata-line {display:flex;align-items:center;gap:6px;min-width:0;margin-top:4px;} .metadata-line .credits,.metadata-line p {margin-top:0;min-width:0;}
+  .title-row { display:flex; align-items:center; gap:6px; min-width:0; } .title-row h3 { min-width:0; flex:1; }
   .horizontal { display:flex; align-items:center; gap:18px; height:100%; } .horizontal .art { flex:none; height:100%; width:auto; } .horizontal .copy { padding:0; } .horizontal h3 { font-size:19px; line-height:24px; }
   .compact { display:flex; align-items:center; gap:10px; height:56px; } .compact .art { width:44px; height:44px; flex:none; } .compact .copy { padding:0; padding-right:32px; } .compact h3 { font-size:13px; -webkit-line-clamp:1; line-clamp:1; }
   .compact :global(.play) { width:28px; height:28px; } .compact :global(.menu) { display:none; }

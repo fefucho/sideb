@@ -83,6 +83,30 @@ public final class SearchViewModel {
     public var query = ""
     public var committedQuery = ""
 
+    public private(set) var providerPageRevision: UInt = 0
+    public private(set) var providerRequestIdentity: UInt = 0
+    public private(set) var providerPage: SearchPageRecord? {
+        didSet { providerPageRevision &+= 1 }
+    }
+    public private(set) var providerSuggestions: [SearchSuggestionEntryRecord] = []
+    /// Keep media visible below a short set of query completions. The response and
+    /// feedback tokens remain intact; an empty editor still shows its full history.
+    public var visibleProviderSuggestions: [SearchSuggestionEntryRecord] {
+        guard !associatedQuickQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return providerSuggestions
+        }
+        var textCount = 0
+        return providerSuggestions.filter { entry in
+            if entry.song != nil || entry.card != nil { return true }
+            textCount += 1
+            return textCount <= 3
+        }
+    }
+    public private(set) var providerParams: String?
+    public private(set) var isLoadingMore = false
+    public private(set) var removingSuggestionIDs = Set<String>()
+    @ObservationIgnored private var continuationTask: Task<Void, Never>?
+    @ObservationIgnored private var consumedContinuations = Set<String>()
     public var quickResults: SearchResultsRecord?
     public private(set) var querySuggestions: [String] = []
     public private(set) var correction: SearchCorrectionRecord?
@@ -130,7 +154,7 @@ public final class SearchViewModel {
     @ObservationIgnored private var loadedFilters = Set<SearchFilter>()
     @ObservationIgnored private var cardCache: [SearchFilter: [BrowseCardRecord]] = [:]
     private struct PreviewCacheEntry {
-        let value: SearchSuggestionsRecord
+        let value: SearchSuggestionsPageRecord
         let date: Date
     }
     @ObservationIgnored private var previewCache: [String: PreviewCacheEntry] = [:]
@@ -154,39 +178,30 @@ public final class SearchViewModel {
         }
         if updateDraft { query = newQuery }
         quickErrorMessage = nil
+        removingSuggestionIDs = []
         let trimmed = newQuery.trimmingCharacters(in: .whitespacesAndNewlines)
         debounceTask?.cancel()
         previewGeneration &+= 1
         let generation = previewGeneration
 
-        guard !trimmed.isEmpty else {
-            quickResults = nil
-            querySuggestions = []
-            associatedQuickQuery = ""
-            isQuickSearching = false
-            isTopdownVisible = false
-            return
-        }
-
         quickResults = nil
+        providerSuggestions = []
         querySuggestions = []
         associatedQuickQuery = ""
-        if let cached = previewCache[trimmed], Date().timeIntervalSince(cached.date) < 60 {
+        if !trimmed.isEmpty, let cached = previewCache[trimmed], Date().timeIntervalSince(cached.date) < 60 {
             applyPreview(cached.value, query: trimmed)
             return
         }
         isQuickSearching = true
         isTopdownVisible = true
         debounceTask = Task {
-            try? await Task.sleep(for: .milliseconds(250))
+            try? await Task.sleep(for: .milliseconds(trimmed.isEmpty ? 0 : 150))
             guard !Task.isCancelled, generation == previewGeneration else { return }
             do {
-                let results = try await core.searchSuggestions(query: trimmed)
+                let results = try await core.searchSuggestionsPage(query: trimmed)
                 guard !Task.isCancelled, generation == previewGeneration else { return }
                 // Entries are short lived, account scoped by clear(), and bounded by count and payload.
-                let count = results.results.songs.count + results.results.topSongs.count + results.results.top.count
-                    + results.results.artists.count + results.results.albums.count + results.results.playlists.count
-                if count <= 100, results.queries.joined().utf8.count < 16_384 {
+                if !trimmed.isEmpty, results.entries.count <= 100 {
                     if previewCache.count >= 12, let oldest = previewCache.min(by: { $0.value.date < $1.value.date })?.key {
                         previewCache[oldest] = nil
                     }
@@ -201,9 +216,10 @@ public final class SearchViewModel {
         }
     }
 
-    private func applyPreview(_ response: SearchSuggestionsRecord, query: String) {
-        quickResults = response.results
-        querySuggestions = Array(response.queries.prefix(3))
+    private func applyPreview(_ response: SearchSuggestionsPageRecord, query: String) {
+        providerSuggestions = response.entries
+        quickResults = ProviderSearchProjection.results(entries: response.entries)
+        querySuggestions = response.entries.compactMap(\.query)
         associatedQuickQuery = query
         quickErrorMessage = nil
         isQuickSearching = false
@@ -228,24 +244,30 @@ public final class SearchViewModel {
 
     // MARK: Full search
 
-    public func commitSearch(query text: String, core: SideBCore, force: Bool = false, origin: SearchOrigin = .navigationRestore, ignoreSpelling: Bool? = nil, preservingPreview: Bool = false) {
+    public func commitSearch(query text: String, core: SideBCore, force: Bool = false, origin: SearchOrigin = .navigationRestore, ignoreSpelling: Bool? = nil, preservingPreview: Bool = false, params: String? = nil) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         let ignoresSpelling = ignoreSpelling ?? (trimmed == committedQuery && !origin.recordsHistory ? isOriginalSearch : false)
 
-        if origin.recordsHistory { recentStore.recordQuery(trimmed) }
+
         // A background library refresh belongs to committed results, not the active editor.
         if !preservingPreview { cancelPreview() }
-        if committedQuery == trimmed, ignoresSpelling == isOriginalSearch, !force,
+        if committedQuery == trimmed, providerParams == params, ignoresSpelling == isOriginalSearch, !force,
            !origin.recordsHistory, committedResults != nil, !isCommittedLoading { return }
-        if committedQuery == trimmed, ignoresSpelling == isOriginalSearch, isCommittedLoading, !force { return }
+        if committedQuery == trimmed, providerParams == params, ignoresSpelling == isOriginalSearch, isCommittedLoading, !force { return }
 
         queryGeneration &+= 1
+        providerRequestIdentity = queryGeneration
         let generation = queryGeneration
         filterGeneration &+= 1
         commitTask?.cancel()
         filterTask?.cancel()
 
+        continuationTask?.cancel()
+        consumedContinuations = []
+        isLoadingMore = false
+        providerPage = nil
+        providerParams = params
         committedQuery = trimmed
         isOriginalSearch = ignoresSpelling
         if !preservingPreview { query = trimmed }
@@ -274,11 +296,12 @@ public final class SearchViewModel {
     private func loadMixed(query: String, core: SideBCore, generation: UInt, recordHistory: Bool, ignoreSpelling: Bool = false) async {
         defer { if generation == queryGeneration { isMixedLoading = false } }
         do {
-            let catalog = try await core.searchCatalog(query: query, recordHistory: recordHistory, ignoreSpelling: ignoreSpelling)
-            let results = catalog.results
+            let page = try await core.searchPage(query: query, params: providerParams, recordHistory: recordHistory, ignoreSpelling: ignoreSpelling)
             guard !Task.isCancelled, generation == queryGeneration else { return }
+            let results = ProviderSearchProjection.results(page: page)
+            providerPage = page
             committedResults = results
-            correction = catalog.correction
+            correction = page.correction.map { SearchCorrectionRecord(query: $0.query, applied: $0.applied) }
             searchError = nil
             partialErrorMessages[.global] = nil
             let tracks = isOriginalSearch ? SearchProjection.originalSongs(results) : results.songs
@@ -467,10 +490,76 @@ public final class SearchViewModel {
         return order
     }
 
+    // MARK: Provider navigation
+
+    public func selectProviderChip(_ chip: SearchChipRecord, core: SideBCore) {
+        guard !chip.selected else { return }
+        selectedFilter = .all
+        commitSearch(query: committedQuery, core: core, force: true, origin: .filter,
+                     ignoreSpelling: isOriginalSearch, params: chip.params)
+    }
+
+    public func openProviderSection(_ section: SearchSectionRecord, core: SideBCore) {
+        selectedFilter = .all
+        commitSearch(query: section.moreQuery ?? committedQuery, core: core, force: true,
+                     origin: .filter, ignoreSpelling: isOriginalSearch, params: section.moreParams)
+    }
+
+    public func searchProviderCorrection(original: Bool, core: SideBCore) {
+        guard let value = providerPage?.correction else { return }
+        let text = original ? (value.originalQuery ?? committedQuery) : value.query
+        let params = original ? value.originalParams : value.params
+        commitSearch(query: text, core: core, force: true, origin: .filter,
+                     ignoreSpelling: original, params: params)
+    }
+
+    public func loadMore(core: SideBCore) {
+        guard !isLoadingMore, let token = providerPage?.continuation,
+              !consumedContinuations.contains(token) else { return }
+        let generation = queryGeneration
+        isLoadingMore = true
+        continuationTask = Task {
+            defer { if generation == queryGeneration { isLoadingMore = false } }
+            do {
+                let next = try await core.searchPageContinuation(continuation: token)
+                guard !Task.isCancelled, generation == queryGeneration, let page = providerPage else { return }
+                consumedContinuations.insert(token)
+                providerPage = ProviderSearchProjection.appending(next, to: page,
+                    consumedTokens: consumedContinuations)
+                committedResults = providerPage.map(ProviderSearchProjection.results(page:))
+                partialErrorMessages[.categories] = nil
+            } catch {
+                guard !Task.isCancelled, generation == queryGeneration else { return }
+                partialErrorMessages[.categories] = AppMessage(key: "search.error.category")
+            }
+        }
+    }
+
+    public func removeProviderSuggestion(_ entry: SearchSuggestionEntryRecord, core: SideBCore) async {
+        guard entry.kind == "history", let token = entry.feedbackToken,
+              !token.isEmpty, !removingSuggestionIDs.contains(entry.id),
+              providerSuggestions.contains(where: { $0.id == entry.id && $0.feedbackToken == token }) else { return }
+        let generation = previewGeneration
+        removingSuggestionIDs.insert(entry.id)
+        defer { if generation == previewGeneration { removingSuggestionIDs.remove(entry.id) } }
+        do {
+            try await core.removeSearchSuggestion(token: token)
+            guard generation == previewGeneration else { return }
+            providerSuggestions.removeAll { $0.id == entry.id }
+            querySuggestions = providerSuggestions.compactMap(\.query)
+            previewCache = [:]
+            quickErrorMessage = nil
+        } catch {
+            guard generation == previewGeneration else { return }
+            quickError = AppMessage(key: "search.error.quick")
+        }
+    }
+
     // MARK: Reset
 
     public func clear() {
         queryGeneration &+= 1
+        providerRequestIdentity = queryGeneration
         filterGeneration &+= 1
         cancelPreview()
         commitTask?.cancel()
@@ -479,6 +568,14 @@ public final class SearchViewModel {
         filterTask = nil
 
         query = ""
+        continuationTask?.cancel()
+        continuationTask = nil
+        consumedContinuations = []
+        providerPage = nil
+        providerSuggestions = []
+        providerParams = nil
+        isLoadingMore = false
+        removingSuggestionIDs = []
         committedQuery = ""
         isOriginalSearch = false
         quickResults = nil

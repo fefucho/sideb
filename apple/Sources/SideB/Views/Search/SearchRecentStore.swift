@@ -24,6 +24,7 @@ public final class SearchRecentStore {
         let videoId: String, title: String, artists: String
         let album: String?, duration: String?, thumbnail: String?, artistId: String?, albumId: String?
         let isVideo: Bool, isUpload: Bool
+        let contentRating: String?
         struct Artist: Codable { let text: String; let id: String? }
         let artistRuns: [Artist]
         init(_ song: SongItemRecord) {
@@ -31,12 +32,13 @@ public final class SearchRecentStore {
             album = song.album; duration = song.duration; thumbnail = song.thumbnail
             artistId = song.artistId; albumId = song.albumId; isVideo = song.isVideo; isUpload = song.isUpload
             artistRuns = song.artistRuns.map { Artist(text: $0.text, id: $0.id) }
+            contentRating = ContentRatingMetadata.encode(song.contentRating)
         }
         public var song: SongItemRecord {
             SongItemRecord(videoId: videoId, title: title, artists: artists, album: album,
                 duration: duration, thumbnail: thumbnail, artistId: artistId, albumId: albumId,
                 setVideoId: nil, isVideo: isVideo, isUpload: isUpload, library: nil,
-                artistRuns: artistRuns.map { HomeArtistRunRecord(text: $0.text, id: $0.id) })
+                artistRuns: artistRuns.map { HomeArtistRunRecord(text: $0.text, id: $0.id) }, contentRating: ContentRatingMetadata.decode(contentRating))
         }
     }
     private struct Saved: Codable { let version: Int; let entries: [Entry] }

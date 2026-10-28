@@ -22,6 +22,7 @@ import SideBCore
 /// One SwiftUI header lives in the native document; cards remain recycled.
 struct LibraryCollectionViewport: NSViewRepresentable {
     @Environment(\.sideBGesturePreviewVisible) private var gesturePreviewVisible
+    @Environment(\.sideBPageRetainsInactiveVisuals) private var retainInactiveVisuals
     let localizationRevision = L10n.revision
     let cards: [BrowseCardRecord]
     let tab: String
@@ -68,7 +69,7 @@ struct LibraryCollectionViewport: NSViewRepresentable {
         scroll.onViewportLayout = { [weak coordinator] in coordinator?.updateGeometry() }
         scroll.contentView.postsBoundsChangedNotifications = true
         NotificationCenter.default.addObserver(coordinator, selector: #selector(Coordinator.boundsChanged(_:)), name: NSView.boundsDidChangeNotification, object: scroll.contentView)
-        scroll.isHidden = isObscured && !gesturePreviewVisible
+        scroll.isHidden = isObscured && !gesturePreviewVisible && !retainInactiveVisuals
         scroll.setAccessibilityHidden(isObscured)
         collection.reloadData(); coordinator.updateGeometry()
         return scroll
@@ -84,7 +85,7 @@ struct LibraryCollectionViewport: NSViewRepresentable {
                 }
             }
             coordinator.isSuspended = true
-            scroll.isHidden = !gesturePreviewVisible
+            scroll.isHidden = !gesturePreviewVisible && !retainInactiveVisuals
             return
         }
         let resumed = coordinator.isSuspended
@@ -93,7 +94,7 @@ struct LibraryCollectionViewport: NSViewRepresentable {
         coordinator.parent = self
         guard let collection = coordinator.collection else { return }
         let reset = old.tab != tab || old.accountRevision != accountRevision
-        scroll.isHidden = isObscured && !gesturePreviewVisible
+        scroll.isHidden = isObscured && !gesturePreviewVisible && !retainInactiveVisuals
         if reset || old.list != list || old.cards != cards {
             coordinator.updateHover(at: nil)
             let identityChanged = reset || old.list != list || old.cards.map(LibraryPin.key) != cards.map(LibraryPin.key)
@@ -348,7 +349,7 @@ private struct LibraryHeaderHeightKey: PreferenceKey {
             row?.prepareForReuse(); row?.removeFromSuperview(); row = nil
             if cardView.superview == nil { addSubview(cardView, positioned: .below, relativeTo: pin) }
             let record = HomeItemRecord(kind: card.kind, id: card.id, title: card.displayTitle, subtitle: card.subtitle,
-                thumbnail: card.thumbnail, duration: card.duration, artists: nil, artistId: nil, album: nil, albumId: nil, artistRuns: [], explicit: false)
+                thumbnail: card.thumbnail, duration: card.duration, artists: nil, artistId: nil, album: nil, albumId: nil, artistRuns: [], explicit: false, contentRating: card.contentRating)
             cardView.configure(record: record, style: .largeCard, currentTrackID: nil, isPlaying: false,
                 onCard: onOpen, onCover: onOpen, onTitle: onOpen, onArtist: {}, onAlbum: {},
                 onDirectPlay: card.kind == "artist" ? onOpen : onPlay, menuProvider: menuProvider)
@@ -384,6 +385,7 @@ private struct LibraryHeaderHeightKey: PreferenceKey {
     let artwork = NSButton()
     let title = NSButton()
     let subtitle = NSTextField(labelWithString: "")
+    let contentBadge = NativeContentRatingBadge(frame: .zero)
     let play = NSButton()
     private var card: BrowseCardRecord?
     private var onOpen: (() -> Void)?
@@ -400,6 +402,7 @@ private struct LibraryHeaderHeightKey: PreferenceKey {
         for button in [artwork, title, play] { button.isBordered = false; button.bezelStyle = .inline; button.target = self; addSubview(button) }
         artwork.imagePosition = .imageOnly; artwork.imageScaling = .scaleAxesIndependently; artwork.wantsLayer = true; artwork.layer?.masksToBounds = true; artwork.action = #selector(openPressed)
         title.alignment = .left; title.font = .systemFont(ofSize: 13, weight: .semibold); title.lineBreakMode = .byTruncatingTail; title.action = #selector(openPressed)
+        addSubview(contentBadge)
         play.imagePosition = .imageOnly; play.action = #selector(playPressed)
         subtitle.font = .systemFont(ofSize: 11); subtitle.textColor = .secondaryLabelColor; subtitle.lineBreakMode = .byTruncatingTail; addSubview(subtitle)
     }
@@ -408,6 +411,9 @@ private struct LibraryHeaderHeightKey: PreferenceKey {
         let changed = self.card?.thumbnail != card.thumbnail || self.card?.id != card.id
         self.card = card; self.onOpen = onOpen; self.onPlay = onPlay; self.menuProvider = menuProvider
         title.title = card.displayTitle; title.toolTip = card.displayTitle; subtitle.stringValue = card.subtitle ?? ""
+        contentBadge.rating = card.contentRating
+        title.toolTip = card.displayTitle + "\n" + ContentRatingMetadata.label(card.contentRating)
+        title.setAccessibilityHelp(card.contentRating == .unknown ? ContentRatingMetadata.label(.unknown) : nil)
         artwork.layer?.cornerRadius = card.kind == "artist" ? 26 : AppTheme.artworkThumbnailRadius
         let label = L10n.text("library.open_card", args: [card.displayTitle]); artwork.setAccessibilityLabel(label); title.setAccessibilityLabel(label)
         play.isHidden = card.kind == "artist"
@@ -444,13 +450,18 @@ private struct LibraryHeaderHeightKey: PreferenceKey {
     override func layout() {
         super.layout(); artwork.frame = NSRect(x: 8, y: 8, width: 52, height: 52)
         let trailing: CGFloat = play.isHidden ? 8 : 40
-        title.frame = NSRect(x: 72, y: subtitle.stringValue.isEmpty ? 23 : 14, width: max(0, bounds.width - 72 - trailing), height: 22)
-        subtitle.frame = NSRect(x: 72, y: 38, width: max(0, bounds.width - 72 - trailing), height: 16)
+        let side = ContentRatingBadgeMetrics.side(for: subtitle.font?.pointSize ?? 11)
+        contentBadge.fontSize = subtitle.font?.pointSize ?? 11
+        let badgeWidth: CGFloat = contentBadge.isHidden ? 0 : side + ContentRatingBadgeMetrics.gap
+        let titleY: CGFloat = subtitle.stringValue.isEmpty && contentBadge.isHidden ? 23 : 14
+        contentBadge.frame = NSRect(x: 72, y: 38 + (16 - side) / 2, width: side, height: side)
+        title.frame = NSRect(x: 72, y: titleY, width: max(0, bounds.width - 72 - trailing), height: 22)
+        subtitle.frame = NSRect(x: 72 + badgeWidth, y: 38, width: max(0, bounds.width - 72 - trailing - badgeWidth), height: 16)
         play.frame = NSRect(x: bounds.width - 32, y: 22, width: 24, height: 24)
     }
     override func mouseDown(with event: NSEvent) { if event.modifierFlags.contains(.control) { rightMouseDown(with: event) } else { onOpen?() } }
     override func rightMouseDown(with event: NSEvent) { if let menu = menuProvider?() { NSMenu.popUpContextMenu(menu, with: event, for: self) } }
-    override func prepareForReuse() { super.prepareForReuse(); imageTask?.cancel(); imageTask = nil; generation += 1; artworkLoaded = false; card = nil; artwork.image = nil; onOpen = nil; onPlay = nil; menuProvider = nil }
+    override func prepareForReuse() { super.prepareForReuse(); imageTask?.cancel(); imageTask = nil; generation += 1; artworkLoaded = false; card = nil; contentBadge.rating = .unknown; artwork.image = nil; onOpen = nil; onPlay = nil; menuProvider = nil }
     @objc private func openPressed() { onOpen?() }
     @objc private func playPressed() { onPlay?() }
 }

@@ -1,8 +1,9 @@
+import { resolveContentRatingImport } from './helpers/content-rating-module.mjs';
 import {readFile} from 'node:fs/promises';
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import ts from 'typescript';
-const compile=source=>`data:text/javascript;base64,${Buffer.from(ts.transpileModule(source,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText).toString('base64')}`;
+const compile=source=>`data:text/javascript;base64,${Buffer.from(resolveContentRatingImport(ts.transpileModule(source,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText)).toString('base64')}`;
 const catalogSource=await readFile(new URL('../src/lib/explore/catalog.ts',import.meta.url),'utf8');
 const catalogUrl=compile(catalogSource);
 const {genres,moods}=await import(catalogUrl);

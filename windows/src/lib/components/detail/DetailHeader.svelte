@@ -30,7 +30,7 @@
   }
 </script>
 
-<CollectionHeader identity={album.browseId} title={album.title} thumbnail={album.thumbnail} kind={$t('detail.kind.album')} summary={meta.join(' · ')} description={album.description} onDescription={onDescription} {tools}>
+<CollectionHeader content={album} identity={album.browseId} title={album.title} thumbnail={album.thumbnail} kind={$t('detail.kind.album')} summary={meta.join(' · ')} description={album.description} onDescription={onDescription} {tools}>
   {#snippet credit()}{#if album.artistRuns?.length || album.artist}<ArtistCredits artistRuns={album.artistRuns} artists={album.artist} artistId={album.artistId} {onOpenArtist} />{/if}{/snippet}
   {#snippet actions()}
       <ControlButton emphasis="prominent" type="button" disabled={!album.items.length} onclick={() => onPlay(0)}><MenuIcon name="play" />{$t('player.play')}</ControlButton>

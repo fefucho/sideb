@@ -1,3 +1,4 @@
+import { resolveContentRatingImport } from './helpers/content-rating-module.mjs';
 import { readFile } from 'node:fs/promises';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
@@ -8,7 +9,7 @@ const helperSource = await readFile(new URL('../src/lib/home/songMetadata.ts', i
 const helperCode = ts.transpileModule(helperSource, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText;
 const helperURL = `data:text/javascript;base64,${Buffer.from(helperCode).toString('base64')}`;
 const output = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText.replace("'../home/songMetadata'",JSON.stringify(helperURL));
-const { songFromHome, songFromQueue, targetFromCard } = await import(`data:text/javascript;base64,${Buffer.from(output).toString('base64')}`);
+const { songFromHome, songFromQueue, targetFromCard } = await import(`data:text/javascript;base64,${Buffer.from(resolveContentRatingImport(output)).toString('base64')}`);
 const artistRuns = [{ text: 'Daft Punk', id: 'UC-daft' }, { text: 'Pharrell Williams', id: 'UC-pharrell' }];
 const metadata = { title: 'Lose Yourself to Dance', artists: 'Daft Punk & Pharrell Williams', artistRuns,
   artistId: 'UC-daft', album: 'Random Access Memories', albumId: 'MPRE-album', thumbnail: null };

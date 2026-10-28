@@ -1,5 +1,7 @@
 # Side B: instrucciones comunes
 
+**Carpeta de trabajo canónica:** este repositorio, `SIDE B/`, es la carpeta habitual y debe recibir las integraciones y nuevas builds. `sideb-github-latest/` es sólo una referencia local; no trasladar allí el trabajo ni usarlo como destino activo salvo pedido explícito del usuario. Conservar las builds numeradas de `SIDE B/builds/`.
+
 Leer [README.md](README.md) al comenzar; para trabajar seguir la ruta de lectura de [.agents/WORKFLOW.md](.agents/WORKFLOW.md). Comunicar en español. Este archivo define las reglas comunes; los AGENTS de ámbito agregan las específicas. No duplicar reglas en `.agents/rules`, skills, planes o bitácoras.
 
 ## Ámbito y core protegido

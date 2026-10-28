@@ -17,17 +17,23 @@ private final class ScrollingSearchCore: SideBCore, @unchecked Sendable {
     required init(unsafeFromRawPointer pointer: UnsafeMutableRawPointer) { catalogDelay = .zero; super.init(unsafeFromRawPointer: pointer) }
     init(catalogDelay: Duration = .zero) { self.catalogDelay = catalogDelay; super.init(noPointer: .init()) }
     override func isLoggedIn() -> Bool { false }
-    override func searchCatalog(query: String, recordHistory: Bool, ignoreSpelling: Bool) async throws -> SearchCatalogRecord {
+    override func searchPage(query: String, params: String?, recordHistory: Bool, ignoreSpelling: Bool) async throws -> SearchPageRecord {
         if catalogDelay > .zero { try await Task.sleep(for: catalogDelay) }
-        return SearchCatalogRecord(results: SearchResultsRecord(topSongs: [], top: [], songs: tracks + videos,
-            albums: [], artists: [], playlists: []), correction: nil)
+        let payload = Array(tracks.prefix(80)) + Array(videos.prefix(20))
+        let cards = payload.map { BrowseCardRecord(kind: $0.isVideo ? "video" : "song", id: $0.videoId,
+            title: $0.title, subtitle: $0.artists, thumbnail: nil, duration: $0.duration) }
+        let section = SearchSectionRecord(id: "songs", title: "Songs", layout: "list", items: cards, songs: payload,
+            primaryItemIndex: nil, relatedItemIndices: [], moreQuery: nil, moreParams: nil, moreBrowseId: nil, actions: [])
+        return SearchPageRecord(chips: [], correction: nil, sections: [section], continuation: nil)
     }
     override func searchSongs(query: String, recordHistory: Bool) async throws -> [SongItemRecord] { tracks }
     override func searchVideos(query: String) async throws -> [SongItemRecord] { videos }
     override func searchCards(query: String, category: String) async throws -> [BrowseCardRecord] { [] }
-    override func searchSuggestions(query: String) async throws -> SearchSuggestionsRecord {
-        SearchSuggestionsRecord(queries: [query + " first", query + " second"],
-            results: SearchResultsRecord(topSongs: [], top: [], songs: [], albums: [], artists: [], playlists: []))
+    override func searchSuggestionsPage(query: String) async throws -> SearchSuggestionsPageRecord {
+        SearchSuggestionsPageRecord(entries: [
+            SearchSuggestionEntryRecord(id: "first", kind: "text", query: query + " first", runs: [], feedbackToken: nil, card: nil, song: nil),
+            SearchSuggestionEntryRecord(id: "second", kind: "text", query: query + " second", runs: [], feedbackToken: nil, card: nil, song: nil)
+        ])
     }
 }
 
@@ -111,6 +117,57 @@ final class SearchScrollingHeaderTests: XCTestCase {
         fixture.host.cacheDisplay(in: fixture.host.bounds, to: bitmap)
         let data = try XCTUnwrap(bitmap.representation(using: .png, properties: [:]))
         try data.write(to: directory.appendingPathComponent("search-\(name).png"))
+    }
+
+    func testProviderPageKeepsSearchHeaderInsideOneScrollableViewport() async throws {
+        let fixture = Fixture(filter: .all)
+        defer { fixture.close() }
+        fixture.model.commitSearch(query: "Provider fixture", core: fixture.core)
+        await settle(fixture, until: { fixture.model.providerPage != nil && !fixture.model.isCommittedLoading })
+        let field = try field(in: fixture)
+        let scroll = try XCTUnwrap(field.enclosingScrollView)
+        XCTAssertTrue(scrollAncestors(of: scroll).isEmpty)
+        XCTAssertEqual(fixture.model.providerPage?.sections.first?.items.count, 100)
+        let document = try XCTUnwrap(scroll.documentView)
+        XCTAssertGreaterThan(document.bounds.height, scroll.contentView.bounds.height)
+        let before = field.convert(field.bounds, to: fixture.host)
+        scroll.contentView.scroll(to: NSPoint(x: 0, y: scroll.contentView.bounds.minY + 70))
+        scroll.reflectScrolledClipView(scroll.contentView)
+        fixture.host.layoutSubtreeIfNeeded()
+        let after = field.convert(field.bounds, to: fixture.host)
+        XCTAssertEqual(abs(after.minY - before.minY), 70, accuracy: 1)
+        try captureIfRequested(fixture, name: "provider-page")
+    }
+
+    func testProviderUpdatesPreserveTheFocusedDraftSelectionAndSuggestions() async throws {
+        let fixture = Fixture(filter: .all)
+        defer { fixture.close() }
+        fixture.model.commitSearch(query: "Provider fixture", core: fixture.core)
+        await settle(fixture, until: { fixture.model.providerPage != nil && !fixture.model.isCommittedLoading })
+        let field = try field(in: fixture)
+        let scroll = try XCTUnwrap(field.enclosingScrollView)
+        let table = try XCTUnwrap(descendants(scroll).compactMap { $0 as? NSTableView }.first)
+        let initialResultFrame = table.convert(table.rect(ofRow: 0), to: fixture.host)
+        let initialDocumentHeight = scroll.documentView?.frame.height
+        XCTAssertTrue(fixture.window.makeFirstResponder(field))
+        let editor = try XCTUnwrap(field.currentEditor() as? NSTextView)
+        editor.insertText("uncommitted", replacementRange: NSRange(location: 0, length: editor.string.utf16.count))
+        await settle(fixture, until: { fixture.model.associatedQuickQuery == "uncommitted" })
+        XCTAssertEqual(table.convert(table.rect(ofRow: 0), to: fixture.host).minY, initialResultFrame.minY, accuracy: 1,
+            "Opening provider suggestions must leave the principal in the same position")
+        XCTAssertEqual(scroll.documentView?.frame.height, initialDocumentHeight)
+        XCTAssertTrue(descendants(scroll).contains { $0.identifier?.rawValue == "search-page-preview" })
+        try captureIfRequested(fixture, name: "provider-floating-preview")
+        editor.setSelectedRange(NSRange(location: 2, length: 4))
+        fixture.model.partialErrors = [.global: "Provider fixture error"]
+        await settle(fixture)
+        XCTAssertTrue(try self.field(in: fixture) === field)
+        XCTAssertTrue(field.enclosingScrollView === scroll)
+        XCTAssertTrue(fixture.window.firstResponder === editor)
+        XCTAssertEqual(editor.selectedRange(), NSRange(location: 2, length: 4))
+        XCTAssertEqual(fixture.model.query, "uncommitted")
+        XCTAssertEqual(fixture.model.committedQuery, "Provider fixture")
+        XCTAssertEqual(fixture.model.querySuggestions, ["uncommitted first", "uncommitted second"])
     }
 
     func testMixedAndEveryCardCategoryPlaceTheHeaderInTheResultsViewport() async throws {
@@ -229,8 +286,8 @@ final class SearchScrollingHeaderTests: XCTestCase {
         let editor = try XCTUnwrap(field.currentEditor() as? NSTextView)
         editor.insertText("sample", replacementRange: NSRange(location: 0, length: editor.string.utf16.count))
         await settle(fixture, until: { fixture.model.associatedQuickQuery == "sample" })
-        XCTAssertGreaterThan(table.rect(ofRow: 0).height, collapsedHeaderHeight + 80,
-            "The native scrolling row must reserve the rendered suggestion panel's height")
+        XCTAssertEqual(table.rect(ofRow: 0).height, collapsedHeaderHeight, accuracy: 1,
+            "Floating suggestions must not change the header height or move results")
         editor.setSelectedRange(NSRange(location: 1, length: 3))
         let initialHeaderHeight = table.rect(ofRow: 0).height
         fixture.model.filteredSongs = []
@@ -255,7 +312,7 @@ final class SearchScrollingHeaderTests: XCTestCase {
         await settle(fixture)
         fixture.model.commitSearch(query: "sample first", core: fixture.core, origin: .submit)
         await settle(fixture, until: { fixture.model.committedQuery == "sample first" && !fixture.model.isCommittedLoading })
-        XCTAssertEqual(fixture.store.entries.first?.query, "sample first")
+        XCTAssertTrue(fixture.store.entries.isEmpty, "A submitted provider query no longer enters the local playback recents store")
         XCTAssertFalse(fixture.model.isTopdownVisible)
     }
 

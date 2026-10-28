@@ -94,7 +94,7 @@ func collectionDetailFixtureTrack(_ id: String = "song") -> SongItemRecord {
     #expect(cell.artist.textColor == .secondaryLabelColor && cell.album.textColor == .secondaryLabelColor)
     play.performClick(nil)
     #expect(played == 1)
-    #expect(cell.title.frame.maxX < cell.artist.frame.minX)
+    #expect(cell.convert(cell.title.bounds, from: cell.title).maxX < cell.convert(cell.artist.bounds, from: cell.artist).minX)
     cell.prepareForReuse()
     #expect(cell.onPlay == nil && cell.onLike == nil && cell.onMenu == nil)
     #expect(play.isHidden)

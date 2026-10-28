@@ -290,3 +290,104 @@ pub(crate) async fn get_artist_radio(state: tauri::State<'_, AppState>, playlist
         .map(|result| result.items.into_iter().map(SongDto::from).collect())
         .map_err(|_| CommandError::new("ARTIST_RADIO_FAILED", "No se pudo cargar la radio del artista. Comprobá tu conexión a internet."))
 }
+
+#[tauri::command]
+pub(crate) async fn search_page(
+    state: tauri::State<'_, AppState>,
+    query: String,
+    params: Option<String>,
+    record_history: bool,
+    ignore_spelling: bool,
+) -> Result<crate::search_page::SearchPageDto, CommandError> {
+    let query = validate_search_query(&query)?.to_owned();
+    let generation = state.auth_generation.load(Ordering::SeqCst);
+    let _operation = if record_history {
+        Some(state.auth_operation.read().await)
+    } else {
+        None
+    };
+    if state.auth_generation.load(Ordering::SeqCst) != generation {
+        return Err(CommandError::new("SESSION_CHANGED", "La sesión cambió."));
+    }
+    let result = search_core(&state)?
+        .search_page(query, params, record_history, ignore_spelling)
+        .await
+        .map_err(|_| CommandError::new("SEARCH_FAILED", "No se pudo completar la búsqueda."))?;
+    if state.auth_generation.load(Ordering::SeqCst) != generation {
+        return Err(CommandError::new("SESSION_CHANGED", "La sesión cambió."));
+    }
+    Ok(result.into())
+}
+#[tauri::command]
+pub(crate) async fn search_page_continuation(
+    state: tauri::State<'_, AppState>,
+    continuation: String,
+) -> Result<crate::search_page::SearchPageDto, CommandError> {
+    let generation = state.auth_generation.load(Ordering::SeqCst);
+    let result = search_core(&state)?
+        .search_page_continuation(continuation)
+        .await
+        .map_err(|_| CommandError::new("SEARCH_FAILED", "No se pudieron cargar más resultados."))?;
+    if state.auth_generation.load(Ordering::SeqCst) != generation {
+        return Err(CommandError::new("SESSION_CHANGED", "La sesión cambió."));
+    }
+    Ok(result.into())
+}
+#[tauri::command]
+pub(crate) async fn search_suggestions_page(
+    state: tauri::State<'_, AppState>,
+    query: String,
+) -> Result<crate::search_page::SearchSuggestionsPageDto, CommandError> {
+    let generation = state.auth_generation.load(Ordering::SeqCst);
+    let result = search_core(&state)?
+        .search_suggestions_page(query)
+        .await
+        .map_err(|_| CommandError::new("SEARCH_FAILED", "No se pudieron obtener sugerencias."))?;
+    if state.auth_generation.load(Ordering::SeqCst) != generation {
+        return Err(CommandError::new("SESSION_CHANGED", "La sesión cambió."));
+    }
+    Ok(result.into())
+}
+#[tauri::command]
+pub(crate) async fn remove_search_suggestion(
+    state: tauri::State<'_, AppState>,
+    token: String,
+) -> Result<(), CommandError> {
+    let generation = state.auth_generation.load(Ordering::SeqCst);
+    let _operation = state.auth_operation.read().await;
+    if state.auth_generation.load(Ordering::SeqCst) != generation {
+        return Err(CommandError::new("SESSION_CHANGED", "La sesión cambió."));
+    }
+    search_core(&state)?
+        .remove_search_suggestion(token)
+        .await
+        .map_err(|_| {
+            CommandError::new(
+                "SEARCH_FAILED",
+                "No se pudo eliminar la búsqueda del historial.",
+            )
+        })
+}
+
+#[tauri::command]
+pub(crate) async fn search_action(
+    state: tauri::State<'_, AppState>,
+    video_id: Option<String>,
+    playlist_id: Option<String>,
+    params: Option<String>,
+) -> Result<crate::search_page::SearchNextDto, CommandError> {
+    let generation = state.auth_generation.load(Ordering::SeqCst);
+    let result = search_core(&state)?
+        .search_action(video_id, playlist_id, params)
+        .await
+        .map_err(|_| {
+            CommandError::new(
+                "SEARCH_ACTION_FAILED",
+                "No se pudo reproducir el resultado.",
+            )
+        })?;
+    if state.auth_generation.load(Ordering::SeqCst) != generation {
+        return Err(CommandError::new("SESSION_CHANGED", "La sesión cambió."));
+    }
+    Ok(result.into())
+}

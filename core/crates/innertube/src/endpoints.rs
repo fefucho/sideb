@@ -25,6 +25,12 @@ pub const FILTER_ALBUM: &str = "EgWKAQIYAWoKEAkQChAFEAMQBA%3D%3D";
 pub const FILTER_ARTIST: &str = "EgWKAQIgAWoKEAkQChAFEAMQBA%3D%3D";
 pub const FILTER_COMMUNITY_PLAYLIST: &str = "EgeKAQQoAEABagoQAxAEEAoQCRAF";
 
+fn ensure_search_suggestion_removed(value: &serde_json::Value) -> Result<(), Error> {
+    if value.pointer("/feedbackResponses/0/isProcessed").and_then(serde_json::Value::as_bool) == Some(true) {
+        Ok(())
+    } else { Err(Error::Other("YouTube did not remove the search suggestion".into())) }
+}
+
 impl InnerTube {
     /// `/player` for one client. context/03, context/06.
     ///
@@ -204,6 +210,91 @@ impl InnerTube {
         Ok(suggestions)
     }
 
+    /// Ordered provider page. Authenticated requests retain account ranking and library scope.
+    /// The protocol exposes no verified history-suppression flag: `record_history` is retained
+    /// for caller intent, but cannot make an authenticated request unattributable. Typeahead
+    /// must exclusively use `search_suggestions_page`, never this endpoint.
+    pub async fn search_page(
+        &self, client: &YouTubeClient, query: &str, params: Option<&str>,
+        _record_history: bool, ignore_spelling: bool,
+    ) -> Result<crate::models::search::SearchPage, Error> {
+        let params = params.or_else(|| ignore_spelling.then_some("EhGKAQ4IARABGAEgASgAOAFAAUICCAE%3D"));
+        let snapshot = self.request_session();
+        let body = serde_json::json!({"context": snapshot.context(client), "query": query, "params": params});
+        let value = self.post_session("search", client, &body, &snapshot).await?;
+        let mut page = crate::models::search::parse_search_page(&value);
+        self.filter_search_page(&mut page);
+        Ok(page)
+    }
+
+    pub async fn search_page_continuation(
+        &self, client: &YouTubeClient, continuation: &str,
+    ) -> Result<crate::models::search::SearchPage, Error> {
+        if continuation.trim().is_empty() { return Err(Error::Other("Empty search continuation".into())); }
+        let snapshot = self.request_session();
+        let body = serde_json::json!({"context": snapshot.context(client), "continuation": continuation});
+        let value = self.post_session("search", client, &body, &snapshot).await?;
+        let mut page = crate::models::search::parse_search_page(&value);
+        // Occurrences from separate pages must not collide when consumers append them.
+        use std::hash::{Hash, Hasher};
+        let mut hash = std::collections::hash_map::DefaultHasher::new();
+        continuation.hash(&mut hash);
+        for section in &mut page.sections { section.id = format!("{}-{:x}", section.id, hash.finish()); }
+        self.filter_search_page(&mut page);
+        Ok(page)
+    }
+
+    fn filter_search_page(&self, page: &mut crate::models::search::SearchPage) {
+        for section in &mut page.sections {
+            if self.hide_videos() {
+                let primary_index = section.primary_item_index.map(|index| index as usize);
+                let related_indices = std::mem::take(&mut section.related_item_indices);
+                let mut retained = std::collections::HashMap::new();
+                section.items = std::mem::take(&mut section.items).into_iter().enumerate().filter_map(|(index, card)| {
+                    if card.is_video { None } else { retained.insert(index, retained.len()); Some(card) }
+                }).collect();
+                let pairs = std::mem::take(&mut section.song_item_indices).into_iter().zip(std::mem::take(&mut section.songs));
+                for (index, song) in pairs {
+                    if let Some(position) = retained.get(&index) { section.song_item_indices.push(*position); section.songs.push(song); }
+                }
+                section.primary_item_index = primary_index
+                    .and_then(|index| retained.get(&index).copied())
+                    .and_then(|index| u32::try_from(index).ok());
+                if section.primary_item_index.is_some() {
+                    section.related_item_indices = related_indices
+                        .into_iter()
+                        .filter_map(|index| retained.get(&(index as usize)).copied())
+                        .filter_map(|index| u32::try_from(index).ok())
+                        .collect();
+                }
+            }
+        }
+    }
+
+    /// Account-aware autocomplete, also for an empty input. This never submits a full search.
+    pub async fn search_suggestions_page(
+        &self, client: &YouTubeClient, query: &str,
+    ) -> Result<crate::models::search::SearchSuggestionsPage, Error> {
+        let snapshot = self.request_session();
+        let body = serde_json::json!({"context": snapshot.context(client), "input": query});
+        let value = self.post_session("music/get_search_suggestions", client, &body, &snapshot).await?;
+        let mut page = crate::models::search::parse_search_suggestions_page(&value);
+        if self.hide_videos() { page.entries.retain(|e| !e.card.as_ref().is_some_and(|c| c.is_video)); }
+        if !self.register_search_suggestion_tokens(&snapshot, page.entries.iter().filter_map(|entry| entry.feedback_token.as_deref())) {
+            return Err(Error::Other("Session changed while loading suggestions; retry".into()));
+        }
+        Ok(page)
+    }
+
+    /// Only called after an explicit remove action. Tokens are opaque provider capabilities.
+    pub async fn remove_search_suggestion(&self, client: &YouTubeClient, token: &str) -> Result<(), Error> {
+        if token.trim().is_empty() { return Err(Error::Other("Empty search suggestion token".into())); }
+        let snapshot = self.prepare_search_suggestion_removal(token)?;
+        let body = serde_json::json!({"context": snapshot.context(client), "feedbackTokens": [token]});
+        let value = self.post_session("feedback", client, &body, &snapshot).await?;
+        ensure_search_suggestion_removed(&value)
+    }
+
     /// Filtered card search for a "Show more" page. `category` ∈ albums / artists / playlists.
     pub async fn search_cards(
         &self,
@@ -232,6 +323,14 @@ impl InnerTube {
         video_id: Option<&str>,
         playlist_id: Option<&str>,
     ) -> Result<NextResult, Error> {
+        self.next_with_params(metadata_client, video_id, playlist_id, None).await
+    }
+
+    /// Preserve opaque watch endpoint params for provider Play / Radio / Shuffle actions.
+    pub async fn next_with_params(
+        &self, metadata_client: &YouTubeClient, video_id: Option<&str>,
+        playlist_id: Option<&str>, params: Option<&str>,
+    ) -> Result<NextResult, Error> {
         #[derive(Serialize)]
         #[serde(rename_all = "camelCase")]
         struct NextBody {
@@ -240,15 +339,19 @@ impl InnerTube {
             video_id: Option<String>,
             #[serde(skip_serializing_if = "Option::is_none")]
             playlist_id: Option<String>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            params: Option<String>,
             is_audio_only: bool,
         }
+        let snapshot = self.request_session();
         let body = NextBody {
-            context: self.context_for(metadata_client),
+            context: snapshot.context(metadata_client),
             video_id: video_id.map(str::to_owned),
             playlist_id: playlist_id.map(str::to_owned),
+            params: params.map(str::to_owned),
             is_audio_only: true,
         };
-        let value = self.post("next", metadata_client, &body, true).await?;
+        let value = self.post_session("next", metadata_client, &body, &snapshot).await?;
         let mut next = metadata::parse_next(&value);
         // The seed itself survives: "start radio from this video" must still open on that video,
         // and the track already playing is never yanked out from under the user.
@@ -256,6 +359,18 @@ impl InnerTube {
             next.items.retain(|i| !i.is_video || Some(i.video_id.as_str()) == video_id);
         }
         self.drop_blocked_songs(&mut next.items, video_id);
+        Ok(next)
+    }
+
+    /// Continue the exact queue returned by a provider watch action.
+    pub async fn next_continuation(&self, client: &YouTubeClient, continuation: &str) -> Result<NextResult, Error> {
+        if continuation.trim().is_empty() { return Err(Error::Other("Empty queue continuation".into())); }
+        let snapshot = self.request_session();
+        let body = serde_json::json!({"context": snapshot.context(client), "continuation": continuation, "isAudioOnly": true});
+        let value = self.post_session("next", client, &body, &snapshot).await?;
+        let mut next = metadata::parse_next(&value);
+        self.drop_video_songs(&mut next.items);
+        self.drop_blocked_songs(&mut next.items, None);
         Ok(next)
     }
 
@@ -267,9 +382,14 @@ impl InnerTube {
         struct AccountMenuBody {
             context: Context,
         }
-        let body = AccountMenuBody { context: self.context_for(client) };
-        let value = self.post("account/account_menu", client, &body, true).await?;
-        Ok(metadata::parse_account_menu(&value))
+        let snapshot = self.request_session();
+        let body = AccountMenuBody { context: snapshot.context(client) };
+        let value = self.post_session("account/account_menu", client, &body, &snapshot).await?;
+        let info = metadata::parse_account_menu(&value);
+        if !self.hydrate_request_account(&snapshot, &info) {
+            return Err(Error::Other("Account session changed while loading identity; retry".into()));
+        }
+        Ok(info)
     }
 
     /// Validate and refresh one delegated identity without mutating the transport's shared
@@ -1145,6 +1265,59 @@ fn edit_rejection(v: &serde_json::Value) -> Option<Error> {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn search_removal_requires_explicit_provider_success() {
+        assert!(ensure_search_suggestion_removed(&json!({"feedbackResponses":[{"isProcessed":true}]})).is_ok());
+        for value in [json!({}), json!({"feedbackResponses":[]}), json!({"feedbackResponses":[{"isProcessed":false}]}), json!({"feedbackResponses":[{"isProcessed":"true"}]})] {
+            assert!(ensure_search_suggestion_removed(&value).is_err());
+        }
+    }
+
+    #[test]
+    fn hidden_videos_remap_search_roles_without_promoting_rows() {
+        let it = InnerTube::new(crate::Session::default(), None).unwrap();
+        it.set_hide_videos(true);
+        let mut section = crate::models::search::SearchSection {
+            items: (0..4)
+                .map(|index| crate::models::browse::BrowseItem {
+                    kind: "song", id: format!("v{index}"), title: format!("item{index}"),
+                    subtitle: None, thumbnail: None, duration: None, artist_runs: vec![],
+                    play_count: None, is_video: matches!(index, 0 | 2), is_upload: false,
+                    explicit: false, artists: None, artist_id: None, album: None, album_id: None,
+                })
+                .collect(),
+            primary_item_index: Some(1),
+            related_item_indices: vec![2, 3],
+            ..Default::default()
+        };
+        // A removed primary clears related roles instead of promoting a surviving row.
+        section.primary_item_index = Some(0);
+        let mut removed_primary = crate::models::search::SearchPage { sections: vec![section.clone()], ..Default::default() };
+        it.filter_search_page(&mut removed_primary);
+        assert_eq!(removed_primary.sections[0].primary_item_index, None);
+        assert!(removed_primary.sections[0].related_item_indices.is_empty());
+
+        // A surviving primary and surviving related occurrence both follow compaction.
+        section.items[0].is_video = true;
+        section.primary_item_index = Some(1);
+        section.related_item_indices = vec![2, 3];
+        let mut remapped = crate::models::search::SearchPage { sections: vec![section], ..Default::default() };
+        it.filter_search_page(&mut remapped);
+        assert_eq!(remapped.sections[0].primary_item_index, Some(0));
+        assert_eq!(remapped.sections[0].related_item_indices, [1]);
+        assert_eq!(remapped.sections[0].items.iter().map(|item| item.title.as_str()).collect::<Vec<_>>(), ["item1", "item3"]);
+    }
+
+    #[tokio::test]
+    async fn search_empty_capabilities_fail_without_network() {
+        let it = InnerTube::new(crate::Session::default(), None).unwrap();
+        let clients = crate::Clients::bundled();
+        let client = clients.get(crate::METADATA_CLIENT).unwrap();
+        assert!(it.remove_search_suggestion(client, " ").await.is_err());
+        assert!(it.search_page_continuation(client, "").await.is_err());
+        assert!(it.next_continuation(client, "").await.is_err());
+    }
 
     #[tokio::test]
     async fn hidden_video_setting_short_circuits_filtered_video_search() {

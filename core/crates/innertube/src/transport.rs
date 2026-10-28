@@ -1,7 +1,7 @@
 //! HTTP transport. context/01. Pure — no Tauri/webview/mpv.
 
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, RwLock};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{Arc, Mutex, RwLock};
 use std::time::Duration;
 
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue, SET_COOKIE};
@@ -120,6 +120,8 @@ pub(crate) fn merge_set_cookie(cookie: &str, set_cookie: &[&str]) -> Option<Stri
 pub struct InnerTube {
     http: reqwest::Client,
     session: Arc<RwLock<Session>>,
+    session_generation: Arc<AtomicU64>,
+    search_suggestion_tokens: Arc<Mutex<std::collections::HashMap<String, u64>>>,
     /// "Hide music videos" (off by default): drop non-ATV rows from the surfaces YouTube
     /// generates. Shared like `session` so a settings toggle reaches every clone, and an atomic
     /// rather than part of `Session` because the endpoints read it on every parse.
@@ -139,6 +141,15 @@ pub struct InnerTube {
     cookie_changed: Arc<Notify>,
 }
 
+/// Credentials and delegation are captured under the same session lock. Never logged.
+pub(crate) struct RequestSession { generation: u64, session: Session }
+impl RequestSession {
+    pub(crate) fn context(&self, client: &YouTubeClient) -> crate::models::context::Context {
+        let s = &self.session;
+        client.to_context(&s.locale, s.visitor_data.as_deref(), s.cookie.as_ref().and(s.data_sync_id.as_deref()))
+    }
+}
+
 impl InnerTube {
     pub fn new(session: Session, proxy: Option<&str>) -> Result<Self, Error> {
         let mut builder = reqwest::Client::builder()
@@ -152,6 +163,8 @@ impl InnerTube {
         Ok(InnerTube {
             http: builder.build()?,
             session: Arc::new(RwLock::new(session)),
+            session_generation: Arc::new(AtomicU64::new(0)),
+            search_suggestion_tokens: Arc::new(Mutex::new(std::collections::HashMap::new())),
             hide_videos: Arc::new(AtomicBool::new(false)),
             blocked: Arc::new(RwLock::new(BlockList::default())),
             session_rejected: Arc::new(Notify::new()),
@@ -184,7 +197,9 @@ impl InnerTube {
     /// into every session — issue #165 / KI-2. Note that `cookie_store(true)` would not help:
     /// reqwest skips its own store whenever a `Cookie` header is already set, and `headers()`
     /// always sets one.
-    fn absorb_cookies(&self, headers: &HeaderMap) {
+    fn absorb_cookies(&self, headers: &HeaderMap) { self.absorb_cookies_for(headers, None); }
+
+    fn absorb_cookies_for(&self, headers: &HeaderMap, expected_generation: Option<u64>) {
         if headers.get(SET_COOKIE).is_none() {
             return;
         }
@@ -192,6 +207,7 @@ impl InnerTube {
             headers.get_all(SET_COOKIE).iter().filter_map(|v| v.to_str().ok()).collect();
         {
             let mut s = self.session.write().unwrap();
+            if expected_generation.is_some_and(|g| g != self.session_generation.load(Ordering::Relaxed)) { return; }
             let Some(merged) = s.cookie.as_deref().and_then(|c| merge_set_cookie(c, &set_cookie))
             else {
                 return;
@@ -246,7 +262,53 @@ impl InnerTube {
     }
 
     pub fn set_cookie(&self, cookie: Option<String>) {
-        self.session.write().unwrap().cookie = cookie;
+        let mut session = self.session.write().unwrap();
+        if session.cookie != cookie {
+            session.cookie = cookie;
+            session.data_sync_id = None;
+            session.visitor_data = None;
+            self.session_generation.fetch_add(1, Ordering::Relaxed);
+            self.search_suggestion_tokens.lock().unwrap().clear();
+        }
+    }
+
+    /// Only deletion capabilities actually returned to this session may be submitted. Lock
+    /// ordering is always session -> token cache, including account replacement in set_cookie.
+    pub(crate) fn register_search_suggestion_tokens<'a>(&self, request: &RequestSession, tokens: impl Iterator<Item = &'a str>) -> bool {
+        let session = self.session.read().unwrap();
+        let generation = self.session_generation.load(Ordering::Relaxed);
+        if request.generation != generation { return false; }
+        if session.cookie.is_none() { return true; }
+        let mut cache = self.search_suggestion_tokens.lock().unwrap();
+        let tokens: Vec<_> = tokens.filter(|token| !token.is_empty() && token.len() <= 16384).take(256).collect();
+        if cache.len() + tokens.len() > 256 { cache.clear(); }
+        for token in tokens { cache.insert(token.to_owned(), generation); }
+        true
+    }
+
+    pub(crate) fn prepare_search_suggestion_removal(&self, token: &str) -> Result<RequestSession, Error> {
+        let session = self.session.read().unwrap();
+        let generation = self.session_generation.load(Ordering::Relaxed);
+        if session.cookie.is_none() || self.search_suggestion_tokens.lock().unwrap().get(token) != Some(&generation) {
+            return Err(Error::Other("Search suggestion expired; reopen suggestions and try again".into()));
+        }
+        Ok(RequestSession { generation, session: session.clone() })
+    }
+
+    pub(crate) fn request_session(&self) -> RequestSession {
+        let session = self.session.read().unwrap();
+        RequestSession { generation: self.session_generation.load(Ordering::Relaxed), session: session.clone() }
+    }
+    fn request_is_current(&self, request: &RequestSession) -> bool {
+        let _session = self.session.read().unwrap();
+        request.generation == self.session_generation.load(Ordering::Relaxed)
+    }
+    pub(crate) fn hydrate_request_account(&self, request: &RequestSession, info: &crate::models::metadata::AccountInfo) -> bool {
+        let mut session = self.session.write().unwrap();
+        if request.session.cookie.is_none() || request.generation != self.session_generation.load(Ordering::Relaxed) { return false; }
+        if let Some(id) = &info.data_sync_id { session.data_sync_id = Some(id.clone()); }
+        if let Some(visitor) = &info.visitor_data { session.visitor_data = Some(visitor.clone()); }
+        true
     }
 
     pub fn set_data_sync_id(&self, id: Option<String>) {
@@ -303,15 +365,26 @@ impl InnerTube {
         body: &B,
         set_login: bool,
     ) -> Result<serde_json::Value, Error> {
+        self.post_prepared(path, client, body, set_login, None).await
+    }
+
+    pub(crate) async fn post_session<B: Serialize>(&self, path: &str, client: &YouTubeClient, body: &B, request: &RequestSession) -> Result<serde_json::Value, Error> {
+        self.post_prepared(path, client, body, true, Some(request)).await
+    }
+
+    async fn post_prepared<B: Serialize>(&self, path: &str, client: &YouTubeClient, body: &B, set_login: bool, request: Option<&RequestSession>) -> Result<serde_json::Value, Error> {
         // `path` may already carry query params (e.g. browse continuations); chain accordingly.
         let sep = if path.contains('?') { '&' } else { '?' };
         let url = format!("{BASE_URL}{path}{sep}prettyPrint=false");
-        let headers = self.headers(client, set_login);
+        let fallback = self.request_session();
+        let snapshot = request.unwrap_or(&fallback);
+        let headers = Self::headers_for(client, set_login, &snapshot.session);
         let body = serde_json::to_vec(body)?;
 
         let mut delay = Duration::from_millis(500);
         let mut attempt = 0;
         loop {
+            if !self.request_is_current(snapshot) { return Err(Error::Other("Session changed before request; retry".into())); }
             attempt += 1;
             let res = self
                 .http
@@ -322,6 +395,7 @@ impl InnerTube {
                 .await;
             match res {
                 Ok(resp) => {
+                    if !self.request_is_current(snapshot) { return Err(Error::Other("Session changed during request; retry".into())); }
                     let status = resp.status();
                     if !status.is_success() {
                         let text = resp.text().await.unwrap_or_default();
@@ -335,8 +409,10 @@ impl InnerTube {
                         }
                         return Err(Error::Other(format!("HTTP {status}: {text}")));
                     }
-                    self.absorb_cookies(resp.headers());
-                    return Ok(resp.json().await?);
+                    self.absorb_cookies_for(resp.headers(), Some(snapshot.generation));
+                    let value = resp.json().await?;
+                    if !self.request_is_current(snapshot) { return Err(Error::Other("Session changed during response; retry".into())); }
+                    return Ok(value);
                 }
                 // Retry only on connect/timeout (transient), matching Metrolist's IOException filter.
                 Err(e) if attempt < 3 && (e.is_timeout() || e.is_connect() || e.is_request()) => {
@@ -391,6 +467,10 @@ impl InnerTube {
     /// Per-request headers. context/01 §ytClient. Note `X-YouTube-Client-Name` carries the
     /// numeric client **id**, not the name string — intentional and required.
     fn headers(&self, client: &YouTubeClient, set_login: bool) -> HeaderMap {
+        Self::headers_for(client, set_login, &self.session.read().unwrap())
+    }
+
+    fn headers_for(client: &YouTubeClient, set_login: bool, s: &Session) -> HeaderMap {
         let mut h = HeaderMap::new();
         let set = |h: &mut HeaderMap, k: &'static str, v: &str| {
             if let Ok(val) = HeaderValue::from_str(v) {
@@ -409,7 +489,6 @@ impl InnerTube {
         set(&mut h, "x-goog-authuser", "0");
         set(&mut h, "user-agent", &client.user_agent);
 
-        let s = self.session.read().unwrap();
         if let Some(vd) = &s.visitor_data {
             set(&mut h, "x-goog-visitor-id", vd);
         }
@@ -630,6 +709,8 @@ mod tests {
         assert_eq!(it.context_for(web).user.on_behalf_of_user, None, "no cookie ⇒ no obo (401)");
 
         it.set_cookie(Some("SAPISID=secret".into()));
+        assert_eq!(it.context_for(web).user.on_behalf_of_user, None, "new login discards old identity");
+        it.set_data_sync_id(Some("abc123".into()));
         assert_eq!(it.context_for(web).user.on_behalf_of_user.as_deref(), Some("abc123"));
     }
 
@@ -667,6 +748,73 @@ mod tests {
             Some("candidate-id")
         );
         assert_eq!(it.context_for(web).user.on_behalf_of_user.as_deref(), Some("committed-id"));
+    }
+
+    #[test]
+    fn captured_request_keeps_context_and_credentials_together_and_rejects_old_cookies() {
+        let clients = crate::clients::Clients::bundled();
+        let client = clients.get(crate::clients::METADATA_CLIENT).unwrap();
+        let it = InnerTube::new(Session { cookie: Some("SAPISID=account-a".into()),
+            visitor_data: Some("visitor-a".into()), data_sync_id: Some("identity-a".into()), ..Default::default() }, None).unwrap();
+        let request = it.request_session();
+        it.set_cookie(Some("SAPISID=account-b".into()));
+        let context = request.context(client);
+        let headers = InnerTube::headers_for(client, true, &request.session);
+        assert_eq!(context.user.on_behalf_of_user.as_deref(), Some("identity-a"));
+        assert_eq!(context.client.visitor_data.as_deref(), Some("visitor-a"));
+        assert_eq!(headers.get("cookie").unwrap(), "SAPISID=account-a");
+        assert_eq!(headers.get("x-goog-visitor-id").unwrap(), "visitor-a");
+        assert!(!it.request_is_current(&request));
+        let mut rotated = HeaderMap::new();
+        rotated.insert(SET_COOKIE, HeaderValue::from_static("SAPISID=rotated-old-account; Path=/"));
+        it.absorb_cookies_for(&rotated, Some(request.generation));
+        assert_eq!(it.cookie().as_deref(), Some("SAPISID=account-b"));
+        let current = it.request_session();
+        it.absorb_cookies_for(&rotated, Some(current.generation));
+        assert_eq!(it.cookie().as_deref(), Some("SAPISID=rotated-old-account"));
+        assert!(it.request_is_current(&current), "same-session cookie rotation retains generation");
+    }
+
+    #[test]
+    fn search_removal_capabilities_are_bounded_and_bound_to_issuing_account() {
+        let it = InnerTube::new(Session { cookie: Some("SAPISID=account-a".into()), ..Default::default() }, None).unwrap();
+        assert!(it.prepare_search_suggestion_removal("not-issued").is_err());
+        let request = it.request_session();
+        assert!(it.register_search_suggestion_tokens(&request, ["issued-a"].into_iter()));
+        assert!(it.prepare_search_suggestion_removal("issued-a").is_ok());
+        it.set_cookie(Some("SAPISID=account-b".into()));
+        assert!(it.prepare_search_suggestion_removal("issued-a").is_err());
+        assert!(!it.register_search_suggestion_tokens(&request, ["stale-response"].into_iter()));
+        let current = it.request_session();
+        assert!(it.register_search_suggestion_tokens(&current, ["issued-b"].into_iter()));
+        assert!(it.prepare_search_suggestion_removal("issued-b").is_ok());
+        let many: Vec<_> = (0..400).map(|n| format!("token-{n}")).collect();
+        assert!(it.register_search_suggestion_tokens(&current, many.iter().map(String::as_str)));
+        assert!(it.search_suggestion_tokens.lock().unwrap().len() <= 256);
+        it.set_cookie(None);
+        assert!(it.prepare_search_suggestion_removal("token-0").is_err());
+    }
+
+    #[test]
+    fn account_hydration_rejects_stale_cookie_logout_and_aba() {
+        let it = InnerTube::new(Session::default(), None).unwrap();
+        let info = crate::models::metadata::parse_account_menu(&serde_json::json!({
+            "responseContext": {"visitorData":"account-visitor","mainAppWebResponseContext":{"datasyncId":"account-id"}}
+        }));
+        it.set_cookie(Some("SAPISID=account-a".into()));
+        let snapshot = it.request_session();
+        assert!(it.hydrate_request_account(&snapshot, &info));
+        assert_eq!(it.visitor_data().as_deref(), Some("account-visitor"));
+        assert_eq!(it.data_sync_id().as_deref(), Some("account-id"));
+        it.set_cookie(Some("SAPISID=account-b".into()));
+        assert_eq!(it.visitor_data(), None);
+        assert_eq!(it.data_sync_id(), None);
+        assert!(!it.hydrate_request_account(&snapshot, &info));
+        it.set_cookie(None);
+        assert!(!it.hydrate_request_account(&snapshot, &info));
+        it.set_cookie(Some("SAPISID=account-a".into()));
+        assert!(!it.hydrate_request_account(&snapshot, &info));
+        assert!(it.hydrate_request_account(&it.request_session(), &info));
     }
 
     #[test]

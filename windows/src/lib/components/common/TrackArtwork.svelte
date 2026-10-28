@@ -1,22 +1,33 @@
 <script lang="ts">
   import { t } from '$lib/i18n';
-  import { onMount } from 'svelte';
+  import { getContext, onMount } from 'svelte';
+  import { PRESENTATION_CONTEXT, type PresentationService } from './presentation';
   import { cardArtworkCandidates, nextArtworkUrl, rejectArtworkAttempt, type ArtworkFailures } from '$lib/images/artwork';
   let { title, thumbnail, active, playing, pending = false, size = 40, showPlayOverlay = true, onPlay }: {
     title: string; thumbnail: string | null; active: boolean; playing: boolean;
     pending?: boolean; size?: number; showPlayOverlay?: boolean; onPlay: (event: MouseEvent) => void;
   } = $props();
   let pixelRatio = $state(1); let failures = $state<ArtworkFailures>({key:'',urls:[]});
+  let root = $state<HTMLButtonElement>();
+  const presentation = getContext<PresentationService | undefined>(PRESENTATION_CONTEXT);
+  const foreground = $derived(presentation?.active(root) ?? true);
   const candidates = $derived(cardArtworkCandidates(thumbnail, size, pixelRatio));
   const requestKey = $derived(JSON.stringify(candidates));
   const selectedUrl = $derived(nextArtworkUrl(candidates, failures.key === requestKey ? failures.urls : []));
   $effect(() => { if(failures.key !== requestKey)failures={key:requestKey,urls:[]}; });
   function reject(key: string, url: string) { failures = rejectArtworkAttempt(failures, requestKey, candidates, key, url); }
-  onMount(() => { const sync=()=>pixelRatio=window.devicePixelRatio||1;sync();window.addEventListener('resize',sync);return()=>window.removeEventListener('resize',sync); });
+  let mounted = $state(false);
+  onMount(() => { mounted = true; });
+  $effect(() => {
+    if (!mounted || !foreground) return;
+    const sync = () => { if (foreground) pixelRatio = window.devicePixelRatio || 1; };
+    sync(); window.addEventListener('resize', sync);
+    return () => window.removeEventListener('resize', sync);
+  });
 </script>
-{#snippet imageAttempt(key: string, url: string)}<img src={url} alt="" loading="lazy" decoding="async" onerror={() => reject(key, url)} />{/snippet}
+{#snippet imageAttempt(key: string, url: string)}<img src={url} alt="" loading="lazy" decoding="async" onerror={event => { if (event.currentTarget.parentElement === root) reject(key, event.currentTarget.getAttribute('src') ?? url); }} />{/snippet}
 
-<button class="track-artwork" type="button" style={`--art-size:${size}px`} disabled={pending} aria-busy={pending}
+<button bind:this={root} class="track-artwork" type="button" style={`--art-size:${size}px`} disabled={pending} aria-busy={pending}
   aria-label={`${pending ? $t('common.loading') : active && playing ? $t('player.pause') : $t('player.play')} ${title}`} onclick={onPlay}>
   {#if selectedUrl}{#key `${requestKey}\u0000${selectedUrl}`}{@render imageAttempt(requestKey, selectedUrl)}{/key}
   {:else}<span class="fallback" aria-hidden="true">♪</span>{/if}
@@ -28,7 +39,7 @@
 </button>
 
 <style>
-  .track-artwork { display:grid; place-items:center; position:relative; flex:none; width:var(--art-size); height:var(--art-size); padding:0; border:0; border-radius:2px; overflow:hidden; background:#303036; color:white; cursor:pointer; }
+  .track-artwork { display:grid; place-items:center; position:relative; flex:none; width:var(--art-size); height:var(--art-size); padding:0; border:0; border-radius:var(--sideb-track-artwork-radius, 2px); overflow:hidden; background:#303036; color:white; cursor:pointer; }
   img,.fallback { width:100%;height:100%;grid-area:1/1;object-fit:cover; }.fallback { display:grid;place-items:center;color:#c9c9cf;font-size:20px; }
   .play-control { display:grid;place-items:center;grid-area:1/1;z-index:1;width:28px;height:28px;border-radius:7px;background:rgb(0 0 0 / 58%);opacity:0;transition:opacity .12s;pointer-events:none; }svg { width:18px;height:18px; }
   :global(.track-row:hover) .play-control,:global(.track-row:focus-within) .play-control,.track-artwork:hover .play-control,.track-artwork:focus-visible .play-control,.play-control.pending { opacity:1; }

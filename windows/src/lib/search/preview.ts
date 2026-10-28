@@ -6,6 +6,7 @@ export interface SearchPreviewData {
   associatedQuery: string;
   results: SearchResultsDto | null;
   queries?: string[];
+  entries?: import('../types').SearchSuggestionEntryDto[];
   isLoading: boolean;
   error: string | null;
 }

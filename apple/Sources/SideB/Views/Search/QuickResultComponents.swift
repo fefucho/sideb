@@ -13,13 +13,13 @@ struct QuickResultCardRow: View {
     var onPlay: (() -> Void)? = nil
     var menuProvider: (() -> NSMenu?)? = nil
     let onSelect: () -> Void
-    
+
     @State private var isHovered: Bool = false
-    
+
     private var isArtist: Bool {
         card.kind.lowercased() == "artist"
     }
-    
+
     var body: some View {
         let isCollection = ["album", "playlist"].contains(card.kind.lowercased())
         let activationLabel = L10n.text(isArtist || isCollection ? "search.open_card" : "search.play_card", args: [card.title])
@@ -76,21 +76,23 @@ struct QuickResultCardRow: View {
                         .font(.system(size: 15, weight: isHero ? .semibold : .medium))
                         .foregroundStyle(.primary)
                         .lineLimit(1)
-                    
-                    HStack(spacing: 4) {
-                        Text(kindDisplayName)
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(isHero ? .primary : .secondary)
-                        
-                        if let sub = card.subtitle, !sub.isEmpty {
-                            Text("•")
-                                .font(.system(size: 10))
-                                .foregroundStyle(.tertiary)
-                            
-                            Text(sub)
-                                .font(.system(size: 12))
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
+
+                    ContentRatedMetadata(rating: card.contentRating, fontSize: 12) {
+                        HStack(spacing: 4) {
+                            Text(kindDisplayName)
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(isHero ? .primary : .secondary)
+
+                            if let sub = card.subtitle, !sub.isEmpty {
+                                Text("•")
+                                    .font(.system(size: 10))
+                                    .foregroundStyle(.tertiary)
+
+                                Text(sub)
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                            }
                         }
                     }
                 }
@@ -102,7 +104,7 @@ struct QuickResultCardRow: View {
             .frame(maxWidth: .infinity, alignment: .leading)
 
             Spacer()
-                
+
             if isArtist || isCollection {
                 Image(systemName: "chevron.right")
                     .font(.system(size: 12, weight: .semibold))
@@ -121,7 +123,7 @@ struct QuickResultCardRow: View {
         .mediaCardSurface()
         .onHover { isHovered = $0 }
     }
-    
+
     private var kindDisplayName: String {
         switch card.kind.lowercased() {
         case "artist": return L10n.text("search.filter.artists")
@@ -131,7 +133,7 @@ struct QuickResultCardRow: View {
         default: return card.kind.capitalized
         }
     }
-    
+
     private var placeholderIcon: some View {
         ZStack {
             if isArtist {
@@ -159,9 +161,9 @@ struct QuickResultSongRow: View {
     var onAlbum: (() -> Void)? = nil
     var menuProvider: (() -> NSMenu?)? = nil
     let onSelect: () -> Void
-    
+
     @State private var isHovered: Bool = false
-    
+
     var body: some View {
         HStack(spacing: 12) {
             MediaArtworkControls(
@@ -191,35 +193,37 @@ struct QuickResultSongRow: View {
                     FeaturedTrackTitle(track: song, font: .system(size: 15, weight: .medium), color: .primary, pointSize: 15, onNavigate: onFeatured)
                 } else { Text(song.title).font(.system(size: 15, weight: .medium)).foregroundStyle(.primary).lineLimit(1).allowsHitTesting(false) }
 
-                HStack(spacing: 4) {
-                    Text(L10n.text(song.isVideo ? "search.filter.videos" : "metadata.song")).font(.system(size: 12, weight: .medium)).foregroundStyle(.secondary.opacity(0.8))
-                        .allowsHitTesting(false)
-                    if !song.artists.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !song.artistRuns.isEmpty {
-                        Text("•").font(.system(size: 10)).foregroundStyle(.tertiary).allowsHitTesting(false)
-                    }
-                    if let onFeatured {
-                        TrackArtistLinks(track: song, font: .system(size: 12), color: .secondary,
-                            hoverColor: .primary, onNavigate: onFeatured)
-                    } else if let onArtist {
-                        Button(action: onArtist) {
-                            Text(song.artists).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
-                        }
-                        .buttonStyle(.plain)
-                        .mediaCardFocusControl()
-                    } else {
-                        Text(song.artists).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
+                ContentRatedMetadata(rating: song.contentRating, fontSize: 12) {
+                    HStack(spacing: 4) {
+                        Text(L10n.text(song.isVideo ? "search.filter.videos" : "metadata.song")).font(.system(size: 12, weight: .medium)).foregroundStyle(.secondary.opacity(0.8))
                             .allowsHitTesting(false)
-                    }
-                    if let album = song.album, !album.isEmpty, let onAlbum {
-                        Text("•").font(.system(size: 10)).foregroundStyle(.tertiary)
-                        Button(action: onAlbum) {
-                            Text(album).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
+                        if !song.artists.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !song.artistRuns.isEmpty {
+                            Text("•").font(.system(size: 10)).foregroundStyle(.tertiary).allowsHitTesting(false)
                         }
-                        .buttonStyle(.plain)
-                        .mediaCardFocusControl()
-                    } else if let album = song.album, !album.isEmpty {
-                        Text("•").font(.system(size: 10)).foregroundStyle(.tertiary).allowsHitTesting(false)
-                        Text(album).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1).allowsHitTesting(false)
+                        if let onFeatured {
+                            TrackArtistLinks(track: song, font: .system(size: 12), color: .secondary,
+                                hoverColor: .primary, onNavigate: onFeatured)
+                        } else if let onArtist {
+                            Button(action: onArtist) {
+                                Text(song.artists).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
+                            }
+                            .buttonStyle(.plain)
+                            .mediaCardFocusControl()
+                        } else {
+                            Text(song.artists).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
+                                .allowsHitTesting(false)
+                        }
+                        if let album = song.album, !album.isEmpty, let onAlbum {
+                            Text("•").font(.system(size: 10)).foregroundStyle(.tertiary)
+                            Button(action: onAlbum) {
+                                Text(album).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
+                            }
+                            .buttonStyle(.plain)
+                            .mediaCardFocusControl()
+                        } else if let album = song.album, !album.isEmpty {
+                            Text("•").font(.system(size: 10)).foregroundStyle(.tertiary).allowsHitTesting(false)
+                            Text(album).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1).allowsHitTesting(false)
+                        }
                     }
                 }
             }

@@ -43,7 +43,15 @@ const noop = () => {};
 const song = {videoId:'track',title:'Song (feat. Guest)',artists:'Main Artist',artistId:'main',artistRuns:[{text:'Main Artist',id:'main'}],album:'Album',albumId:'album',thumbnail:null,duration:60};
 const card = {kind:'artist',id:'artist',title:'Artist',subtitle:null,thumbnail:null,duration:null};
 function modal(preview, recents=[], canUndo=false) {
-  return render(Spotlight,{props:{preview,recents,canUndo,backendReady:true,onQueryChange:noop,onCommit:noop,onDismiss:noop,onSelectCard:noop,onPlaySong:noop}}).body;
+  const result=preview.results;
+  preview={...preview,associatedQuery:preview.associatedQuery??preview.query,entries:[
+    ...recents.map(recent=>recent.kind==='query'?{kind:'history',id:recent.key,query:recent.query,runs:[{text:recent.query,bold:false}],feedbackToken:recent.key}:{kind:'media',id:recent.key,song:recent.track,runs:[]}),
+    ...(preview.queries??[]).map((query,index)=>({id:`query-${index}`,kind:'text',query,runs:[{text:query,bold:false}]})),
+    ...(result?.top??[]).map(card=>({id:card.id,kind:'media',card,song:result.topSongs?.find(song=>song.videoId===card.id),runs:[]})),
+    ...(result?.songs??[]).map(song=>({id:song.videoId,kind:'media',song,runs:[]})),
+    ...(result?.artists??[]).map(card=>({id:card.id,kind:'media',card,runs:[]})),
+  ]};
+  return render(Spotlight,{props:{preview,recents,canUndo,backendReady:true,onQueryChange:noop,onCommit:noop,onDismiss:noop,onSelectCard:noop,onPlaySong:noop,onRemoveSuggestion:noop}}).body;
 }
 function buttons(html) { return [...html.matchAll(/<button\b[^>]*>/g)].map(match=>match[0]); }
 function primaries(html) { return buttons(html).filter(tag=>tag.includes('data-search-primary')); }
@@ -54,8 +62,8 @@ function assertSecondaryKeyboardAccess(html) {
 }
 test('recent HTML marks query and song playback only; heading, delete and credits remain secondary',()=>{
   const html=modal({query:'',results:null},[{kind:'query',key:'query:hello',query:'hello',lastUsedAt:2},{kind:'track',key:'track:youtube:track',track:song,lastUsedAt:1}],true);
-  assert.deepEqual(primaries(html).map(tag=>tag.match(/class="([^"]+)"/)[1].split(/\s+/)[0]),['recent-query','play']);
-  assert.ok(buttons(html).some(tag=>tag.includes('recent-remove')));
+  assert.deepEqual(primaries(html).map(tag=>tag.match(/class="([^"]+)"/)[1].split(/\s+/)[0]),['query-suggestion','play']);
+  assert.ok(html.includes('Quitar del historial de YouTube Music'));
   assertSecondaryKeyboardAccess(html);
 });
 test('QuickResults HTML marks song playback and MediaCard open in provider section order',()=>{
@@ -71,20 +79,12 @@ test('Arrow navigation reads primary buttons while the Tab trap preserves second
   assert.ok(source.includes("'button:not(:disabled), input:not(:disabled), [tabindex=\"0\"]'"));
 });
 
-test('recent artist and album callbacks dismiss Spotlight then navigate to the resolved resource',async()=>{
-  const source=await readFile(path.join(root,'src/lib/components/search/SpotlightSearch.svelte'),'utf8');
-  const row=source.match(/<SearchSongRow spotlight song=\{recent\.track\}[^>]*(?:=>[^>]*)*? \/>/)?.[0];
-  assert.ok(row);
-  const select=source.match(/function selectCard\(card: BrowseCardDto\) \{([^}]+)\}/)?.[1];
-  assert.ok(select);
-  for(const [prop,kind] of [['onOpenArtist','artist'],['onOpenAlbum','album']]){
-    const expression=row.match(new RegExp(`${prop}=\\{(id=>selectCard\\(\\{[^}]+\\}\\))\\}`))?.[1];
-    assert.ok(expression,`${prop} is wired on the recent track row`);
-    const calls=[];
-    const selectCard=Function('dismissForNavigation','onSelectCard','card',select).bind(null,()=>calls.push('dismiss'),card=>calls.push(card));
-    Function('selectCard',`return (${expression})`)(selectCard)('resolved-id');
-    assert.deepEqual(calls,['dismiss',{kind,id:'resolved-id',title:'',subtitle:null,thumbnail:null,duration:null}]);
-  }
+test('provider media credits retain direct artist and album navigation',async()=>{
+ const source=await readFile(path.join(root,'src/lib/components/search/QuickResults.svelte'),'utf8');
+ assert.ok(source.includes("onOpenArtist={id=>open('artist',id)}"));
+ assert.ok(source.includes("onOpenAlbum={id=>open('album',id)}"));
+ const spotlight=await readFile(path.join(root,'src/lib/components/search/SpotlightSearch.svelte'),'utf8');
+ assert.ok(spotlight.includes('function selectCard(card: BrowseCardDto) { dismissForNavigation(); onSelectCard(card); }'));
 });
 
 test('text-only provider suggestions remain separate primary rows with no invented native result',()=>{
@@ -99,14 +99,15 @@ test('inline preview arrow navigation skips secondary artist and menu buttons',a
  assert.ok(arrow.includes("'.preview-content button[data-search-primary]:not(:disabled)'"));assert.ok(arrow.includes('searchInput.focus()'));assert.ok(source.includes("document.querySelector('[role=\"menu\"]')"));
 });
 
-test('full search renders provider correction once, original CTA and compact principal',async()=>{
+test('full search renders provider correction and an explicit principal with three related rows initially',async()=>{
  const SearchView=await component('src/lib/components/search/SearchView.svelte');
- const data={query:'typo',lastSearchedQuery:'typo',mode:'all',top:[card],topSongs:[],songs:[],videos:[],albums:[],artists:[],playlists:[],hasSearched:true,isLoading:false,error:null,partialErrors:{},correction:{query:'provider corrected',applied:true}};
- const html=render(SearchView,{props:{data,backendReady:true,currentTrackId:null,isPlaying:false,draftQuery:'typo',preview:{query:'',results:null},onSearchOriginal:noop,onSubmit:noop,onRetry:noop,onModeChange:noop,onPlaySong:noop,onOpenAlbum:noop,onDraftChange:noop,onPreviewFocus:noop,onPreviewDismiss:noop}}).body;
- assert.equal(html.split('provider corrected').length-1,1);assert.ok(!html.includes('%@'));assert.ok(html.includes('principal-result'));assert.ok(!html.includes('hero-art'));assert.ok(html.includes('Buscar el texto original'));
+ const related=Array.from({length:5},(_,index)=>({...card,id:`related-${index}`,title:`Related ${index+1}`}));
+ const data={query:'typo',lastSearchedQuery:'typo',mode:'all',top:[card],topSongs:[],songs:[],videos:[],albums:[],artists:[],playlists:[],hasSearched:true,isLoading:false,error:null,partialErrors:{},page:{chips:[],continuation:null,correction:{query:'provider corrected',applied:true},sections:[{id:'top',title:'Top',layout:'top',items:[card,...related],songs:[],primaryItemIndex:0,relatedItemIndices:[1,2,3,4,5],actions:[]}]}};
+ const html=render(SearchView,{props:{data,backendReady:true,currentTrackId:null,isPlaying:false,draftQuery:'typo',preview:{query:'',results:null},onAction:noop,onSelectParams:noop,onLoadMore:noop,onMore:noop,onSearchOriginal:noop,onSubmit:noop,onRetry:noop,onModeChange:noop,onPlaySong:noop,onOpenAlbum:noop,onDraftChange:noop,onPreviewFocus:noop,onPreviewDismiss:noop}}).body;
+ assert.equal(html.split('provider corrected').length-1,1);assert.ok(!html.includes('%@'));assert.match(html,/class="[^"]*principal/);assert.match(html,/class="[^"]*artist/);assert.ok(html.includes('Related 1'));assert.ok(html.includes('Related 3'));assert.ok(!html.includes('Related 4'));assert.ok(html.includes('data-size="utility"'));assert.ok(html.includes('Buscar el texto original'));
 });
 
-test('autocomplete preserves heterogeneous provider top order, resolves song metadata once and caps text queries at three',()=>{
+test('autocomplete caps active-query text at three while preserving heterogeneous music order and metadata',()=>{
  const topSong={kind:'song',id:song.videoId,title:song.title,subtitle:song.artists,thumbnail:null,duration:60};
  const album={kind:'album',id:'record',title:'Provider Album',subtitle:'Main Artist',thumbnail:null,duration:null};
  const html=modal({query:'typed',associatedQuery:'typed',queries:['query one','query two','query three','query four'],results:{top:[topSong,card,album],topSongs:[song],songs:[],artists:[],albums:[],playlists:[]},error:null});
@@ -119,4 +120,11 @@ test('quick typed video shows its video label and remains a playable primary res
  const video={...song,videoId:'video',title:'Provider Video',isVideo:true};
  const html=modal({query:'video',associatedQuery:'video',queries:[],results:{top:[{...card,kind:'video',id:'video',title:video.title}],topSongs:[video],songs:[],artists:[],albums:[],playlists:[]},error:null});
  assert.equal(primaries(html).length,1);assert.ok(html.includes('VIDEO'));assert.ok(html.includes('Provider Video'));
+});
+
+test('provider section exposes show-all for a query-only endpoint',async()=>{
+ const SearchView=await component('src/lib/components/search/SearchView.svelte');
+ const data={query:'q',lastSearchedQuery:'q',mode:'all',hasSearched:true,isLoading:false,error:null,page:{chips:[],correction:null,continuation:null,sections:[{id:'query-only',title:'Provider section',layout:'list',items:[],songs:[],actions:[],moreQuery:'provider-expanded-query',moreParams:null,moreBrowseId:null}]}};
+ const html=render(SearchView,{props:{data,backendReady:true,currentTrackId:null,isPlaying:false,draftQuery:'q',preview:{query:'',results:null},onAction:noop,onSelectParams:noop,onLoadMore:noop,onMore:noop,onSubmit:noop,onRetry:noop,onModeChange:noop,onPlaySong:noop,onOpenAlbum:noop,onDraftChange:noop,onPreviewFocus:noop,onPreviewDismiss:noop}}).body;
+ assert.ok(html.includes('Mostrar todo'));
 });

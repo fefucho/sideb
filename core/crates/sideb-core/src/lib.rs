@@ -13,6 +13,9 @@ pub mod lyrics;
 pub mod orchestrator;
 pub mod potoken;
 
+mod search;
+pub use search::*;
+
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -172,6 +175,23 @@ pub struct LibraryToggleRecord {
     pub remove_token: Option<String>,
 }
 
+/// Provider evidence for this exact entity/edition. A missing explicit badge is not clean evidence.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, uniffi::Enum)]
+#[serde(rename_all = "camelCase")]
+pub enum ContentRating {
+    Explicit,
+    Clean,
+    #[default]
+    #[serde(other)]
+    Unknown,
+}
+
+impl ContentRating {
+    pub fn from_explicit(explicit: bool) -> Self {
+        if explicit { Self::Explicit } else { Self::Unknown }
+    }
+}
+
 #[derive(Clone, Debug, uniffi::Record)]
 pub struct SongItemRecord {
     pub video_id: String,
@@ -187,6 +207,7 @@ pub struct SongItemRecord {
     pub is_upload: bool,
     pub library: Option<LibraryToggleRecord>,
     pub artist_runs: Vec<HomeArtistRunRecord>,
+    pub content_rating: ContentRating,
 }
 
 impl From<innertube::SongItem> for SongItemRecord {
@@ -204,6 +225,7 @@ impl From<innertube::SongItem> for SongItemRecord {
             set_video_id: item.set_video_id,
             is_video: item.is_video,
             is_upload: item.is_upload,
+            content_rating: ContentRating::from_explicit(item.explicit),
             library: item.library.map(|toggle| LibraryToggleRecord {
                 in_library: toggle.in_library,
                 add_token: toggle.add_token,
@@ -229,6 +251,7 @@ impl From<innertube::BrowseItem> for SongItemRecord {
             set_video_id: None,
             is_video: item.is_video,
             is_upload: item.is_upload,
+            content_rating: ContentRating::from_explicit(item.explicit),
             library: None,
             artist_runs: item.artist_runs.into_iter().map(|run| HomeArtistRunRecord { text: run.text, id: run.id }).collect(),
         }
@@ -258,6 +281,34 @@ pub struct HomeItemRecord {
     pub album_id: Option<String>,
     pub artist_runs: Vec<HomeArtistRunRecord>,
     pub explicit: bool,
+    pub content_rating: ContentRating,
+}
+
+impl From<innertube::BrowseItem> for HomeItemRecord {
+    fn from(i: innertube::BrowseItem) -> Self {
+        Self {
+            kind: i.kind.to_string(),
+            id: i.id,
+            title: i.title,
+            subtitle: i.subtitle,
+            thumbnail: i.thumbnail,
+            duration: i.duration,
+            artists: i.artists,
+            artist_id: i.artist_id,
+            album: i.album,
+            album_id: i.album_id,
+            artist_runs: i
+                .artist_runs
+                .into_iter()
+                .map(|run| HomeArtistRunRecord {
+                    text: run.text,
+                    id: run.id,
+                })
+                .collect(),
+            explicit: i.explicit,
+            content_rating: ContentRating::from_explicit(i.explicit),
+        }
+    }
 }
 
 #[derive(Clone, Debug, uniffi::Record)]
@@ -342,6 +393,7 @@ pub struct BrowseCardRecord {
     pub subtitle: Option<String>,
     pub thumbnail: Option<String>,
     pub duration: Option<String>,
+    pub content_rating: ContentRating,
     #[cfg(feature = "windows-bridge")]
     pub artists: Option<String>,
     #[cfg(feature = "windows-bridge")]
@@ -367,6 +419,7 @@ impl From<innertube::BrowseItem> for BrowseCardRecord {
             subtitle: item.subtitle,
             thumbnail: item.thumbnail,
             duration: item.duration,
+            content_rating: ContentRating::from_explicit(item.explicit),
             #[cfg(feature = "windows-bridge")]
             artists: item.artists,
             #[cfg(feature = "windows-bridge")]
@@ -427,10 +480,44 @@ pub struct AlbumDetailRecord {
     pub thumbnail: Option<String>,
     pub playlist_id: Option<String>,
     pub in_library: bool,
+    pub content_rating: ContentRating,
     pub items: Vec<SongItemRecord>,
     pub sections: Vec<ArtistCarouselRecord>,
     #[cfg(feature = "windows-bridge")]
     pub artist_runs: Vec<HomeArtistRunRecord>,
+}
+
+impl AlbumDetailRecord {
+    fn from_page(browse_id: String, page: innertube::AlbumPage) -> Self {
+        Self {
+            browse_id,
+            title: page.title.unwrap_or_else(|| "Album".into()),
+            artist: page.artist,
+            artist_id: page.artist_id,
+            subtitle: page.subtitle,
+            second_subtitle: page.second_subtitle,
+            description: page.description,
+            thumbnail: page.thumbnail,
+            playlist_id: page.playlist_id,
+            in_library: page.in_library,
+            content_rating: ContentRating::from_explicit(page.explicit),
+            items: page.items.into_iter().map(SongItemRecord::from).collect(),
+            sections: page
+                .sections
+                .into_iter()
+                .map(ArtistCarouselRecord::from)
+                .collect(),
+            #[cfg(feature = "windows-bridge")]
+            artist_runs: page
+                .artist_runs
+                .into_iter()
+                .map(|run| HomeArtistRunRecord {
+                    text: run.text,
+                    id: run.id,
+                })
+                .collect(),
+        }
+    }
 }
 
 #[derive(Clone, Debug, uniffi::Record)]
@@ -907,33 +994,7 @@ impl SideBCore {
                 .map_err(|e| SideBError::NetworkError {
             message: e.to_string(),
         })?;
-        Ok(AlbumDetailRecord {
-            browse_id: browse_id.clone(),
-            title: page.title.unwrap_or_else(|| "Album".into()),
-            artist: page.artist,
-            artist_id: page.artist_id,
-            subtitle: page.subtitle,
-            second_subtitle: page.second_subtitle,
-            description: page.description,
-            thumbnail: page.thumbnail,
-            playlist_id: page.playlist_id,
-            in_library: page.in_library,
-            items: page.items.into_iter().map(SongItemRecord::from).collect(),
-            sections: page
-                .sections
-                .into_iter()
-                .map(ArtistCarouselRecord::from)
-                .collect(),
-            #[cfg(feature = "windows-bridge")]
-            artist_runs: page
-                .artist_runs
-                .into_iter()
-                .map(|run| HomeArtistRunRecord {
-                    text: run.text,
-                    id: run.id,
-                })
-                .collect(),
-        })
+        Ok(AlbumDetailRecord::from_page(browse_id, page))
     }
 
     /// Country detected by YouTube for the current network; coarse and anonymous.
@@ -1331,27 +1392,7 @@ impl SideBCore {
                     items: s
                         .items
                         .into_iter()
-                        .map(|i| HomeItemRecord {
-                            kind: i.kind.to_string(),
-                            id: i.id,
-                            title: i.title,
-                            subtitle: i.subtitle,
-                            thumbnail: i.thumbnail,
-                            duration: i.duration,
-                            artists: i.artists,
-                            artist_id: i.artist_id,
-                            album: i.album,
-                            album_id: i.album_id,
-                            artist_runs: i
-                                .artist_runs
-                                .into_iter()
-                                .map(|run| HomeArtistRunRecord {
-                                    text: run.text,
-                                    id: run.id,
-                                })
-                                .collect(),
-                            explicit: i.explicit,
-                        })
+                        .map(HomeItemRecord::from)
                         .collect(),
                     more_browse_id: s.more_browse_id,
                     more_params: s.more_params,
@@ -1388,27 +1429,7 @@ impl SideBCore {
                     items: s
                         .items
                         .into_iter()
-                        .map(|i| HomeItemRecord {
-                            kind: i.kind.to_string(),
-                            id: i.id,
-                            title: i.title,
-                            subtitle: i.subtitle,
-                            thumbnail: i.thumbnail,
-                            duration: i.duration,
-                            artists: i.artists,
-                            artist_id: i.artist_id,
-                            album: i.album,
-                            album_id: i.album_id,
-                            artist_runs: i
-                                .artist_runs
-                                .into_iter()
-                                .map(|run| HomeArtistRunRecord {
-                                    text: run.text,
-                                    id: run.id,
-                                })
-                                .collect(),
-                            explicit: i.explicit,
-                        })
+                        .map(HomeItemRecord::from)
                         .collect(),
                     more_browse_id: s.more_browse_id,
                     more_params: s.more_params,
@@ -1459,6 +1480,47 @@ impl SideBCore {
             .it
             .next(client, video_id.as_deref(), playlist_id.as_deref())
             .await?;
+        Ok(NextResultRecord {
+            items: next.items.into_iter().map(SongItemRecord::from).collect(),
+            lyrics_browse_id: next.lyrics_browse_id,
+            related_browse_id: next.related_browse_id,
+            automix_playlist_id: next.automix_playlist_id,
+            continuation: next.continuation,
+        })
+    }
+
+    pub async fn search_action(
+        &self,
+        video_id: Option<String>,
+        playlist_id: Option<String>,
+        params: Option<String>,
+    ) -> Result<NextResultRecord, SideBError> {
+        if video_id.as_deref().is_none_or(str::is_empty) && playlist_id.as_deref().is_none_or(str::is_empty) {
+            return Err(SideBError::Other { message: "Search action has no playback endpoint".into() });
+        }
+        let client = self
+            .clients
+            .get(METADATA_CLIENT)
+            .ok_or_else(|| SideBError::Other {
+                message: "Metadata client missing".into(),
+            })?;
+        let next = self
+            .it
+            .next_with_params(client, video_id.as_deref(), playlist_id.as_deref(), params.as_deref())
+            .await?;
+        Ok(NextResultRecord {
+            items: next.items.into_iter().map(SongItemRecord::from).collect(),
+            lyrics_browse_id: next.lyrics_browse_id,
+            related_browse_id: next.related_browse_id,
+            automix_playlist_id: next.automix_playlist_id,
+            continuation: next.continuation,
+        })
+    }
+
+    /// Continue an opaque queue token returned by `search_action` / `get_next`.
+    pub async fn get_next_continuation(&self, token: String) -> Result<NextResultRecord, SideBError> {
+        let client = self.clients.get(METADATA_CLIENT).ok_or_else(|| SideBError::Other { message: "Metadata client missing".into() })?;
+        let next = self.it.next_continuation(client, &token).await?;
         Ok(NextResultRecord {
             items: next.items.into_iter().map(SongItemRecord::from).collect(),
             lyrics_browse_id: next.lyrics_browse_id,
@@ -1573,21 +1635,7 @@ impl SideBCore {
                                 .items
                                 .into_iter()
                                 .filter(|i| i.kind == "song" && i.id != video_id)
-                                .map(|i| SongItemRecord {
-                                    video_id: i.id,
-                                    title: i.title,
-                                    artists: i.artists.unwrap_or_else(|| i.subtitle.unwrap_or_default()),
-                                    album: i.album,
-                                    duration: i.duration,
-                                    thumbnail: i.thumbnail,
-                                    artist_id: i.artist_id.or_else(|| i.artist_runs.iter().find_map(|r| r.id.clone())),
-                                    artist_runs: i.artist_runs.into_iter().map(|run| HomeArtistRunRecord { text: run.text, id: run.id }).collect(),
-                                    album_id: i.album_id,
-                                    set_video_id: None,
-                                    is_video: i.is_video,
-                                    is_upload: i.is_upload,
-                                    library: None,
-                                })
+                                .map(SongItemRecord::from)
                                 .collect();
                             if !songs.is_empty() {
                                 return Ok(songs);
@@ -1687,6 +1735,24 @@ impl SideBCore {
             })?;
         let results = self.it.search_songs(client, &query, record_history).await?;
         serde_json::to_string(&results.items).map_err(Into::into)
+    }
+
+    pub async fn search_page(&self, query: String, params: Option<String>, record_history: bool, ignore_spelling: bool) -> Result<SearchPageRecord, SideBError> {
+        let client = self.clients.get(METADATA_CLIENT).ok_or_else(|| SideBError::Other { message: "Metadata client missing".into() })?;
+        Ok(self.it.search_page(client, &query, params.as_deref(), record_history, ignore_spelling).await?.into())
+    }
+    pub async fn search_page_continuation(&self, continuation: String) -> Result<SearchPageRecord, SideBError> {
+        let client = self.clients.get(METADATA_CLIENT).ok_or_else(|| SideBError::Other { message: "Metadata client missing".into() })?;
+        Ok(self.it.search_page_continuation(client, &continuation).await?.into())
+    }
+    pub async fn search_suggestions_page(&self, query: String) -> Result<SearchSuggestionsPageRecord, SideBError> {
+        let client = self.clients.get(METADATA_CLIENT).ok_or_else(|| SideBError::Other { message: "Metadata client missing".into() })?;
+        Ok(self.it.search_suggestions_page(client, &query).await?.into())
+    }
+    pub async fn remove_search_suggestion(&self, token: String) -> Result<(), SideBError> {
+        let client = self.clients.get(METADATA_CLIENT).ok_or_else(|| SideBError::Other { message: "Metadata client missing".into() })?;
+        self.it.remove_search_suggestion(client, &token).await?;
+        Ok(())
     }
 
     /// Full search across songs, albums, artists, playlists (typed).
@@ -2145,6 +2211,7 @@ impl SideBCore {
                 subtitle: p.subtitle,
                 thumbnail: p.thumbnail,
                 duration: None,
+                content_rating: ContentRating::Unknown,
                 #[cfg(feature = "windows-bridge")]
                 artists: None,
                 #[cfg(feature = "windows-bridge")]
@@ -2165,10 +2232,21 @@ impl SideBCore {
 }
 
 fn parse_song_record(json: &str) -> Option<SongItemRecord> {
-    if let Ok(item) = serde_json::from_str::<innertube::SongItem>(json) {
-        return Some(SongItemRecord::from(item));
-    }
     let val: serde_json::Value = serde_json::from_str(json).ok()?;
+    // Snapshots may use either host spelling; legacy false/missing never confirms clean.
+    let legacy_explicit = val.get("explicit").and_then(|value| value.as_bool()).unwrap_or(false);
+    let content_rating = if legacy_explicit {
+        ContentRating::Explicit
+    } else {
+        val.get("content_rating").or_else(|| val.get("contentRating"))
+            .and_then(|value| serde_json::from_value::<ContentRating>(value.clone()).ok())
+            .unwrap_or_default()
+    };
+    if let Ok(item) = serde_json::from_value::<innertube::SongItem>(val.clone()) {
+        let mut record = SongItemRecord::from(item);
+        record.content_rating = content_rating;
+        return Some(record);
+    }
     let video_id = val.get("video_id")?.as_str()?.to_string();
     let title = val
         .get("title")
@@ -2221,6 +2299,7 @@ fn parse_song_record(json: &str) -> Option<SongItemRecord> {
         duration,
         thumbnail,
         set_video_id,
+        content_rating,
         is_video: false,
         is_upload: false,
         library: None,
@@ -2323,6 +2402,104 @@ mod tests {
             album: Some("Structured Album".into()),
             album_id: Some("MPRE-album".into()),
         }
+    }
+
+    #[test]
+    fn content_rating_has_stable_serde_and_unknown_default() {
+        #[derive(serde::Deserialize)]
+        struct Snapshot {
+            #[serde(default)]
+            content_rating: ContentRating,
+        }
+        for (rating, wire) in [
+            (ContentRating::Explicit, "explicit"),
+            (ContentRating::Clean, "clean"),
+            (ContentRating::Unknown, "unknown"),
+        ] {
+            assert_eq!(serde_json::to_value(rating).unwrap(), wire);
+            assert_eq!(serde_json::from_value::<ContentRating>(serde_json::json!(wire)).unwrap(), rating);
+        }
+        assert_eq!(serde_json::from_str::<Snapshot>("{}").unwrap().content_rating, ContentRating::Unknown);
+        assert_eq!(serde_json::from_str::<ContentRating>(r#""futureValue""#).unwrap(), ContentRating::Unknown);
+    }
+
+    #[test]
+    fn song_snapshot_migration_preserves_evidence_without_inventing_clean() {
+        let base = serde_json::json!({ "video_id": "same-id", "title": "Song", "artists": "Artist" });
+        for (fields, expected) in [
+            (serde_json::json!({}), ContentRating::Unknown),
+            (serde_json::json!({ "explicit": false }), ContentRating::Unknown),
+            (serde_json::json!({ "explicit": true }), ContentRating::Explicit),
+            (serde_json::json!({ "content_rating": "explicit" }), ContentRating::Explicit),
+            (serde_json::json!({ "contentRating": "clean" }), ContentRating::Clean),
+            (serde_json::json!({ "contentRating": "futureValue" }), ContentRating::Unknown),
+            (serde_json::json!({ "contentRating": null }), ContentRating::Unknown),
+        ] {
+            let mut snapshot = base.clone();
+            snapshot.as_object_mut().unwrap().extend(fields.as_object().unwrap().clone());
+            let record = parse_song_record(&snapshot.to_string()).unwrap();
+            assert_eq!(record.video_id, "same-id");
+            assert_eq!(record.content_rating, expected, "{snapshot}");
+        }
+        // Legacy permissive restoration (missing artists) must retain the badge too.
+        let fallback = parse_song_record(r#"{"video_id":"legacy","explicit":true}"#).unwrap();
+        assert_eq!(fallback.content_rating, ContentRating::Explicit);
+    }
+
+    #[test]
+    fn content_rating_crosses_every_browse_song_and_home_conversion() {
+        for explicit in [true, false] {
+            let expected = ContentRating::from_explicit(explicit);
+            let mut item = browse_item("song", "video-rating", "Same track");
+            item.explicit = explicit;
+            assert_eq!(SongItemRecord::from(item.clone()).content_rating, expected);
+            assert_eq!(BrowseCardRecord::from(item.clone()).content_rating, expected);
+            let home = HomeItemRecord::from(item);
+            assert_eq!(home.content_rating, expected);
+            assert_eq!(home.explicit, explicit);
+            let track = innertube::SongItem {
+                video_id: "video-rating".into(), explicit, ..Default::default()
+            };
+            assert_eq!(SongItemRecord::from(track).content_rating, expected);
+        }
+    }
+
+    #[test]
+    fn album_header_rating_never_spreads_to_tracks_or_other_versions() {
+        let mut page = innertube::models::browse::parse_album(&serde_json::json!({}));
+        page.explicit = true;
+        page.items = vec![
+            innertube::SongItem { video_id: "unknown-track".into(), ..Default::default() },
+            innertube::SongItem { video_id: "explicit-track".into(), explicit: true, ..Default::default() },
+        ];
+        let mut other_version = browse_item("album", "other-edition", "Other edition");
+        other_version.explicit = false;
+        page.sections.push(innertube::ArtistCarousel {
+            title: "Other versions".into(), items: vec![other_version],
+            more_browse_id: None, more_params: None,
+        });
+        let record = AlbumDetailRecord::from_page("selected-edition".into(), page);
+        assert_eq!(record.browse_id, "selected-edition");
+        assert_eq!(record.content_rating, ContentRating::Explicit);
+        assert_eq!(record.items[0].content_rating, ContentRating::Unknown);
+        assert_eq!(record.items[1].content_rating, ContentRating::Explicit);
+        assert_eq!(record.sections[0].items[0].content_rating, ContentRating::Unknown);
+    }
+
+    #[test]
+    fn next_without_badges_remains_unknown_and_keeps_selected_ids() {
+        let next = innertube::models::metadata::parse_next(&serde_json::json!({
+            "contents": [
+                { "playlistPanelVideoRenderer": { "videoId": "selected-clean-or-unknown", "title": { "runs": [{ "text": "Song" }] } } },
+                { "playlistPanelVideoRenderer": { "videoId": "explicit-neighbor", "title": { "runs": [{ "text": "Song" }] },
+                    "badges": [{ "musicInlineBadgeRenderer": { "icon": { "iconType": "MUSIC_EXPLICIT_BADGE" } } }] } }
+            ]
+        }));
+        let records: Vec<_> = next.items.into_iter().map(SongItemRecord::from).collect();
+        assert_eq!(records.len(), 2);
+        assert_eq!(records[0].video_id, "selected-clean-or-unknown");
+        assert_eq!(records[0].content_rating, ContentRating::Unknown);
+        assert_eq!(records[1].content_rating, ContentRating::Explicit);
     }
 
     #[test]

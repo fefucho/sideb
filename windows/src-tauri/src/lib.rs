@@ -1,3 +1,4 @@
+mod search_page;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 use tauri::{Emitter, Manager};
@@ -63,6 +64,7 @@ pub(crate) struct SearchResultsDto {
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct SearchTopCardDto {
+    pub content_rating: sideb_core::ContentRating,
     pub kind: String,
     pub id: String,
     pub title: String,
@@ -98,6 +100,7 @@ impl From<sideb_core::BrowseCardRecord> for SearchTopCardDto {
                 .collect(),
             is_video: r.is_video,
             explicit: r.explicit,
+            content_rating: r.content_rating,
         }
     }
 }
@@ -382,6 +385,7 @@ mod playback_manager_tests {
         );
         let active = playback.queue.current().unwrap();
         playback.current_track = Some(PlaybackTrackDto {
+            content_rating: sideb_core::ContentRating::Unknown,
             is_upload: false,
             video_id: active.video_id.clone(),
             title: active.title.clone(),
@@ -478,6 +482,7 @@ mod playback_manager_tests {
         playback.queue.select(5);
         let active = playback.queue.current().unwrap();
         playback.current_track = Some(PlaybackTrackDto {
+            content_rating: sideb_core::ContentRating::Unknown,
             is_upload: false,
             video_id: active.video_id.clone(),
             title: active.title.clone(),
@@ -970,6 +975,11 @@ pub fn run() {
             commands::playback::start_source_radio,
             commands::playback::set_playback_muted,
             commands::playback::filter_disliked_recommendations,
+            commands::catalog::search_action,
+            commands::catalog::search_page,
+            commands::catalog::search_page_continuation,
+            commands::catalog::search_suggestions_page,
+            commands::catalog::remove_search_suggestion,
             commands::catalog::search_all,
             commands::catalog::search_suggestions,
             commands::catalog::search_catalog,
