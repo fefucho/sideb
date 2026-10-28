@@ -1,6 +1,6 @@
 # Paridad Mac ↔ Windows
 
-**Release1.3.0 en preparación —2026-10-28:** [FIX-269](FIXES.md#fix-269), [plan](plans/RELEASE-1.3.0.md). Publicación conjunta desde SIDE B, builds nativas de un mismo SHA y versión; no se cierran pendientes físicos de PAR-040/042/043/044 por distribuir paquetes.
+**Release 1.3.0 publicada —2026-10-28:** [FIX-269](FIXES.md#fix-269), [plan](plans/RELEASE-1.3.0.md), [Latest v1.3.0](https://github.com/fefucho/sideb/releases/tag/v1.3.0). Mac arm64 y Windows x64 desde SIDE B/commit 5a4cb0d, versión 1.3.0/build 21; CI completo aprobado, 1.049 pruebas Mac y 1.089 Windows aprobadas, fuentes estables y cinco descargas públicas verificadas contra checksums/manifiestos. Firma Mac y versiones/arquitecturas comprobadas; instalador y portable Windows publicados juntos. Build local Mac 0168 conservada. No se cierran pendientes físicos de PAR-040/042/043/044 por distribuir paquetes.
 
 **Carpeta canónica corregida —2026-10-28:** [FIX-268](FIXES.md#fix-268). La unión de ambas plataformas queda en `SIDE B`; `sideb-github-latest` pasa a referencia de lectura. Fuentes equivalentes a la unión de FIX-267, Build0167 Release/compiled en SIDE B:1049aprobadas/17omitidas/0fallos, fuentes estables/firma/10hashes; frontend Windows501aprobadas/2omitidas, check0errores/1warning previo y build aprobado. Los límites de PAR-040/042/043/044 se conservan.
 

@@ -1,6 +1,6 @@
 # Planes generales
 
-- [Release1.3.0 Mac/Windows](RELEASE-1.3.0.md) — FIX-269; publicación autorizada, manifiestos/preflight y fixture de CI comprobados; paquetes conjuntos en preparación.
+- [Release 1.3.0 Mac/Windows](RELEASE-1.3.0.md) — FIX-269; publicada Latest desde SIDE B/5a4cb0d, CI nativo completo aprobado (1.049 Mac/1.089 Windows), cinco descargas públicas y hashes/manifiestos verificados; build local Mac 0168 conservada.
 
 - [PLAN-017: Unificación de latest y Mac local](PLAN-017-local-latest-unification.md) — FIX-267/268; unión de latest y trabajo local llevada a la carpeta habitual SIDE B; build0167 Release aprobada en SIDE B:1049Mac/core y501frontendWindows aprobadas, firma/hashes/fuentes estables.0004 queda como antecedente de la primera unión.
 
