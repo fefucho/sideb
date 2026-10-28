@@ -21,6 +21,8 @@ node Scripts/sync-localizations.mjs --check
 
 El comando valida duplicados, ambos idiomas, compatibilidad de argumentos y referencias literales directas del código. Genera `Localizable.xcstrings` y los recursos nativos `es.lproj`/`en.lproj` con `xcrun xcstringstool`. Estos productos se versionan; no se editan a mano. Revisar también las claves construidas por enums/ternarios: la comprobación literal no sustituye las pruebas de esas rutas.
 
+En Windows se puede añadir `--portable` para generar o comprobar el mismo catálogo y los plist de cadenas/plurales del esquema editorial soportado, sin Xcode. Su serialización se contrastó byte a byte con los cuatro recursos nativos existentes. El flujo predeterminado de Mac sigue usando `xcstringstool`; esa comprobación y las pruebas Swift siguen siendo necesarias para validar el destino Mac.
+
 El runner local y el empaquetador de release comprueban sincronización y presencia de ambos idiomas/plurales antes de firmar la app. Para una build local, usar siempre `node Scripts/build-version.mjs macos`.
 
 ## Resolución en la app instalada

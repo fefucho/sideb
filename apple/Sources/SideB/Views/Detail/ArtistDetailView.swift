@@ -307,28 +307,30 @@ struct ArtistDetailView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(song.title).font(.system(size: 13, weight: .medium)).foregroundStyle(.primary).lineLimit(1)
                     .allowsHitTesting(false)
-                HStack(spacing: 4) {
-                    if let artistId = song.artistId, !artistId.isEmpty {
-                        Button { router?.navigate(to: .artist(browseId: artistId)) } label: {
-                            Text(song.artists).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
-                        }
-                        .buttonStyle(.plain)
-                        .mediaCardFocusControl()
-                    } else {
-                        Text(song.artists).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
-                            .allowsHitTesting(false)
-                    }
-                    if let album = song.album, !album.isEmpty {
-                        Text("·").font(.system(size: 12)).foregroundStyle(.tertiary)
-                        if let albumId = song.albumId, !albumId.isEmpty {
-                            Button { router?.navigate(to: .album(browseId: albumId)) } label: {
-                                Text(album).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
+                ContentRatedMetadata(rating: song.contentRating, fontSize: 12) {
+                    HStack(spacing: 4) {
+                        if let artistId = song.artistId, !artistId.isEmpty {
+                            Button { router?.navigate(to: .artist(browseId: artistId)) } label: {
+                                Text(song.artists).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
                             }
                             .buttonStyle(.plain)
                             .mediaCardFocusControl()
                         } else {
-                            Text(album).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
+                            Text(song.artists).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
                                 .allowsHitTesting(false)
+                        }
+                        if let album = song.album, !album.isEmpty {
+                            Text("·").font(.system(size: 12)).foregroundStyle(.tertiary)
+                            if let albumId = song.albumId, !albumId.isEmpty {
+                                Button { router?.navigate(to: .album(browseId: albumId)) } label: {
+                                    Text(album).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
+                                }
+                                .buttonStyle(.plain)
+                                .mediaCardFocusControl()
+                            } else {
+                                Text(album).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
+                                    .allowsHitTesting(false)
+                            }
                         }
                     }
                 }
@@ -464,10 +466,12 @@ struct ArtistDetailView: View {
                         .foregroundStyle(.primary)
                         .lineLimit(1)
                     if let subtitle = card.subtitle {
-                        Text(subtitle)
+                        ContentRatedMetadata(rating: card.contentRating, fontSize: 11) { Text(subtitle) }
                             .font(.system(size: 11))
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
+                    } else if card.contentRating != .unknown {
+                        ContentRatingBadge(rating: card.contentRating, fontSize: 11)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)

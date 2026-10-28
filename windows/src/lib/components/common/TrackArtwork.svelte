@@ -39,7 +39,7 @@
 </button>
 
 <style>
-  .track-artwork { display:grid; place-items:center; position:relative; flex:none; width:var(--art-size); height:var(--art-size); padding:0; border:0; border-radius:2px; overflow:hidden; background:#303036; color:white; cursor:pointer; }
+  .track-artwork { display:grid; place-items:center; position:relative; flex:none; width:var(--art-size); height:var(--art-size); padding:0; border:0; border-radius:var(--sideb-track-artwork-radius, 2px); overflow:hidden; background:#303036; color:white; cursor:pointer; }
   img,.fallback { width:100%;height:100%;grid-area:1/1;object-fit:cover; }.fallback { display:grid;place-items:center;color:#c9c9cf;font-size:20px; }
   .play-control { display:grid;place-items:center;grid-area:1/1;z-index:1;width:28px;height:28px;border-radius:7px;background:rgb(0 0 0 / 58%);opacity:0;transition:opacity .12s;pointer-events:none; }svg { width:18px;height:18px; }
   :global(.track-row:hover) .play-control,:global(.track-row:focus-within) .play-control,.track-artwork:hover .play-control,.track-artwork:focus-visible .play-control,.play-control.pending { opacity:1; }

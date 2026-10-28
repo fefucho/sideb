@@ -861,7 +861,7 @@ final class HomeItemView: NSView {
     private let subtitle = NSTextField(labelWithString: "")
     private let bullet = NSTextField(labelWithString: "•")
     private let typeLabel = NSTextField(labelWithString: "")
-    private let explicitBadge = NSTextField(labelWithString: "E")
+    private let explicitBadge = NativeContentRatingBadge(frame: .zero)
     private let more = HomeInteractiveLinkButton()
     private var imageTask: Task<Void, Never>?
     private var generation: UInt64 = 0
@@ -981,13 +981,6 @@ final class HomeItemView: NSView {
         typeLabel.font = Self.largeMetadataFont
         typeLabel.textColor = .secondaryLabelColor
 
-        explicitBadge.font = .systemFont(ofSize: 10, weight: .bold)
-        explicitBadge.textColor = .black
-        explicitBadge.alignment = .center
-        explicitBadge.wantsLayer = true
-        explicitBadge.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.78).cgColor
-        explicitBadge.layer?.cornerRadius = 3
-        explicitBadge.setAccessibilityLabel(L10n.text("home.explicit_content"))
 
         setup(more, selector: #selector(morePressed), font: nil)
         more.onFocusChanged = { [weak self] in self?.scheduleFocusAppearanceRefresh() }
@@ -1051,8 +1044,10 @@ final class HomeItemView: NSView {
             let maxTextWidth = max(0, bounds.width - textLeading - moreTrailingMargin)
             title.frame = NSRect(x: textLeading, y: 5, width: maxTextWidth, height: 23)
 
-            let badgeWidth: CGFloat = explicitBadge.isHidden ? 0 : 18
-            explicitBadge.frame = NSRect(x: textLeading, y: 31, width: 14, height: 14)
+            let badgeSide = ContentRatingBadgeMetrics.side(for: Self.compactArtistMeasureFont.pointSize)
+            let badgeWidth: CGFloat = explicitBadge.isHidden ? 0 : badgeSide + ContentRatingBadgeMetrics.gap
+            explicitBadge.fontSize = Self.compactArtistMeasureFont.pointSize
+            explicitBadge.frame = NSRect(x: textLeading, y: 30 + (17 - badgeSide) / 2, width: badgeSide, height: badgeSide)
             let metadataLeading = textLeading + badgeWidth
             let artistWidth = artist.isHidden && songArtistLinks.isHidden ? 0 : min(compactArtistTextWidth, max(0, maxTextWidth - badgeWidth))
             artist.frame = NSRect(x: metadataLeading, y: 30, width: artistWidth, height: 17)
@@ -1091,7 +1086,9 @@ final class HomeItemView: NSView {
                 width: symbolSize,
                 height: symbolSize
             )
-            let badgeWidth: CGFloat = explicitBadge.isHidden ? 0 : 20
+            let badgeSide = ContentRatingBadgeMetrics.side(for: Self.largeMetadataFont.pointSize)
+            let badgeWidth: CGFloat = explicitBadge.isHidden ? 0 : badgeSide + ContentRatingBadgeMetrics.gap
+            explicitBadge.fontSize = Self.largeMetadataFont.pointSize
             if measuredLargeCardWidth != bounds.width {
                 measuredLargeCardWidth = bounds.width
                 measuredTitleLines = Self.displayedLines(for: title.stringValue, width: bounds.width, font: Self.largeTitleFont)
@@ -1103,8 +1100,8 @@ final class HomeItemView: NSView {
             let titleHeight = measuredTitleLines * 18
             title.frame = NSRect(x: 0, y: art + 11, width: bounds.width, height: titleHeight)
             let metadataY = title.frame.maxY + 3
-            explicitBadge.frame = NSRect(x: 0, y: metadataY + 1, width: 15, height: 15)
             let metadataLeading = badgeWidth
+            explicitBadge.frame = NSRect(x: 0, y: metadataY + (17 - badgeSide) / 2, width: badgeSide, height: badgeSide)
             typeLabel.frame = NSRect(x: metadataLeading, y: metadataY, width: measuredTypeWidth, height: 17)
             let showMetadataDetail = !artist.isHidden || !songArtistLinks.isHidden || !subtitle.isHidden
             let separatorX = metadataLeading + measuredTypeWidth + 5
@@ -1284,7 +1281,8 @@ final class HomeItemView: NSView {
         showMetadata(typeLabel, when: style == .largeCard)
         showMetadata(subtitle, when: showsSubtitle)
         showMetadata(bullet, when: style == .compactSong ? artistCanShow && showsAlbum : artistCanShow || showsSubtitle)
-        showMetadata(explicitBadge, when: record.explicit)
+        explicitBadge.rating = record.effectiveContentRating
+        showMetadata(explicitBadge, when: record.effectiveContentRating != .unknown)
 
         if !songArtistLinks.isHidden { artist.isHidden = true; largeArtistLabel.isHidden = true }
         refreshMetadataAccessibility(for: record)
@@ -1361,7 +1359,8 @@ final class HomeItemView: NSView {
         let hasAlbumDestination = record.albumId?.isEmpty == false
         artist.setAccessibilityLabel(rawArtistTitle.isEmpty ? "" : L10n.text(hasArtistDestination ? "home.artist.view" : "home.artist.label", args: [rawArtistTitle]))
         album.setAccessibilityLabel(rawAlbumTitle.isEmpty ? "" : L10n.text(hasAlbumDestination ? "home.album.view" : "home.album.label", args: [rawAlbumTitle]))
-        explicitBadge.setAccessibilityLabel(L10n.text("home.explicit_content"))
+        let rating = explicitBadge.rating
+        explicitBadge.rating = rating
         more.setAccessibilityLabel(L10n.text("home.more_options"))
     }
 
@@ -1438,7 +1437,7 @@ final class HomeItemView: NSView {
         isCurrent = isSongMatch || isAlbumMatch || isPlaylistMatch
         playing = isCurrent && isPlaying
 
-        let metadata = [typeLabel.stringValue, explicitBadge.isHidden ? nil : L10n.text("metadata.explicit"),
+        let metadata = [typeLabel.stringValue, explicitBadge.isHidden ? nil : ContentRatingMetadata.label(explicitBadge.rating),
                         rawArtistTitle.isEmpty ? nil : rawArtistTitle,
                         rawAlbumTitle.isEmpty ? nil : rawAlbumTitle]
             .compactMap { $0 }
@@ -1482,7 +1481,7 @@ final class HomeItemView: NSView {
         rawAlbumTitle = ""
         artist.isEnabled = true
         album.isEnabled = true
-        explicitBadge.isHidden = true
+        explicitBadge.rating = .unknown
         isPlayButtonHovered = false
         renderedAppearance = nil
         onCard = nil

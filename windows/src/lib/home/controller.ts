@@ -1,5 +1,6 @@
 import type { HomePageDto, HomeItemDto } from '../types';
 import { sectionIdentity } from './presentation';
+import { contentRating } from '../contentRating';
 
 function sectionFingerprint(section: HomePageDto['sections'][number]) {
   return `${sectionIdentity(section)}|${JSON.stringify(section)}`;
@@ -41,7 +42,7 @@ function durablePage(value: unknown): HomePageDto | null {
       items.push({ id:str(item.id)!, kind:str(item.kind)!, title:str(item.title)!, subtitle:str(item.subtitle),
         thumbnail:thumbnail && /^https:\/\//i.test(thumbnail) && !/[?&](?:sig(?:nature)?|token|expire|auth|key)=/i.test(thumbnail) ? thumbnail : null,
         duration:str(item.duration), artists:str(item.artists), album:str(item.album), albumId:str(item.albumId), artistId:str(item.artistId),
-        explicit:item.explicit === true, artistRuns:Array.isArray(item.artistRuns) ? item.artistRuns.slice(0, 32).flatMap((run: unknown) => {
+        explicit:item.explicit === true, contentRating:contentRating(item), artistRuns:Array.isArray(item.artistRuns) ? item.artistRuns.slice(0, 32).flatMap((run: unknown) => {
           if (!run || typeof run !== 'object' || !('text' in run) || typeof run.text !== 'string') return [];
           return [{ text:str(run.text)!, id:'id' in run ? str(run.id) : null }];
         }) : [] });

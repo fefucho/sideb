@@ -1,4 +1,5 @@
 import type { SongDto, PlaybackStateDto } from '../types';
+import { contentRating, ratingForIdentity } from '../contentRating';
 export type SearchOrigin = 'submit' | 'recentQuery' | 'preview' | 'filter' | 'refresh' | 'navigationRestore' | 'artistResolution';
 export const recordsSearch = (origin: SearchOrigin) => origin === 'submit' || origin === 'recentQuery';
 export type SearchRecent = {key:string;kind:'query';lastUsedAt:number;query:string} | {key:string;kind:'track';lastUsedAt:number;track:SongDto};
@@ -7,7 +8,7 @@ export function normalizedQuery(query:string) { return query.trim().replace(/\s+
 function safeTrack(song:SongDto):SongDto {
  const nullable=(value:unknown)=>typeof value==='string'?value:null;
  const artistRuns=Array.isArray(song.artistRuns)?song.artistRuns.filter(run=>run&&typeof run.text==='string').map(run=>({text:run.text,id:nullable(run.id)})):[];
- return {videoId:song.videoId,title:song.title,artists:song.artists,artistRuns,thumbnail:nullable(song.thumbnail),album:nullable(song.album),albumId:nullable(song.albumId),artistId:nullable(song.artistId),duration:nullable(song.duration),isVideo:!!song.isVideo,isUpload:!!song.isUpload};
+ return {contentRating:contentRating(song),videoId:song.videoId,title:song.title,artists:song.artists,artistRuns,thumbnail:nullable(song.thumbnail),album:nullable(song.album),albumId:nullable(song.albumId),artistId:nullable(song.artistId),duration:nullable(song.duration),isVideo:!!song.isVideo,isUpload:!!song.isUpload};
 }
 
 /** Synchronous serialized metadata writes. Playback intentions are scoped to one explicit activation. */
@@ -26,7 +27,7 @@ export class SearchRecentStore {
  bindTrack(revision:number,generation:number){if(this.intent?.revision===revision)this.intent.generation=generation;}
  failTrack(revision?:number){if(this.intent && (revision===undefined||this.intent.revision===revision)){this.unavailableTrack=this.intent.song;this.intent=null;this.emit();}}
  cancelTrack(revision?:number){if(revision===undefined||this.intent?.revision===revision)this.intent=null;}
- confirmPlayback(state:Pick<PlaybackStateDto,'generation'|'currentTrack'|'isPlaying'|'isLoading'|'error'>){const intent=this.intent;if(!intent||intent.generation===null)return;if(state.generation<intent.generation)return;if(state.generation>intent.generation){this.intent=null;return;}if(state.error){this.failTrack();return;}if(intent.account===this.account&&state.currentTrack?.videoId===intent.song.videoId&&state.isPlaying&&!state.isLoading){this.intent=null;this.use({key:`track:${intent.song.isUpload?'upload:':'youtube:'}${intent.song.videoId}`,kind:'track',track:intent.song,lastUsedAt:this.now()});}}
+ confirmPlayback(state:Pick<PlaybackStateDto,'generation'|'currentTrack'|'isPlaying'|'isLoading'|'error'>){const intent=this.intent;if(!intent||intent.generation===null)return;if(state.generation<intent.generation)return;if(state.generation>intent.generation){this.intent=null;return;}if(state.error){this.failTrack();return;}if(intent.account===this.account&&state.currentTrack?.videoId===intent.song.videoId&&state.isPlaying&&!state.isLoading){this.intent=null;this.use({key:`track:${intent.song.isUpload?'upload:':'youtube:'}${intent.song.videoId}`,kind:'track',track:{...intent.song,contentRating:ratingForIdentity(intent.song,state.currentTrack)},lastUsedAt:this.now()});}}
  remove(key:string){if(this.unavailableTrack && key===`track:${this.unavailableTrack.isUpload?'upload:':'youtube:'}${this.unavailableTrack.videoId}`)this.unavailableTrack=null;this.undone=[...this.entries];this.entries=this.entries.filter(item=>item.key!==key);this.save();}
  clear(){this.undone=[...this.entries];this.entries=[];this.save();}
  undo(){if(!this.undone)return;const restored=this.undone;this.undone=null;this.entries=restored;this.save();}

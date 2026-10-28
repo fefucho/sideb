@@ -6,6 +6,7 @@ final class NativeQueueTrackCellView: NSTableCellView, NativeTrackCellPresenting
     private let playingIconView = NSImageView()
     private let artworkImageView = NSImageView()
     private let titleLabel = NativeTrackActionField(frame:.zero)
+    private lazy var ratedMetadata = NativeRatedMetadata(field: subtitleLabel)
     private let subtitleLabel = NativeTrackActionField(frame:.zero)
     private let albumLabel = NSTextField(labelWithString: "")
     private let durationLabel = NSTextField(labelWithString: "")
@@ -61,6 +62,7 @@ final class NativeQueueTrackCellView: NSTableCellView, NativeTrackCellPresenting
         imageRequestID = nil
         currentVideoId = nil
         boundTrack = nil
+        ratedMetadata.badge.rating = .unknown
         titleLabel.clearFeatured(); subtitleLabel.clearFeatured(); onArtistDestination = nil
         artworkImageView.image = nil
         isLiked = false
@@ -125,7 +127,8 @@ final class NativeQueueTrackCellView: NSTableCellView, NativeTrackCellPresenting
         subtitleLabel.maximumNumberOfLines = 1
         subtitleLabel.translatesAutoresizingMaskIntoConstraints = false
         subtitleLabel.setAccessibilityIdentifier("NativeQueueTrackCredits")
-        addSubview(subtitleLabel)
+        ratedMetadata.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(ratedMetadata)
 
         // 4. Álbum (Columna separada opcional para vistas de Playlist/Álbum)
         albumLabel.font = .systemFont(ofSize: 12, weight: .regular)
@@ -216,8 +219,8 @@ final class NativeQueueTrackCellView: NSTableCellView, NativeTrackCellPresenting
         // Constraints condicionales para cuando hay columna de álbum separada vs compacta
         let tWithAlbum = titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: albumLabel.leadingAnchor, constant: -14)
         let tNoAlbum = titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: dislikeButton.leadingAnchor, constant: -12)
-        let sWithAlbum = subtitleLabel.trailingAnchor.constraint(lessThanOrEqualTo: albumLabel.leadingAnchor, constant: -14)
-        let sNoAlbum = subtitleLabel.trailingAnchor.constraint(lessThanOrEqualTo: dislikeButton.leadingAnchor, constant: -12)
+        let sWithAlbum = ratedMetadata.trailingAnchor.constraint(lessThanOrEqualTo: albumLabel.leadingAnchor, constant: -14)
+        let sNoAlbum = ratedMetadata.trailingAnchor.constraint(lessThanOrEqualTo: dislikeButton.leadingAnchor, constant: -12)
 
         self.titleTrailingWithAlbum = tWithAlbum
         self.titleTrailingNoAlbum = tNoAlbum
@@ -246,8 +249,8 @@ final class NativeQueueTrackCellView: NSTableCellView, NativeTrackCellPresenting
             titleLabel.bottomAnchor.constraint(equalTo: centerYAnchor, constant: -1.5),
 
             // Subtítulo (Artista • Álbum)
-            subtitleLabel.leadingAnchor.constraint(equalTo: titleLabel.leadingAnchor),
-            subtitleLabel.topAnchor.constraint(equalTo: centerYAnchor, constant: 1.5),
+            ratedMetadata.leadingAnchor.constraint(equalTo: titleLabel.leadingAnchor),
+            ratedMetadata.topAnchor.constraint(equalTo: centerYAnchor, constant: 1.5),
 
             // Álbum separado (opcional)
             albumLabel.trailingAnchor.constraint(equalTo: dislikeButton.leadingAnchor, constant: -16),
@@ -312,6 +315,11 @@ final class NativeQueueTrackCellView: NSTableCellView, NativeTrackCellPresenting
     }
 
     func refreshLocalization() {
+        if let track = boundTrack {
+            ratedMetadata.badge.rating = track.contentRating
+            titleLabel.toolTip = track.title + "\n" + ContentRatingMetadata.label(track.contentRating)
+            titleLabel.setAccessibilityHelp(track.contentRating == .unknown ? ContentRatingMetadata.label(.unknown) : nil)
+        }
         if let track = boundTrack, track.artists.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             let suffix = includesAlbumInSubtitle ? track.displayAlbum.map { " • \($0)" } ?? "" : ""
             subtitleLabel.configureFeatured(track:track,isTitle:false,suffix:suffix) { [weak self] id,name in self?.onArtistDestination?(id,name) }
@@ -397,12 +405,14 @@ final class NativeQueueTrackCellView: NSTableCellView, NativeTrackCellPresenting
         }
 
         // 2. Metadatos
+        ratedMetadata.badge.rating = track.contentRating
         titleLabel.configureFeatured(track:track,isTitle:true) { [weak self] id,name in self?.onArtistDestination?(id,name) }
 
         let suffix = showAlbumInSubtitle ? track.displayAlbum.map { " • \($0)" } ?? "" : ""
         subtitleLabel.configureFeatured(track:track,isTitle:false,suffix:suffix) { [weak self] id,name in self?.onArtistDestination?(id,name) }
         subtitleLabel.setAccessibilityLabel(subtitleLabel.stringValue)
         subtitleLabel.font = .systemFont(ofSize: subtitleFontSize, weight: .regular)
+        ratedMetadata.badge.fontSize = subtitleFontSize
         subtitleLabel.textColor = .secondaryLabelColor
 
         let usesSeparateAlbum = !hideAlbum && !showAlbumInSubtitle

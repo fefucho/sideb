@@ -14,6 +14,7 @@
   import { installNavigationGestures, idleGesture } from '$lib/navigation/gestures';
   import Sidebar from "$lib/components/sidebar/Sidebar.svelte";
   import PlayerBar from "$lib/components/player/PlayerBar.svelte";
+  import { dislikeCurrentTrack } from '$lib/player/dislike-current';
   import HomeAmbient from "$lib/components/home/HomeAmbient.svelte";
   import HomeBackground from "$lib/components/home/HomeBackground.svelte";
   import HomeView from "$lib/components/home/HomeView.svelte";
@@ -499,7 +500,7 @@
     else if (card.kind === 'album') void openAlbumDetail(card.id, 'search');
     else if (card.kind === 'playlist' || card.kind === 'mix') void openPlaylist(card.id);
     else if (card.kind === 'song' || card.kind === 'video') {
-      playSearchPreviewSong({ videoId: card.id, title: card.title, artists: card.artists ?? card.subtitle ?? '',
+      playSearchPreviewSong({ contentRating:card.contentRating, explicit:card.explicit, videoId: card.id, title: card.title, artists: card.artists ?? card.subtitle ?? '',
         artistRuns: card.artistRuns, album: card.album ?? null, duration: card.duration, thumbnail: card.thumbnail,
         isVideo: card.isVideo ?? card.kind === 'video', isUpload:card.isUpload, artistId: card.artistId ?? null, albumId: card.albumId ?? null });
     } else executeSearch(card.title,'all','navigationRestore');
@@ -721,9 +722,9 @@
     void handlePlaySong(song.id, { ...song, artists: song.artists ?? '' });
   }
   async function handlePlaySong(videoId: string,
-    meta?: { title?: string; artists?: string; thumbnail?: string | null; duration?: string | null; artistId?: string | null; artistRuns?: HomeArtistRunDto[]; albumId?: string | null; album?: string | null }) {
+    meta?: { contentRating?: unknown; explicit?: boolean; title?: string; artists?: string; thumbnail?: string | null; duration?: string | null; artistId?: string | null; artistRuns?: HomeArtistRunDto[]; albumId?: string | null; album?: string | null }) {
     ++collectionPlayRevision;
-    await player.playSong({ videoId, title: meta?.title ?? "Canción", artists: meta?.artists ?? "",
+    await player.playSong({ contentRating:meta?.contentRating, explicit:meta?.explicit, videoId, title: meta?.title ?? "Canción", artists: meta?.artists ?? "",
       thumbnail: meta?.thumbnail ?? null, duration: meta?.duration ?? null,
       artistId: meta?.artistId, artistRuns: meta?.artistRuns, albumId: meta?.albumId, album: meta?.album }).catch(() => {});
   }
@@ -1141,6 +1142,16 @@
     loggedIn={authStatus.state === 'ready'} liked={accountData.likedIds.has(playbackState.currentTrack?.videoId ?? '')}
     likePending={accountData.pendingIds.has(playbackState.currentTrack?.videoId ?? '')}
     likeError={accountData.actionError || accountData.errors.likes}
+    onDislike={() => {
+      const track = playbackState.currentTrack;
+      if (!track || authStatus.state !== 'ready') return;
+      const index = playbackState.queue.currentIndex;
+      const entry = index === null ? undefined : playbackState.queue.items[index];
+      const session = sessionRevision;
+      void dislikeCurrentTrack({videoId:track.videoId,entryId:entry?.videoId===track.videoId?entry.entryId:undefined,session,currentSession:()=>sessionRevision,
+        rate:song=>account.dislike(song),removeRecommendation:id=>recommendations.removeSong(id),filterRecommendations:id=>player.filterDislikedRecommendations(id),removeEntry:id=>player.removeQueueEntry(id)
+      }).catch(error=>{if(session===sessionRevision)shellError=extractErrorMessage(error,'No se pudo quitar la canción.');});
+    }}
     onToggleLike={() => { if (playbackState.currentTrack) void account.toggleLike(playbackState.currentTrack); }} />
 </div>
   </div>

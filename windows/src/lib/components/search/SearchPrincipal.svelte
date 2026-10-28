@@ -32,9 +32,9 @@
   {#if primarySong}<div class="hero-song"><SearchSongRow hideMenu inlineDuration song={primarySong} {currentTrackId} {isPlaying} onPlay={onPlaySong} {onOpenArtist} onOpenAlbum={id=>openAlbumForSong(primarySong!,id)}/></div>
   {:else if card}<article class="hero-card" class:artist={kind==='artist'} oncontextmenu={menu.onContextMenu}>
    <button class="cover" type="button" data-search-primary aria-label={$t('home.open')+' '+card.title} onclick={()=>activate(card)} onkeydown={menu.onKeyDown}>{#if card.thumbnail}<img src={card.thumbnail} alt="" loading="lazy"/>{:else}<span aria-hidden="true">♫</span>{/if}</button>
-   <div class="copy"><div class="text"><button class="hero-title" type="button" data-search-primary onclick={()=>activate(card)} onkeydown={menu.onKeyDown}>{card.title}</button>
+   <div class="copy"><div class="text"><div class="hero-title-line"><button class="hero-title" type="button" data-search-primary onclick={()=>activate(card)} onkeydown={menu.onKeyDown}>{card.title}</button></div>
     {#if card.kind==='artist'}{#if card.subtitle}<p class="description">{card.subtitle}</p>{/if}
-    {:else}<div class="credits"><ArtistCredits artistRuns={card.artistRuns} artists={card.artists??card.subtitle} artistId={card.artistId} {onOpenArtist} album={card.album} albumId={card.albumId} onOpenAlbum={id=>onOpenAlbum({id,title:card.album??'',subtitle:card.artists??null,thumbnail:card.thumbnail})}/></div>{#if card.duration}<p class="metadata">{card.duration}</p>{/if}{/if}
+    {:else}<div class="credits"><ArtistCredits content={card.kind==='album'?card:undefined} artistRuns={card.artistRuns} artists={card.artists??card.subtitle} artistId={card.artistId} {onOpenArtist} album={card.album} albumId={card.albumId} onOpenAlbum={id=>onOpenAlbum({id,title:card.album??'',subtitle:card.artists??null,thumbnail:card.thumbnail})}/></div>{#if card.duration}<p class="metadata">{card.duration}</p>{/if}{/if}
    </div>{#if kind==='artist'&&hasActions}<div class="artist-actions">{@render principalActions()}</div>{/if}</div>
   </article>
   {/if}
@@ -54,7 +54,7 @@
  .hero-card{display:flex;align-items:center;gap:16px;box-sizing:border-box;min-height:96px;min-width:0}
  .hero-card .cover{display:grid;place-items:center;width:96px;height:96px;flex:none;overflow:hidden;padding:0;border:0;border-radius:10px;background:#ffffff10;color:#ddd;cursor:pointer}
  .hero-card .cover img{width:100%;height:100%;object-fit:cover}.hero-card .copy{min-width:0;flex:1}.hero-card.artist .copy{display:flex;flex-direction:column;gap:12px}.artist-actions{max-width:320px;min-width:0}
- .hero-title{display:block;max-width:100%;padding:0;border:0;background:none;color:#f8f8fa;text-align:left;font:inherit;font-size:24px;font-weight:500;line-height:29px;overflow-wrap:anywhere;cursor:pointer}
+ .hero-title-line{display:flex;align-items:center;gap:6px;min-width:0}.hero-title{display:block;max-width:100%;padding:0;border:0;background:none;color:#f8f8fa;text-align:left;font:inherit;font-size:24px;font-weight:500;line-height:29px;overflow-wrap:anywhere;cursor:pointer}
  .hero-card .credits,.hero-card .description,.hero-card .metadata{margin:8px 0 0;color:#d4d4da;font-size:13px;line-height:18px;overflow-wrap:anywhere}.hero-card .description,.hero-card .metadata{color:#aaa}
  .hero-card.artist .cover{border-radius:50%}.hero-card.artist .hero-title{font-weight:600}
  .hero-song :global(.song-row){min-height:80px;gap:16px;padding:0}.hero-song :global(.play){width:80px;height:80px;border-radius:10px}.hero-song :global(.title){font-size:24px;font-weight:500;line-height:29px;white-space:normal}.hero-song :global(.credits){font-size:13px;white-space:normal}

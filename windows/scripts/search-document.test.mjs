@@ -1,8 +1,9 @@
+import { resolveContentRatingImport } from './helpers/content-rating-module.mjs';
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {readFile} from 'node:fs/promises';
 import ts from 'typescript';
-async function module(file,replace=source=>source){const source=replace(await readFile(new URL(`../src/lib/search/${file}.ts`,import.meta.url),'utf8'));return `data:text/javascript;base64,${Buffer.from(ts.transpileModule(source,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText).toString('base64')}`;}
+async function module(file,replace=source=>source){const source=replace(await readFile(new URL(`../src/lib/search/${file}.ts`,import.meta.url),'utf8'));return `data:text/javascript;base64,${Buffer.from(resolveContentRatingImport(ts.transpileModule(source,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText)).toString('base64')}`;}
 const rowsUrl=await module('provider-rows');
 const {projectSearchSection}=await import(rowsUrl);
 const {projectSearchDocument}=await import(await module('document',source=>source.replace("from './provider-rows'",`from '${rowsUrl}'`)));

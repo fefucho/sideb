@@ -1,10 +1,11 @@
+import { contentRating, ratingForIdentity } from '../contentRating';
 import type { PlaybackProgressDto, PlaybackStateDto, PlaybackTrackDto, QueueEntryDto, QueueStateDto, SongDto } from '../types';
 
 export type PlayerRpc = <T>(command: string, args?: Record<string, unknown>) => Promise<T>;
 export type PlayerUnlisten = () => void | Promise<void>;
 export type PlayerListen = <T>(event: string, handler: (event: { payload: T }) => void) => Promise<PlayerUnlisten>;
 export type PlaybackSnapshot = { state: PlaybackStateDto; confirmedVolume: number; error: string | null };
-export type PlayerSong = Pick<SongDto, 'videoId' | 'title' | 'artists' | 'thumbnail' | 'duration'> & Partial<Pick<SongDto, 'artistId' | 'albumId' | 'album' | 'artistRuns' | 'isUpload'>> | PlaybackTrackDto | QueueEntryDto;
+export type PlayerSong = Pick<SongDto, 'videoId' | 'title' | 'artists' | 'thumbnail' | 'duration'> & Partial<Pick<SongDto, 'artistId' | 'albumId' | 'album' | 'artistRuns' | 'isUpload' | 'contentRating' | 'explicit'>> | PlaybackTrackDto | QueueEntryDto;
 export type PlaybackQueueSource = { kind: string; id: string | null; title: string | null };
 export interface PlaySongOptions {
   queueItems?: PlayerSong[];
@@ -53,11 +54,18 @@ function errorMessage(error: unknown, fallback: string): string {
   if (typeof error === 'string') return error;
   return fallback;
 }
-function cloneState(state: PlaybackStateDto): PlaybackStateDto {
+function cloneState(state: PlaybackStateDto, previous?: PlaybackStateDto): PlaybackStateDto {
+  const identity = (track: PlaybackTrackDto | QueueEntryDto) => `${track.isUpload ? 'upload' : 'youtube'}:${track.videoId}`;
+  const known = new Map<string, PlaybackTrackDto | QueueEntryDto>();
+  if (previous && (previous.authGeneration ?? 0) === (state.authGeneration ?? 0)) {
+    for (const entry of previous.queue.items) if (contentRating(entry) !== 'unknown') known.set(identity(entry), entry);
+    if (previous.currentTrack && contentRating(previous.currentTrack) !== 'unknown') known.set(identity(previous.currentTrack), previous.currentTrack);
+  }
+  const ratingFor = (track: PlaybackTrackDto | QueueEntryDto) => ratingForIdentity(track, known.get(identity(track)));
   return { ...state, isShuffle: state.isShuffle ?? false, isRepeat: state.isRepeat ?? false,
-    currentTrack: state.currentTrack ? { ...state.currentTrack, artistRuns: state.currentTrack.artistRuns?.map(run => ({ ...run })) ?? [] } : null,
+    currentTrack: state.currentTrack ? { ...state.currentTrack, contentRating:ratingFor(state.currentTrack), artistRuns: state.currentTrack.artistRuns?.map(run => ({ ...run })) ?? [] } : null,
     queue: { ...state.queue, radio: state.queue.radio ? { ...state.queue.radio } : null, source: state.queue.source ? { ...state.queue.source } : null,
-      items: state.queue.items.map((item) => ({ ...item, artistRuns: item.artistRuns?.map(run => ({ ...run })) ?? [] })) } };
+      items: state.queue.items.map((item) => ({ ...item, contentRating:ratingFor(item), artistRuns: item.artistRuns?.map(run => ({ ...run })) ?? [] })) } };
 }
 function songDuration(song: PlayerSong): number | null {
   const duration = song.duration;
@@ -65,7 +73,7 @@ function songDuration(song: PlayerSong): number | null {
 }
 function entryFor(song: PlayerSong, index: number): QueueEntryDto {
   const withEntry = song as Partial<QueueEntryDto>;
-  return { entryId: withEntry.entryId || createEntryId(index), videoId: song.videoId, title: song.title,
+  return { contentRating:contentRating(song), entryId: withEntry.entryId || createEntryId(index), videoId: song.videoId, title: song.title,
     sourceOccurrenceId: withEntry.sourceOccurrenceId ?? null,
     artists: song.artists, thumbnail: song.thumbnail, duration: songDuration(song),
     artistId: song.artistId ?? null, albumId: song.albumId ?? null, album: song.album ?? null,
@@ -152,7 +160,7 @@ export class PlaybackController {
           seekError: this.state.seekError, position: this.state.position } : {};
     const previousAudio = { volume: this.state.volume, exponentialVolume: this.state.exponentialVolume,
       audioRevision: this.audioRevision };
-    this.state = { ...cloneState(next), ...previousSeek };
+    this.state = { ...cloneState(next, this.state), ...previousSeek };
     if (!audio || !this.acceptAudio(next)) this.state = { ...this.state, ...previousAudio };
     this.error = next.error;
     this.emit();
@@ -165,7 +173,7 @@ export class PlaybackController {
       const audioAccepted = audio && this.acceptAudio(next);
       const seekAccepted = this.acceptSeek(next);
       if (next.generation === this.state.generation && next.queue.revision > this.state.queue.revision) {
-        const normalized = cloneState(next);
+        const normalized = cloneState(next, this.state);
         this.state = { ...this.state, queue: normalized.queue, canNext: normalized.canNext, sourceLoad: normalized.sourceLoad,
           currentTrack: normalized.currentTrack && normalized.currentTrack.videoId === this.state.currentTrack?.videoId
             ? normalized.currentTrack : this.state.currentTrack };
@@ -241,9 +249,13 @@ export class PlaybackController {
       const matched = entries.findIndex((entry) => entry.videoId === song.videoId);
       queueIndex = matched >= 0 ? matched : 0;
     }
+    const selected = entries?.[queueIndex ?? -1];
+    if (selected && !!selected.isUpload === !!song.isUpload) {
+      selected.contentRating = ratingForIdentity(selected, song);
+    }
     try {
       const state = await this.rpc<PlaybackStateDto>('play_song', {
-        videoId: song.videoId.trim(), isUpload: song.isUpload ?? false, title: song.title || null, artists: song.artists || null,
+        contentRating:contentRating(song), videoId: song.videoId.trim(), isUpload: song.isUpload ?? false, title: song.title || null, artists: song.artists || null,
         artistId: song.artistId ?? null, artistRuns: song.artistRuns?.map(run => ({ ...run })) ?? [],
         albumId: song.albumId ?? null, album: song.album ?? null,
         thumbnail: song.thumbnail ?? null, queueItems: entries,

@@ -1,5 +1,9 @@
 # Planes Apple
 
+- [PLAN-030: Barra de reproducción, ancho útil y título desplazable](PLAN-030-player-bar-space-marquee.md) — FIX-264/265: marquee nativo con enlaces, Corazón destacado/dislike junto al ancho natural de metadata, separadores invisibles y portada radio2; créditos fullscreen activo sinE. Windows022/PAR-044; pruebas Swift preparadas, compilación/QA Mac pendientes desde Windows.
+
+- [PLAN-029: indicadores de versión](PLAN-029-explicit-content-indicators.md) — FIX-262/263/265/PAR-040: E proporcional en metadata; canción activa fullscreen sin indicador también en créditos, conservado en barra/cola/Relacionado. Pruebas Swift preparadas; compilación/suite/QA Mac pendientes por falta de SDK. Entrega Windows0024 no valida Mac; PLAN-030 conserva su ámbito.
+
 | [PLAN-028: Relacionado en fullscreen](PLAN-028-fullscreen-related.md) | Implementado;build0166 Release,1029 pruebas aprobadas | Cuatro estantes, columnas recicladas y créditos/controles comunes; peticiones por contexto/cuenta y cancelación. FIX-247/PAR-043; FPS y cuenta real pendientes |
 | [PLAN-027: búsqueda compacta y reciclada](PLAN-027-search-density-and-performance.md) | FIX-258/244/245/246 / Mac0165 compilada;1024 pruebas aprobadas | Sólo Mac; cuenta real0165: ancho completo con margen28, Play/menú centrados y visibles tras sidebar, categorías sin corte negro; preview flotante/cierre exterior/3 completados conservados |
 

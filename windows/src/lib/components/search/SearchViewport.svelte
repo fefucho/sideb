@@ -102,7 +102,7 @@
   if(!active)return;
   const target=event.target as HTMLElement;focusKey=target.closest<HTMLElement>('[data-search-entry]')?.dataset.searchEntry??null;
  }
- function blurred(){queueMicrotask(()=>{if(!host.contains(document.activeElement))focusKey=null;});}
+ function blurred(){const element=host;queueMicrotask(()=>{if(element?.isConnected&&!element.contains(document.activeElement))focusKey=null;});}
  function rememberMenu(event:MouseEvent){
   const target=event.target as HTMLElement;
   if(event.type==='contextmenu'||target.closest('.more,.compact-menu')){

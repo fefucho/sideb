@@ -1,0 +1,14 @@
+{
+  "content.clean": {
+    "es": "Versión limpia confirmada",
+    "en": "Confirmed clean version"
+  },
+  "content.clean_glyph": {
+    "es": "L",
+    "en": "C"
+  },
+  "content.unknown": {
+    "es": "Sin información de contenido",
+    "en": "Content information unavailable"
+  }
+}

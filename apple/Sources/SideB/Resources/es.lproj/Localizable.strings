@@ -92,6 +92,12 @@
 	<string>Deshacer</string>
 	<key>common.untitled</key>
 	<string>Sin título</string>
+	<key>content.clean</key>
+	<string>Versión limpia confirmada</string>
+	<key>content.clean_glyph</key>
+	<string>L</string>
+	<key>content.unknown</key>
+	<string>Sin información de contenido</string>
 	<key>destination.album</key>
 	<string>Álbum</string>
 	<key>destination.artist</key>

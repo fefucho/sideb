@@ -1,5 +1,6 @@
 import type { AlbumDetailDto, ArtistDetailDto, BrowseCardDto, HomeItemDto, PlaylistDetailDto, QueueEntryDto, SongDto } from '../types';
 import { normalizeHomeSongCard } from '../home/songMetadata';
+import { contentRating } from '../contentRating';
 
 export type MenuTarget =
   | { kind: 'song'; song: SongDto; entryId?: string }
@@ -27,12 +28,12 @@ export const MENU_CONTEXT = Symbol('sideb-menu');
 
 export function songFromHome(item: HomeItemDto): SongDto {
   item = normalizeHomeSongCard(item);
-  return { videoId: item.id, title: item.title, artists: item.artists ?? item.subtitle ?? '',
+  return { contentRating:contentRating(item), videoId: item.id, title: item.title, artists: item.artists ?? item.subtitle ?? '',
     thumbnail: item.thumbnail, duration: item.duration, album: item.album, albumId: item.albumId,
     artistId: item.artistId, artistRuns: item.artistRuns.map(run => ({ ...run })), isVideo: item.kind === 'video' };
 }
 export function songFromQueue(item: QueueEntryDto | Omit<QueueEntryDto, 'entryId'>): SongDto {
-  return { videoId: item.videoId, title: item.title, artists: item.artists, thumbnail: item.thumbnail,
+  return { contentRating:contentRating(item), videoId: item.videoId, title: item.title, artists: item.artists, thumbnail: item.thumbnail,
     duration: item.duration == null ? null : String(Math.floor(item.duration / 60)) + ':' + String(Math.floor(item.duration % 60)).padStart(2, '0'),
     album: item.album ?? null, albumId: item.albumId ?? null, artistId: item.artistId ?? null,
     artistRuns: item.artistRuns?.map(run => ({ ...run })) ?? [], isVideo: false, isUpload:item.isUpload ?? false };

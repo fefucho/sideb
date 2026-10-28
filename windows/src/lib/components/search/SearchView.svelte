@@ -3,6 +3,7 @@
   import {untrack} from 'svelte';
   import {songFromSearchCard} from '$lib/search/songs';
   import SearchFilterChips from './SearchFilterChips.svelte';
+  import HorizontalNavigation from '../common/HorizontalNavigation.svelte';
   import SearchViewport from './SearchViewport.svelte';
   import {projectSearchDocument, estimateSearchEntryHeight, searchEntryCanFocus} from '$lib/search/document';
 
@@ -211,10 +212,12 @@
         {:else if entry.kind==='actions'}
           <div class="search-actions">{#each entry.section.actions as action,index (`${action.title}:${index}`)}<ControlButton type="button" onclick={()=>onAction(action,entry.section)}>{action.title}</ControlButton>{/each}</div>
         {:else if entry.kind==='carousel'}
-          <div class="card-shelf">{#each entry.rows as row,itemIndex (`${row.itemIndex??'song'}:${row.songIndex??itemIndex}`)}
+          <HorizontalNavigation {active} label={entry.section.title || $t('search.title')} revision={documentKey} center="80px">
+          <div class="card-shelf" data-horizontal-scroll>{#each entry.rows as row,itemIndex (`${row.itemIndex??'song'}:${row.songIndex??itemIndex}`)}
             {#if row.song}{@const song=row.song}<SearchSongRow {song} currentTrackId={visiblePlayback.currentTrackId} isPlaying={visiblePlayback.isPlaying} onPlay={onPlaySong} {onOpenArtist} onOpenAlbum={id=>openAlbumForSong(song,id)}/>
             {:else if row.card}{@const card=row.card}<SearchResultCard {card} size={card.kind==='artist'?'artist':card.kind==='playlist'?'playlist':'album'} onActivate={()=>openCard(card)}/>{/if}
           {/each}</div>
+          </HorizontalNavigation>
         {:else if entry.kind==='row'}{@const row=entry.row}
           {#if row.song}{@const song=row.song}<SearchSongRow {song} currentTrackId={visiblePlayback.currentTrackId} isPlaying={visiblePlayback.isPlaying} onPlay={onPlaySong} {onOpenArtist} onOpenAlbum={id=>openAlbumForSong(song,id)}/>
           {:else if row.card}{@const card=row.card}<MediaCard {card} layout="compact" onOpen={()=>openCard(card)} {onOpenArtist} onOpenAlbum={id=>onOpenAlbum({id,title:card.album??'',subtitle:card.artists??null,thumbnail:card.thumbnail})}/>{/if}

@@ -1,4 +1,5 @@
 import SwiftUI
+import SideBCore
 
 /// Cabecera única de álbumes y playlists, alojada en el mismo scroll de sus canciones.
 struct CollectionDetailHeaderView: View {
@@ -6,6 +7,7 @@ struct CollectionDetailHeaderView: View {
     let title: String
     let thumbnail: String?
     let artworkSymbol: String
+    var contentRating: ContentRating? = nil
     var credit: String? = nil
     var creditFontSize: CGFloat = 19.2
     var onCredit: (() -> Void)? = nil
@@ -109,24 +111,31 @@ struct CollectionDetailHeaderView: View {
                 .foregroundStyle(.primary)
                 .lineLimit(2)
             if let credit, !credit.isEmpty {
-                if let onCredit {
-                    Button(action: onCredit) {
-                        Text(credit).font(.system(size: creditFontSize, weight: .semibold))
-                            .foregroundStyle(isHoveringCredit ? .primary : .secondary)
+                ContentRatedMetadata(rating: contentRating ?? .unknown, fontSize: creditFontSize) {
+                    if let onCredit {
+                        Button(action: onCredit) {
+                            Text(credit).font(.system(size: creditFontSize, weight: .semibold))
+                                .foregroundStyle(isHoveringCredit ? .primary : .secondary)
+                        }
+                        .buttonStyle(.plain)
+                        .mediaCardFocusControl()
+                        .onHover { isHoveringCredit = $0 }
+                    } else {
+                        Text(credit)
+                            .font(.system(size: creditFontSize, weight: .medium))
+                            .foregroundStyle(.secondary)
                     }
-                    .buttonStyle(.plain)
-                    .mediaCardFocusControl()
-                    .onHover { isHoveringCredit = $0 }
-                } else {
-                    Text(credit)
-                        .font(.system(size: creditFontSize, weight: .medium))
-                        .foregroundStyle(.secondary)
                 }
             }
             if !metadata.isEmpty {
-                Text(metadata.filter { !$0.isEmpty }.joined(separator: " • "))
+                ContentRatedMetadata(rating: credit?.isEmpty != false ? contentRating ?? .unknown : .unknown, fontSize: 14.4) {
+                    Text(metadata.filter { !$0.isEmpty }.joined(separator: " • "))
+                }
                     .font(.system(size: 14.4))
                     .foregroundStyle(.secondary)
+            }
+            if credit?.isEmpty != false && metadata.isEmpty {
+                ContentRatingBadge(rating: contentRating ?? .unknown, fontSize: creditFontSize)
             }
             if let description, !description.isEmpty {
                 Button(action: onExpandDescription) {

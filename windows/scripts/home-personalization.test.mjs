@@ -1,9 +1,10 @@
+import { resolveContentRatingImport } from './helpers/content-rating-module.mjs';
 import { readFile } from 'node:fs/promises';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import ts from 'typescript';
 const compile = text => ts.transpileModule(text,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText;
-const url = text => `data:text/javascript;base64,${Buffer.from(text).toString('base64')}`;
+const url = text => `data:text/javascript;base64,${Buffer.from(resolveContentRatingImport(text)).toString('base64')}`;
 const module = async (file, replacements={}) => {let source=compile(await readFile(new URL(`../src/lib/${file}.ts`,import.meta.url),'utf8'));for(const [path,ref] of Object.entries(replacements)) source=source.replaceAll(`'${path}'`,JSON.stringify(ref));return url(source);};
 const settingsUrl=await module('home/settings'), presentationUrl=await module('home/presentation'),playerUrl=await module('player/controller');
 const { defaults, decodeSettings, categoryKey, orderCategories, accountSettingsKey, missingHomeSources }=await import(settingsUrl);

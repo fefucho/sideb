@@ -1,4 +1,5 @@
 <script lang="ts">
+  import HorizontalNavigation from '../common/HorizontalNavigation.svelte';
   import ControlButton from '$lib/components/common/ControlButton.svelte';
   import ControlFilter from '$lib/components/common/ControlFilter.svelte';
   import ControlSegments from '$lib/components/common/ControlSegments.svelte';
@@ -97,9 +98,9 @@
 
   </header>
   <div class="category-toolbar">
-    <nav class="tabs" aria-label={$t('windows.ui.librarySections')}>
+    <HorizontalNavigation {active} small label={$t('windows.ui.librarySections')}><nav class="tabs" data-horizontal-scroll aria-label={$t('windows.ui.librarySections')}>
     {#each tabs as item (item.id)}<ControlFilter type="button" selected={tab===item.id} onclick={()=>selectTab(item.id)}><svg viewBox="0 0 24 24" aria-hidden="true">{#if item.id==='all'}<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>{:else if item.id==='songs'}<path d="M10 17V5l10-2v12M10 8l10-2"/><ellipse cx="6.5" cy="17.5" rx="3.5" ry="2.5"/><ellipse cx="16.5" cy="15.5" rx="3.5" ry="2.5"/>{:else if item.id==='playlists'}<path d="M4 5h15M4 10h15M4 15h8M17 14v7M13.5 17.5h7"/>{:else if item.id==='albums'}<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.5"/>{:else if item.id==='artists'}<circle cx="12" cy="7.5" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2"/>{/if}</svg>{item.label}</ControlFilter>{/each}
-  </nav>
+  </nav></HorizontalNavigation>
     {#if loggedIn}<div class="heading-actions">
       <ControlButton type="button" onclick={onCreatePlaylist}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>{$t('detail.playlistEditor.createTitle')}</ControlButton>
       <ControlButton iconOnly type="button" aria-label={$t('library.refresh')} onclick={onRefresh}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7v5h-5M20 12a8 8 0 1 0-2.3 5.7M20 7l-2.3-2.7"/></svg></ControlButton>
@@ -138,9 +139,9 @@
     {:else}<AccountTrackTable {active} items={visibleSongs.map(item=>item.song)} {currentTrackId} {isPlaying} onPlay={index=>onPlay(index,visibleSongs.map(item=>item.song),!query.trim()&&prefs.order==='original')} {likedIds} {pendingIds} {onToggleLike} {onToggleSaved} {onOpenArtist} {onOpenAlbum} />{/if}
   {:else if loading&&allCards.length===0}<section class="state" role="status"><span class="spinner"></span><p>{$t('common.loading')}</p></section>
   {:else if tab==='all'}
-    {#if pins.length}<section class="collection-section"><h2>{$t('library.pinned')}</h2><div class:listing={prefs.layout==='list'} class="overview-grid">{#each pins as card (libraryKey(card))}{@render collection(card,true)}{/each}</div></section>{/if}
+    {#if pins.length}<section class="collection-section"><h2>{$t('library.pinned')}</h2><HorizontalNavigation {active} enabled={prefs.layout!=='list'} label={$t('library.pinned')} center="90px"><div data-horizontal-scroll class:listing={prefs.layout==='list'} class="overview-grid">{#each pins as card (libraryKey(card))}{@render collection(card,true)}{/each}</div></HorizontalNavigation></section>{/if}
     {#each sections as section (section.id)}{@const matching=orderedLibraryCards(section.cards,query,effectiveOrder)}
-      {#if matching.length}<section class="collection-section"><div class="section-title"><h2>{section.label}</h2><ControlButton emphasis="quiet" size="utility"  type="button" onclick={()=>selectTab(section.id)}>{$t('library.see_all')} →</ControlButton></div><div class:listing={prefs.layout==='list'} class="overview-grid">{#each matching.slice(0,6) as card (libraryKey(card))}{@render collection(card)}{/each}</div></section>{/if}
+      {#if matching.length}<section class="collection-section"><div class="section-title"><h2>{section.label}</h2><ControlButton emphasis="quiet" size="utility"  type="button" onclick={()=>selectTab(section.id)}>{$t('library.see_all')} →</ControlButton></div><HorizontalNavigation {active} enabled={prefs.layout!=='list'} label={section.label} center="90px"><div data-horizontal-scroll class:listing={prefs.layout==='list'} class="overview-grid">{#each matching.slice(0,6) as card (libraryKey(card))}{@render collection(card)}{/each}</div></HorizontalNavigation></section>{/if}
     {/each}
     {#if !allCards.length&&!loading&&!error}<section class="state"><h2>{$t('library.empty.all')}</h2></section>{:else if query&&!pins.length&&!allCards.some(c=>libraryMatches(query,c.title,c.subtitle))}<section class="state"><h2>{$t('library.search.empty')}</h2></section>{/if}
   {:else if error&&cards.length===0&&!query}<section class="state" role="alert"><h2>{$t('library.error.load')}</h2><p>{resolveMessage(error,$language)}</p><ControlButton emphasis="prominent" type="button" onclick={onRefresh}>{$t('sidebar.retry')}</ControlButton></section>

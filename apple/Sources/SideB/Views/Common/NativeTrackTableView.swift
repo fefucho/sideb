@@ -1155,7 +1155,6 @@ final class NativeTrackSectionHeaderCellView: NSTableCellView {
 
         titleLabel.font = .systemFont(ofSize: 11.5, weight: .bold)
         titleLabel.textColor = .secondaryLabelColor
-        titleLabel.translatesAutoresizingMaskIntoConstraints = false
         addSubview(titleLabel)
 
         dividerLine.boxType = .separator
@@ -1232,6 +1231,7 @@ final class NativeTrackCellView: NSTableCellView, NativeTrackCellPresenting {
     let artworkImageView = NativeTrackActionImageView(frame: .zero)
     let titleLabel = NativeTrackActionField(frame: .zero)
     private let subtitleLabel = NativeTrackCreditField(frame: .zero)
+    private lazy var ratedMetadata = NativeRatedMetadata(field: subtitleLabel)
     private let albumLabel = NativeTrackCreditField(frame: .zero)
     private let durationLabel = NSTextField(labelWithString: "")
     private let reorderHandleImageView = NSImageView()
@@ -1287,6 +1287,7 @@ final class NativeTrackCellView: NSTableCellView, NativeTrackCellPresenting {
         imageFetchTask = nil
         currentVideoId = nil
         boundTrack = nil
+        ratedMetadata.badge.rating = .unknown
         titleLabel.clearFeatured(); subtitleLabel.clearFeatured()
         artworkImageView.image = nil
         thumbnailPlayButton.isHidden = true
@@ -1355,7 +1356,8 @@ final class NativeTrackCellView: NSTableCellView, NativeTrackCellPresenting {
             self?.isCreditFocused = $0
             self?.onCreditFocusChanged?($0)
         }
-        addSubview(subtitleLabel)
+        ratedMetadata.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(ratedMetadata)
 
         // 4. Álbum (Columna separada opcional para vistas de Playlist/Álbum)
         albumLabel.font = .systemFont(ofSize: 12, weight: .regular)
@@ -1449,10 +1451,10 @@ final class NativeTrackCellView: NSTableCellView, NativeTrackCellPresenting {
         // Constraints condicionales para cuando hay columna de álbum separada vs compacta
         let tWithAlbum = titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: albumLabel.leadingAnchor, constant: -14)
         let tNoAlbum = titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: menuButton.leadingAnchor, constant: -12)
-        let sWithAlbum = subtitleLabel.trailingAnchor.constraint(lessThanOrEqualTo: albumLabel.leadingAnchor, constant: -14)
-        let sNoAlbum = subtitleLabel.trailingAnchor.constraint(lessThanOrEqualTo: menuButton.leadingAnchor, constant: -12)
-        let sInlineAlbum = subtitleLabel.trailingAnchor.constraint(lessThanOrEqualTo: albumLabel.leadingAnchor, constant: -4)
-        let inlineAlbumStart = albumLabel.leadingAnchor.constraint(equalTo: subtitleLabel.trailingAnchor, constant: 6)
+        let sWithAlbum = ratedMetadata.trailingAnchor.constraint(lessThanOrEqualTo: albumLabel.leadingAnchor, constant: -14)
+        let sNoAlbum = ratedMetadata.trailingAnchor.constraint(lessThanOrEqualTo: menuButton.leadingAnchor, constant: -12)
+        let sInlineAlbum = ratedMetadata.trailingAnchor.constraint(lessThanOrEqualTo: albumLabel.leadingAnchor, constant: -4)
+        let inlineAlbumStart = albumLabel.leadingAnchor.constraint(equalTo: ratedMetadata.trailingAnchor, constant: 6)
 
         self.titleTrailingWithAlbum = tWithAlbum
         self.titleTrailingNoAlbum = tNoAlbum
@@ -1487,8 +1489,8 @@ final class NativeTrackCellView: NSTableCellView, NativeTrackCellPresenting {
             titleLabel.bottomAnchor.constraint(equalTo: centerYAnchor, constant: -1.5),
 
             // Subtítulo (Artista • Álbum)
-            subtitleLabel.leadingAnchor.constraint(equalTo: titleLabel.leadingAnchor),
-            subtitleLabel.topAnchor.constraint(equalTo: centerYAnchor, constant: 1.5),
+            ratedMetadata.leadingAnchor.constraint(equalTo: titleLabel.leadingAnchor),
+            ratedMetadata.topAnchor.constraint(equalTo: centerYAnchor, constant: 1.5),
 
             // Álbum separado (opcional)
             albumLabel.trailingAnchor.constraint(equalTo: durationLabel.leadingAnchor, constant: -12),
@@ -1559,6 +1561,9 @@ final class NativeTrackCellView: NSTableCellView, NativeTrackCellPresenting {
 
     func refreshLocalization() {
         if let track = boundTrack {
+            ratedMetadata.badge.rating = track.contentRating
+            titleLabel.toolTip = track.title + "\n" + ContentRatingMetadata.label(track.contentRating)
+            titleLabel.setAccessibilityHelp(track.contentRating == .unknown ? ContentRatingMetadata.label(.unknown) : nil)
             if track.artists.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 subtitleLabel.stringValue = track.displayArtist
                 subtitleLabel.setAccessibilityLabel(track.displayArtist)
@@ -1646,10 +1651,12 @@ final class NativeTrackCellView: NSTableCellView, NativeTrackCellPresenting {
         }
 
         // 2. Metadatos
+        ratedMetadata.badge.rating = track.contentRating
         titleLabel.configureFeatured(track:track,isTitle:true) { [weak self] id,name in self?.onArtistDestination?(id,name) }
         subtitleLabel.configureFeatured(track:track,isTitle:false) { [weak self] id,name in self?.onArtistDestination?(id,name) }
 
         subtitleLabel.font = .systemFont(ofSize: subtitleFontSize, weight: .regular)
+        ratedMetadata.badge.fontSize = subtitleFontSize
 
         let albumName = track.displayAlbum?.trimmingCharacters(in: .whitespacesAndNewlines)
         let hasAlbumName = albumName?.isEmpty == false
@@ -1760,10 +1767,15 @@ class NativeTrackActionField: NSTextField {
             featured?.setVisible(featuredVisible)
         }
         featured?.configure(track:track,isTitle:isTitle,suffix:suffix,onNavigate:onNavigate)
+        if isTitle {
+            toolTip = track.title + "\n" + ContentRatingMetadata.label(track.contentRating)
+            setAccessibilityHelp(track.contentRating == .unknown ? ContentRatingMetadata.label(.unknown) : nil)
+        }
         if featuredTracking == nil { updateTrackingAreas() }
     }
     func clearFeatured() {
         featured?.clear(); featured = nil
+        setAccessibilityHelp(nil)
         if let featuredTracking { removeTrackingArea(featuredTracking) }
         featuredTracking = nil
     }

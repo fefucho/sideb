@@ -1,4 +1,5 @@
 <script lang="ts">
+  import HorizontalNavigation from '../common/HorizontalNavigation.svelte';
   import ControlButton from '$lib/components/common/ControlButton.svelte';
   import MenuIcon from '$lib/components/menu/MenuIcon.svelte';
 
@@ -180,11 +181,13 @@
                 <ControlButton emphasis="quiet" size="utility" type="button" onclick={() => onOpenCatalog(section.moreBrowseId!, section.moreParams, section.title)}>{$t('home.see_all')}</ControlButton>
               {/if}
             </div>
-            <div class="carousel">
+            <HorizontalNavigation label={providerHeading(section.title,$language)} revision={artist.channelId} center="80px">
+            <div class="carousel" data-horizontal-scroll>
               {#each section.items as card, index (`${card.kind}:${card.id}:${index}`)}
                 <div class="carousel-card"><MediaCard {card} onOpen={()=>openCard(card)} onPlay={()=>onPlaySong?.(card)} {onOpenArtist} {onOpenAlbum} /></div>
               {/each}
             </div>
+            </HorizontalNavigation>
           </section>
         {/if}
       {/each}

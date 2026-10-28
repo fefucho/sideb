@@ -1,8 +1,9 @@
 <script lang="ts" generics="T extends {key:string}">
  import {onMount,tick,untrack,type Snippet} from 'svelte';
  import {recommendedOffsets,recommendedRange} from '$lib/player/recommended-viewport';
- interface Props {items:T[];size:(item:T)=>number;axis:'x'|'y';gap?:number;contextKey:string;initialOffset?:number;onOffset?:(offset:number)=>void;children:Snippet<[T,number]>;label:string}
- let {items,size,axis,gap=0,contextKey,initialOffset=0,onOffset,children,label}:Props=$props();
+ import HorizontalNavigation from '../common/HorizontalNavigation.svelte';
+ interface Props {items:T[];size:(item:T)=>number;axis:'x'|'y';gap?:number;contextKey:string;initialOffset?:number;onOffset?:(offset:number)=>void;children:Snippet<[T,number]>;label:string;arrowCenter?:string}
+ let {items,size,axis,gap=0,contextKey,initialOffset=0,onOffset,children,label,arrowCenter='50%'}:Props=$props();
  const owner=$props.id();let root=$state<HTMLDivElement>();let mounted=$state(false),position=$state(0),extent=$state(600),focused=$state<string|null>(null),menu=$state<string|null>(null);
  const inset=$derived(axis==='x'?2:0);
  const offsets=$derived(recommendedOffsets(items,size,gap,inset));
@@ -61,10 +62,12 @@
   }
  }
 </script>
+<HorizontalNavigation enabled={axis==='x'} fill {label} stride={items.length?size(items[0])+gap:undefined} revision={contextKey} center={arrowCenter}>
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-<div class="recommended-viewport" class:horizontal={axis==='x'} bind:this={root} role="group" aria-label={label} data-rec-axis={axis} data-mounted-count={visible.length} onfocusin={event=>focused=entry(event.target)} onfocusout={focusOut} onclick={rememberMenu} oncontextmenu={rememberMenu} onkeydown={keydown}>
+<div class="recommended-viewport" data-horizontal-scroll={axis==='x'?true:undefined} class:horizontal={axis==='x'} bind:this={root} role="group" aria-label={label} data-rec-axis={axis} data-mounted-count={visible.length} onfocusin={event=>focused=entry(event.target)} onfocusout={focusOut} onclick={rememberMenu} oncontextmenu={rememberMenu} onkeydown={keydown}>
  <div class="virtual-content" style:width={axis==='x'?`${total}px`:'100%'} style:height={axis==='y'?`${total}px`:'100%'}>
   {#each visible as index (items[index].key)}<div class="recommended-entry" data-rec-owner={owner} data-rec-entry={items[index].key} style:width={axis==='x'?`${size(items[index])}px`:'100%'} style:height={axis==='y'?`${size(items[index])}px`:'100%'} style:transform={axis==='x'?`translateX(${offsets[index]}px)`:`translateY(${offsets[index]}px)`}>{@render children(items[index],index)}</div>{/each}
  </div>
 </div>
-<style>.recommended-viewport{position:relative;width:100%;height:100%;min-width:0;min-height:0;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;overflow-anchor:none;scrollbar-width:thin;scrollbar-color:#ffffff40 transparent}.horizontal{overflow-x:auto;overflow-y:hidden;overscroll-behavior-x:contain;overscroll-behavior-y:auto;scrollbar-width:none}.horizontal::-webkit-scrollbar{display:none}.virtual-content{position:relative;min-width:0}.recommended-entry{position:absolute;inset:0 auto auto 0;box-sizing:border-box;min-width:0}</style>
+</HorizontalNavigation>
+<style>.recommended-viewport{position:relative;width:100%;height:100%;min-width:0;min-height:0;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;overflow-anchor:none;scrollbar-width:thin;scrollbar-color:#ffffff40 transparent}.horizontal{overflow-x:auto;overflow-y:hidden;overscroll-behavior-x:contain;overscroll-behavior-y:auto;scrollbar-width:none}.horizontal::-webkit-scrollbar{display:none}.virtual-content{position:relative;min-width:0}.recommended-entry{position:absolute;inset:0 auto auto 0;box-sizing:border-box;min-width:0}.horizontal{box-sizing:border-box;padding-inline:44px}</style>

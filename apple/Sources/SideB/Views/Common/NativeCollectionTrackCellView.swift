@@ -84,6 +84,7 @@ final class NativeCollectionTrackCellView: NSTableCellView, NativeTrackCellPrese
     private let playingIcon = NSImageView()
     let artwork = NativeTrackActionImageView(frame: .zero)
     let title = NativeTrackActionField(frame: .zero)
+    private lazy var ratedMetadata = NativeRatedMetadata(field: artist, fontSize: 13.5)
     let artist = NativeTrackCreditField(frame: .zero)
     let album = NativeTrackCreditField(frame: .zero)
     private let duration = NSTextField(labelWithString: "")
@@ -112,7 +113,7 @@ final class NativeCollectionTrackCellView: NSTableCellView, NativeTrackCellPrese
         super.init(frame: .zero)
         wantsLayer = true
         for (view, identifier) in [(indexLabel, "Index"), (playingIcon, "Playing"), (artwork, "Artwork"),
-                                   (title, "Song"), (artist, "Artist"), (album, "Album"),
+                                   (title, "Song"), (ratedMetadata, "Artist"), (album, "Album"),
                                    (duration, "Duration"), (playButton, "Play"), (likeButton, "Like"),
                                    (menuButton, "Menu"), (grip, "Grip")] as [(NSView, String)] {
             view.setAccessibilityIdentifier("CollectionTrack\(identifier)")
@@ -185,7 +186,7 @@ final class NativeCollectionTrackCellView: NSTableCellView, NativeTrackCellPrese
         let g = CollectionTrackColumnLayout.make(width: bounds.width, height: bounds.height, showsAlbum: showsAlbum)
         indexLabel.frame = g.index
         playingIcon.frame = CGRect(x: g.index.midX - 8, y: g.index.midY - 8, width: 16, height: 16)
-        artwork.frame = g.artwork; title.frame = g.song; artist.frame = g.artist; album.frame = g.album
+        artwork.frame = g.artwork; title.frame = g.song; ratedMetadata.frame = g.artist; album.frame = g.album
         duration.frame = g.duration; likeButton.frame = g.like; menuButton.frame = g.menu
         let playSize = CollectionTrackMetrics.playButtonSize
         playButton.frame = CGRect(x: g.artwork.midX - playSize / 2, y: g.artwork.midY - playSize / 2,
@@ -201,6 +202,7 @@ final class NativeCollectionTrackCellView: NSTableCellView, NativeTrackCellPrese
         indexLabel.isHidden = isCurrentTrack; playingIcon.isHidden = !isCurrentTrack
         playingIcon.image = NSImage(systemSymbolName: isPlaying ? "speaker.wave.3.fill" : "speaker.fill", accessibilityDescription: nil)?
             .withSymbolConfiguration(.init(pointSize: 15.5, weight: .semibold))
+        ratedMetadata.badge.rating = track.contentRating
         title.stringValue = track.title
         title.font = .systemFont(ofSize: 15.5, weight: isCurrentTrack ? .semibold : .medium)
         artist.configureLink(label: track.displayArtist, destinationExists: track.artistId != nil || track.artistRuns.contains { $0.id != nil }) { [weak self] in
@@ -221,6 +223,11 @@ final class NativeCollectionTrackCellView: NSTableCellView, NativeTrackCellPrese
         loadArtwork(track)
     }
     func refreshLocalization() {
+        if let track {
+            ratedMetadata.badge.rating = track.contentRating
+            title.toolTip = track.title + "\n" + ContentRatingMetadata.label(track.contentRating)
+            title.setAccessibilityHelp(track.contentRating == .unknown ? ContentRatingMetadata.label(.unknown) : nil)
+        }
         if let track, track.artists.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             artist.stringValue = track.displayArtist
             artist.setAccessibilityLabel(track.displayArtist)
@@ -264,6 +271,7 @@ final class NativeCollectionTrackCellView: NSTableCellView, NativeTrackCellPrese
         super.prepareForReuse()
         imageTask?.cancel(); imageTask = nil; requestID = UUID(); track = nil
         artwork.image = nil; hovered = false; focused = false; reorderable = false
+        ratedMetadata.badge.rating = .unknown
         title.clearFeatured(); artist.clearFeatured()
         onPlay = nil; onLike = nil; onMenu = nil; onArtist = nil; onArtistDestination = nil; onAlbum = nil
         onSelectionMouseDown = nil; onCreditFocusChanged = nil

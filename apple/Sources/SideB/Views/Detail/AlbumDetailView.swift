@@ -142,6 +142,7 @@ struct AlbumDetailView: View {
             title: album.title,
             thumbnail: album.thumbnail,
             artworkSymbol: "opticaldisc",
+            contentRating: album.contentRating,
             credit: album.artist,
             onCredit: albumCreditAction(album),
             metadata: [album.subtitle, album.secondSubtitle ?? "\(album.items.count) canciones"].compactMap { $0 },

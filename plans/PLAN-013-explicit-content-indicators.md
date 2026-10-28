@@ -1,7 +1,7 @@
 # PLAN-013 — Indicadores de contenido explícito y versiones limpias
 
 - Fecha: 2026-10-21 (America/Montevideo).
-- Estado: **propuesta; no implementada**. Seguimiento común [PAR-040](../PARIDAD.md).
+- Estado: **FIX-263 y ajuste posterior [FIX-265](../FIXES.md#fix-265) implementados**. El pedido2026-10-28 excluye también la E de los créditos de la canción activa fullscreen; barra inferior, cola y Relacionado conservan indicador. Esa exclusión amplía la revisión2026-10-27 descrita al final. Windows build0024 Release compiled/verify1089pruebas aprobadas y fixture12casos; compilación/pruebas/QA Mac pendientes. El pedido previo de no compilar fue reemplazado por el pedido posterior de build. Seguimiento [PAR-040](../PARIDAD.md), [FIX-262](../FIXES.md#fix-262).
 - Alcance: contrato de metadatos compartido, conservación en los bridges y presentación coherente en Mac y Windows. Este plan trata etiquetas que el proveedor aporta; no cambia el ranking ni la elección de resultados, que pertenece a [PLAN-014](PLAN-014-content-version-preference.md).
 - Objetivo: que una persona pueda reconocer una versión marcada explícita y una versión identificada como limpia, y que la falta de una marca no se presente como prueba de que la edición es limpia.
 
@@ -58,10 +58,86 @@ La fuente concreta conocida aquí es el distintivo de YouTube Music. Su ausencia
 ## Lista de aceptación
 
 - [ ] Un origen puede afirmar explícito, limpio o desconocido sin colapsar estados.
-- [ ] La ausencia de `MUSIC_EXPLICIT_BADGE` queda desconocida salvo fuente positiva de limpio documentada.
-- [ ] Marca de álbum y marca de canción conservan entidad y edición independientes.
-- [ ] Mac y Windows reciben el estado en Home, tarjetas, búsqueda, álbum, filas y playback soportado.
+- [x] La ausencia de `MUSIC_EXPLICIT_BADGE` queda desconocida salvo fuente positiva de limpio documentada.
+- [x] Marca de álbum y marca de canción conservan entidad y edición independientes.
+- [x] Mac y Windows reciben el estado en Home, tarjetas, búsqueda, álbum, filas y playback soportado.
 - [ ] Graduation limpia/explicita se distingue por metadatos de cada versión; compartir artwork/motion no altera audio ni etiqueta.
-- [ ] Cargas, fallos, filas vacías, radio y datos legacy no producen una etiqueta clean falsa.
+- [x] Cargas, fallos, filas vacías, radio y datos legacy no producen una etiqueta clean falsa.
 - [ ] Etiquetas y estados accesibles/localizados funcionan en listas densas y celdas recicladas.
 - [ ] Regresión core/bridge/frontend y evaluación de paridad documentadas; ranking y elección permanecen en PLAN-014.
+
+## Ejecución del pedido del 2026-10-27
+
+El usuario confirma que quiere identificar la versión elegida o escuchada y conservar la posibilidad de elegir una edición censurada. Este cambio implementa indicadores y propagación de metadata; no aplica la política de ranking de PLAN-014 ni reemplaza IDs de audio.
+
+Contrato visual de la primera entrega (sustituido como objetivo por la revisión visual pendiente al final): 14×14 puntos/píxeles CSS, radio3, fondo blanco con alpha0,78, glifo sRGB #1c1c1e. E vectorial con tinta x4…10/y3…11 y centro7,7, sin métricas de baseline. Clean confirmado utiliza L en español/C en inglés. Unknown carece de badge y tiene descripción accesible/tooltip contextual; no significa censurado.
+
+Contrato de datos: ContentRating con nombres estables explicit/clean/unknown en SongItemRecord, BrowseCardRecord, HomeItemRecord y AlbumDetailRecord; DTOs Windows, Swift y caches conservan la entidad exacta. El proveedor actual sólo confirma explicit o unknown; clean está soportado para evidencia positiva futura, no inferido. Un /next sin badge no debe borrar evidencia conocida de la misma pista. Álbum y pistas permanecen independientes.
+
+- [x] Identificar pérdida en contratos de ambas plataformas y autorizar fix compartido.
+- [x] Implementar enum, conversiones y restauración de historial core; pruebas focales incluidas.
+- [x] Regenerar bindings UniFFI desde biblioteca Rust real sin windows-bridge; no editar generated a mano.
+- [x] Integración de fuentes de ambos shells terminada; ejecución y límites en [Mac029](../apple/plans/PLAN-029-explicit-content-indicators.md), [Windows021](../windows/plans/PLAN-021-explicit-content-indicators.md) y FIX-262.
+- [ ] Compilar/verificar destino Mac con XCFramework nuevo y ejecutar QA nativa/accesibilidad de ambas apps.
+
+### Verificación compartida de esta entrega
+
+InnerTube112, core175(default)/177(windows-bridge), player5 y runtime Tauri117 aprobadas, cero fallos;20ejecuciones live omitidas (10por variante). Tests de contrato nuevos cubren pérdida de rating, ausencia de badge, migración y separación de entidades/versiones. Bindings generados desde DLL default nueva mediante UniFFI y postprocesado oficial; no reemplazan XCFramework Mac.
+
+Localización: fuente editorial común,801claves ES/EN; recursos Apple generados y verificados con `--portable`, cuatro plist XML parseados y serialización contrastada byte a byte con los cuatro recursos nativos previos. Tres tests del serializador aprobados. En Mac sigue siendo obligatoria comprobación predeterminada con xcstringstool y suite Swift.
+
+El proveedor inspeccionado sólo confirma explicit o unknown. Por eso las pruebas de clean son de contrato con datos controlados, no evidencia de que Graduation u otra edición real esté confirmada como censurada. No se marca como resuelta la aceptación con proveedor real, VoiceOver/Narrator ni la build Mac.
+
+Verificador oficial `windows/scripts/windows.ps1 -Action verify` aprobado sobre las fuentes finales:1077pruebas (491frontend,112InnerTube,175core,177core/windows-bridge,5player,117Tauri),0fallos y20ejecuciones live ignoradas. Check0/0 y build frontend aprobados; sin standalone nuevo. Log local ignorado: `.cache/explicit-content-verify.log`. Tres pruebas adicionales del serializador portátil aprobadas; cinco SwiftTests siguen pendientes en Mac.
+
+<a id="revisión-visual-del-2026-10-27--pendiente-de-implementar"></a>
+
+## Revisión visual del 2026-10-27 — implementada en fuentes
+
+Pedido nuevo: la E debe acompañar siempre la segunda línea de artista/álbum, ser más pequeña y proporcional a ese texto. En fullscreen sólo el título grande de la canción activa queda sin E; la metadata secundaria, cola, Relacionado y demás elementos conservan sus indicadores. La barra inferior también conserva el suyo. Esta sección reemplaza la ubicación/tamaño objetivos de la primera entrega; no cambia su metadata ni invalida sus resultados históricos. El ajuste se implementa en FIX-263 con pruebas puntuales; la compilación de apps y validación nativa permanecen pendientes.
+
+### Presentación acordada para Mac y Windows
+
+| Superficie | Ubicación prevista |
+|---|---|
+| Inicio, búsqueda rápida/completa, catálogo/artista, Explore, Biblioteca, listas y otras versiones | E al inicio de la línea secundaria de artista/álbum; título sin badge |
+| Cabecera de álbum/detalle | E junto al artista/metadata secundaria, fuera del título grande |
+| Cola, tanto dentro como fuera de fullscreen | E junto al crédito secundario de esa pista |
+| Barra inferior de reproducción | E al inicio de artista/álbum, debajo del título de la pista activa |
+| Título grande de la canción activa en fullscreen | Sin E ni chip de calificación junto al nombre grande; conservar el dato real internamente |
+| Resto de fullscreen: metadata secundaria de la canción activa, cola y Relacionado | Conservar indicadores junto a artista/álbum, con el tamaño reducido común |
+
+- Badge al inicio de la metadata secundaria con **4 puntos/píxeles CSS de separación**, centrado respecto del texto vecino; no junto al título ni flotando sobre el arte.
+- Tamaño visual común: `lado = clamp(round(tamañoTipográficoSecundario × 0,85), 9, 12)`. Ejemplos: texto11,5–12 → badge10×10; texto13 →11×11; texto14–15 →12×12. Usar el tamaño del artista/álbum, nunca el título. En tamaños tipográficos equivalentes ambos shells usan la misma geometría.
+- Mantener el path E geométrico y escalarlo proporcionalmente desde el viewBox14×14; radio proporcional al lado (3/14), fondo blanco78% y glifo #1c1c1e. Centrar también la tinta; no volver a depender del baseline de una fuente. Las posibles marcas clean L/C siguen la misma regla visual y la exclusión únicamente del título grande de la canción activa en fullscreen.
+- Conservar altura, truncado, enlaces, selección y acciones existentes. En tablas con columnas independientes se integra en el bloque de créditos artista/álbum, sin desplazar columnas ni poner el badge en el título. Sin crédito disponible, el badge puede ocupar solo el espacio secundario previsto, sin inventar artista/álbum ni añadir una tercera línea.
+- En unknown no reservar espacio ni fabricar una etiqueta limpia. Conservar ayuda/etiqueta accesible cuando corresponda; retirar el chip del título grande en fullscreen es una decisión de presentación, no convertir el dato a unknown ni borrar metadata.
+- La barra inferior conserva el indicador cuando esa barra esté visible; no introducir una nueva barra ni cambiar su visibilidad para este ajuste.
+
+### Trabajo acotado
+
+- [x] Separar el badge del componente de título y componerlo con la metadata secundaria en todos sus consumidores.
+- [x] Aplicar tamaños/espaciado comunes y revisar offsets fijos de celdas Home/nativas.
+- [x] Ocultar el badge sólo en la instancia del título grande de Now Playing fullscreen; conservarlo en metadata secundaria, cola, recomendados y demás componentes del fullscreen. No aplicar una supresión global al contenedor.
+- [x] Aplicar la misma política en [Mac029](../apple/plans/PLAN-029-explicit-content-indicators.md) y [Windows021](../windows/plans/PLAN-021-explicit-content-indicators.md).
+- [ ] Revisar capturas equivalentes: Inicio, búsqueda, detalle, lista, barra y fullscreen (también cola/Relacionado), con texto largo, metadata ausente, ES/EN, escalado y celdas reutilizadas.
+- [ ] Probar normal→fullscreen→normal con la misma pista: el título grande queda sin badge; metadata secundaria, cola/Relacionado y barra conservan sus indicadores sin perder rating ni cambiar audio/ID.
+- [ ] Ejecutar verificaciones de frontend/Swift apropiadas y QA de ambos destinos. Las1077pruebas y capturas de FIX-262 corresponden al estado anterior, no validan este ajuste.
+- [x] Al implementar, registrar nuevo fix y actualizar PAR-040/planes con evidencia real. No reabrir ranking, política de selección, core, DTOs, persistencia o bindings para un cambio exclusivamente visual.
+
+
+### Ejecución de la revisión visual — FIX-263
+
+El usuario autoriza implementar este ajuste con dos subagentes Sol6.1/razonamiento medio y solicita expresamente no compilar al terminar porque otro agente trabaja otras funciones. Ámbitos separados Apple/Windows; integrador responsable de diff, contratos visuales, pruebas focales y registro compartido. No ejecutar runner/build frontend/cargo/Swift ni generar ejecutables de esta entrega. Conservar cambios concurrentes y metadata previa.
+
+- [x] Implementar presentación Mac.
+- [x] Implementar presentación Windows.
+- [x] Revisar equivalencia y pruebas puntuales sin build de app.
+- [x] Registrar archivos/resultados/límites en FIX-263/PAR-040 y planes; validación nativa Mac permanece pendiente.
+
+
+### Resultado de FIX-263
+
+Fuentes Mac/Windows implementadas con mismo contrato visual;7pruebas puntuales Windows y12casos Edge aprobados, también cuatro alternancias fullscreen de componentes reales con identidad/rating estables. Títulos grandes sin badge y créditos/cola/Relacionado con badge; integrador revisó captura DPR1. Parseo Svelte7componentes aprobado; revisión estructural/matemática Apple sin ejecución Swift. Ver detalle en FIX-263 y planes de cada shell. Cambios concurrentes de barra/marquee conservados.
+
+Por pedido del usuario no se compiló/empaquetó la app ni se ejecutó el runner. Las fixtures sólo transforman módulos de prueba. Pruebas Swift, comparación visual nativa Mac/Windows y accesibilidad/cuenta siguen pendientes, sin reutilizar los conteos de FIX-262 como resultado nuevo.

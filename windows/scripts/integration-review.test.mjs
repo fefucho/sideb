@@ -1,3 +1,4 @@
+import { resolveContentRatingImport } from './helpers/content-rating-module.mjs';
 import {readFile} from 'node:fs/promises';
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
@@ -5,7 +6,7 @@ import ts from 'typescript';
 const load=async path=>{
   const source=await readFile(new URL(path,import.meta.url),'utf8');
   const js=ts.transpileModule(source,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText;
-  return import(`data:text/javascript;base64,${Buffer.from(js).toString('base64')}`);
+  return import(`data:text/javascript;base64,${Buffer.from(resolveContentRatingImport(js)).toString('base64')}`);
 };
 const {AccountController}=await load('../src/lib/account/controller.ts');
 const {projectTracks,projectedPlayback}=await load('../src/lib/detail/projection.ts');
@@ -15,7 +16,7 @@ const presentationJs=ts.transpileModule(presentationSource,{compilerOptions:{tar
 const presentationUrl=`data:text/javascript;base64,${Buffer.from(presentationJs).toString('base64')}`;
 const homeSource=(await readFile(new URL('../src/lib/home/controller.ts',import.meta.url),'utf8')).replace("'./presentation'",JSON.stringify(presentationUrl));
 const homeJs=ts.transpileModule(homeSource,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText;
-const {HomeController}=await import(`data:text/javascript;base64,${Buffer.from(homeJs).toString('base64')}`);
+const {HomeController}=await import(`data:text/javascript;base64,${Buffer.from(resolveContentRatingImport(homeJs)).toString('base64')}`);
 const deferred=()=>{let resolve;const promise=new Promise(r=>resolve=r);return{promise,resolve};};
 const song=(id,title=id)=>({videoId:id,title,artists:'Artist',album:null,albumId:null,artistId:null,thumbnail:null,duration:null,isVideo:false});
 const playlist=(id,items)=>({id,title:id,items,continuation:null,owned:false,inLibrary:true});

@@ -56,6 +56,8 @@ impl AuthStatusDto {
 #[serde(rename_all = "camelCase")]
 pub struct PlaybackTrackDto {
     #[serde(default)]
+    pub content_rating: sideb_core::ContentRating,
+    #[serde(default)]
     pub is_upload: bool,
     pub video_id: String,
     pub title: String,
@@ -76,6 +78,9 @@ impl PlaybackTrackDto {
     pub(crate) fn enrich_missing_metadata(&mut self, entry: &crate::queue::QueueEntryDto) {
         if self.video_id != entry.video_id {
             return;
+        }
+        if self.content_rating == sideb_core::ContentRating::Unknown {
+            self.content_rating = entry.content_rating;
         }
         // Older durable queues can carry a responsive play count as an album.
         // Clear it before copying a real destination from the enriched queue.
@@ -125,8 +130,34 @@ mod playback_track_tests {
     use crate::queue::QueueEntryDto;
 
     #[test]
+    fn content_rating_survives_queue_hydration_and_does_not_cross_audio_ids() {
+        let mut track: PlaybackTrackDto = serde_json::from_value(serde_json::json!({
+            "videoId": "explicit-id", "title": "Song", "artists": "Artist",
+            "thumbnail": null, "duration": null
+        })).unwrap();
+        assert_eq!(track.content_rating, sideb_core::ContentRating::Unknown);
+        let mut entry = QueueEntryDto::new("explicit-id".into(), "Song".into(), "Artist".into(), None, None);
+        entry.content_rating = sideb_core::ContentRating::Explicit;
+        track.enrich_missing_metadata(&entry);
+        assert_eq!(track.content_rating, sideb_core::ContentRating::Explicit);
+        entry.content_rating = sideb_core::ContentRating::Unknown;
+        track.enrich_missing_metadata(&entry);
+        assert_eq!(track.content_rating, sideb_core::ContentRating::Explicit);
+        track.content_rating = sideb_core::ContentRating::Unknown;
+        entry.video_id = "clean-id".into();
+        entry.content_rating = sideb_core::ContentRating::Clean;
+        track.enrich_missing_metadata(&entry);
+        assert_eq!(track.content_rating, sideb_core::ContentRating::Unknown);
+        track.content_rating = sideb_core::ContentRating::Explicit;
+        let restored: PlaybackTrackDto = serde_json::from_value(serde_json::to_value(&track).unwrap()).unwrap();
+        assert_eq!(restored.content_rating, sideb_core::ContentRating::Explicit);
+        assert_eq!(restored.video_id, "explicit-id");
+    }
+
+    #[test]
     fn current_track_enrichment_keeps_unrelated_labels_unlinked() {
         let mut track = PlaybackTrackDto {
+            content_rating: sideb_core::ContentRating::Unknown,
             is_upload: false,
             video_id: "seed".into(),
             title: "Title".into(),
@@ -177,6 +208,7 @@ mod playback_track_tests {
     #[test]
     fn radio_metadata_rejects_counter_then_accepts_real_album_for_legacy_track() {
         let mut track = PlaybackTrackDto {
+            content_rating: sideb_core::ContentRating::Unknown,
             is_upload: false,
             video_id: "seed".into(),
             title: "Title".into(),
@@ -213,6 +245,7 @@ mod playback_track_tests {
     #[test]
     fn radio_metadata_enrichment_preserves_audio_identity_and_existing_credits() {
         let mut track = PlaybackTrackDto {
+            content_rating: sideb_core::ContentRating::Unknown,
             is_upload: false,
             video_id: "seed-video".into(),
             title: "Seed title".into(),
@@ -254,6 +287,7 @@ mod playback_track_tests {
     #[test]
     fn radio_metadata_enrichment_ignores_a_different_current_song() {
         let mut track = PlaybackTrackDto {
+            content_rating: sideb_core::ContentRating::Unknown,
             is_upload: false,
             video_id: "currently-playing".into(),
             title: "Title".into(),
@@ -358,6 +392,8 @@ pub struct PlaybackProgressDto {
 #[serde(rename_all = "camelCase")]
 pub struct SongDto {
     #[serde(default)]
+    pub content_rating: sideb_core::ContentRating,
+    #[serde(default)]
     pub is_upload: bool,
     pub video_id: String,
     pub title: String,
@@ -385,6 +421,7 @@ pub struct LibraryToggleDto {
 impl From<sideb_core::SongItemRecord> for SongDto {
     fn from(r: sideb_core::SongItemRecord) -> Self {
         Self {
+            content_rating: r.content_rating,
             is_upload: r.is_upload,
             video_id: r.video_id,
             title: r.title,
@@ -413,6 +450,8 @@ impl From<sideb_core::SongItemRecord> for SongDto {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AlbumCardDto {
+    #[serde(default)]
+    pub content_rating: sideb_core::ContentRating,
     pub id: String,
     pub title: String,
     pub subtitle: Option<String>,
@@ -422,6 +461,7 @@ pub struct AlbumCardDto {
 impl From<sideb_core::BrowseCardRecord> for AlbumCardDto {
     fn from(r: sideb_core::BrowseCardRecord) -> Self {
         Self {
+            content_rating: r.content_rating,
             id: r.id,
             title: r.title,
             subtitle: r.subtitle,
@@ -433,6 +473,8 @@ impl From<sideb_core::BrowseCardRecord> for AlbumCardDto {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AlbumDetailDto {
+    #[serde(default)]
+    pub content_rating: sideb_core::ContentRating,
     pub browse_id: String,
     pub title: String,
     pub artist: Option<String>,
@@ -452,6 +494,7 @@ pub struct AlbumDetailDto {
 impl From<sideb_core::AlbumDetailRecord> for AlbumDetailDto {
     fn from(r: sideb_core::AlbumDetailRecord) -> Self {
         Self {
+            content_rating: r.content_rating,
             browse_id: r.browse_id,
             title: r.title,
             artist: r.artist,
@@ -496,6 +539,8 @@ impl From<sideb_core::HomeChipRecord> for HomeChipDto {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HomeItemDto {
+    #[serde(default)]
+    pub content_rating: sideb_core::ContentRating,
     pub kind: String,
     pub id: String,
     pub title: String,
@@ -513,6 +558,7 @@ pub struct HomeItemDto {
 impl From<sideb_core::HomeItemRecord> for HomeItemDto {
     fn from(i: sideb_core::HomeItemRecord) -> Self {
         Self {
+            content_rating: i.content_rating,
             kind: i.kind,
             id: i.id,
             title: i.title,
@@ -596,6 +642,8 @@ impl From<sideb_core::HomeArtistRunRecord> for HomeArtistRunDto {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BrowseCardDto {
+    #[serde(default)]
+    pub content_rating: sideb_core::ContentRating,
     pub kind: String,
     pub id: String,
     pub title: String,
@@ -612,6 +660,7 @@ pub struct BrowseCardDto {
 impl From<sideb_core::BrowseCardRecord> for BrowseCardDto {
     fn from(r: sideb_core::BrowseCardRecord) -> Self {
         Self {
+            content_rating: r.content_rating,
             kind: r.kind,
             id: r.id,
             title: r.title,

@@ -1,10 +1,11 @@
+import { resolveContentRatingImport } from './helpers/content-rating-module.mjs';
 import {readFile} from 'node:fs/promises';
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import ts from 'typescript';
 const source=await readFile(new URL('../src/lib/player/controller.ts',import.meta.url),'utf8');
 const output=ts.transpileModule(source,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText;
-const {PlaybackController,emptyPlaybackData}=await import(`data:text/javascript;base64,${Buffer.from(output).toString('base64')}`);
+const {PlaybackController,emptyPlaybackData}=await import(`data:text/javascript;base64,${Buffer.from(resolveContentRatingImport(output)).toString('base64')}`);
 const upload={videoId:'upload',title:'Uploaded',artists:'Artist',thumbnail:null,duration:'2:00',isUpload:true};
 test('uploaded collection occurrence survives play, enqueue and retry normalization',async()=>{
  const calls=[];

@@ -680,32 +680,34 @@ struct SearchView: View {
                     if let id { router.navigate(to: .artist(browseId: id)) }
                     else { searchViewModel.commitSearch(query: name, core: rustCore, origin: .artistResolution); router.navigate(to: .search(query: name)) }
                 }
-                HStack(spacing: 4) {
-                    Text(typeText).font(.system(size: 12)).foregroundStyle(.secondary).allowsHitTesting(false)
-                    if !artistText.isEmpty {
-                        Text("·").font(.system(size: 12)).foregroundStyle(.secondary).allowsHitTesting(false)
-                        if let onArtist = quickArtistAction(song) {
-                            Button(action: onArtist) {
+                ContentRatedMetadata(rating: song.contentRating, fontSize: 12) {
+                    HStack(spacing: 4) {
+                        Text(typeText).font(.system(size: 12)).foregroundStyle(.secondary).allowsHitTesting(false)
+                        if !artistText.isEmpty {
+                            Text("·").font(.system(size: 12)).foregroundStyle(.secondary).allowsHitTesting(false)
+                            if let onArtist = quickArtistAction(song) {
+                                Button(action: onArtist) {
+                                    Text(artistText).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
+                                }
+                                .buttonStyle(.plain)
+                                .mediaCardFocusControl()
+                            } else {
                                 Text(artistText).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
+                                    .allowsHitTesting(false)
+                            }
+                        }
+                        if let album = song.album, !album.isEmpty, let onAlbum = quickAlbumAction(song) {
+                            Text("·").font(.system(size: 12)).foregroundStyle(.secondary).allowsHitTesting(false)
+                            Button(action: onAlbum) {
+                                Text(album).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
                             }
                             .buttonStyle(.plain)
                             .mediaCardFocusControl()
-                        } else {
-                            Text(artistText).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
-                                .allowsHitTesting(false)
                         }
-                    }
-                    if let album = song.album, !album.isEmpty, let onAlbum = quickAlbumAction(song) {
-                        Text("·").font(.system(size: 12)).foregroundStyle(.secondary).allowsHitTesting(false)
-                        Button(action: onAlbum) {
-                            Text(album).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
+                        if let album = song.album, !album.isEmpty, quickAlbumAction(song) == nil {
+                            Text("·").font(.system(size: 12)).foregroundStyle(.secondary).allowsHitTesting(false)
+                            Text(album).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1).allowsHitTesting(false)
                         }
-                        .buttonStyle(.plain)
-                        .mediaCardFocusControl()
-                    }
-                    if let album = song.album, !album.isEmpty, quickAlbumAction(song) == nil {
-                        Text("·").font(.system(size: 12)).foregroundStyle(.secondary).allowsHitTesting(false)
-                        Text(album).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1).allowsHitTesting(false)
                     }
                 }
             }
@@ -892,10 +894,12 @@ struct SearchView: View {
                         .foregroundStyle(.primary)
                         .lineLimit(1)
                     if let subtitle = card.subtitle, !subtitle.isEmpty {
-                        Text(subtitle)
+                        ContentRatedMetadata(rating: card.contentRating, fontSize: 11) { Text(subtitle) }
                             .font(.system(size: 11))
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
+                    } else if card.contentRating != .unknown {
+                        ContentRatingBadge(rating: card.contentRating, fontSize: 11)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -962,24 +966,26 @@ struct SearchView: View {
                     if let id { router.navigate(to: .artist(browseId: id)) }
                     else { searchViewModel.commitSearch(query: name, core: rustCore, origin: .artistResolution); router.navigate(to: .search(query: name)) }
                 }
-                HStack(spacing: 4) {
-                    if let onArtist = quickArtistAction(song) {
-                        Button(action: onArtist) { Text(song.artists).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1) }
-                            .buttonStyle(.plain)
-                            .mediaCardFocusControl()
-                    } else {
-                        Text(song.artists).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
-                            .allowsHitTesting(false)
-                    }
-                    if let album = song.album, !album.isEmpty, let onAlbum = quickAlbumAction(song) {
-                        Text("·").font(.system(size: 12)).foregroundStyle(.tertiary)
-                        Button(action: onAlbum) { Text(album).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1) }
-                            .buttonStyle(.plain)
-                            .mediaCardFocusControl()
-                    }
-                    if let album = song.album, !album.isEmpty, quickAlbumAction(song) == nil {
-                        Text("·").font(.system(size: 12)).foregroundStyle(.tertiary).allowsHitTesting(false)
-                        Text(album).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1).allowsHitTesting(false)
+                ContentRatedMetadata(rating: song.contentRating, fontSize: 12) {
+                    HStack(spacing: 4) {
+                        if let onArtist = quickArtistAction(song) {
+                            Button(action: onArtist) { Text(song.artists).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1) }
+                                .buttonStyle(.plain)
+                                .mediaCardFocusControl()
+                        } else {
+                            Text(song.artists).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
+                                .allowsHitTesting(false)
+                        }
+                        if let album = song.album, !album.isEmpty, let onAlbum = quickAlbumAction(song) {
+                            Text("·").font(.system(size: 12)).foregroundStyle(.tertiary)
+                            Button(action: onAlbum) { Text(album).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1) }
+                                .buttonStyle(.plain)
+                                .mediaCardFocusControl()
+                        }
+                        if let album = song.album, !album.isEmpty, quickAlbumAction(song) == nil {
+                            Text("·").font(.system(size: 12)).foregroundStyle(.tertiary).allowsHitTesting(false)
+                            Text(album).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1).allowsHitTesting(false)
+                        }
                     }
                 }
             }

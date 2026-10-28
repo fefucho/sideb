@@ -138,7 +138,7 @@ final class HomeViewModel {
         func item(_ card: BrowseCardRecord) -> HomeItemRecord {
             HomeItemRecord(kind: card.kind, id: card.id, title: card.title, subtitle: card.subtitle,
                 thumbnail: card.thumbnail, duration: card.duration, artists: nil, artistId: nil,
-                album: nil, albumId: nil, artistRuns: [], explicit: false)
+                album: nil, albumId: nil, artistRuns: [], explicit: false, contentRating: card.contentRating)
         }
         let albumCards = Dictionary(albums.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         var seen = Set<String>()

@@ -146,7 +146,9 @@ public final class QueueManager {
         guard self.queueToken == queueToken, let occurrenceID,
               currentOccurrenceID == occurrenceID, queue.indices.contains(currentIndex),
               queue[currentIndex].videoId == track.videoId else { return }
-        if queue[currentIndex] != track { queue[currentIndex] = track }
+        var enriched = track
+        enriched.contentRating = ContentRatingMetadata.merging(queue[currentIndex].contentRating, incoming: track.contentRating)
+        if queue[currentIndex] != enriched { queue[currentIndex] = enriched }
     }
 
     public var upNextTracks: [SongItemRecord] {

@@ -1,10 +1,13 @@
 <script lang="ts">
+  import ExplicitBadge from './common/ExplicitBadge.svelte';
+  import { contentRating, type ContentMetadata } from '$lib/contentRating';
   import FeaturedArtistLink from './FeaturedArtistLink.svelte';
   import type { FeaturedTrack } from '$lib/featured/artists';
   import type { HomeArtistRunDto } from '$lib/types';
 
   interface Props {
     track?: FeaturedTrack;
+    content?: ContentMetadata;
     artistRuns?: HomeArtistRunDto[] | null;
     artists?: string | null;
     artistId?: string | null;
@@ -13,10 +16,12 @@
     albumId?: string | null;
     onOpenAlbum?: (id: string) => void;
     wrap?: boolean;
+    showContentRating?: boolean;
   }
 
   let {
     track,
+    content,
     artistRuns: suppliedRuns,
     artists = null,
     artistId = null,
@@ -25,6 +30,7 @@
     albumId = null,
     onOpenAlbum,
     wrap = false,
+    showContentRating = true,
   }: Props = $props();
 
   const runs = $derived(
@@ -41,8 +47,10 @@
   const albumText = $derived(album?.trim() ?? '');
 </script>
 
-{#if runs.length || albumText}
+{#if runs.length || albumText || (showContentRating && contentRating(content ?? track) !== 'unknown')}
   <span class="artist-credits" class:wrap>
+    {#if showContentRating}<ExplicitBadge item={content ?? track} />{/if}
+    {#if runs.length || albumText}<span class="credit-content">
     {#if runs.length}<span class="artist-group">
       {#each runs as run, index (`${run.text}:${run.id ?? ''}:${index}`)}
         {#if index > 0}<span class="artist-separator" aria-hidden="true">, </span>{/if}
@@ -63,11 +71,14 @@
         <span class="album-name" title={albumText}>{albumText}</span>
       {/if}
     {/if}
+    </span>{/if}
   </span>
 {/if}
 
 <style>
-  .artist-credits { display: inline-flex; min-width: 0; max-width: 100%; align-items: baseline; gap: 7px; overflow: hidden; color: inherit; font: inherit; line-height: inherit; white-space: nowrap; vertical-align: baseline; }
+  .artist-credits { display: inline-flex; min-width: 0; max-width: 100%; align-items: center; gap: 4px; overflow: hidden; color: inherit; font: inherit; line-height: inherit; white-space: nowrap; vertical-align: baseline; }
+  .credit-content { display:inline-flex; min-width:0; max-width:100%; align-items:baseline; gap:7px; overflow:hidden; }
+  .artist-credits.wrap .credit-content { flex-wrap:wrap; overflow:visible; }
   .artist-credits.wrap { flex-wrap: wrap; overflow: visible; white-space: normal; }
   .artist-group { display: inline-flex; min-width: 0; align-items: baseline; overflow: hidden; }
   .artist-credits.wrap .artist-group { flex-wrap: wrap; overflow: visible; }

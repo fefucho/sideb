@@ -219,7 +219,7 @@ struct ExploreCatalogGridView: NSViewRepresentable {
             configuredItems += 1
             let record = HomeItemRecord(kind: card.kind == "video" ? "song" : card.kind, id: card.id, title: card.title,
                 subtitle: card.subtitle, thumbnail: card.thumbnail, duration: card.duration,
-                artists: nil, artistId: nil, album: nil, albumId: nil, artistRuns: [], explicit: false)
+                artists: nil, artistId: nil, album: nil, albumId: nil, artistRuns: [], explicit: false, contentRating: card.contentRating)
             item.content.configure(record: record, style: .largeCard, currentTrackID: nil, isPlaying: parent.isPlaying,
                 queueContext: parent.queueContext,
                 onCard: { [weak self] in self?.open(card) },

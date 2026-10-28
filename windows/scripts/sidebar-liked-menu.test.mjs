@@ -1,8 +1,9 @@
+import { resolveContentRatingImport } from './helpers/content-rating-module.mjs';
 import { readFile } from 'node:fs/promises';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import ts from 'typescript';
-const url = code => `data:text/javascript;base64,${Buffer.from(code).toString('base64')}`;
+const url = code => `data:text/javascript;base64,${Buffer.from(resolveContentRatingImport(code)).toString('base64')}`;
 async function module(file, replacements={}) {
   const source=await readFile(new URL(`../src/lib/${file}.ts`,import.meta.url),'utf8');
   let code=ts.transpileModule(source,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText;

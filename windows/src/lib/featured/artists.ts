@@ -1,5 +1,5 @@
 import type { BrowseCardDto, SongDto } from '$lib/types';
-export type FeaturedTrack = Pick<SongDto,'videoId'|'title'|'artists'|'artistRuns'> & {artistId?:string|null;album?:string|null};
+export type FeaturedTrack = Pick<SongDto,'videoId'|'title'|'artists'|'artistRuns'|'contentRating'|'explicit'> & {artistId?:string|null;album?:string|null};
 export const FEATURED_ARTIST_CONTEXT = Symbol('featured-artists');
 export type Credit = { start: number; end: number; name: string; id?: string; provenance: 'provider'|'userChoice'|'inferred'|'unresolved'; evidence?: string };
 export const normalizeArtist = (name: string) => name.normalize('NFKC').toLocaleLowerCase().replace(/\s+/gu,' ').trim();

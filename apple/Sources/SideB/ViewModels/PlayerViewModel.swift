@@ -1820,7 +1820,8 @@ extension SongItemRecord {
             albumId: item.albumId,
             setVideoId: nil,
             isVideo: item.kind == "video", isUpload: false, library: nil,
-            artistRuns: HomeSongMetadata.artistRuns(from: item)
+            artistRuns: HomeSongMetadata.artistRuns(from: item),
+            contentRating: item.effectiveContentRating
         )
     }
 
@@ -1841,5 +1842,6 @@ extension SongItemRecord {
             albumId: nil,
             setVideoId: nil
         )
+        self.contentRating = card.contentRating
     }
 }

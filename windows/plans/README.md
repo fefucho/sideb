@@ -1,6 +1,12 @@
 # Planes Windows
 
-- [PLAN-019: Traspaso GitHub → PC Windows](PLAN-019-windows-github-handoff.md) — empezar aquí: código integrado sobre1.2.7/Inter, comandos para bajar/compilar y checklist nativo priorizado, con mensaje listo para el agente de Windows. FIX-260; no es una nueva release.
+- [PLAN-022: Barra de reproducción, ancho útil y título desplazable](PLAN-022-player-bar-space-marquee.md) — FIX-265/build0024 Release compiled/fuentes estables/cuatro hashes; verify1089pruebas/0fallos. Corazón destacado/dislike, acciones junto al texto corto, separadores invisibles, portada radio2, fullscreen activo sinE y flechas sin bandas negras; Edge16/12/26casos aprobados. Mac030/PAR-044; QA WebView2/Narrator/audio y Mac pendientes.
+
+- [PLAN-021: Indicadores de contenido explícito](PLAN-021-explicit-content-indicators.md) — FIX-262/263/265/PAR-040: metadata por entidad/ID; E proporcional en artista/álbum. Revisión265 excluye también créditos de canción activa fullscreen; barra/cola/Relacionado conservan indicador. Edge12casos/cuatro alternancias aprobados; build0024 Release compilada con verify1089aprobadas. QA nativa/cuenta pendiente.
+
+- [PLAN-020: Flechas para navegación horizontal con mouse](PLAN-020-horizontal-scroll-controls.md) — Flotantes elegida e implementada/FIX-261 en todo el inventario;490pruebas/check0/0/build frontend,26casos/44avances con mouse en Edge y app completa28evidencias. QA WebView2 pendiente; sin EXE nuevo.
+
+- [PLAN-019: Traspaso GitHub → PC Windows](PLAN-019-windows-github-handoff.md) — ejecutado en PC26/27: main13011e7, borrador preservado, doctor/verify y build0021 Release x64 compiled/fuentes estables/cuatro hashes;1054pruebas aprobadas y QA Edge sintética28evidencias. Usuario detuvo Computer Use con Escape; EXE nuevo sin abrir, aceptación WebView2/audio/motion pendiente. FIX-260; sin nueva release.
 
 - [PLAN-018: Plan integral para llevar la experiencia actual a Windows](PLAN-018-windows-current-parity-roadmap.md) — ejecución2026-10-26 con subagentes: FIX-248…255 implementan búsqueda actual, reloj/Original, ciclo motion, retención/Biblioteca, Relacionado y correcciones de teclado/fullscreen. Suite final479aprobadas/1omitida, check0/0/build frontend; Rust+bridge284aprobadas/10omitidas en Mac. QA sintética28evidencias/errors[] con geometría real; verify/EXE/WebView2/audio Windows pendientes. Indicadores/versiones siguen como entrega común posterior; PARIDAD conserva aceptación y límites.
 

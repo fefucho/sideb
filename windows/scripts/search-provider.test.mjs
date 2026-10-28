@@ -1,8 +1,9 @@
+import { resolveContentRatingImport } from './helpers/content-rating-module.mjs';
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {readFile} from 'node:fs/promises';
 import ts from 'typescript';
-async function module(file,replace=code=>code){const source=replace(await readFile(new URL(`../src/lib/search/${file}.ts`,import.meta.url),'utf8'));const js=ts.transpileModule(source,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText;return `data:text/javascript;base64,${Buffer.from(js).toString('base64')}`;}
+async function module(file,replace=code=>code){const source=replace(await readFile(new URL(`../src/lib/search/${file}.ts`,import.meta.url),'utf8'));const js=ts.transpileModule(source,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText;return `data:text/javascript;base64,${Buffer.from(resolveContentRatingImport(js)).toString('base64')}`;}
 const legacy=await module('controller');
 const {ProviderSearchController}=await import(await module('provider',source=>source.replace("from './controller'",`from '${legacy}'`)));
 const {ProviderPreviewController}=await import(await module('provider-preview'));

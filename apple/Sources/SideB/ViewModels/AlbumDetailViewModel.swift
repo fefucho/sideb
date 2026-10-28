@@ -105,7 +105,8 @@ final class AlbumDetailViewModel {
             title: alb.title,
             subtitle: alb.artist ?? alb.subtitle,
             thumbnail: alb.thumbnail,
-            duration: nil
+            duration: nil,
+            contentRating: alb.contentRating
         )
         let tracks = alb.items
         NotificationCenter.default.post(

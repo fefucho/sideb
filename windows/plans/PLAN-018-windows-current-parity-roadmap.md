@@ -1,7 +1,7 @@
 # PLAN-018 — Llevar a Windows la experiencia actual de Side B
 
 - Fecha de auditoría: **2026-10-24**, America/Montevideo.
-- Estado actual,2026-10-26: **fuentes implementadas y validación frontend final aprobada; aceptación nativa Windows pendiente**. Búsqueda, letras, motion y retención trabajados con tres subagentes y revisión cruzada; sin EXE/verify nativo Windows disponible en este host. La auditoría original del24 se conserva con su fecha; ver sección18 para ejecución y límites.
+- Estado actual,2026-10-27: **fuentes implementadas; doctor/verify nativo y build Windows0021 Release aprobados; aceptación manual Windows pendiente**. Búsqueda, letras, motion y retención trabajados en Mac el26 con tres subagentes y revisión cruzada. El26/27 se descarga13011e7 en PC y se verifican1054pruebas/fuentes estables/cuatro hashes; [PLAN-019 §8](PLAN-019-windows-github-handoff.md#8-ejecución-en-la-pc-2026-10-2627) registra evidencia y detención de Computer Use por el usuario antes de abrir0021. La auditoría original del24 y ejecución Mac de sección18 se conservan con sus fechas y límites.
 - Pedido: analizar todo lo pendiente para Windows, con foco en buscador nuevo, carátulas animadas y letras, y explicar cómo trasladarlo desde Mac.
 - Referencia de búsqueda: Mac **0163**, FIX-256/257/258/259/245 y [Apple PLAN-027](../../apple/plans/PLAN-027-search-density-and-performance.md). **Actualización al ejecutar: FIX-246/Mac0165**, ancho disponible/acciones/categorías aprobado con cuenta real en el origen; esa referencia reemplaza al estado todavía en comprobación que se leyó el24. Letras y motion: Mac **0155**, FIX-228…240; se comparan además las fuentes actuales.
 - Fuentes locales: commit `d6e2c4b` más un árbol con modificaciones y archivos nuevos de búsqueda todavía sin seguimiento. **El commit solo no contiene todo el trabajo auditado.**
@@ -90,8 +90,8 @@ P0 significa que impide afirmar que el conjunto funciona en Windows. P1 completa
 - [x] A01 — Leer código, fixes y planes; distinguir hecho actual de descripciones anteriores a FIX-240.
 - [x] A02 — Ejecutar check y tests frontend actuales; resultados en sección2.
 - [x] A03 — Al comenzar implementación, inventariar `git status --short`, diff y archivos sin seguimiento. Preparar snapshot/manifiesto de fuentes autorizadas, incluidos `search.rs`, `search_page.rs`, componentes y tests nuevos. Un `git diff` solo omite esos archivos.
-- [ ] A04 — Identificar checkout/host Windows de trabajo; comparar manifests, lockfiles y hash del snapshot antes de compilar. No sobrescribir cambios ajenos ni construir contra un core de otra revisión.
-- [ ] A05 — Ejecutar doctor y verify nativos con Node/gestor/MSVC/WebView2 fijados por el repo. Conservar logs y versión de runtime/GPU/DPI/Windows.
+- [x] A04 — Host PC y checkout13011e7 identificados; fuentes completas y hashes estables antes/después de build0021. Borrador local conservado. Evidencia nueva en [PLAN-019 §8](PLAN-019-windows-github-handoff.md#8-ejecución-en-la-pc-2026-10-2627).
+- [x] A05 — Doctor/verify Windows aprobados el26/27; Node24.13.1/pnpm12.6.0/Rust1.98.1 MSVC/VS2022/WebView2155.1054pruebas aprobadas/0fallos; diez live omitidas por variante core. Entorno y límites en PLAN-019 §8; DPI físico/Narrator aún no verificados.
 - [x] A06 — Resolver fallas de integración reproducibles en este host; distinguir frontend, core+bridge y nativos. Corregidos binding inicial, composición del actualizador, foco/menú y rueda; player/Tauri/WebView2 siguen en A05/G02.
 - [x] A07 — Fixtures sanitizadas de búsqueda/letras/motion y referencias geométricas Mac0165/0155/0166 preparadas. Datos de cuenta/RPC/covers sintéticos; sin cookies, credenciales ni URLs firmadas.
 
@@ -376,13 +376,13 @@ node Scripts/build-version.mjs windows
 `verify` cubre frontend, core con/sin windows-bridge, player y Tauri según runner vigente. Si cambia contrato común en una tarea posterior, ejecutar sus suites/consumidores y regenerar bindings por el flujo oficial. No alterar cfg/recursos para presentar una compilación Mac como prueba Windows.
 
 - [x] G01 — Check/test/build frontend finales y diff/whitespace propios aprobados;479pruebas/1omitida Windows,0fallos y check0/0. Core+bridge284aprobadas/10omitidas. Nativos necesarios separados en G02; sin formato masivo/cambios ajenos.
-- [ ] G02 — Doctor/verify Windows sobre fuentes finales; fijar qué tests nativos se ejecutaron y cuáles quedaron omitidos.
-- [ ] G03 — Build numerada con `BUILD.json: compiled`, configuración Release, fuentes estables y hashes. Conservar EXE, `libmpv-2.dll`, `vulkan-1.dll` y licencia juntos; no entregar sólo EXE.
+- [x] G02 — Doctor/verify Windows sobre13011e7 aprobados:480frontend+112InnerTube+170core+172bridge+5player+115Tauri;1054aprobadas/0fallos,10live omitidas por variante core. [PLAN-019 §8](PLAN-019-windows-github-handoff.md#8-ejecución-en-la-pc-2026-10-2627).
+- [x] G03 — `builds/windows/build-0021/BUILD.json`: compiled, Release x64, fuentes estables; cuatro hashes y PE/version comprobados. EXE/DLL/licencia conservados juntos. No implica QA audible/visual.
 - [ ] G04 — Ejecutar matriz mínima sobre esa build y host real; registrar los pendientes sin sustituirlos por conteos históricos o CI.
 - [ ] G05 — Revisar funcionamiento combinado búsqueda→play→lyrics→motion→cambio de pista→volver a búsqueda, incluidos overlay, sidebar y cambio de cuenta. Las pruebas aisladas de cada función no cubren esa composición.
 - [ ] G06 — Instalación/portable/actualización cuando corresponda a la entrega autorizada; no bump de versión pública, push, tag o publicación por el mero cierre del port.
 - [x] G07 — Correcciones registradas en FIX-248…255 [Windows]; PAR-042/037/038/039/031/028/043 y planes actualizados con evidencia y límites propios.
-- [ ] G08 — Entregar ruta exacta de build, comportamiento conseguido, pruebas y diferencias residuales; no cerrar un PAR por haber completado sus fuentes.
+- [x] G08 — Build0021 y registro entregables con rutas exactas, pruebas y límites en PLAN-019 §8. G04/G05 y paridad física permanecen abiertos: usuario detuvo Computer Use con Escape antes de abrir0021.
 
 No hace falta repetir toda la suite después de cada cambio documental; las pruebas de producto se ejecutan por lote y al integrar fuentes finales. Pruebas nuevas deben cubrir regresiones observables: orden/identidad, foco, altura, ventana de DOM, confirmación de seek o liberación de vídeo.
 

@@ -13,20 +13,20 @@ struct RecommendedContentView: View {
     @Bindable var viewModel: PlayerViewModel
     var router: NavigationRouter?
     let height: CGFloat
-    
+
     @State private var isSpinningRefresh: Bool = false
-    
+
     init(viewModel: PlayerViewModel, router: NavigationRouter? = nil, height: CGFloat) {
         self.viewModel = viewModel
         self.router = router
         self.height = height
     }
-    
+
     var body: some View {
         VStack(spacing: 10) {
             // Cabecera Contextual con Botón de Actualizar
             headerBar
-            
+
             // Contenido dinámico según el estado de carga y datos
             if viewModel.isLoadingRecommended && viewModel.recommendedData == nil {
                 loadingSkeletonView
@@ -44,20 +44,20 @@ struct RecommendedContentView: View {
             }
         }
     }
-    
+
     // MARK: - 1. Cabecera Contextual
     private var headerBar: some View {
         HStack(spacing: 8) {
             Image(systemName: "sparkles")
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(.primary)
-            
+
             Text(L10n.text("fullscreen.recommendations"))
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.92))
-            
+
             Spacer(minLength: 8)
-            
+
             // Botón Cápsula "Actualizar" (aplica rotación y diversidad a la radio)
             Button {
                 withAnimation(.linear(duration: 0.6)) {
@@ -72,7 +72,7 @@ struct RecommendedContentView: View {
                     Image(systemName: "arrow.clockwise")
                         .font(.system(size: 11, weight: .semibold))
                         .rotationEffect(.degrees(isSpinningRefresh ? 360 : 0))
-                    
+
                     Text(L10n.text("common.refresh"))
                         .font(.system(size: 11.5, weight: .medium))
                 }
@@ -94,7 +94,7 @@ struct RecommendedContentView: View {
         .padding(.horizontal, 8)
         .padding(.top, 2)
     }
-    
+
     // MARK: - 2. Scroll de Estantes (Shelves)
     private func shelvesScrollView(data: RecommendedData) -> some View {
         ScrollView(.vertical, showsIndicators: false) {
@@ -103,17 +103,17 @@ struct RecommendedContentView: View {
                 if !data.artistSongs.isEmpty {
                     artistShelf(name: data.artistName, browseId: data.artistBrowseId, songs: data.artistSongs)
                 }
-                
+
                 // Estante 2: Del mismo Álbum
                 if !data.albumSongs.isEmpty {
                     albumShelf(title: data.albumTitle, browseId: data.albumBrowseId, songs: data.albumSongs)
                 }
-                
+
                 // Estante 3: Te podría gustar (Pistas afines de YouTube Music)
                 if !data.similarSongs.isEmpty {
                     similarSongsShelf(songs: data.similarSongs)
                 }
-                
+
                 // Estante 4: A los fans también les gusta (Artistas similares)
                 if !data.relatedArtists.isEmpty {
                     relatedArtistsShelf(artists: data.relatedArtists)
@@ -123,21 +123,21 @@ struct RecommendedContentView: View {
             .padding(.bottom, 24)
         }
     }
-    
+
     // MARK: - Estante 1: Más del Artista
     private func artistShelf(name: String?, browseId: String?, songs: [SongItemRecord]) -> some View {
         let title = name.map { L10n.text("fullscreen.moreByArtist", args: [$0]) } ?? L10n.text("fullscreen.moreByThisArtist")
         let columns = chunkSongs(songs, chunkSize: 3)
-        
+
         return VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Text(title)
                     .font(.system(size: 14.5, weight: .bold))
                     .foregroundStyle(.white.opacity(0.95))
                     .lineLimit(1)
-                
+
                 Spacer()
-                
+
                 if let bId = browseId {
                     Button {
                         navigateToArtist(browseId: bId)
@@ -153,25 +153,25 @@ struct RecommendedContentView: View {
                     .buttonStyle(.plain)
                 }
             }
-            
+
             horizontalSongColumns(columns: columns)
         }
     }
-    
+
     // MARK: - Estante 2: Del mismo Álbum
     private func albumShelf(title: String?, browseId: String?, songs: [SongItemRecord]) -> some View {
         let displayTitle = title.map { L10n.text("fullscreen.fromAlbum", args: [$0]) } ?? L10n.text("fullscreen.fromSameAlbum")
         let columns = chunkSongs(songs, chunkSize: 3)
-        
+
         return VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Text(displayTitle)
                     .font(.system(size: 14.5, weight: .bold))
                     .foregroundStyle(.white.opacity(0.95))
                     .lineLimit(1)
-                
+
                 Spacer()
-                
+
                 if let bId = browseId {
                     Button {
                         navigateToAlbum(browseId: bId)
@@ -187,31 +187,31 @@ struct RecommendedContentView: View {
                     .buttonStyle(.plain)
                 }
             }
-            
+
             horizontalSongColumns(columns: columns)
         }
     }
-    
+
     // MARK: - Estante 3: Canciones parecidas
     private func similarSongsShelf(songs: [SongItemRecord]) -> some View {
         let columns = chunkSongs(songs, chunkSize: 3)
-        
+
         return VStack(alignment: .leading, spacing: 10) {
             Text(L10n.text("fullscreen.similarSongs"))
                 .font(.system(size: 14.5, weight: .bold))
                 .foregroundStyle(.white.opacity(0.95))
-            
+
             horizontalSongColumns(columns: columns)
         }
     }
-    
+
     // MARK: - Estante 4: A los fans también les gusta (Artistas)
     private func relatedArtistsShelf(artists: [BrowseCardRecord]) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(L10n.text("fullscreen.fansAlsoLike"))
                 .font(.system(size: 14.5, weight: .bold))
                 .foregroundStyle(.white.opacity(0.95))
-            
+
             ScrollView(.horizontal, showsIndicators: false) {
                 LazyHStack(spacing: 16) {
                     ForEach(artists, id: \.id) { card in
@@ -226,7 +226,7 @@ struct RecommendedContentView: View {
             .frame(height: 118)
         }
     }
-    
+
     // MARK: - Helper: Columnas Horizontales de Canciones
     private func horizontalSongColumns(columns: [[SongItemRecord]]) -> some View {
         ScrollView(.horizontal, showsIndicators: false) {
@@ -250,13 +250,13 @@ struct RecommendedContentView: View {
         }
         .frame(height: 162)
     }
-    
+
     private func chunkSongs(_ songs: [SongItemRecord], chunkSize: Int) -> [[SongItemRecord]] {
         stride(from: 0, to: songs.count, by: chunkSize).map {
             Array(songs[$0..<min($0 + chunkSize, songs.count)])
         }
     }
-    
+
     // MARK: - 3. Estado de Carga (Skeletons)
     private var loadingSkeletonView: some View {
         ScrollView(.vertical, showsIndicators: false) {
@@ -266,7 +266,7 @@ struct RecommendedContentView: View {
                         RoundedRectangle(cornerRadius: 4)
                             .fill(Color.white.opacity(0.12))
                             .frame(width: 140, height: 16)
-                        
+
                         HStack(spacing: 12) {
                             ForEach(0..<2, id: \.self) { _ in
                                 VStack(spacing: 8) {
@@ -296,18 +296,18 @@ struct RecommendedContentView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
-    
+
     // MARK: - 4. Estado Vacío
     private var emptyStateView: some View {
         VStack(spacing: 12) {
             Image(systemName: "music.note.list")
                 .font(.system(size: 36))
                 .foregroundStyle(.white.opacity(0.25))
-            
+
             Text(L10n.text("fullscreen.noRecommendations"))
                 .font(.system(size: 14, weight: .medium))
                 .foregroundStyle(.white.opacity(0.60))
-            
+
             Button(L10n.text("common.retry")) {
                 if let track = viewModel.currentTrack {
                     viewModel.fetchRecommendations(for: track, forceRefresh: true)
@@ -320,7 +320,7 @@ struct RecommendedContentView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
-    
+
     // MARK: - Navegación
     private func navigateToArtist(browseId: String) {
         withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
@@ -328,7 +328,7 @@ struct RecommendedContentView: View {
         }
         router?.navigate(to: .artist(browseId: browseId))
     }
-    
+
     private func navigateToAlbum(browseId: String) {
         withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
             viewModel.isFullscreenPresented = false
@@ -345,9 +345,9 @@ private struct RecommendedTrackRow: View {
     let isPlaying: Bool
     @Bindable var viewModel: PlayerViewModel
     var router: NavigationRouter?
-    
+
     @State private var isHovered: Bool = false
-    
+
     var body: some View {
         HStack(spacing: 10) {
             MediaArtworkControls(
@@ -413,46 +413,48 @@ private struct RecommendedTrackRow: View {
             origin: .recommendations
         )
     }
-    
+
     @ViewBuilder
     private var metadataLinks: some View {
-        HStack(spacing: 4) {
-            let linkedRuns = track.artistRuns.filter { $0.id?.isEmpty == false }
-            if !linkedRuns.isEmpty {
-                ForEach(Array(track.artistRuns.enumerated()), id: \.offset) { index, run in
-                    if index > 0 {
-                        Text("•").foregroundStyle(.white.opacity(0.45)).allowsHitTesting(false)
-                    }
-                    if let id = run.id, !id.isEmpty {
-                        Button { router?.navigate(to: .artist(browseId: id)) } label: {
-                            Text(run.text).foregroundStyle(.white.opacity(0.55)).lineLimit(1)
+        ContentRatedMetadata(rating: track.contentRating, fontSize: 11) {
+            HStack(spacing: 4) {
+                let linkedRuns = track.artistRuns.filter { $0.id?.isEmpty == false }
+                if !linkedRuns.isEmpty {
+                    ForEach(Array(track.artistRuns.enumerated()), id: \.offset) { index, run in
+                        if index > 0 {
+                            Text("•").foregroundStyle(.white.opacity(0.45)).allowsHitTesting(false)
                         }
-                        .buttonStyle(.plain)
-                        .mediaCardFocusControl()
-                    } else {
-                        Text(run.text).foregroundStyle(.white.opacity(0.55)).lineLimit(1).allowsHitTesting(false)
+                        if let id = run.id, !id.isEmpty {
+                            Button { router?.navigate(to: .artist(browseId: id)) } label: {
+                                Text(run.text).foregroundStyle(.white.opacity(0.55)).lineLimit(1)
+                            }
+                            .buttonStyle(.plain)
+                            .mediaCardFocusControl()
+                        } else {
+                            Text(run.text).foregroundStyle(.white.opacity(0.55)).lineLimit(1).allowsHitTesting(false)
+                        }
                     }
-                }
-            } else if let artistId = track.artistId, !artistId.isEmpty {
-                Button { router?.navigate(to: .artist(browseId: artistId)) } label: {
-                    Text(track.displayArtist).foregroundStyle(.white.opacity(0.55)).lineLimit(1)
-                }
-                .buttonStyle(.plain)
-                .mediaCardFocusControl()
-            } else {
-                Text(track.displayArtist).foregroundStyle(.white.opacity(0.55)).lineLimit(1).allowsHitTesting(false)
-            }
-
-            if let album = track.displayAlbum, !album.isEmpty {
-                Text("•").foregroundStyle(.white.opacity(0.45)).allowsHitTesting(false)
-                if let albumId = track.albumId, !albumId.isEmpty {
-                    Button { router?.navigate(to: .album(browseId: albumId)) } label: {
-                        Text(album).foregroundStyle(.white.opacity(0.55)).lineLimit(1)
+                } else if let artistId = track.artistId, !artistId.isEmpty {
+                    Button { router?.navigate(to: .artist(browseId: artistId)) } label: {
+                        Text(track.displayArtist).foregroundStyle(.white.opacity(0.55)).lineLimit(1)
                     }
                     .buttonStyle(.plain)
                     .mediaCardFocusControl()
                 } else {
-                    Text(album).foregroundStyle(.white.opacity(0.55)).lineLimit(1).allowsHitTesting(false)
+                    Text(track.displayArtist).foregroundStyle(.white.opacity(0.55)).lineLimit(1).allowsHitTesting(false)
+                }
+
+                if let album = track.displayAlbum, !album.isEmpty {
+                    Text("•").foregroundStyle(.white.opacity(0.45)).allowsHitTesting(false)
+                    if let albumId = track.albumId, !albumId.isEmpty {
+                        Button { router?.navigate(to: .album(browseId: albumId)) } label: {
+                            Text(album).foregroundStyle(.white.opacity(0.55)).lineLimit(1)
+                        }
+                        .buttonStyle(.plain)
+                        .mediaCardFocusControl()
+                    } else {
+                        Text(album).foregroundStyle(.white.opacity(0.55)).lineLimit(1).allowsHitTesting(false)
+                    }
                 }
             }
         }
@@ -465,9 +467,9 @@ private struct RecommendedTrackRow: View {
 private struct RecommendedArtistCard: View {
     let card: BrowseCardRecord
     let action: () -> Void
-    
+
     @State private var isHovered: Bool = false
-    
+
     var body: some View {
         Button(action: action) {
             VStack(spacing: 7) {
@@ -495,7 +497,7 @@ private struct RecommendedArtistCard: View {
                                     .foregroundStyle(.white.opacity(0.3))
                             }
                     }
-                    
+
                     if isHovered {
                         Circle()
                             .fill(Color.black.opacity(0.38))
@@ -512,13 +514,19 @@ private struct RecommendedArtistCard: View {
                         .strokeBorder(Color.white.opacity(isHovered ? 0.25 : 0.10), lineWidth: 0.8)
                 )
                 .shadow(color: Color.black.opacity(isHovered ? 0.25 : 0.10), radius: 6, x: 0, y: 3)
-                
+
                 Text(card.title)
                     .font(.system(size: 11.5, weight: .medium))
                     .foregroundStyle(.white.opacity(isHovered ? 1.0 : 0.85))
                     .lineLimit(2)
                     .multilineTextAlignment(.center)
                     .frame(width: 86)
+                if card.contentRating != .unknown {
+                    ContentRatedMetadata(rating: card.contentRating, fontSize: 11) {
+                        if let subtitle = card.subtitle, !subtitle.isEmpty { Text(subtitle).lineLimit(1) }
+                    }
+                    .font(.system(size: 11)).foregroundStyle(.white.opacity(0.55))
+                }
             }
             .contentShape(Rectangle())
         }

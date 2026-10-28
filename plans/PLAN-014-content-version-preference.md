@@ -147,3 +147,7 @@
 - [ ] Verificar caché fría/caliente, fallo/transitorio, alternativa no disponible y error de almacenamiento sin loops de consulta.
 - [ ] Separar tests de política/contrato, builds de ambos consumidores y prueba manual de audio/IDs; no inferir uno de otro.
 - [ ] Registrar implementación futura en FIXES/PARIDAD y actualizar este plan; esta propuesta no cierra ninguna paridad.
+
+## Aclaración de alcance — 2026-10-27
+
+El usuario descarta forzar siempre la versión explícita porque debe poder elegir deliberadamente una edición censurada. Autoriza ahora los indicadores/metadata de PLAN-013 (FIX-262). Este trabajo no implementa preferencia, ranking, sustitución automática ni modo estricto; la propuesta de preferencia de este documento sigue pendiente por separado y conserva sus excepciones manuales.

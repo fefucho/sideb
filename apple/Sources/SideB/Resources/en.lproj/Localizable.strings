@@ -92,6 +92,12 @@
 	<string>Undo</string>
 	<key>common.untitled</key>
 	<string>Untitled</string>
+	<key>content.clean</key>
+	<string>Confirmed clean version</string>
+	<key>content.clean_glyph</key>
+	<string>C</string>
+	<key>content.unknown</key>
+	<string>Content information unavailable</string>
 	<key>destination.album</key>
 	<string>Album</string>
 	<key>destination.artist</key>

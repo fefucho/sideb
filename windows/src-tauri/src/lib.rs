@@ -64,6 +64,7 @@ pub(crate) struct SearchResultsDto {
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct SearchTopCardDto {
+    pub content_rating: sideb_core::ContentRating,
     pub kind: String,
     pub id: String,
     pub title: String,
@@ -99,6 +100,7 @@ impl From<sideb_core::BrowseCardRecord> for SearchTopCardDto {
                 .collect(),
             is_video: r.is_video,
             explicit: r.explicit,
+            content_rating: r.content_rating,
         }
     }
 }
@@ -383,6 +385,7 @@ mod playback_manager_tests {
         );
         let active = playback.queue.current().unwrap();
         playback.current_track = Some(PlaybackTrackDto {
+            content_rating: sideb_core::ContentRating::Unknown,
             is_upload: false,
             video_id: active.video_id.clone(),
             title: active.title.clone(),
@@ -479,6 +482,7 @@ mod playback_manager_tests {
         playback.queue.select(5);
         let active = playback.queue.current().unwrap();
         playback.current_track = Some(PlaybackTrackDto {
+            content_rating: sideb_core::ContentRating::Unknown,
             is_upload: false,
             video_id: active.video_id.clone(),
             title: active.title.clone(),

@@ -1,10 +1,12 @@
+import type { ContentMetadata } from './contentRating';
+
 export interface LibraryToggleDto {
   inLibrary: boolean;
   addToken: string | null;
   removeToken: string | null;
 }
 
-export interface SongDto {
+export interface SongDto extends ContentMetadata {
   /** UI occurrence identity for a listen; never a provider mutation token. */
   historyOccurrenceId?: string;
   videoId: string;
@@ -22,14 +24,14 @@ export interface SongDto {
   library?: LibraryToggleDto | null;
 }
 
-export interface AlbumCardDto {
+export interface AlbumCardDto extends ContentMetadata {
   id: string;
   title: string;
   subtitle: string | null;
   thumbnail: string | null;
 }
 
-export interface AlbumDetailDto {
+export interface AlbumDetailDto extends ContentMetadata {
   browseId: string;
   title: string;
   artist: string | null;
@@ -50,7 +52,7 @@ export interface HomeChipDto {
   params: string;
 }
 
-export interface HomeItemDto {
+export interface HomeItemDto extends ContentMetadata {
   kind: string;
   id: string;
   title: string;
@@ -80,7 +82,7 @@ export interface HomePageDto {
 }
 
 export interface HomeArtistRunDto { text: string; id: string | null }
-export interface BrowseCardDto { setVideoId?:string|null;library?:LibraryToggleDto|null;isUpload?:boolean;kind: string; id: string; title: string; subtitle: string | null; thumbnail: string | null; duration: string | null; artistRuns?: HomeArtistRunDto[]; artists?: string | null; artistId?: string | null; album?: string | null; albumId?: string | null; isVideo?: boolean; explicit?: boolean }
+export interface BrowseCardDto extends ContentMetadata { setVideoId?:string|null;library?:LibraryToggleDto|null;isUpload?:boolean;kind: string; id: string; title: string; subtitle: string | null; thumbnail: string | null; duration: string | null; artistRuns?: HomeArtistRunDto[]; artists?: string | null; artistId?: string | null; album?: string | null; albumId?: string | null; isVideo?: boolean; explicit?: boolean }
 export interface SearchResultsDto {
   top: BrowseCardDto[];
   topSongs: SongDto[];
@@ -134,7 +136,7 @@ export interface CommandError {
   message: string;
 }
 
-export interface PlaybackTrackDto {
+export interface PlaybackTrackDto extends ContentMetadata {
   isUpload?: boolean;
   videoId: string;
   title: string;
@@ -170,7 +172,7 @@ export interface PlaybackStateDto {
   queue: QueueStateDto;
 }
 
-export interface QueueEntryDto {
+export interface QueueEntryDto extends ContentMetadata {
   isUpload?: boolean;
   entryId: string;
   sourceOccurrenceId?: string | null;

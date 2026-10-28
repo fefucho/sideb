@@ -1,4 +1,5 @@
 import type {BrowseCardDto,SearchSectionDto,SongDto} from '../types';
+import {contentRating} from '../contentRating';
 
 export interface SearchSectionRow {card:BrowseCardDto|null;song:SongDto|null;itemIndex:number|null;songIndex?:number|null}
 export interface SearchSectionProjection {primary:SearchSectionRow|null;related:SearchSectionRow[];remaining:SearchSectionRow[];explicit:boolean}
@@ -26,7 +27,9 @@ function providerRows(section:SearchSectionDto):SearchSectionRow[] {
    else if(payload?.count===1&&!usedSongs.has(payload.index))songIndex=payload.index;
   }
   if(songIndex>=0)usedSongs.add(songIndex);
-  return {card,song:songIndex>=0?section.songs[songIndex]:null,itemIndex,songIndex:songIndex>=0?songIndex:null};
+  const song=songIndex>=0?section.songs[songIndex]:null;
+  const rating=contentRating(card);
+  return {card,song:song && contentRating(song)==='unknown' && rating!=='unknown' && payloadIds[songIndex]===card.id ? {...song,contentRating:rating} : song,itemIndex,songIndex:songIndex>=0?songIndex:null};
  });
  section.songs.forEach((song,index)=>{if(!usedSongs.has(index))rows.push({card:null,song,itemIndex:null,songIndex:index});});
  return rows;

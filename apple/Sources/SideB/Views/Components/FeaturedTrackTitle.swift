@@ -97,10 +97,18 @@ struct FeaturedTrackTitle: View {
     let font: Font
     let color: Color
     var pointSize: CGFloat = 14
+    var scrollsOnOverflow = false
     let onNavigate: (String?,String)->Void
     var body: some View {
-        FeaturedNativeTitle(track:track,color:color,pointSize:pointSize,onNavigate:onNavigate)
-            .frame(height:ceil(pointSize * 1.4))
+        Group {
+            if scrollsOnOverflow {
+                ScrollingFeaturedNativeTitle(track:track,color:color,pointSize:pointSize,onNavigate:onNavigate)
+            } else {
+                FeaturedNativeTitle(track:track,color:color,pointSize:pointSize,onNavigate:onNavigate)
+            }
+        }
+        .frame(height:ceil(pointSize * 1.4))
+        .help(track.title + "\n" + ContentRatingMetadata.label(track.contentRating))
     }
 }
 private struct FeaturedNativeTitle: NSViewRepresentable {
@@ -127,4 +135,33 @@ private struct FeaturedNativeTitle: NSViewRepresentable {
         CGSize(width:proposal.width ?? nsView.intrinsicContentSize.width,height:ceil(pointSize * 1.4))
     }
     static func dismantleNSView(_ field:NativeTrackActionField,coordinator:()) { field.clearFeatured() }
+}
+private struct ScrollingFeaturedNativeTitle: NSViewRepresentable {
+    @Environment(\.sideBPageIsActive) private var pageIsActive
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    let track: SongItemRecord
+    let color: Color
+    let pointSize: CGFloat
+    let onNavigate:(String?,String)->Void
+    func makeNSView(context:Context) -> NativePlayerTitleViewport {
+        let viewport = NativePlayerTitleViewport(frame:.zero)
+        let field = viewport.field
+        field.isEditable = false; field.isSelectable = false; field.isBezeled = false; field.drawsBackground = false
+        field.maximumNumberOfLines = 1; field.lineBreakMode = .byTruncatingTail
+        field.setContentCompressionResistancePriority(.defaultLow,for:.horizontal)
+        return viewport
+    }
+    func updateNSView(_ viewport:NativePlayerTitleViewport,context:Context) {
+        let field = viewport.field
+        field.setFeaturedVisible(pageIsActive)
+        field.font = .systemFont(ofSize:pointSize,weight:pointSize > 20 ? .bold : .semibold)
+        field.textColor = NSColor(color)
+        field.configureFeatured(track:track,isTitle:true,onNavigate:onNavigate)
+        field.prefetchFeatured()
+        viewport.configure(identity:track.videoId + "\u{0}" + track.title, enabled:true, reduceMotion:reduceMotion, active:pageIsActive)
+    }
+    func sizeThatFits(_ proposal:ProposedViewSize,nsView:NativePlayerTitleViewport,context:Context) -> CGSize? {
+        CGSize(width:proposal.width ?? nsView.field.intrinsicContentSize.width,height:ceil(pointSize * 1.4))
+    }
+    static func dismantleNSView(_ viewport:NativePlayerTitleViewport,coordinator:()) { viewport.tearDown() }
 }

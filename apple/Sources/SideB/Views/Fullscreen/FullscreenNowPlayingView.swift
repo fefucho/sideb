@@ -7,7 +7,7 @@ public enum FullscreenPanel: String, CaseIterable, Identifiable {
     case queue = "Cola"
     case lyrics = "Letras"
     case recommended = "Relacionado"
-    
+
     public var id: String { self.rawValue }
     var title: String {
         switch self {
@@ -16,7 +16,7 @@ public enum FullscreenPanel: String, CaseIterable, Identifiable {
         case .recommended: L10n.text("fullscreen.related")
         }
     }
-    
+
     public var icon: String {
         switch self {
         case .queue: return "list.bullet"
@@ -34,7 +34,7 @@ struct FullscreenNowPlayingView: View, Animatable {
     let canvasSize: CGSize
     var sidebarProgress: CGFloat
     var router: NavigationRouter? = nil
-    
+
     private var selectedPanel: FullscreenPanel {
         get { viewModel.selectedFullscreenPanel }
         nonmutating set { viewModel.selectedFullscreenPanel = newValue }
@@ -52,8 +52,8 @@ struct FullscreenNowPlayingView: View, Animatable {
     @State private var isShowingExperimentalLyrics = true
     @State private var experimentalLyrics = ExperimentalLyricsController()
     @State private var lyricsPresentation = LyricsPresentationSettings()
-    
-    
+
+
     var animatableData: CGFloat {
         get { sidebarProgress }
         set { sidebarProgress = newValue }
@@ -114,7 +114,7 @@ struct FullscreenNowPlayingView: View, Animatable {
             isArtworkFlipped = false
         }
     }
-    
+
     // MARK: - Módulo Artwork (1:1 Cuadrado con Play/Pause en click y oscurecimiento en hover)
     private func artworkView(size: CGFloat) -> some View {
         let originalUrl = ImageURLHelper.originalArtworkURL(from: viewModel.currentTrack?.thumbnail)
@@ -359,7 +359,7 @@ struct FullscreenNowPlayingView: View, Animatable {
             fallbackArtwork(size: size)
         }
     }
-    
+
     private func fallbackArtwork(size: CGFloat) -> some View {
         RoundedRectangle(cornerRadius: AppTheme.artworkHeroRadius, style: .continuous)
             .fill(Color.white.opacity(0.06))
@@ -370,13 +370,13 @@ struct FullscreenNowPlayingView: View, Animatable {
                     .foregroundStyle(.white.opacity(0.3))
             )
     }
-    
+
     // MARK: - Módulo Track Info (Título + Artista • Álbum + Me Gusta, directo sobre el fondo)
     private func trackInfoView(width: CGFloat) -> some View {
         let typography = FullscreenSceneMetrics.typography(artworkWidth: width)
         let titleSize = typography.title
         let subtitleSize = typography.subtitle
-        
+
         return HStack(alignment: .center, spacing: 14) {
             VStack(alignment: .leading, spacing: 4) {
                 // Título de la Canción (Bold prominente estilo cartel Now Playing)
@@ -385,7 +385,7 @@ struct FullscreenNowPlayingView: View, Animatable {
                         FeaturedTrackTitle(track:track,font:.system(size:titleSize,weight:.bold),color:.white,pointSize:titleSize) { id,name in navigateToArtist(track:track,artistId:id,name:name) }
                     } else { Text(L10n.text("player.noPlayback")).font(.system(size:titleSize,weight:.bold)).foregroundStyle(.white).lineLimit(1) }
                 }
-                
+
                 // Artista • Álbum con enlaces interactivos (sin subrayado)
                 HStack(spacing: 7) {
                     if let track = viewModel.currentTrack, !track.displayArtist.isEmpty {
@@ -397,12 +397,12 @@ struct FullscreenNowPlayingView: View, Animatable {
                             .font(.system(size: subtitleSize, weight: .medium))
                             .foregroundStyle(.white.opacity(0.55))
                     }
-                    
+
                     if let track = viewModel.currentTrack, let album = track.displayAlbum, !album.isEmpty {
                         Text("•")
                             .font(.system(size: 13))
                             .foregroundStyle(.white.opacity(0.40))
-                        
+
                         Button {
                             navigateToAlbum(track: track)
                         } label: {
@@ -423,9 +423,9 @@ struct FullscreenNowPlayingView: View, Animatable {
                     SongMenuItems(song: track, player: viewModel, router: router, core: viewModel.rustCore, origin: .nowPlaying)
                 }
             }
-            
+
             Spacer(minLength: 8)
-            
+
             // Botón Me Gusta (Sutil y sincronizado con PlayerViewModel)
             Button {
                 viewModel.toggleCurrentTrackLike()
@@ -457,7 +457,7 @@ struct FullscreenNowPlayingView: View, Animatable {
         }
         .frame(width: width, alignment: .leading)
     }
-    
+
     // MARK: - Selector de Pestañas Cápsula (Centrado en su columna, estilo Apple Music / sideb OLD)
     private var compactTabBar: some View {
         SideBSegmentedControl(
@@ -486,7 +486,7 @@ struct FullscreenNowPlayingView: View, Animatable {
         .frame(maxWidth: .infinity)
         .frame(height: height)
     }
-    
+
     // MARK: - Contenido: Cola de Reproducción (120 FPS, transparente, sin columnas innecesarias)
     @ViewBuilder
     private func queuePanel(height: CGFloat) -> some View {
@@ -507,25 +507,25 @@ struct FullscreenNowPlayingView: View, Animatable {
                     Image(systemName: viewModel.queueManager.context?.iconName ?? "music.note.list")
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(.primary)
-                    
+
                     Text(localizedQueueContextTitle)
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(.white.opacity(0.9))
                         .lineLimit(1)
                         .truncationMode(.tail)
-                    
+
                     Text("•")
                         .font(.system(size: 10))
                         .foregroundStyle(.white.opacity(0.3))
                         .fixedSize()
-                    
+
                     Text(L10n.songCount(viewModel.queueManager.queue.count))
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(.white.opacity(0.5))
                         .fixedSize()
-                    
+
                     Spacer(minLength: 4)
-                    
+
                     if viewModel.queueManager.isLoadingRadio || viewModel.queueManager.isLoadingAutoplay {
                         HStack(spacing: 4) {
                             ProgressView()
@@ -539,7 +539,7 @@ struct FullscreenNowPlayingView: View, Animatable {
                 }
                 .padding(.horizontal, 8)
                 .padding(.top, 2)
-                
+
                 NativeTrackTableView(
                     tracks: viewModel.queueManager.tracks,
                     currentTrackVideoId: viewModel.currentTrack?.videoId,
@@ -573,7 +573,7 @@ struct FullscreenNowPlayingView: View, Animatable {
             .frame(height: height)
         }
     }
-    
+
     // MARK: - Contenido: Letras Sincronizadas
     private func lyricsPanel(height: CGFloat) -> some View {
         Group {
@@ -747,13 +747,13 @@ struct FullscreenNowPlayingView: View, Animatable {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
-    
+
     // MARK: - Contenido: Recomendaciones (Estantes Liquid Glass a 120 FPS)
     @ViewBuilder
     private func recommendedPanel(height: CGFloat) -> some View {
         RecommendedContentView(viewModel: viewModel, router: router, height: height)
     }
-    
+
     // MARK: - Navegación
     private func navigateToArtist(track: SongItemRecord, artistId: String?, name: String) {
         withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
@@ -765,7 +765,7 @@ struct FullscreenNowPlayingView: View, Animatable {
             router?.navigate(to: .search(query: name))
         }
     }
-    
+
     private func navigateToAlbum(track: SongItemRecord) {
         withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
             viewModel.isFullscreenPresented = false

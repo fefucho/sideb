@@ -137,10 +137,12 @@ struct CatalogCardView: View {
                     .lineLimit(2)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 if let subtitle = card.subtitle {
-                    Text(subtitle)
+                    ContentRatedMetadata(rating: card.contentRating, fontSize: 11) { Text(subtitle) }
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
+                } else if card.contentRating != .unknown {
+                    ContentRatingBadge(rating: card.contentRating, fontSize: 11)
                 }
             }
             .buttonStyle(.plain)

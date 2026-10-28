@@ -442,7 +442,7 @@ pub(crate) fn record_progress(
         let metadata = serde_json::json!({ "video_id": track.video_id, "title": track.title, "artists": track.artists,
             "duration": track.duration.map(|duration| format!("{}:{:02}", duration.max(0.0) as u64 / 60, duration.max(0.0) as u64 % 60)).unwrap_or_default(), "thumbnail": track.thumbnail,
             "album": track.album, "album_id": track.album_id, "artist_id": track.artist_id, "artist_runs": track.artist_runs,
-            "is_upload": track.is_upload });
+            "is_upload": track.is_upload, "content_rating": track.content_rating });
         if core
             .record_playback(
                 track.video_id.clone(),
@@ -522,6 +522,7 @@ mod tests {
         );
         pb.is_shuffle = true;
         pb.current_track = Some(PlaybackTrackDto {
+            content_rating: sideb_core::ContentRating::Unknown,
             is_upload: true,
             video_id: "same".into(),
             title: "Upload".into(),
@@ -741,6 +742,7 @@ mod tests {
         pb.loaded_generation = Some(5);
         pb.is_playing = true;
         pb.current_track = Some(PlaybackTrackDto {
+            content_rating: sideb_core::ContentRating::Unknown,
             is_upload: false,
             video_id: "video".into(),
             title: "Title".into(),

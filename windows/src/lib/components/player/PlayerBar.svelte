@@ -26,6 +26,7 @@
     liked?: boolean;
     likePending?: boolean;
     onToggleLike?: () => void;
+    onDislike?: () => void;
     likeError?: string | null;
     selectedPanel?: Panel;
     lyricsMode?: 'synced' | 'genius';
@@ -35,7 +36,7 @@
     onOpenMenu?: (event: MouseEvent) => void;
   }
 
-  let { playback, onTogglePlayback, onRetryPlayback, onPrevious, onNext, onSeek, onVolumeChange, onVolumeSurfaceChange, onSetMuted, onSetShuffle, onSetRepeat, fullscreenOpen, onToggleFullscreen, loggedIn = false, liked = false, likePending = false, onToggleLike, likeError = null, selectedPanel, lyricsMode = 'synced', onSelectPanel, onOpenArtist, onOpenAlbum, onOpenMenu }: Props = $props();
+  let { playback, onTogglePlayback, onRetryPlayback, onPrevious, onNext, onSeek, onVolumeChange, onVolumeSurfaceChange, onSetMuted, onSetShuffle, onSetRepeat, fullscreenOpen, onToggleFullscreen, loggedIn = false, liked = false, likePending = false, onToggleLike, onDislike, likeError = null, selectedPanel, lyricsMode = 'synced', onSelectPanel, onOpenArtist, onOpenAlbum, onOpenMenu }: Props = $props();
   let seekDraft = $state<{ generation: number; value: number } | null>(null);
   let failedArtworkUrl = $state<string | null>(null);
   let volumeOpen = $state(false);
@@ -211,11 +212,9 @@
       <div class="metadata">
         <div class="title-line">
         <span class="title" title={playback.currentTrack?.title ?? $t('player.noPlayback')}>
-          {#if playback.currentTrack}<FeaturedTrackTitle track={playback.currentTrack} {onOpenArtist} prefetch />{:else}{$t('player.noPlayback')}{/if}
+          {#if playback.currentTrack}<FeaturedTrackTitle track={playback.currentTrack} {onOpenArtist} prefetch scrollTitle />{:else}{$t('player.noPlayback')}{/if}
         </span>
-        <button class="like-toggle" type="button" class:liked disabled={!loggedIn || !hasTrack || !onToggleLike || likePending || playback.isLoading} onclick={onToggleLike} aria-busy={likePending || undefined} aria-pressed={liked} aria-label={liked ? $t('windows.ui.removeLike') : $t('windows.ui.like')} title={!loggedIn ? $t('windows.ui.signInToUseLike') : likeError ?? (likePending ? $t('windows.ui.updatingLike') : liked ? $t('windows.ui.removeLike') : $t('windows.ui.like'))}>
-          <svg viewBox="0 0 24 24" aria-hidden="true" fill={liked ? "currentColor" : "none"} stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.8 8.7c0 4.2-6.4 9.1-8.8 11-2.4-1.9-8.8-6.8-8.8-11a4.9 4.9 0 0 1 8.8-3.1 4.9 4.9 0 0 1 8.8 3.1Z" /></svg>
-        </button>
+
         </div>
         {#if playback.error}
           <span class="status error" role="status" title={resolveMessage(playback.error, $language)}>{resolveMessage(playback.error, $language)}</span>
@@ -232,12 +231,21 @@
           <span class="status like-error" role="alert" title={resolveMessage(likeError, $language)}>{resolveMessage(likeError, $language)}</span>
         {/if}
       </div>
+      <div class="track-actions">
+        <button class="like-toggle" type="button" class:liked disabled={!loggedIn || !hasTrack || !onToggleLike || likePending || playback.isLoading} onclick={onToggleLike} aria-busy={likePending || undefined} aria-pressed={liked} aria-label={liked ? $t('windows.ui.removeLike') : $t('windows.ui.like')} title={!loggedIn ? $t('windows.ui.signInToUseLike') : likeError ?? (likePending ? $t('windows.ui.updatingLike') : liked ? $t('windows.ui.removeLike') : $t('windows.ui.like'))}>
+          <svg viewBox="0 0 24 24" aria-hidden="true" fill={liked ? "currentColor" : "none"} stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.8 8.7c0 4.2-6.4 9.1-8.8 11-2.4-1.9-8.8-6.8-8.8-11a4.9 4.9 0 0 1 8.8-3.1 4.9 4.9 0 0 1 8.8 3.1Z" /></svg>
+        </button>
+        <div class="secondary-actions">
+        <button class="dislike-toggle" type="button" disabled={!loggedIn || !hasTrack || !onDislike || likePending || playback.isLoading} onclick={onDislike} aria-busy={likePending || undefined} aria-label={$t('windows.queue.dislike', [playback.currentTrack?.title ?? ''])} title={!loggedIn ? $t('windows.ui.signInToUseLike') : $t('windows.ui.dislikeAndRemoveFromQueue')}>
+          <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4H3v10h4M7 13l4 7a2 2 0 0 0 3-2l-1-4h5a3 3 0 0 0 3-3l-2-5a3 3 0 0 0-3-2H7Z" /></svg>
+        </button>
         <button class="more-toggle" type="button" disabled={!onOpenMenu || !hasTrack} aria-label={$t('detail.track.moreOptionsForSong')} title={$t('menu.more_options')} onclick={onOpenMenu}>
           <MoreIcon />
         </button>
+        </div>
+      </div>
     </div>
 
-    <div class="control-spacer" aria-hidden="true"></div>
     <div class="end-controls">
       <div class="panel-shortcuts" class:obscured={volumeOpen} inert={volumeOpen}>
       {#if onSelectPanel}
@@ -381,9 +389,9 @@
     right: 20px;
     bottom: 4px;
     display: grid;
-    grid-template-columns: 208px minmax(0, 1fr) 16px 232px;
+    grid-template-columns: 208px minmax(0, 1fr) max-content;
     align-items: center;
-    gap: 14px;
+    column-gap: 0;
     height: 46px;
   }
 
@@ -435,11 +443,11 @@
     position: relative;
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 0;
     min-width: 0;
     padding-left: 14px;
+    margin-left: 14px;
   }
-  .track::before { content: ''; position: absolute; left: 0; top: 50%; width: 1px; height: 22px; transform: translateY(-50%); background: rgb(255 255 255 / 13%); }
 
   .artwork {
     display: grid;
@@ -450,12 +458,13 @@
     overflow: hidden;
     color: #aaaab2;
     background: rgba(255, 255, 255, 0.08);
-    border-radius: 8px;
+    border-radius: var(--sideb-track-artwork-radius, 2px);
+    margin-right: 12px;
   }
 
   .artwork img { width: 100%; height: 100%; object-fit: cover; }
   .artwork svg { width: 18px; height: 18px; }
-  .metadata { display: flex; flex: 1; flex-direction: column; gap: 2px; min-width: 0; }
+  .metadata { display: flex; flex: 0 1 auto; width: max-content; flex-direction: column; gap: 2px; min-width: 0; margin-right: 10px; }
   .title-line { display: flex; min-width: 0; align-items: center; gap: 7px; }
   .title, .artist, .status { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .title { flex: 1; min-width: 0; font-size: 13px; font-weight: 650; line-height: 16px; }
@@ -463,15 +472,24 @@
   .artist-line { display: flex; min-width: 0; align-items: center; overflow: hidden; color: #a4a4a8; font-size: 11.5px; font-weight: 500; line-height: 14px; }
   .status.error { color: #ffd37a; }
   .status.like-error { color: #ff9ba1; }
-  .like-toggle { display: grid; flex: 0 0 22px; place-items: center; width: 22px; height: 22px; padding: 4px; border: 0; border-radius: 50%; color: rgb(255 255 255 / 62%); background: transparent; cursor: pointer; }
+  .like-toggle { display: grid; box-sizing:border-box; flex: 0 0 32px; place-items: center; width: 32px; height: 44px; padding: 0; border: 0; border-radius: 50%; color: rgb(255 255 255 / 80%); background: transparent; cursor: pointer; }
   .like-toggle:hover:not(:disabled) { color: #fff; background: rgb(255 255 255 / 9%); }
   .like-toggle.liked { color: #d06c70; }
   .like-toggle.liked:hover:not(:disabled), .like-toggle.liked:focus-visible { color: #d06c70; background: rgb(255 255 255 / 9%); }
   .like-toggle:disabled { opacity: .55; cursor: wait; }
-  .like-toggle svg { width: 14px; height: 14px; }
+  .like-toggle svg { width: 25px; height: 25px; }
   .like-toggle[aria-busy="true"] { opacity: 1; cursor: progress; }
 
-  .end-controls { display: flex; align-items: center; justify-content: flex-end; gap: 8px; min-width: 0; }
+  .track-actions { display: flex; flex: 0 0 60px; width: 60px; height: 46px; align-items:center; gap: 4px; }
+  .secondary-actions { display:flex; flex:0 0 24px; width:24px; height:46px; flex-direction:column; gap:2px; }
+  .secondary-actions .dislike-toggle, .secondary-actions .more-toggle { box-sizing: border-box; flex: 0 0 22px; width: 24px; height: 22px; }
+  .dislike-toggle {display:grid;place-items:center;padding:3px;border:0;border-radius:50%;color:rgb(255 255 255 / 55%);background:transparent;cursor:pointer;}
+  .dislike-toggle svg {width:14px;height:14px;}
+  .dislike-toggle:hover:not(:disabled) {color:#fff;background:rgb(255 255 255 / 9%);}
+  .dislike-toggle:disabled {opacity:.55;cursor:default;}
+  .end-controls::before { content: ''; flex: 0 0 17px; width: 17px; height: 22px; }
+  .end-controls { display: flex; align-items: center; justify-content: flex-end; gap: 0; min-width: 0; }
+  .volume, .fullscreen-toggle { margin-left: 8px; }
   .panel-shortcuts { display: flex; flex: none; align-items: center; gap: 8px; opacity: 1; transition: opacity 280ms ease; }
   .panel-shortcuts.obscured { opacity: 0; pointer-events: none; }
   .panel-shortcut, .more-toggle { display: grid; flex: 0 0 32px; place-items: center; width: 32px; height: 32px; padding: 0; border: 0; border-radius: 7px; color: rgb(255 255 255 / 65%); background: transparent; cursor: pointer; }
@@ -503,7 +521,7 @@
   .fullscreen-toggle svg.flipped { transform: rotate(180deg); }
 
   .skip, .mode-toggle, .panel-shortcut, .more-toggle, .volume-toggle, .volume-mute, .fullscreen-toggle { border-radius: 50%; }
-  .skip, .mode-toggle, .play-toggle, .like-toggle, .panel-shortcut, .more-toggle, .volume-mute, .fullscreen-toggle {
+  .skip, .mode-toggle, .play-toggle, .like-toggle, .dislike-toggle, .panel-shortcut, .more-toggle, .volume-mute, .fullscreen-toggle {
     transition: background-color var(--control-transition), color var(--control-transition), box-shadow var(--control-transition);
   }
   .skip:active:not(:disabled), .mode-toggle:active:not(:disabled), .panel-shortcut:active:not(:disabled), .more-toggle:active:not(:disabled), .volume-toggle:active:not(:disabled), .volume-mute:active:not(:disabled), .fullscreen-toggle:active:not(:disabled) { background-color: rgb(255 255 255 / 6%); }
@@ -526,11 +544,12 @@
   }
 
   @container (max-width: 760px) {
-    .main-row { left:14px;right:14px;grid-template-columns:168px minmax(0,1fr) 0 176px;gap:6px; }
-    .transport { gap:4px; }.track { gap:8px;padding-left:8px; }
-    .artwork { width:40px;height:40px;flex-basis:40px; }
-    .end-controls,.panel-shortcuts { gap:2px; }
+    .main-row { left:14px;right:14px;grid-template-columns:168px minmax(0,1fr) max-content;column-gap:0; }
+    .transport { gap:4px; }.track { padding-left:8px;margin-left:6px; }
+    .artwork { width:40px;height:40px;flex-basis:40px;margin-right:8px; }
+    .panel-shortcuts { gap:2px; }
+    .volume, .fullscreen-toggle { margin-left:2px; }
     .panel-shortcut { width:28px;flex-basis:28px; }
-    .title-line {gap:3px;}.more-toggle {width:24px;flex-basis:24px;}
+    .title-line {gap:3px;}
   }
 </style>

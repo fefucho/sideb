@@ -165,7 +165,7 @@
             </button>
           </div>
           <div class="artist-line">
-            <ArtistCredits track={currentTrack ?? undefined} artistRuns={currentTrack?.artistRuns} artists={currentTrack?.artists ?? $t('player.selectTrack')} artistId={currentTrack?.artistId} {onOpenArtist} album={currentTrack?.album} albumId={currentTrack?.albumId} {onOpenAlbum} />
+            <ArtistCredits showContentRating={false} track={currentTrack ?? undefined} artistRuns={currentTrack?.artistRuns} artists={currentTrack?.artists ?? $t('player.selectTrack')} artistId={currentTrack?.artistId} {onOpenArtist} album={currentTrack?.album} albumId={currentTrack?.albumId} {onOpenAlbum} />
           </div>
         </div>
       </div>

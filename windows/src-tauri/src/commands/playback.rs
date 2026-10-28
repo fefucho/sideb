@@ -49,6 +49,7 @@ fn queue_entry_from_song(song: SongDto) -> QueueEntryDto {
         song.artist_runs,
     );
     entry.is_upload = song.is_upload;
+    entry.content_rating = song.content_rating;
     entry
 }
 
@@ -68,6 +69,7 @@ fn queue_entry_from_record(song: sideb_core::SongItemRecord) -> QueueEntryDto {
             .collect(),
     );
     entry.is_upload = song.is_upload;
+    entry.content_rating = song.content_rating;
     entry
 }
 
@@ -542,6 +544,7 @@ pub(crate) async fn play_song(
     shuffle: Option<bool>,
     is_upload: Option<bool>,
     coalesce: Option<bool>,
+    content_rating: Option<sideb_core::ContentRating>,
 ) -> Result<PlaybackStateDto, CommandError> {
     let trimmed_id = video_id.trim();
     if trimmed_id.is_empty() {
@@ -655,6 +658,7 @@ pub(crate) async fn play_song(
                 artist_runs.unwrap_or_default(),
             );
             entry.is_upload = is_upload.unwrap_or(false);
+            entry.content_rating = content_rating.unwrap_or_default();
             let _ = pb.queue.replace(
                 vec![entry],
                 0,
@@ -713,6 +717,7 @@ pub(crate) async fn play_song(
         pb.duration = 0.0;
         pb.error = None;
         pb.current_track = Some(PlaybackTrackDto {
+            content_rating: active_entry.content_rating,
             is_upload: active_entry.is_upload || is_upload.unwrap_or(false),
             video_id: trimmed_id.to_string(),
             title: active_entry.title,
@@ -881,6 +886,7 @@ pub(crate) async fn play_song(
         .map(|track| track.artist_runs.clone())
         .unwrap_or_default();
     pb.current_track = Some(PlaybackTrackDto {
+        content_rating: pb.current_track.as_ref().map(|track| track.content_rating).unwrap_or_default(),
         is_upload: upload,
         video_id: trimmed_id.to_string(),
         title: resolved_title,
@@ -1025,6 +1031,7 @@ async fn start_queue_entry_mode(
         None,
         Some(entry.is_upload),
         Some(coalesce),
+        Some(entry.content_rating),
     )
     .await
 }
@@ -1069,6 +1076,7 @@ pub(crate) async fn start_song_radio(
         None,
         Some(entry.is_upload),
         None,
+        Some(entry.content_rating),
     )
     .await
 }
@@ -1232,6 +1240,7 @@ fn prepare_dismissed_current(
     playback.duration = entry.duration.unwrap_or(0.0);
     playback.error = None;
     playback.current_track = Some(PlaybackTrackDto {
+        content_rating: entry.content_rating,
         is_upload: entry.is_upload,
         video_id: entry.video_id.clone(),
         title: entry.title.clone(),
@@ -2132,6 +2141,7 @@ mod dismissal_tests {
             },
         );
         pb.current_track = Some(PlaybackTrackDto {
+            content_rating: sideb_core::ContentRating::Unknown,
             is_upload: false,
             video_id: "seed".into(),
             title: "Original".into(),
@@ -2418,6 +2428,7 @@ mod dismissal_tests {
             pb.queue.items[0].album = old_album.clone();
             let id = pb.queue.items[0].entry_id.clone();
             pb.current_track = Some(PlaybackTrackDto {
+                content_rating: sideb_core::ContentRating::Unknown,
                 is_upload: false,
                 video_id: "seed".into(),
                 title: "Original title".into(),
@@ -2956,6 +2967,7 @@ pub(crate) async fn start_source_radio(
         None,
         Some(entry.is_upload),
         None,
+        Some(entry.content_rating),
     )
     .await?;
     let snapshot = {
