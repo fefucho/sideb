@@ -197,52 +197,58 @@ import XCTest
     }
 
     func testWindowResizeUpdatesContentWidthAndExpansionRemeasuresStablePrincipal() async throws {
-        var expanded = false
-        var renderedWidths: [CGFloat] = []
-        var renderedIDs: [AnyHashable] = []
-        let principal = ProviderSearchViewportEntry(id: "principal-occurrence", kind: .principal)
-        func viewport(renderRevision: Int = 0) -> ProviderSearchViewport {
-            ProviderSearchViewport(entries: [principal], resetIdentity: AnyHashable("query"),
-                snapshotRevision: AnyHashable(1), renderRevision: AnyHashable(renderRevision),
-                rowContent: { entry, width in
-                    renderedWidths.append(width)
-                    renderedIDs.append(entry.id)
-                    return AnyView(Text("Principal").frame(maxWidth: .infinity, alignment: .leading)
-                        .frame(height: expanded ? 420 : 250, alignment: .top))
-                })
+        for scrollerStyle in [NSScroller.Style.overlay, .legacy] {
+            var expanded = false
+            var renderedWidths: [CGFloat] = []
+            var renderedIDs: [AnyHashable] = []
+            let principal = ProviderSearchViewportEntry(id: "principal-occurrence", kind: .principal)
+            func viewport(renderRevision: Int = 0) -> ProviderSearchViewport {
+                ProviderSearchViewport(entries: [principal], resetIdentity: AnyHashable("query"),
+                    snapshotRevision: AnyHashable(1), renderRevision: AnyHashable(renderRevision),
+                    rowContent: { entry, width in
+                        renderedWidths.append(width)
+                        renderedIDs.append(entry.id)
+                        return AnyView(Text("Principal").frame(maxWidth: .infinity, alignment: .leading)
+                            .frame(height: expanded ? 420 : 250, alignment: .top))
+                    })
+            }
+
+            let coordinator = viewport().makeCoordinator()
+            let scroll = coordinator.makeScrollView()
+            scroll.scrollerStyle = scrollerStyle
+            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1_000, height: 700),
+                                  styleMask: .borderless, backing: .buffered, defer: false)
+            window.isReleasedWhenClosed = false
+            window.contentView = scroll
+            window.makeKeyAndOrderFront(nil)
+            defer { coordinator.dismantle(); window.contentView = nil; window.close() }
+
+            scroll.layoutSubtreeIfNeeded()
+            window.contentView?.layoutSubtreeIfNeeded()
+            await Task.yield()
+            try await Task.sleep(for: .milliseconds(150))
+            let table = try XCTUnwrap(coordinator.tableForTesting)
+            let originalHeight = table.rect(ofRow: 0).height
+
+            window.setContentSize(NSSize(width: 700, height: 700))
+            window.contentView?.layoutSubtreeIfNeeded()
+            scroll.layoutSubtreeIfNeeded()
+            await Task.yield()
+            try await Task.sleep(for: .milliseconds(200))
+
+            let expectedWidth = scroll.contentView.bounds.width - 56
+            XCTAssertTrue(renderedWidths.contains { abs($0 - expectedWidth) < 2 },
+                "style=\(scrollerStyle), clip=\(scroll.contentView.bounds.width), rendered=\(renderedWidths)")
+            XCTAssertEqual(table.bounds.width, expectedWidth, accuracy: 1)
+            XCTAssertEqual(renderedIDs.last, principal.id)
+
+            expanded = true
+            coordinator.update(parent: viewport(renderRevision: 1))
+            await Task.yield()
+            try await Task.sleep(for: .milliseconds(200))
+            XCTAssertGreaterThan(table.rect(ofRow: 0).height, originalHeight + 100)
+            XCTAssertEqual(renderedIDs.last, principal.id)
         }
-
-        let coordinator = viewport().makeCoordinator()
-        let scroll = coordinator.makeScrollView()
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1_000, height: 700),
-                              styleMask: .borderless, backing: .buffered, defer: false)
-        window.isReleasedWhenClosed = false
-        window.contentView = scroll
-        window.makeKeyAndOrderFront(nil)
-        defer { coordinator.dismantle(); window.contentView = nil; window.close() }
-
-        scroll.layoutSubtreeIfNeeded()
-        window.contentView?.layoutSubtreeIfNeeded()
-        await Task.yield()
-        try await Task.sleep(for: .milliseconds(150))
-        let table = try XCTUnwrap(coordinator.tableForTesting)
-        let originalHeight = table.rect(ofRow: 0).height
-
-        window.setContentSize(NSSize(width: 700, height: 700))
-        window.contentView?.layoutSubtreeIfNeeded()
-        scroll.layoutSubtreeIfNeeded()
-        await Task.yield()
-        try await Task.sleep(for: .milliseconds(200))
-
-        XCTAssertTrue(renderedWidths.contains { abs($0 - 644) < 2 })
-        XCTAssertEqual(renderedIDs.last, principal.id)
-
-        expanded = true
-        coordinator.update(parent: viewport(renderRevision: 1))
-        await Task.yield()
-        try await Task.sleep(for: .milliseconds(200))
-        XCTAssertGreaterThan(table.rect(ofRow: 0).height, originalHeight + 100)
-        XCTAssertEqual(renderedIDs.last, principal.id)
     }
 
     func testAppendRetainsOffscreenPrincipalMeasurementUntilItsRevisionChanges() async throws {

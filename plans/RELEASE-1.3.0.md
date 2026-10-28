@@ -34,3 +34,7 @@ Preflightv1.3.0/build21/prerelease=false y20regresiones de release aprobadas. Pl
 ## Intento1 y determinismo de la fixture
 
 Workflow40712727499/0c01a5d: prepare aprobado; Windows deja atrás el watcher y falla en el supuesto de animación del título. Repro local con Chrome y --force-prefers-reduced-motion falla igual antes del arreglo y pasa después. La fixture ahora fija media no-preference y foco de foreground, comprueba esa condición y conserva las assertions de Reduce Motion. La app/producto no cambia. Se cancela el intento; borrador y tag provisional sólo se retiran comprobando que siguen sin publicar/assets y apuntan al SHA esperado. Se conserva el historial y los logs. Nuevo commit y nueva ejecución de ambas plataformas, sin mezclar artefactos.
+
+## Resize Mac sin asumir preferencias del host
+
+CI general40712726728 detecta una aserción de644pt. Con NSScroller legacy se reproduce localmente clip683/render627, correcto para margen28 por lado. La prueba ejecuta overlay+legacy y deriva el ancho del clip nativo, conserva identidad y expansión. Las nueve focales de viewport pasan después del arreglo. El producto no cambia; el estado del segundo intento de release se sigue por su SHA exacto, sin publicar nada que no pase las puertas nativas.
