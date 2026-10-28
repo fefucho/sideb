@@ -31,12 +31,15 @@ try{
  const send=(method,params={})=>new Promise((resolve,reject)=>{const key=++id,timer=setTimeout(()=>reject(Error(method+' timeout')),20000);pending.set(key,{resolve:value=>{clearTimeout(timer);resolve(value)},reject:error=>{clearTimeout(timer);reject(error)}});ws.send(JSON.stringify({id:key,method,params}))});
  const evaluate=async expression=>{const r=await send('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true});assert.ok(!r.exceptionDetails,JSON.stringify(r.exceptionDetails));return r.result.value};
  const settle=()=>new Promise(resolve=>setTimeout(resolve,150));
+ // Geometry/motion assertions run with an explicit preference, independent of the runner OS.
+ await send('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'no-preference'}]});
+ await send('Emulation.setFocusEmulationEnabled',{enabled:true});
  await send('Runtime.enable');await send('Page.navigate',{url:server.resolvedUrls.local[0]});
  for(let i=0;i<300;i++){if(await evaluate('!!window.lab'))break;await settle()}
- assert.ok(await evaluate('!!window.lab'),errors.join('\n'));await evaluate('document.fonts.ready');
+ assert.ok(await evaluate('!!window.lab'),errors.join('\n'));await evaluate('document.fonts.ready');assert.equal(await evaluate('matchMedia("(prefers-reduced-motion: reduce)").matches'),false);
  assert.equal(await evaluate('document.querySelector(".album-separator").textContent'),'\u2022');
  const sleep=ms=>new Promise(r=>setTimeout(r,ms));
- const geom=()=>evaluate(`(()=>{const box=s=>{const r=document.querySelector(s).getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height,right:r.right,bottom:r.bottom}};return {bar:box('.player-bar'),metadata:box('.metadata'),title:box('.title'),artist:box('.artist-line'),actions:box('.track-actions'),like:box('.like-toggle'),more:box('.more-toggle'),dislike:box('.dislike-toggle'),lyrics:box('.panel-shortcut'),parts:box('.title-parts'),viewport:box('.featured-title'),animations:document.querySelector('.title-parts').getAnimations().map(a=>({time:a.currentTime,state:a.playState}))}})()`);
+ const geom=()=>evaluate(`(()=>{const box=s=>{const r=document.querySelector(s).getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height,right:r.right,bottom:r.bottom}};return {bar:box('.player-bar'),metadata:box('.metadata'),title:box('.title'),artist:box('.artist-line'),actions:box('.track-actions'),like:box('.like-toggle'),more:box('.more-toggle'),dislike:box('.dislike-toggle'),lyrics:box('.panel-shortcut'),parts:box('.title-parts'),viewport:box('.featured-title'),reduced:matchMedia('(prefers-reduced-motion: reduce)').matches,focused:document.hasFocus(),hidden:document.hidden,animations:document.querySelector('.title-parts').getAnimations().map(a=>({time:a.currentTime,state:a.playState}))}})()`);
  const move=async(x,y)=>send('Input.dispatchMouseEvent',{type:'mouseMoved',x,y});
  for(const dpr of [1,1.25,1.5,2]){
   await send('Emulation.setDeviceMetricsOverride',{width:1000,height:600,deviceScaleFactor:dpr,mobile:false});

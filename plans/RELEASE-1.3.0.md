@@ -30,3 +30,7 @@ Publicación mediante workflow oficial con borrador hasta que pasen ambas plataf
 ## Evidencia local inicial
 
 Preflightv1.3.0/build21/prerelease=false y20regresiones de release aprobadas. PlayerBar real en Chrome/Mac conserva16geometrías e interacciones, sin omitir el test. Revisados CI anteriores:40632099958/Windows (watchEBUSY) y40632099952/Mac (actor corregido por FIX-266).
+
+## Intento1 y determinismo de la fixture
+
+Workflow40712727499/0c01a5d: prepare aprobado; Windows deja atrás el watcher y falla en el supuesto de animación del título. Repro local con Chrome y --force-prefers-reduced-motion falla igual antes del arreglo y pasa después. La fixture ahora fija media no-preference y foco de foreground, comprueba esa condición y conserva las assertions de Reduce Motion. La app/producto no cambia. Se cancela el intento; borrador y tag provisional sólo se retiran comprobando que siguen sin publicar/assets y apuntan al SHA esperado. Se conserva el historial y los logs. Nuevo commit y nueva ejecución de ambas plataformas, sin mezclar artefactos.
