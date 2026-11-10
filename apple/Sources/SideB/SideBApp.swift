@@ -31,6 +31,8 @@ struct SideBApp: App {
             }
             Darwin.exit(0)
         }
+        // Spotify Canvas ships inside the app as a removable plugin: place it (inactive) on first launch.
+        VisualProviderHost.shared.provisionBundledProvider()
         do {
             let appSupport = HomeLabConfiguration.appSupportURL
             try? FileManager.default.createDirectory(at: appSupport, withIntermediateDirectories: true)
@@ -241,6 +243,7 @@ struct WindowRootView: View {
                     isHistoryDisabled: isSpotlightPresented || playerViewModel.isFullscreenPresented,
                     showsHistory: !playerViewModel.isFullscreenPresented,
                     viewportWidth: navigationHeaderWidth,
+                    playbackTrailingInset: playerViewModel.isPlaybackSidebarPresented ? PlaybackSidebarLayout.reserve : 0,
                     isHomeSettingsPresented: isHomeSettingsPresented && canPresentHomeSettings,
                     onHistoryFrameChanged: { frame in
                         if abs(homeToolbarBottom - frame.maxY) > 0.5 { homeToolbarBottom = frame.maxY }
@@ -268,7 +271,10 @@ struct WindowRootView: View {
                     searchSelectionLabel: navigationSearchSelectionLabel,
                     searchResultsContent: navigationSearchResultsContent
                 )
-                .frame(width: navigationHeaderWidth)
+                // The header takes the width SwiftUI proposes right now. Pinning it to the
+                // asynchronously reported window width left it a step behind (and re-centered)
+                // on every live-resize frame, so the capsules and search slid around.
+                .frame(maxWidth: .infinity)
                 .frame(maxHeight: .infinity, alignment: .top)
                 .background(alignment: .top) {
                     Color.clear.frame(height: ShellLayout.toolbarHostHeight)
@@ -351,6 +357,7 @@ struct WindowRootView: View {
 
     private func setHomeSettingsPresented(_ presented: Bool) {
         withAnimation(NavPresentation.animation(reduceMotion: reduceMotion)) {
+            if presented { playerViewModel.closePlaybackSidebar() }
             isHomeSettingsPresented = presented && canPresentHomeSettings
         }
     }
@@ -396,6 +403,12 @@ struct WindowRootView: View {
             router.navigate(to: .home)
         }
         DispatchQueue.main.async { AppMenuBarOrganizer.normalize() }
+    }
+
+    private var playbackContentReserve: CGFloat {
+        PlaybackSidebarLayout.contentReserve(windowWidth: navigationHeaderWidth,
+            leftReserve: ShellLayout.sidebarReserveWidth(expanded: isSidebarExpanded),
+            presented: playerViewModel.isPlaybackSidebarPresented)
     }
 
     private var windowContent: some View {
@@ -501,20 +514,37 @@ struct WindowRootView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .clipped()
             }
+            .padding(.trailing, playbackContentReserve)
             .zIndex(0)
 
-            // A separate overlay leaves the feed viewport and player geometry intact.
-            // Both fullscreen layers remain above it throughout their transition.
+            // Centered macOS Settings popup modal with backdrop scrim
             if isHomeSettingsPresented && canPresentHomeSettings {
-                HomeSettingsPanel(homeViewModel: homeViewModel,
-                                  rustCore: rustCore,
-                                  titlebarHeight: titlebarHeight,
-                                  toolbarBottom: homeToolbarBottom,
-                                  onClose: { setHomeSettingsPresented(false) })
-                    .padding(ShellLayout.sidebarInset)
-                    .transition(reduceMotion ? .opacity : .move(edge: .trailing).combined(with: .opacity))
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
-                    .zIndex(0.5)
+                ZStack {
+                    Color.black.opacity(0.40)
+                        .ignoresSafeArea()
+                        .onTapGesture {
+                            setHomeSettingsPresented(false)
+                        }
+
+                    SettingsModalView(
+                        homeViewModel: homeViewModel,
+                        accountViewModel: accountViewModel,
+                        playerViewModel: playerViewModel,
+                        cookieStorage: cookieStorage,
+                        rustCore: rustCore,
+                        onLoginRequested: {
+                            setHomeSettingsPresented(false)
+                            showLoginSheet = true
+                        },
+                        onClose: { setHomeSettingsPresented(false) }
+                    )
+                    .padding(24)
+                }
+                .transition(reduceMotion ? .opacity : .asymmetric(
+                    insertion: .opacity.combined(with: .scale(scale: 0.96)),
+                    removal: .opacity.combined(with: .scale(scale: 0.96))
+                ))
+                .zIndex(20)
             }
 
             FullscreenBackdrop(thumbnail: playerViewModel.currentTrack?.thumbnail,
@@ -574,13 +604,11 @@ struct WindowRootView: View {
             .allowsHitTesting(isSidebarExpanded)
             .zIndex(3)
 
-            PlayerBarView(viewModel: playerViewModel, router: router)
-                .windowGestureRegion(.excluded)
-                .padding(.horizontal, 24)
-                .padding(.bottom, 20)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-                .padding(.leading, ShellLayout.sidebarReserveWidth(expanded: isSidebarExpanded))
-                .zIndex(4)
+            PlaybackBarShell(viewModel: playerViewModel) {
+                PlayerBarView(viewModel: playerViewModel, router: router)
+            }
+            .padding(.leading, ShellLayout.sidebarReserveWidth(expanded: isSidebarExpanded))
+            .zIndex(4)
 
             NavigationGestureIndicatorView(presentation: gesturePresentation)
                 .padding(.leading, ShellLayout.sidebarReserveWidth(expanded: isSidebarExpanded))
@@ -642,12 +670,17 @@ struct WindowRootView: View {
                     .ignoresSafeArea(.container, edges: .top)
             }
         }
+        .animation(reduceMotion ? .easeOut(duration: 0.15) : .spring(response: 0.38, dampingFraction: 0.90),
+                   value: playerViewModel.playbackPresentation.mode)
         .frame(minWidth: 960, minHeight: 640)
         .background(WindowConfigurator(
             isFullscreenPresented: playerViewModel.isFullscreenPresented,
             titlebarHeight: $titlebarHeight,
             onContentWidthChange: { width in
-                navigationHeaderWidth = max(ShellLayout.navigationMinimumWidth, width)
+                // Coarse steps: this state re-renders the whole window, so tracking every point
+                // of a live resize cost a full SwiftUI pass per frame.
+                let stepped = max(ShellLayout.navigationMinimumWidth, (width / 16).rounded(.down) * 16)
+                if stepped != navigationHeaderWidth { navigationHeaderWidth = stepped }
             }
         ))
         .background(
@@ -678,6 +711,7 @@ struct WindowRootView: View {
         .modifier(HomeSupplementalSync(home: homeViewModel, library: libraryViewModel,
             core: playerViewModel.rustCore, sessionRevision: homeSessionRevision))
         .onChange(of: homeSessionRevision) { _, _ in
+            playerViewModel.closePlaybackSidebar()
             spotlightFocusSnapshot = nil
             spotlightSearchDraft = ""
             spotlightPreviousPage = nil
@@ -688,6 +722,9 @@ struct WindowRootView: View {
             navigationSearchDraft = ""
             navigationSearchSelectionLabel = nil
             setHomeSettingsPresented(false)
+        }
+        .onChange(of: playerViewModel.isPlaybackSidebarPresented) { _, presented in
+            if presented { setHomeSettingsPresented(false); isNavigationSearchExpanded = false }
         }
         .onChange(of: playerViewModel.isFullscreenPresented) { _, presented in
             if presented { isNavigationSearchExpanded = false }

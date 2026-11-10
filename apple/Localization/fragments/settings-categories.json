@@ -1,0 +1,34 @@
+{
+  "settings.category.general": {
+    "es": "General",
+    "en": "General"
+  },
+  "settings.category.playback": {
+    "es": "Reproducción",
+    "en": "Playback"
+  },
+  "settings.category.appearance": {
+    "es": "Apariencia",
+    "en": "Appearance"
+  },
+  "settings.category.visualProviders": {
+    "es": "Proveedores visuales",
+    "en": "Visual Providers"
+  },
+  "settings.category.homeFeed": {
+    "es": "Feed de Inicio",
+    "en": "Home Feed"
+  },
+  "settings.category.account": {
+    "es": "Cuenta",
+    "en": "Account"
+  },
+  "settings.category.shortcuts": {
+    "es": "Atajos de teclado",
+    "en": "Keyboard Shortcuts"
+  },
+  "settings.searchPlaceholder": {
+    "es": "Buscar en configuración...",
+    "en": "Search settings..."
+  }
+}

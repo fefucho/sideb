@@ -4,7 +4,7 @@ import SideBCore
 
 /// Solo metadata durable: las URLs de streaming y las cookies nunca se escriben aquí.
 struct SavedPlaybackState: Codable {
-    static let currentVersion = 2
+    static let currentVersion = 3
     let version: Int
     let tracks: [Track]
     let currentIndex: Int
@@ -15,6 +15,7 @@ struct SavedPlaybackState: Codable {
     let isShuffle: Bool
     let isRepeat: Bool
     var order: QueueOrderSnapshot? = nil
+    var radioCursorVideoID: String? = nil
 
     struct Track: Codable {
         let videoId: String
@@ -101,27 +102,32 @@ final class PlaybackStateStore {
     private let directory: URL
     private var pendingSave: Task<Void, Never>?
     private var pendingState: SavedPlaybackState?
+    private var pendingSnapshot: (@MainActor () -> SavedPlaybackState?)?
     private var activeIdentity: String?
+    private let writer = DispatchQueue(label: "com.fefucho.SideB.playback-state-writer", qos: .utility)
 
-    init(directory: URL = HomeLabConfiguration.appSupportURL.appendingPathComponent("Playback", isDirectory: true)) {
+    init(directory: URL = HomeLabConfiguration.appSupportURL.appendingPathComponent("PlaybackQueueExperiment", isDirectory: true)) {
         self.directory = directory
     }
 
     static func identity(for account: AccountInfoRecord?, cookieStorage: CookieStorage) -> String {
-        let fingerprint = cookieStorage.homeCacheIdentity()
-        let mappingKey = HomeLabConfiguration.enabled ? "sideb.lab.playbackAccounts" : "sideb.playbackAccounts"
+        let fingerprint = cookieStorage.playbackCacheIdentity()
+        let mappingKey = "sideb.queueExperiment.playbackAccounts"
         if let id = account?.channelId ?? account?.email ?? account?.handle, !id.isEmpty {
             let identity = "account:\(id)"
             if fingerprint != "guest" {
-                var mapping = UserDefaults.standard.dictionary(forKey: mappingKey) as? [String: String] ?? [:]
+                var mapping = UserDefaults.standard.dictionary(forKey: mappingKey) as? [String:String] ?? [:]
                 mapping[fingerprint] = identity
                 UserDefaults.standard.set(mapping, forKey: mappingKey)
             }
             return identity
         }
         guard fingerprint != "guest" else { return "guest" }
-        let mapping = UserDefaults.standard.dictionary(forKey: mappingKey) as? [String: String]
-        return mapping?[fingerprint] ?? "session:\(fingerprint)"
+        let mapping = UserDefaults.standard.dictionary(forKey: mappingKey) as? [String:String]
+        // Read the stable identity mapping for offline continuity; never write its keys or files.
+        let stableKey = HomeLabConfiguration.enabled ? "sideb.lab.playbackAccounts" : "sideb.playbackAccounts"
+        let stable = UserDefaults.standard.dictionary(forKey: stableKey) as? [String:String]
+        return mapping?[fingerprint] ?? stable?[cookieStorage.legacyPlaybackCacheIdentity()] ?? "session:\(fingerprint)"
     }
 
     func activate(_ identity: String) {
@@ -130,48 +136,70 @@ final class PlaybackStateStore {
     }
 
     func load() -> SavedPlaybackState? {
+        writer.sync {}
         guard let activeIdentity,
               let data = try? Data(contentsOf: fileURL(for: activeIdentity)),
               let state = try? JSONDecoder().decode(SavedPlaybackState.self, from: data),
               (1...SavedPlaybackState.currentVersion).contains(state.version),
               state.currentIndex >= 0,
-              state.tracks.isEmpty || state.currentIndex < state.tracks.count else { return nil }
+              state.tracks.isEmpty || state.currentIndex < state.tracks.count || (state.currentIndex == state.tracks.count && state.order?.stoppedAtEnd == true) else { return nil }
         return state
     }
 
     func scheduleSave(_ state: SavedPlaybackState) {
         guard activeIdentity != nil else { return }
         pendingState = state
+        pendingSnapshot = nil
+        scheduleFlush()
+    }
+
+    func scheduleSave(snapshot: @escaping @MainActor () -> SavedPlaybackState?) {
+        guard activeIdentity != nil else { return }
+        pendingState = nil
+        pendingSnapshot = snapshot
+        scheduleFlush()
+    }
+
+    private func scheduleFlush() {
         pendingSave?.cancel()
         pendingSave = Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(350))
             guard !Task.isCancelled else { return }
-            self?.flush()
+            self?.persistPendingSynchronously(false)
         }
     }
 
     func saveNow(_ state: SavedPlaybackState) {
         pendingSave?.cancel()
         pendingState = state
-        flush()
+        persistPendingSynchronously(true)
     }
 
     func flush() {
+        persistPendingSynchronously(true)
+        writer.sync {} // Drain any write already enqueued by the debounce before returning.
+    }
+
+    private func persistPendingSynchronously(_ waitForWrite: Bool) {
         pendingSave?.cancel()
         pendingSave = nil
-        guard let activeIdentity, let state = pendingState else { return }
+        guard let activeIdentity else { return }
+        let state = pendingState ?? pendingSnapshot?()
+        pendingSnapshot = nil
+        guard let state else { return }
         pendingState = nil
-        do {
-            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-            let data = try JSONEncoder().encode(state)
-            let url = fileURL(for: activeIdentity)
-            try data.write(to: url, options: .atomic)
-            try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
-        } catch {
-            #if DEBUG
-            print("[PlaybackStateStore] No se pudo guardar la cola: \(error)")
-            #endif
+        let url = fileURL(for: activeIdentity)
+        let directory = self.directory
+        let write = {
+            do {
+                try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true,
+                                                        attributes: [.posixPermissions: 0o700])
+                let data = try JSONEncoder().encode(state)
+                try data.write(to: url, options: .atomic)
+                try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+            } catch { /* Persistence failures must not expose private state in logs. */ }
         }
+        if waitForWrite { writer.sync(execute: write) } else { writer.async(execute: write) }
     }
 
     private func fileURL(for identity: String) -> URL {

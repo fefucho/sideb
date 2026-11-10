@@ -101,11 +101,7 @@ fn maybe_prefetch_radio(app: tauri::AppHandle) {
         {
             return;
         }
-        let remaining = playback
-            .queue
-            .items
-            .len()
-            .saturating_sub(playback.queue.current_index.unwrap_or(0));
+        let remaining = playback.queue.remaining_count();
         if remaining > 3 {
             return;
         }
@@ -190,21 +186,38 @@ async fn fetch_radio(
                                 .unwrap_or_else(|| format!("RDAMVM{seed_video_id}")),
                         );
                     }
+                    let provider_cursor = page.items.last().map(|entry| entry.video_id.clone());
                     let recommendations = page
                         .items
                         .into_iter()
                         .map(queue_entry_from_record)
-                        .filter(|entry| !playback.runtime.disliked.contains(&entry.video_id))
+                        .filter(|entry| {
+                            !playback.runtime.disliked.contains(&entry.video_id)
+                                && !playback
+                                    .runtime
+                                    .excluded_recommendations
+                                    .contains(&entry.video_id)
+                        })
                         .collect::<Vec<_>>();
                     let cursor = merge_radio_metadata(&mut playback, recommendations);
-                    if cursor.is_none() {
+                    let empty_provider_page = provider_cursor.is_none();
+                    let repeated_provider_cursor = provider_cursor.as_ref().is_some_and(|received| {
+                        playback.radio_cursor_video_id.as_ref() == Some(received)
+                    });
+                    playback.radio_cursor_video_id = provider_cursor
+                        .or(cursor.clone())
+                        .or(playback.radio_cursor_video_id.clone());
+                    if empty_provider_page
+                        || repeated_provider_cursor
+                        || playback.radio_cursor_video_id.is_none()
+                        || playback.queue.recommendations.is_empty() && cursor.is_none()
+                    {
                         playback.radio_exhausted = true;
                         playback.queue.end_radio(None, false);
                         playback.eof_waiting = None;
                         playback.runtime.pending_next = None;
                     } else {
                         playback.radio_exhausted = false;
-                        playback.radio_cursor_video_id = cursor;
                         playback.queue.end_radio(None, false);
                         next_to_play = consume_waiting_next(&mut playback);
                     }
@@ -1161,6 +1174,92 @@ pub(crate) fn enqueue_tracks(
 }
 
 #[tauri::command]
+pub(crate) async fn queue_recommendation_action(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+    entry_id: String,
+    placement: String,
+    generation: u64,
+    advance_through: Option<bool>,
+) -> Result<PlaybackStateDto, CommandError> {
+    let entry_id = entry_id.trim().to_owned();
+    if entry_id.is_empty() {
+        return Err(CommandError::new(
+            "INVALID_QUEUE_ENTRY",
+            "El identificador de ocurrencia no puede estar vacío.",
+        ));
+    }
+    if !matches!(placement.as_str(), "next" | "end" | "now" | "remove") {
+        return Err(CommandError::new(
+            "INVALID_QUEUE_POSITION",
+            "La acción debe ser next, end, now o remove.",
+        ));
+    }
+    let (snapshot, play_entry) = {
+        let mut playback = state
+            .playback
+            .lock()
+            .map_err(|_| CommandError::new("LOCK_ERROR", "No se pudo actualizar la cola."))?;
+        if playback.generation != generation
+            || playback.observed_auth_generation != state.auth_generation.load(Ordering::SeqCst)
+        {
+            return Ok(playback.to_dto());
+        }
+        let proposal = playback
+            .queue
+            .recommendations
+            .iter()
+            .find(|entry| entry.entry_id == entry_id)
+            .cloned()
+            .ok_or_else(|| {
+                CommandError::new(
+                    "QUEUE_ENTRY_NOT_FOUND",
+                    "La propuesta ya no está disponible.",
+                )
+            })?;
+        let now = placement == "now";
+        let mut chosen = if placement == "remove" {
+            playback.queue.remove_recommendation(&entry_id)
+        } else if now && advance_through.unwrap_or(true) {
+            playback.queue.advance_to_recommendation(&entry_id)
+        } else {
+            playback
+                .queue
+                .choose_recommendation(&entry_id, now || placement == "next")
+        }
+        .ok_or_else(|| {
+            CommandError::new(
+                "QUEUE_ENTRY_NOT_FOUND",
+                "La propuesta ya no está disponible.",
+            )
+        })?;
+        if placement == "remove" {
+            playback
+                .runtime
+                .excluded_recommendations
+                .insert(proposal.video_id);
+        } else if now {
+            let selected = playback
+                .queue
+                .select_entry(&chosen.entry_id)
+                .ok_or_else(|| {
+                    CommandError::new("QUEUE_ENTRY_NOT_FOUND", "No se pudo elegir la propuesta.")
+                })?;
+            chosen = selected;
+        }
+        let play = now.then(|| chosen.entry_id.clone());
+        (playback.to_dto(), play)
+    };
+    let _ = app.emit("playback-state-changed", &snapshot);
+    if let Some(entry_id) = play_entry {
+        start_queue_entry(app, entry_id, generation, false).await
+    } else {
+        maybe_prefetch_radio(app);
+        Ok(snapshot)
+    }
+}
+
+#[tauri::command]
 pub(crate) async fn remove_queue_entry(
     app: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
@@ -1178,7 +1277,7 @@ pub(crate) async fn remove_queue_entry(
         .read()
         .map_err(|_| CommandError::new("LOCK_ERROR", "No se pudo acceder al reproductor."))?
         .clone();
-    let (snapshot, next) = {
+    let (snapshot, next, wait_for_source) = {
         let mut playback = state
             .playback
             .lock()
@@ -1187,7 +1286,7 @@ pub(crate) async fn remove_queue_entry(
             CommandError::new("QUEUE_ENTRY_NOT_FOUND", "La canción ya no está en la cola.")
         })?;
         if !was_current {
-            (playback.to_dto(), None)
+            (playback.to_dto(), None, false)
         } else if let Some(entry) = selected {
             if let Some(player) = &player {
                 let _ = player.stop();
@@ -1198,9 +1297,9 @@ pub(crate) async fn remove_queue_entry(
             (
                 playback.to_dto(),
                 Some((entry.entry_id, expected_generation, start_paused)),
+                false,
             )
         } else {
-            invalidate_queue_owner(&mut playback);
             if let Some(player) = &player {
                 let _ = player.stop();
                 let _ = player.clear_playlist();
@@ -1209,18 +1308,28 @@ pub(crate) async fn remove_queue_entry(
             playback.loaded_generation = None;
             playback.is_playing = false;
             playback.is_loading = false;
-            playback.is_ended = false;
+            playback.is_ended = true;
             playback.position = 0.0;
             playback.duration = 0.0;
             playback.current_track = None;
             playback.error = None;
-            playback.queue = QueueStateDto::default();
-            (playback.to_dto(), None)
+            playback.runtime.pending_next = None;
+            let source_can_continue = playback.runtime.source.as_ref().is_some_and(|source| {
+                source.continuation.is_some() || source.needs_restart
+            });
+            let radio_can_continue = playback.queue.source.as_ref().is_some_and(|source| source.kind == "radio")
+                && !playback.radio_exhausted;
+            let wait = source_can_continue || radio_can_continue;
+            playback.eof_waiting = wait.then_some((playback.generation, playback.queue_epoch));
+            (playback.to_dto(), None, wait)
         }
     };
     let _ = app.emit("playback-state-changed", &snapshot);
     if let Some((entry_id, expected_generation, start_paused)) = next {
         return start_queue_entry(app, entry_id, expected_generation, start_paused).await;
+    }
+    if wait_for_source {
+        fetch_source_background(app.clone());
     }
     maybe_prefetch_radio(app);
     Ok(snapshot)
@@ -1278,7 +1387,7 @@ pub(crate) fn move_queue_entry(
             .map_err(|_| CommandError::new("LOCK_ERROR", "No se pudo actualizar la cola."))?;
         let changed = playback
             .queue
-            .move_entry(entry_id, before_entry_id)
+            .place_entry(entry_id, before_entry_id)
             .map_err(|error| match error {
                 crate::queue::QueueMoveError::EntryNotFound => {
                     CommandError::new("QUEUE_ENTRY_NOT_FOUND", "La canción ya no está en la cola.")
@@ -1290,7 +1399,7 @@ pub(crate) fn move_queue_entry(
             })?;
         (playback.to_dto(), changed)
     };
-    // Reordering only changes the list: it must not reload audio or consume its generation.
+    // Placement/repeating only changes pending entries, without reloading active audio.
     if changed {
         let _ = app.emit("playback-state-changed", &snapshot);
         maybe_prefetch_radio(app);
@@ -1308,6 +1417,19 @@ fn consume_waiting_next(playback: &mut crate::PlaybackManager) -> Option<(String
     {
         playback.runtime.pending_next = None;
         playback.eof_waiting = None;
+        return None;
+    }
+    let has_committed_next = playback.queue.has_committed_next();
+    let source_kind = playback.runtime.source.as_ref().map(|source| source.kind.as_str());
+    let source_has_more = playback.runtime.source.as_ref().is_some_and(|source| {
+        source.continuation.is_some() || source.needs_restart
+    });
+    let collection_has_priority = source_has_more && source_kind != Some("search-radio");
+    let search_radio_waiting = source_has_more && source_kind == Some("search-radio");
+    if !has_committed_next
+        && (collection_has_priority
+            || search_radio_waiting && playback.queue.recommendations.is_empty())
+    {
         return None;
     }
     let entry = playback.queue.next_or_first(false)?;
@@ -1359,8 +1481,16 @@ pub(crate) fn handle_track_ended(app: tauri::AppHandle) {
             .runtime
             .source
             .as_ref()
-            .is_some_and(|source| source.continuation.is_some() || source.needs_restart)
+            .is_some_and(|source| source.kind != "search-radio" && (source.continuation.is_some() || source.needs_restart))
         {
+            playback.eof_waiting = Some((generation, playback.queue_epoch));
+            None
+        } else if let Some(entry) = playback.queue.promote_next_recommendation() {
+            playback.eof_waiting = None;
+            Some((entry.entry_id, generation))
+        } else if playback.runtime.source.as_ref().is_some_and(|source| {
+            source.kind == "search-radio" && (source.continuation.is_some() || source.needs_restart)
+        }) {
             playback.eof_waiting = Some((generation, playback.queue_epoch));
             None
         } else if playback
@@ -1382,6 +1512,7 @@ pub(crate) fn handle_track_ended(app: tauri::AppHandle) {
     if let Some((entry_id, generation)) = next {
         tauri::async_runtime::spawn(start_queue_entry(app, entry_id, generation, false));
     } else {
+        fetch_source_background(app.clone());
         maybe_prefetch_radio(app);
     }
 }
@@ -1396,31 +1527,31 @@ pub(crate) async fn next_track(
             .playback
             .lock()
             .map_err(|_| CommandError::new("LOCK_ERROR", "No se pudo leer la cola."))?;
-        let extensible = playback
-            .runtime
-            .source
-            .as_ref()
-            .is_some_and(|source| source.continuation.is_some() || source.needs_restart)
-            || playback
-                .queue
-                .source
-                .as_ref()
-                .is_some_and(|source| source.kind == "radio")
+        let source_kind = playback.runtime.source.as_ref().map(|source| source.kind.as_str());
+        let source_has_more = playback.runtime.source.as_ref().is_some_and(|source| {
+            source.continuation.is_some() || source.needs_restart
+        });
+        let collection_can_continue = source_has_more && source_kind != Some("search-radio");
+        let radio_can_continue = source_has_more && source_kind == Some("search-radio")
+            || playback.queue.source.as_ref().is_some_and(|source| source.kind == "radio")
                 && !playback.radio_exhausted;
-        let at_edge = playback
-            .queue
-            .current_index
-            .is_some_and(|index| index + 1 >= playback.queue.items.len());
-        if extensible && at_edge {
+        let at_edge = !playback.queue.has_committed_next();
+        if (!playback.is_repeat || playback.queue.current_index.is_none())
+            && at_edge
+            && (collection_can_continue
+                || radio_can_continue && playback.queue.recommendations.is_empty())
+        {
             playback.runtime.pending_next = Some((playback.generation, playback.queue_epoch));
             let dto = playback.to_dto();
             drop(playback);
+            fetch_source_background(app.clone());
             maybe_prefetch_radio(app);
             return Ok(dto);
         }
+        let repeat = playback.is_repeat;
         let next = playback
             .queue
-            .next_or_first(playback.is_repeat)
+            .next_or_first(repeat)
             .map(|entry| entry.entry_id);
         (next, playback.generation)
     };
@@ -2533,6 +2664,74 @@ mod dismissal_tests {
         assert!(consume_waiting_next(&mut pb).is_none());
         assert!(pb.runtime.pending_next.is_none());
     }
+
+    #[test]
+    fn waiting_radio_next_promotes_one_proposal_and_late_reuse_is_ignored() {
+        let mut pb = crate::PlaybackManager::new();
+        pb.generation = 5;
+        pb.queue_epoch = 7;
+        pb.queue.replace(
+            vec![
+                QueueEntryDto::new("seed".into(), "Seed".into(), "".into(), None, None),
+                QueueEntryDto::new("r1".into(), "R1".into(), "".into(), None, None),
+                QueueEntryDto::new("r2".into(), "R2".into(), "".into(), None, None),
+            ],
+            0,
+            QueueSourceDto {
+                kind: "radio".into(),
+                id: Some("seed".into()),
+                title: None,
+            },
+        );
+        pb.runtime.pending_next = Some((5, 7));
+        let first = consume_waiting_next(&mut pb).unwrap();
+        assert_eq!(
+            pb.queue
+                .items
+                .iter()
+                .map(|item| item.video_id.as_str())
+                .collect::<Vec<_>>(),
+            ["seed", "r1"]
+        );
+        assert_eq!(first.0, pb.queue.items[1].entry_id);
+        assert_eq!(pb.queue.recommendations.len(), 1);
+        assert!(consume_waiting_next(&mut pb).is_none());
+        assert_eq!(pb.queue.recommendations.len(), 1);
+    }
+
+    #[test]
+    fn collection_continuation_is_consumed_before_radio_reservation() {
+        let mut pb = crate::PlaybackManager::new();
+        pb.generation = 5;
+        pb.queue_epoch = 7;
+        pb.queue.replace(
+            vec![QueueEntryDto::new("a".into(), "A".into(), "".into(), None, None)],
+            0,
+            QueueSourceDto { kind: "playlist".into(), id: Some("list".into()), title: None },
+        );
+        pb.queue.merge_radio(vec![QueueEntryDto::new("r1".into(), "R1".into(), "".into(), None, None)]);
+        pb.runtime.source = Some(crate::playback_runtime::ProgressiveSource {
+            kind: "playlist".into(), id: Some("list".into()), continuation: Some("page-2".into()),
+            loading: false, error: false, needs_restart: false, loaded_prefix: vec!["a".into()],
+            consumed_continuations: Default::default(),
+        });
+        pb.runtime.pending_next = Some((5, 7));
+        assert!(consume_waiting_next(&mut pb).is_none());
+        assert_eq!(pb.queue.recommendations.len(), 1);
+        assert_eq!(pb.runtime.pending_next, Some((5, 7)));
+
+        pb.queue.append_source(vec![QueueEntryDto::new("b".into(), "B".into(), "".into(), None, None)], false);
+        let next = consume_waiting_next(&mut pb).unwrap();
+        assert_eq!(next.0, pb.queue.items[1].entry_id);
+        assert_eq!(pb.queue.recommendations.len(), 1);
+        pb.queue.select_entry(&next.0).unwrap();
+        pb.runtime.source.as_mut().unwrap().continuation = None;
+        pb.runtime.pending_next = Some((5, 7));
+        let recommendation = consume_waiting_next(&mut pb).unwrap();
+        assert_eq!(recommendation.0, pb.queue.items[2].entry_id);
+        assert_eq!(pb.queue.items[2].video_id, "r1");
+    }
+
     #[test]
     fn authenticated_stream_waiter_rejects_account_and_selection_changes() {
         let mut pb = PlaybackManager::new();
@@ -2666,12 +2865,12 @@ pub(crate) async fn set_playback_muted(
     ensure_audio_owner(&pb, expected_generation, auth_generation,
         state.auth_generation.load(Ordering::SeqCst))?;
     let volume = if muted {
-            0.0
-        } else if pb.runtime.last_audible > 0.0 {
-            pb.runtime.last_audible
-        } else {
-            100.0
-        };
+        0.0
+    } else if pb.runtime.last_audible > 0.0 {
+        pb.runtime.last_audible
+    } else {
+        100.0
+    };
     let player = state.player.read().ok().and_then(|player| player.clone())
         .ok_or_else(|| CommandError::new("PLAYER_NOT_INITIALIZED", "El reproductor de audio no está listo."))?;
     let exponential = pb.runtime.exponential_volume;
@@ -2879,9 +3078,15 @@ fn fetch_source_background(app: tauri::AppHandle) {
                     }
                     let shuffled = pb.is_shuffle;
                     let items = page.items.into_iter()
-                        .filter(|item| request.1.kind != "search-radio" || !pb.runtime.disliked.contains(&item.video_id))
-                        .map(queue_entry_from_record).collect();
-                    pb.queue.append_source(items, shuffled);
+                        .filter(|item| request.1.kind != "search-radio"
+                            || !pb.runtime.disliked.contains(&item.video_id)
+                                && !pb.runtime.excluded_recommendations.contains(&item.video_id))
+                        .map(queue_entry_from_record).collect::<Vec<_>>();
+                    if request.1.kind == "search-radio" {
+                        let _ = merge_radio_metadata(&mut pb, items);
+                    } else {
+                        pb.queue.append_source(items, shuffled);
+                    }
                     if let Some(source) = pb.runtime.source.as_mut() {
                         source.loading = false;
                         source.error = false;
@@ -2922,6 +3127,7 @@ pub(crate) async fn start_source_radio(
     playlist_id: String,
     selected_index: Option<usize>,
 ) -> Result<PlaybackStateDto, CommandError> {
+    let provider_cursor = items.last().map(|entry| entry.video_id.clone());
     let selected_index = selected_index.unwrap_or(0).min(items.len().saturating_sub(1));
     let Some(entry) = items.get(selected_index).cloned() else {
         return Err(CommandError::new(
@@ -2952,7 +3158,7 @@ pub(crate) async fn start_source_radio(
         Some(items),
         Some(selected_index),
         Some(QueueSourceDto {
-            kind: "radio-source".into(),
+            kind: "radio".into(),
             id: source.id,
             title: source.title,
         }),
@@ -2985,7 +3191,7 @@ pub(crate) async fn start_source_radio(
         }
         pb.queue.revision += 1;
         pb.radio_playlist_id = Some(playlist_id);
-        pb.radio_cursor_video_id = pb.queue.items.last().map(|entry| entry.video_id.clone());
+        pb.radio_cursor_video_id = provider_cursor;
         pb.to_dto()
     };
     let _ = app.emit("playback-state-changed", &snapshot);

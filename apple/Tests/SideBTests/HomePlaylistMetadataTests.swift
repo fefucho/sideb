@@ -31,6 +31,8 @@ private func playlistMetadataDetail(_ id: String, title: String = "Detail title"
     #expect(value.title == "Detail title")
     #expect(value.creator == "Creator")
     #expect(value.summary == "Lista de reproducción")
+    #expect(value.cardSummary.isEmpty)
+    #expect(value.duration == nil)
 }
 
 @Test func homePlaylistMetadataUsesExplicitProviderTotalAndDurationFromPartialPage() {
@@ -41,6 +43,8 @@ private func playlistMetadataDetail(_ id: String, title: String = "Detail title"
     #expect(value.creator == "Home creator")
     #expect(value.creatorID == "UCowner")
     #expect(value.summary == "Lista de reproducción • 2000 canciones • 4 h")
+    #expect(value.cardSummary == "2000 canciones")
+    #expect(value.duration == "4 h")
 }
 
 @Test func homePlaylistMetadataDerivesOnlyCompleteValidCatalogSummary() {

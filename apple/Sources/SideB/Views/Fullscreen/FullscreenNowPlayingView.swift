@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import SideBCore
 
@@ -29,13 +30,37 @@ public enum FullscreenPanel: String, CaseIterable, Identifiable {
 // MARK: - FullscreenNowPlayingView (Proporcional 60/40, Sólido y Resistente a Resizing)
 
 struct FullscreenNowPlayingView: View, Animatable {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceMotion) var reduceMotion
+    @Environment(\.accessibilityReduceTransparency) var reduceTransparency
+    @Environment(\.colorSchemeContrast) var contrast
     @Bindable var viewModel: PlayerViewModel
     let canvasSize: CGSize
     var sidebarProgress: CGFloat
     var router: NavigationRouter? = nil
+    // The canvas may retain the outgoing surface for its closing animation.
+    // Only presentation is retained: fetch/playback guards still use the live model.
+    var presentationMode: PlaybackPresentation? = nil
 
-    private var selectedPanel: FullscreenPanel {
+    init(viewModel: PlayerViewModel, canvasSize: CGSize, sidebarProgress: CGFloat,
+         router: NavigationRouter? = nil, presentationMode: PlaybackPresentation? = nil) {
+        self.viewModel = viewModel
+        self.canvasSize = canvasSize
+        self.sidebarProgress = sidebarProgress
+        self.router = router
+        self.presentationMode = presentationMode
+        // The lateral panel must mount lyrics at their final size. Changing it after the
+        // first layout re-centers the list and shows up as a jump when the panel opens.
+        let lateral = (presentationMode ?? viewModel.playbackPresentation.mode) == .sidebar
+        let settings = LyricsPresentationSettings()
+        if lateral { settings.fontSize = PlaybackSidebarLayout.lyricsFontSize }
+        _lyricsPresentation = State(initialValue: settings)
+    }
+
+    private var isSidebarPresentation: Bool {
+        (presentationMode ?? viewModel.playbackPresentation.mode) == .sidebar
+    }
+
+    var selectedPanel: FullscreenPanel {
         get { viewModel.selectedFullscreenPanel }
         nonmutating set { viewModel.selectedFullscreenPanel = newValue }
     }
@@ -43,26 +68,130 @@ struct FullscreenNowPlayingView: View, Animatable {
     private var localizedQueueContextTitle: String {
         viewModel.queueManager.displayContextTitle
     }
+    @State private var isArtworkFlipped = false
     @State private var isHoveringArtwork: Bool = false
     @State private var isHoveringAlbum: Bool = false
     @State private var failedOriginalURL: URL? = nil
     @State private var failedMaxQualityURL: URL? = nil
-    @State private var isArtworkFlipped = false
     @State private var geniusAnnotationColorMode = GeniusAnnotationColorMode.artwork
     @State private var isShowingExperimentalLyrics = true
+    @AppStorage("lyrics.sources") private var lyricSourcesJSON = "{}"
+    private var lyricSources: [String: String] {
+        guard let data = lyricSourcesJSON.data(using: .utf8) else { return [:] }
+        return (try? JSONDecoder().decode([String: String].self, from: data)) ?? [:]
+    }
+    private var lyricSource: String { lyricSources[viewModel.currentTrack?.videoId ?? ""] ?? "auto" }
+    private func chooseLyricSource(_ source: String) {
+        guard let id = viewModel.currentTrack?.videoId else { return }
+        var sources = lyricSources; sources[id] = source
+        if let data = try? JSONEncoder().encode(sources), let json = String(data: data, encoding: .utf8) { lyricSourcesJSON = json }
+        isShowingExperimentalLyrics = true
+    }
     @State private var experimentalLyrics = ExperimentalLyricsController()
-    @State private var lyricsPresentation = LyricsPresentationSettings()
-
+    @State private var lyricsPresentation: LyricsPresentationSettings
+    @State var sidebarPreviewPresentation: LyricsPresentationSettings = {
+        let settings = LyricsPresentationSettings()
+        settings.fontSize = PlaybackSidebarLayout.lyricsPreviewFontSize
+        return settings
+    }()
+    /// Set by the lateral scene while the footer shows the lyrics sample.
+    @State var sidebarLyricsPreviewVisible = false
+    @AppStorage(SidebarBottomContentPreferences.preferenceKey, store: HomeAppearance.preferences)
+    var sidebarBottomContentRaw = SidebarBottomContent.queue.rawValue
+    @State private var queueViewport = PlaybackQueueViewport()
+    @State var sidebarPalette = PlaybackSidebarPalette.neutral
+    @State var sidebarArtworkScroll = SidebarArtworkScrollState()
 
     var animatableData: CGFloat {
         get { sidebarProgress }
         set { sidebarProgress = newValue }
     }
 
+    @FocusState var sidebarCloseFocused: Bool
+
+    var sidebarArtworkOccurrenceKey: SidebarArtworkOccurrenceKey {
+        SidebarArtworkOccurrenceKey(
+            sessionID: viewModel.mediaSessionIdentity,
+            playbackID: viewModel.experimentalLyricsPlaybackIdentity,
+            videoID: viewModel.currentTrack?.videoId,
+            occurrenceID: viewModel.queueManager.currentOccurrenceID
+        )
+    }
+
+    var sidebarPaletteTaskID: String {
+        "\(viewModel.mediaSessionIdentity.uuidString)|\(viewModel.currentTrack?.videoId ?? "")|\(viewModel.currentTrack?.thumbnail ?? "")"
+    }
+
+    var sidebarTint: Color {
+        sidebarPalette.surfaceColor(
+            reduceTransparency: reduceTransparency,
+            increasedContrast: contrast == .increased
+        )
+    }
+
+    var sidebarBottomTint: Color {
+        sidebarPalette.bottomSurfaceColor(
+            reduceTransparency: reduceTransparency,
+            increasedContrast: contrast == .increased
+        )
+    }
+
+    private var isLyricsPanelVisible: Bool {
+        viewModel.isPlaybackSidebarPresented
+            ? viewModel.selectedSidebarPanel == .lyrics
+            : viewModel.isFullscreenPresented && selectedPanel == .lyrics
+    }
+
     var body: some View {
+        ZStack {
+            if isSidebarPresentation { sidebarScene }
+            else { fullscreenScene }
+        }
+        .onExitCommand {
+            if viewModel.isPlaybackSidebarPresented { viewModel.closePlaybackSidebar() }
+            else { viewModel.dismissFullscreen() }
+        }
+        .onChange(of: isSidebarPresentation, initial: true) { _, isSidebar in
+            lyricsPresentation.fontSize = isSidebar ? PlaybackSidebarLayout.lyricsFontSize : ExperimentalLyricsStyle.defaultFontSize
+        }
+        .onDisappear {
+            viewModel.volumeScroll.cancel()
+            experimentalLyrics.deactivate()
+            lyricsPresentation.beginPanelVisit()
+        }
+        .onChange(of: isLyricsPanelVisible, initial: true) { _, visible in
+            // Reset while leaving, before the next renderer mounts and schedules its initial scroll.
+            if !visible { lyricsPresentation.beginPanelVisit() }
+        }
+        .onChange(of: experimentalLyricsRequest, initial: true) { _, request in
+            experimentalLyrics.activate(request, fetch: fetchExperimentalLyrics)
+        }
+        .onChange(of: sidebarArtworkOccurrenceKey, initial: true) { _, key in
+            _ = sidebarArtworkScroll.synchronizeOccurrence(key)
+        }
+        .onChange(of: viewModel.currentTrack?.videoId) { _, _ in
+            failedOriginalURL = nil
+            failedMaxQualityURL = nil
+        }
+        .task(id: sidebarPaletteTaskID) {
+            if viewModel.currentTrack?.thumbnail == nil {
+                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.35)) {
+                    sidebarPalette = .neutral
+                }
+                return
+            }
+            let resolved = await PlaybackSidebarPalette.resolve(thumbnail: viewModel.currentTrack?.thumbnail)
+            guard !Task.isCancelled else { return }
+            withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.45)) {
+                sidebarPalette = resolved
+            }
+        }
+    }
+
+    private var fullscreenScene: some View {
         let geometry = FullscreenSidebarGeometry(canvasSize: canvasSize, progress: sidebarProgress)
         let layout = geometry.metrics
-        VStack(spacing: 0) {
+        return VStack(spacing: 0) {
             Color.clear.frame(height: layout.topPadding)
             HStack(alignment: .top, spacing: layout.columnSpacing) {
                 // One block and one interpolated coordinate system for
@@ -92,30 +221,13 @@ struct FullscreenNowPlayingView: View, Animatable {
         .frame(width: layout.viewport.width, height: layout.viewport.height)
         .clipped()
         .offset(x: geometry.contentOffset)
+        .frame(width: canvasSize.width, height: canvasSize.height, alignment: .topLeading)
         // Only the shared sidebar progress interpolates this scene's geometry.
         .transaction { if geometry.isTransitioning { $0.animation = nil } }
         .compositingGroup()
-        .onExitCommand {
-            withAnimation(.spring(response: 0.38, dampingFraction: 0.85)) {
-                viewModel.isFullscreenPresented = false
-            }
-        }
-        .onDisappear {
-            viewModel.volumeScroll.cancel()
-            experimentalLyrics.deactivate()
-        }
-        .onChange(of: experimentalLyricsRequest, initial: true) { _, request in
-            experimentalLyrics.activate(request, fetch: fetchExperimentalLyrics)
-        }
-        .onChange(of: isArtworkFlipped) { _, _ in viewModel.volumeScroll.cancel() }
-        .onChange(of: viewModel.currentTrack?.videoId) { _, _ in
-            failedOriginalURL = nil
-            failedMaxQualityURL = nil
-            isArtworkFlipped = false
-        }
     }
 
-    // MARK: - Módulo Artwork (1:1 Cuadrado con Play/Pause en click y oscurecimiento en hover)
+    // MARK: - Módulo Artwork (1:1 Cuadrado en Fullscreen con Play/Pause en click y oscurecimiento en hover)
     private func artworkView(size: CGFloat) -> some View {
         let originalUrl = ImageURLHelper.originalArtworkURL(from: viewModel.currentTrack?.thumbnail)
         let maxQualityUrl = ImageURLHelper.maxQualityArtworkURL(
@@ -489,93 +601,28 @@ struct FullscreenNowPlayingView: View, Animatable {
 
     // MARK: - Contenido: Cola de Reproducción (120 FPS, transparente, sin columnas innecesarias)
     @ViewBuilder
-    private func queuePanel(height: CGFloat) -> some View {
-        if viewModel.queueManager.queue.isEmpty {
-            VStack(spacing: 12) {
-                Image(systemName: "music.note.list")
-                    .font(.system(size: 38))
-                    .foregroundStyle(.white.opacity(0.25))
-                Text(L10n.text("queue.empty"))
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.55))
+    func queuePanel(height: CGFloat) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Image(systemName: viewModel.queueManager.context?.iconName ?? "music.note.list")
+                Text(localizedQueueContextTitle).lineLimit(1)
+                Spacer(minLength: 4)
+                if viewModel.isLoadingPlaylistContinuation { ProgressView().controlSize(.small) }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else {
-            VStack(spacing: 8) {
-                // Cabecera Contextual de la Cola Dinámica
-                HStack(spacing: 8) {
-                    Image(systemName: viewModel.queueManager.context?.iconName ?? "music.note.list")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(.primary)
-
-                    Text(localizedQueueContextTitle)
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.9))
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-
-                    Text("•")
-                        .font(.system(size: 10))
-                        .foregroundStyle(.white.opacity(0.3))
-                        .fixedSize()
-
-                    Text(L10n.songCount(viewModel.queueManager.queue.count))
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.5))
-                        .fixedSize()
-
-                    Spacer(minLength: 4)
-
-                    if viewModel.queueManager.isLoadingRadio || viewModel.queueManager.isLoadingAutoplay {
-                        HStack(spacing: 4) {
-                            ProgressView()
-                                .scaleEffect(0.5)
-                            Text(L10n.text("common.loading"))
-                                .font(.system(size: 10, weight: .medium))
-                                .foregroundStyle(.white.opacity(0.6))
-                        }
-                        .fixedSize()
-                    }
-                }
-                .padding(.horizontal, 8)
-                .padding(.top, 2)
-
-                NativeTrackTableView(
-                    tracks: viewModel.queueManager.tracks,
-                    currentTrackVideoId: viewModel.currentTrack?.videoId,
-                    isPlaying: viewModel.isPlaying,
-                    playerViewModel: viewModel,
-                    router: router,
-                    presentation: .queue,
-                    hideAlbumColumn: true,
-                    showAlbumInSubtitle: true,
-                    isReorderable: true,
-                    rowHeight: 46.0,
-                    likedVideoIds: viewModel.likedVideoIds,
-                    menuOrigin: { .queue(occurrenceIndex: $0) },
-                    onPlayTrack: { index in
-                        viewModel.playQueueIndex(index)
-                    },
-                    onLikeTrack: { track in
-                        viewModel.toggleTrackLike(track)
-                    },
-                    onDislikeTrack: { track in
-                        viewModel.dislikeTrack(track)
-                    },
-                    onMoveTrack: { from, to in
-                        viewModel.moveQueueTrack(from: from, to: to)
-                    },
-                    contentInsets: NSEdgeInsets(top: 2, left: 0, bottom: 4, right: 0)
-                )
-                .frame(maxWidth: .infinity)
-                .frame(height: max(0, height - 28))
-            }
-            .frame(height: height)
+            .font(.system(size: 12, weight: .medium))
+            .foregroundStyle(.secondary)
+            NativeSeparatedQueueView(manager: viewModel.queueManager,
+                revision: viewModel.queueManager.presentationRevision,
+                player: viewModel, router: router, liked: viewModel.likedVideoIds,
+                playing: viewModel.isPlaying,
+                loading: viewModel.queueManager.isLoadingRadio || viewModel.queueManager.isLoadingAutoplay,
+                error: viewModel.queueRecommendationError, viewport: queueViewport)
         }
+        .frame(height: height)
     }
 
     // MARK: - Contenido: Letras Sincronizadas
-    private func lyricsPanel(height: CGFloat) -> some View {
+    func lyricsPanel(height: CGFloat) -> some View {
         Group {
             if viewModel.isShowingGeniusLyrics {
                 GeniusPanelView(model: viewModel.genius, artwork: viewModel.currentTrack?.thumbnail,
@@ -603,6 +650,7 @@ struct FullscreenNowPlayingView: View, Animatable {
                     onRefresh: refreshExperimentalLyrics,
                     isRefreshing: experimentalLyrics.isLoading
                 ) {
+                    LyricsSourceOptions(source: lyricSource, onSelect: chooseLyricSource)
                     LyricsPresentationOptions(settings: lyricsPresentation)
                 }
                 .padding(.trailing, 8)
@@ -611,7 +659,8 @@ struct FullscreenNowPlayingView: View, Animatable {
     }
 
     private var isDisplayingOriginalLyrics: Bool {
-        LyricsPanelSelection.usesOriginal(prefersNew: isShowingExperimentalLyrics,
+        if isShowingExperimentalLyrics && lyricSource != "auto" { return false }
+        return LyricsPanelSelection.usesOriginal(prefersNew: isShowingExperimentalLyrics,
                                           hasNew: hasExperimentalLyrics,
                                           hasOriginal: viewModel.lyricsInfo?.lines.isEmpty == false)
     }
@@ -620,7 +669,7 @@ struct FullscreenNowPlayingView: View, Animatable {
         guard let active = experimentalLyrics.activeRequest,
               active.playbackID == viewModel.experimentalLyricsPlaybackIdentity,
               active.sessionID == viewModel.mediaSessionIdentity,
-              active.videoID == viewModel.currentTrack?.videoId else { return nil }
+              active.videoID == viewModel.currentTrack?.videoId, active.source == lyricSource else { return nil }
         return experimentalLyrics.document
     }
 
@@ -634,13 +683,16 @@ struct FullscreenNowPlayingView: View, Animatable {
     }
 
     private var experimentalLyricsRequest: ExperimentalLyricsRequest? {
-        guard isShowingExperimentalLyrics, !viewModel.isShowingGeniusLyrics, viewModel.isFullscreenPresented,
-              selectedPanel == .lyrics, let track = viewModel.currentTrack,
+        let previewOnly = viewModel.isPlaybackSidebarPresented && sidebarLyricsPreviewVisible && viewModel.selectedSidebarPanel == .artwork
+        guard isShowingExperimentalLyrics, previewOnly || !viewModel.isShowingGeniusLyrics, viewModel.isPlaybackSurfaceVisible,
+              (viewModel.isPlaybackSidebarPresented ? (viewModel.selectedSidebarPanel == .lyrics || previewOnly) : selectedPanel == .lyrics), let track = viewModel.currentTrack,
               viewModel.rustCore != nil else { return nil }
-        return ExperimentalLyricsRequest(track: track,
+        var request = ExperimentalLyricsRequest(track: track,
                                          playbackID: viewModel.experimentalLyricsPlaybackIdentity,
                                          sessionID: viewModel.mediaSessionIdentity,
                                          audioDuration: viewModel.duration)
+        request.source = lyricSource
+        return request
     }
 
     @MainActor
@@ -669,7 +721,8 @@ struct FullscreenNowPlayingView: View, Animatable {
                 onShowOriginalLyrics: { isShowingExperimentalLyrics = false },
                 onRefresh: refreshExperimentalLyrics,
                 isRefreshing: experimentalLyrics.isLoading,
-                presentation: lyricsPresentation
+                presentation: lyricsPresentation,
+                source: lyricSource, onSelectSource: chooseLyricSource
             )
             .id(viewModel.experimentalLyricsPlaybackIdentity)
             .overlay(alignment: .bottom) {
@@ -699,7 +752,7 @@ struct FullscreenNowPlayingView: View, Animatable {
                     .buttonStyle(SideBControlStyle())
                 } else {
                     Image(systemName: "quote.bubble")
-                    Text(L10n.text("lyrics.experimental.empty"))
+                    Text(L10n.text(lyricSource == "auto" ? "lyrics.experimental.empty" : "lyrics.source.empty"))
                     Text(L10n.text("lyrics.experimental.emptyDetail"))
                         .font(.system(size: 11.5))
                 }
@@ -746,6 +799,51 @@ struct FullscreenNowPlayingView: View, Animatable {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+    }
+
+    // MARK: - Muestra de letras del lateral
+
+    /// The same renderers as the Lyrics tab at a smaller size, with their own scroll state,
+    /// without controls and without hit testing; the card around it opens the full tab.
+    @ViewBuilder
+    func sidebarLyricsPreview(height: CGFloat) -> some View {
+        SidebarLyricsPreviewCard(viewModel: viewModel, onOpen: openSidebarLyricsFromPreview) {
+            Group {
+                if !isDisplayingOriginalLyrics, let document = currentExperimentalDocument,
+                   document.instrumental || !document.lines.isEmpty {
+                    ExperimentalLyricsPanel(
+                        document: document,
+                        player: viewModel.audioService.avPlayer,
+                        playbackIdentity: viewModel.experimentalLyricsPlaybackIdentity,
+                        duration: viewModel.duration,
+                        seekSnapshot: viewModel.audioService.seekSnapshot,
+                        onSeek: { _ in },
+                        presentation: sidebarPreviewPresentation,
+                        source: lyricSource,
+                        showsControls: false
+                    )
+                    .id(viewModel.experimentalLyricsPlaybackIdentity)
+                } else if isDisplayingOriginalLyrics, !viewModel.isLoadingLyrics,
+                          let lyrics = viewModel.lyricsInfo, !lyrics.lines.isEmpty {
+                    ClassicLyricsClockHost(
+                        viewModel: viewModel, lyrics: lyrics, duration: viewModel.duration, height: height,
+                        playbackIdentity: viewModel.experimentalLyricsPlaybackIdentity,
+                        presentation: sidebarPreviewPresentation
+                    )
+                    .id(viewModel.experimentalLyricsPlaybackIdentity)
+                } else {
+                    SidebarLyricsPreviewStatus(
+                        loading: experimentalLyrics.isLoading || viewModel.isLoadingLyrics,
+                        hasTrack: viewModel.currentTrack != nil)
+                }
+            }
+            .frame(height: height)
+        }
+    }
+
+    private func openSidebarLyricsFromPreview() {
+        viewModel.selectedFullscreenPanel = .lyrics
+        viewModel.selectedSidebarPanel = .lyrics
     }
 
     // MARK: - Contenido: Recomendaciones (Estantes Liquid Glass a 120 FPS)
@@ -819,10 +917,21 @@ private struct ClassicLyricsClockHost: View {
             presentation: presentation,
             onSeek: { _ = viewModel.seekToLyric(seconds: $0) }
         )
+        // The clock ticks at 10 Hz but the active line changes rarely; without this the
+        // fresh `onSeek` closure forces the whole row list to re-evaluate on every tick.
+        .equatable()
     }
 }
 
-private struct SyncedLyricsPanel: View {
+struct SyncedLyricsPanel: View, Equatable {
+    /// `onSeek` is intentionally ignored: it always forwards to the same player.
+    /// Presentation state is observed by the panel itself, so identity is enough here.
+    static func == (lhs: SyncedLyricsPanel, rhs: SyncedLyricsPanel) -> Bool {
+        lhs.activeIndex == rhs.activeIndex && lhs.duration == rhs.duration && lhs.height == rhs.height
+            && lhs.playbackIdentity == rhs.playbackIdentity && lhs.presentation === rhs.presentation
+            && lhs.lyrics == rhs.lyrics
+    }
+
     let lyrics: LyricsInfo
     let activeIndex: Int?
     let duration: Double
@@ -831,43 +940,58 @@ private struct SyncedLyricsPanel: View {
     let presentation: LyricsPresentationSettings
     let onSeek: (Double) -> Void
 
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.colorSchemeContrast) private var contrast
+    @Environment(\.accessibilityReduceMotion) var reduceMotion
+    @Environment(\.colorSchemeContrast) var contrast
+    @State private var visibleIndices: Set<Int> = []
 
-    private var canFollow: Bool { activeIndex != nil }
-    private var isFollowing: Bool { presentation.followState.isFollowing }
+    private var canFollow: Bool { activeIndex != nil && lyrics.isSynced }
+    private var isFollowing: Bool { presentation.classicScroll.isFollowing }
     private var karaoke: Bool { presentation.mode == .karaoke }
 
     var body: some View {
         GeometryReader { geometry in
-            let horizontalPadding: CGFloat = geometry.size.width >= 330 ? 32 : 20
-            let textWidth = max(1, geometry.size.width - horizontalPadding * 2 - (karaoke ? 48 : 0))
+            let horizontalPadding = LyricsLayoutMetrics.horizontalMargin
+            let textWidth = LyricsLayoutMetrics.textWidth(viewportWidth: geometry.size.width)
+            let verticalPadding = LyricsLayoutMetrics.verticalCenteringPadding(
+                viewportHeight: geometry.size.height,
+                canCenterActiveLine: canFollow
+            )
             ScrollViewReader { proxy in
                 ScrollView {
                     VStack(alignment: .leading, spacing: 0) {
                         ForEach(Array(lyrics.lines.enumerated()), id: \.offset) { index, line in
                             lyricRow(index: index, line: line, proxy: proxy)
-                                .frame(maxWidth: textWidth, alignment: .leading)
+                                .frame(width: textWidth, alignment: .leading)
                                 .padding(.vertical, karaoke ? 10 : 8)
                                 .id(index)
+                                .onScrollVisibilityChange(threshold: 0.01) { isVisible in
+                                    recordRowVisibility(index: index, isVisible: isVisible)
+                                }
                         }
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .frame(width: textWidth, alignment: .leading)
                     .padding(.horizontal, horizontalPadding)
-                    .padding(.vertical, karaoke && lyrics.isSynced ? geometry.size.height / 2 : 12)
+                    .padding(.vertical, verticalPadding)
+                    .frame(maxWidth: .infinity, alignment: .center)
                 }
                 .scrollIndicators(.hidden)
                 .mask { LyricsViewportMask(height: geometry.size.height, increasedContrast: contrast == .increased) }
                 .onScrollPhaseChange { _, phase in
                     if canFollow && (phase == .tracking || phase == .interacting) {
-                        presentation.followState.userScrolled()
+                        presentation.noteUserScrolled()
+                        updateManualAnchor()
                     }
                 }
                 .overlay(alignment: .bottom) {
                     if canFollow && !isFollowing {
                         Button {
-                            presentation.followState.resume()
-                            centerCurrentLine(using: proxy, animated: true)
+                            presentation.noteFollowResumed()
+                            if let command = presentation.classicScroll.resumeFollowing(
+                                activeTarget: activeIndex,
+                                reduceMotion: reduceMotion
+                            ) {
+                                applyImmediately(command, using: proxy)
+                            }
                         } label: {
                             SideBControlLabel(title: L10n.text("fullscreen.returnToCurrentLyric"), symbol: "location.fill")
                         }
@@ -880,13 +1004,39 @@ private struct SyncedLyricsPanel: View {
                 }
                 .onAppear {
                     presentation.activate(playbackIdentity)
-                    scheduleCenter(using: proxy, animated: false)
+                    if let command = presentation.classicScroll.restoreOnAppear(
+                        activeTarget: activeIndex,
+                        canFollow: canFollow
+                    ) {
+                        scheduleCommand(command, using: proxy)
+                    }
                 }
-                .onDisappear { presentation.followState.invalidateRequests() }
-                .onChange(of: activeIndex) { _, _ in scheduleCenter(using: proxy, animated: true) }
-                .onChange(of: geometry.size) { _, _ in scheduleCenter(using: proxy, animated: false) }
-                .onChange(of: presentation.fontSize) { _, _ in scheduleCenter(using: proxy, animated: false) }
-                .onChange(of: karaoke) { _, _ in scheduleCenter(using: proxy, animated: false) }
+                .onDisappear {
+                    presentation.classicScroll.invalidatePending()
+                    presentation.followState.invalidateRequests()
+                }
+                .onChange(of: playbackIdentity) { _, next in
+                    visibleIndices.removeAll()
+                    presentation.activate(next)
+                    if let command = presentation.classicScroll.restoreOnAppear(
+                        activeTarget: activeIndex,
+                        canFollow: canFollow
+                    ) {
+                        scheduleCommand(command, using: proxy)
+                    }
+                }
+                .onChange(of: activeIndex) { _, next in
+                    if let command = presentation.classicScroll.activeTargetChanged(
+                        to: next,
+                        canFollow: canFollow,
+                        reduceMotion: reduceMotion
+                    ) {
+                        scheduleCommand(command, using: proxy)
+                    }
+                }
+                .onChange(of: geometry.size) { _, _ in recenterForLayout(using: proxy) }
+                .onChange(of: presentation.fontSize) { _, _ in recenterForLayout(using: proxy) }
+                .onChange(of: karaoke) { _, _ in recenterForLayout(using: proxy) }
             }
         }
         .frame(maxWidth: .infinity)
@@ -906,9 +1056,10 @@ private struct SyncedLyricsPanel: View {
 
         if let milliseconds = line.timeMs {
             Button {
-                presentation.followState.resume()
+                presentation.noteFollowResumed()
+                let command = presentation.classicScroll.seek(to: index, reduceMotion: reduceMotion)
                 onSeek(Double(milliseconds) / 1_000)
-                center(index, using: proxy, animated: true)
+                applyImmediately(command, using: proxy)
             } label: { text }
             .buttonStyle(.plain)
             .accessibilityAddTraits(index == activeIndex ? [.isSelected] : [])
@@ -916,38 +1067,56 @@ private struct SyncedLyricsPanel: View {
         } else { text }
     }
 
-    private func scheduleCenter(using proxy: ScrollViewProxy, animated: Bool) {
-        guard let request = presentation.followState.beginRequest() else { return }
-        Task { @MainActor in
-            await Task.yield()
-            guard presentation.followState.canApply(request) else { return }
-            centerCurrentLine(using: proxy, animated: animated)
+    private func recenterForLayout(using proxy: ScrollViewProxy) {
+        if let command = presentation.classicScroll.recenterForLayoutChange(
+            activeTarget: activeIndex,
+            canFollow: canFollow,
+            reduceMotion: reduceMotion
+        ) {
+            scheduleCommand(command, using: proxy)
         }
     }
 
-    private func centerCurrentLine(using proxy: ScrollViewProxy, animated: Bool) {
-        guard let activeIndex else { return }
-        center(activeIndex, using: proxy, animated: animated)
+    private func scheduleCommand(_ command: LyricsScrollCoordinator<Int>.Command, using proxy: ScrollViewProxy) {
+        Task { @MainActor in
+            await Task.yield()
+            guard presentation.classicScroll.canApply(command) else { return }
+            applyImmediately(command, using: proxy)
+        }
     }
 
-    private func center(_ index: Int, using proxy: ScrollViewProxy, animated: Bool) {
-        if animated && !reduceMotion {
+    private func applyImmediately(_ command: LyricsScrollCoordinator<Int>.Command, using proxy: ScrollViewProxy) {
+        if command.animated && !reduceMotion {
             withAnimation(.spring(response: ExperimentalLyricsStyle.focusTransitionDuration, dampingFraction: 0.96)) {
-                proxy.scrollTo(index, anchor: .center)
+                proxy.scrollTo(command.target, anchor: .center)
             }
-        } else { proxy.scrollTo(index, anchor: .center) }
+        } else {
+            proxy.scrollTo(command.target, anchor: .center)
+        }
+    }
+
+    private func recordRowVisibility(index: Int, isVisible: Bool) {
+        let changed = isVisible ? visibleIndices.insert(index).inserted : visibleIndices.remove(index) != nil
+        if changed && !isFollowing {
+            updateManualAnchor()
+        }
+    }
+
+    private func updateManualAnchor() {
+        guard !isFollowing, !visibleIndices.isEmpty else { return }
+        let sorted = visibleIndices.sorted()
+        presentation.classicScroll.recordVisibleManualAnchor(sorted[sorted.count / 2])
     }
 }
-
 
 /// Observes only the feedback and effective audio value; the image subtree is retained.
 private struct FullscreenArtworkVolumeFeedback: View {
     let player: PlayerViewModel
     let size: CGFloat
     let hovered: Bool
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-    @Environment(\.colorSchemeContrast) private var contrast
+    @Environment(\.accessibilityReduceMotion) var reduceMotion
+    @Environment(\.accessibilityReduceTransparency) var reduceTransparency
+    @Environment(\.colorSchemeContrast) var contrast
 
     var body: some View {
         let visible = player.volumeScroll.isVisible

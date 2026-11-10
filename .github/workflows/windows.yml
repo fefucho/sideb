@@ -5,11 +5,15 @@ on:
     paths:
       - 'core/**'
       - 'windows/**'
+      - 'extensions/**'
+      - 'Scripts/package-visual-provider.mjs'
       - '.github/workflows/windows.yml'
   pull_request:
     paths:
       - 'core/**'
       - 'windows/**'
+      - 'extensions/**'
+      - 'Scripts/package-visual-provider.mjs'
       - '.github/workflows/windows.yml'
   workflow_dispatch: {}
 
@@ -41,7 +45,20 @@ jobs:
             core/target/
             windows/src-tauri/target/
             windows/.cache/mpv/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('core/Cargo.lock', 'windows/src-tauri/Cargo.lock', 'windows/pnpm-lock.yaml', 'windows/scripts/windows.ps1') }}
+            extensions/spotify-canvas/target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('core/Cargo.lock', 'windows/src-tauri/Cargo.lock', 'extensions/spotify-canvas/Cargo.lock', 'windows/pnpm-lock.yaml', 'windows/scripts/windows.ps1') }}
+
+      - name: Lint optional Spotify Canvas provider (Windows x64)
+        shell: pwsh
+        working-directory: extensions/spotify-canvas
+        run: |
+          cargo fmt --check
+          if ($LASTEXITCODE -ne 0) { throw 'cargo fmt falló' }
+          cargo clippy --locked --all-targets --target x86_64-pc-windows-msvc -- -D warnings
+          if ($LASTEXITCODE -ne 0) { throw 'cargo clippy falló' }
+
+      - name: Test provider packaging
+        run: node --test Scripts/package-visual-provider.test.mjs
 
       - name: Bootstrap pinned libmpv
         shell: pwsh
@@ -65,3 +82,10 @@ jobs:
             windows/src-tauri/target/debug/libmpv-2.dll
             windows/src-tauri/target/debug/vulkan-1.dll
             windows/src-tauri/target/debug/VulkanRT-License.txt
+
+      - name: Upload Spotify Canvas provider package
+        uses: actions/upload-artifact@v4
+        with:
+          name: sideb-spotify-canvas-windows-x64
+          if-no-files-found: error
+          path: windows/src-tauri/provider/spotify-canvas/

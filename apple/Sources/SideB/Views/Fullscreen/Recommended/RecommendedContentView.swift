@@ -156,7 +156,7 @@ struct RecommendedContentView: View {
 /// Shared artwork controls with observation confined to the visible song row.
 struct RecommendedTrackRow: View {
     let track: SongItemRecord
-    @Bindable var viewModel: PlayerViewModel
+    let viewModel: PlayerViewModel
     var router: NavigationRouter?
 
     @State private var isHovered: Bool = false
@@ -202,6 +202,8 @@ struct RecommendedTrackRow: View {
                 metadataLinks
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+
+            actionButtons
         }
         .frame(height: 44)
         .padding(.horizontal, 6)
@@ -225,6 +227,36 @@ struct RecommendedTrackRow: View {
             core: viewModel.rustCore,
             origin: .recommendations
         )
+    }
+
+    private var isLiked: Bool { viewModel.likedVideoIds.contains(track.videoId) }
+
+    /// Dislike, like, add: same size and spacing as the lateral recommendations.
+    /// Like stays visible; the other two appear while the row is active.
+    private var actionButtons: some View {
+        HStack(spacing: 6) {
+            rowAction("hand.thumbsdown", label: "queue.track.dislikeRemove", visible: isHovered) { viewModel.dislikeTrack(track) }
+            rowAction(isLiked ? "heart.fill" : "heart", label: isLiked ? "detail.track.unlike" : "detail.track.like",
+                      visible: true, strong: isLiked) { viewModel.toggleTrackLike(track) }
+            rowAction("plus", label: "menu.add_to_queue", visible: isHovered) { viewModel.addToQueue(song: track) }
+        }
+    }
+
+    private func rowAction(_ symbol: String, label: String, visible: Bool, strong: Bool = false,
+                           action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 14, weight: .regular))
+                .foregroundStyle(strong ? Color.white : Color.white.opacity(0.65))
+                .frame(width: 22, height: 22)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .opacity(visible ? (symbol == "heart" || symbol == "heart.fill" ? 1 : 0.7) : 0)
+        .allowsHitTesting(visible)
+        .accessibilityHidden(!visible)
+        .help(L10n.text(label))
+        .accessibilityLabel(L10n.text(label))
     }
 
     private func activate() {

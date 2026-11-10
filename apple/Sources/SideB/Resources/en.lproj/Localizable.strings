@@ -921,6 +921,12 @@ History: %@</string>
 	<string>Animate words</string>
 	<key>lyrics.experimental.wordMotion.help</key>
 	<string>Animate glow, lift and scale on sustained words.</string>
+	<key>lyrics.source.auto</key>
+	<string>Automatic</string>
+	<key>lyrics.source.choose</key>
+	<string>Lyrics source</string>
+	<key>lyrics.source.empty</key>
+	<string>No lyrics from this source</string>
 	<key>menu.accept</key>
 	<string>OK</string>
 	<key>menu.account</key>
@@ -1125,6 +1131,30 @@ History: %@</string>
 	<string>Refresh Recommendations (⌘R)</string>
 	<key>navigation.search</key>
 	<string>Search</string>
+	<key>playbackSidebar.close</key>
+	<string>Return to bottom player</string>
+	<key>playbackSidebar.lyricsPreview.noLyrics</key>
+	<string>No lyrics available</string>
+	<key>playbackSidebar.lyricsPreview.openLyrics</key>
+	<string>Open full lyrics</string>
+	<key>playbackSidebar.lyricsPreview.searching</key>
+	<string>Searching lyrics…</string>
+	<key>playbackSidebar.lyricsPreview.showMore</key>
+	<string>Show more</string>
+	<key>playbackSidebar.lyricsPreview.title</key>
+	<string>Lyrics preview</string>
+	<key>playbackSidebar.nowPlaying</key>
+	<string>Now Playing</string>
+	<key>playbackSidebar.open</key>
+	<string>Open playback sidebar</string>
+	<key>playbackSidebar.position</key>
+	<string>Playback position</string>
+	<key>playbackSidebar.synced</key>
+	<string>Synced</string>
+	<key>playbackSidebar.upNext</key>
+	<string>Up next</string>
+	<key>playbackSidebar.viewQueue</key>
+	<string>View queue</string>
 	<key>player.closeFullscreen</key>
 	<string>Close full screen</string>
 	<key>player.error.completePlaylist</key>
@@ -1263,8 +1293,36 @@ History: %@</string>
 	<string>The playlist returned a repeated continuation.</string>
 	<key>queue.manual</key>
 	<string>Manual queue</string>
+	<key>queue.moreSource</key>
+	<string>Show more songs from the collection</string>
+	<key>queue.moveEnd</key>
+	<string>Move to end</string>
+	<key>queue.moveNext</key>
+	<string>Move to next</string>
+	<key>queue.noRecommendations</key>
+	<string>No more recommendations available.</string>
+	<key>queue.now</key>
+	<string>Now playing</string>
 	<key>queue.playlistContext</key>
 	<string>Playlist: %@</string>
+	<key>queue.recommendations</key>
+	<string>Recommendations</string>
+	<key>queue.recommendationsError</key>
+	<string>Could not load recommendations.</string>
+	<key>queue.repeatNote</key>
+	<string>Turn repeat off to continue with recommendations.</string>
+	<key>queue.retryRecommendations</key>
+	<string>Retry recommendations</string>
+	<key>queue.selection.advance</key>
+	<string>Advance to that song</string>
+	<key>queue.selection.hint</key>
+	<string>Advancing places skipped recommendations in previous songs without marking them as listened. Songs you chose remain queued.</string>
+	<key>queue.selection.label</key>
+	<string>When selecting a recommendation</string>
+	<key>queue.selection.playOnly</key>
+	<string>Play only the selected song</string>
+	<key>queue.settings.title</key>
+	<string>Queue</string>
 	<key>queue.title</key>
 	<string>Queue</string>
 	<key>queue.track.dislikeRemove</key>
@@ -1397,6 +1455,20 @@ History: %@</string>
 	<string>Hiding a shelf still lets its source contribute featured collections.</string>
 	<key>settings.categoriesLoading</key>
 	<string>Categories will appear when Home loads.</string>
+	<key>settings.category.account</key>
+	<string>Account</string>
+	<key>settings.category.appearance</key>
+	<string>Appearance</string>
+	<key>settings.category.general</key>
+	<string>General</string>
+	<key>settings.category.homeFeed</key>
+	<string>Home Feed</string>
+	<key>settings.category.playback</key>
+	<string>Playback</string>
+	<key>settings.category.shortcuts</key>
+	<string>Keyboard Shortcuts</string>
+	<key>settings.category.visualProviders</key>
+	<string>Visual Providers</string>
 	<key>settings.close</key>
 	<string>Close settings</string>
 	<key>settings.down</key>
@@ -1443,12 +1515,28 @@ History: %@</string>
 	<string>Restore sources</string>
 	<key>settings.retryLibrary</key>
 	<string>Retry library</string>
+	<key>settings.search.showVideos</key>
+	<string>Show videos in search</string>
+	<key>settings.search.showVideos.hint</key>
+	<string>Turn this off to hide videos in search results and suggestions. Songs, artists, albums, and playlists still appear.</string>
 	<key>settings.searchCategory</key>
 	<string>Search categories</string>
 	<key>settings.searchCategoryAX</key>
 	<string>Search Home categories</string>
+	<key>settings.searchPlaceholder</key>
+	<string>Search settings...</string>
 	<key>settings.showAll</key>
 	<string>Show all categories</string>
+	<key>settings.sidebarBottomContent.cardTitle</key>
+	<string>Sidebar Player</string>
+	<key>settings.sidebarBottomContent.hint</key>
+	<string>Choose whether to show the upcoming queue or a live lyrics preview below controls.</string>
+	<key>settings.sidebarBottomContent.label</key>
+	<string>Bottom player panel</string>
+	<key>settings.sidebarBottomContent.lyrics</key>
+	<string>Lyrics preview</string>
+	<key>settings.sidebarBottomContent.queue</key>
+	<string>Queue (Up next)</string>
 	<key>settings.sidebarLayout</key>
 	<string>Collection view</string>
 	<key>settings.source.forgottenFavorites</key>
@@ -1605,5 +1693,57 @@ History: %@</string>
 	<string>Side B Is Up to Date</string>
 	<key>update.update_now</key>
 	<string>Update Now</string>
+	<key>visualProvider.accountConnected</key>
+	<string>Account connected</string>
+	<key>visualProvider.authenticating</key>
+	<string>Obtaining session token…</string>
+	<key>visualProvider.close</key>
+	<string>Close</string>
+	<key>visualProvider.enable</key>
+	<string>Use as a fallback in the sidebar player</string>
+	<key>visualProvider.error</key>
+	<string>The operation could not be completed. Check the package or Keychain access.</string>
+	<key>visualProvider.hint</key>
+	<string>Only for the sidebar player: Apple Music takes priority and this provider is a fallback. Only install providers you trust; they receive the current track and saved token.</string>
+	<key>visualProvider.install</key>
+	<string>Install provider…</string>
+	<key>visualProvider.loginSheetHint</key>
+	<string>Sign in so Side B can obtain the token automatically. The session is saved in your browser.</string>
+	<key>visualProvider.loginSheetTitle</key>
+	<string>Sign in to %@</string>
+	<key>visualProvider.manualToken</key>
+	<string>Enter token manually</string>
+	<key>visualProvider.reconnect</key>
+	<string>Reconnect…</string>
+	<key>visualProvider.remove</key>
+	<string>Uninstall and delete token</string>
+	<key>visualProvider.saveToken</key>
+	<string>Save token in Keychain</string>
+	<key>visualProvider.signIn</key>
+	<string>Sign in…</string>
+	<key>visualProvider.status.absent</key>
+	<string>This track has no compatible video.</string>
+	<key>visualProvider.status.authRequired</key>
+	<string>The session expired or was rejected. Replace the token.</string>
+	<key>visualProvider.status.idle</key>
+	<string>Ready to try the next visible track.</string>
+	<key>visualProvider.status.rateLimited</key>
+	<string>The provider requested a delay. Queries are paused.</string>
+	<key>visualProvider.status.ready</key>
+	<string>Visual available.</string>
+	<key>visualProvider.status.tokenRequired</key>
+	<string>Save the Bearer in Keychain to enable the fallback.</string>
+	<key>visualProvider.status.unavailable</key>
+	<string>Provider unavailable. Keeping the usual cover.</string>
+	<key>visualProvider.status.unresolved</key>
+	<string>No reliable track match was found.</string>
+	<key>visualProvider.status.unsupported</key>
+	<string>The provider response changed. An update may be required.</string>
+	<key>visualProvider.title</key>
+	<string>Optional visual providers</string>
+	<key>visualProvider.token</key>
+	<string>Temporary session token</string>
+	<key>visualProvider.tokenHint</key>
+	<string>The token is stored in Keychain. Replace it when it expires. The current cover remains if the provider fails.</string>
 </dict>
 </plist>

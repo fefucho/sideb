@@ -4,20 +4,23 @@ import SideBCore
 
 struct HomeFeaturedLayout {
     static let horizontalInset: CGFloat = 28
-    static let sectionGap: CGFloat = 24
-    static let stackGap: CGFloat = 16
+    static let sectionGap: CGFloat = 30
+    static let stackGap: CGFloat = 30
     static let headerHeight: CGFloat = 38
     static let contentGap: CGFloat = 8
-    static let footerHeight: CGFloat = 48
-    static let albumGap: CGFloat = 24
-    static let minimumAlbumColumnWidth: CGFloat = 432
-
-    let wide: Bool
+    static let albumGap: CGFloat = 14
+    /// Cards keep one size at every window width, like Apple Music shelves: resizing only
+    /// reveals more or fewer cards. Scaling them with the width re-laid out every cell and
+    /// changed the row height on each frame.
+    static let songTileWidth: CGFloat = 190
+    static let albumCardWidth: CGFloat = 176
+    /// Artwork stays square; below it: title, creator and one detail line.
+    static let albumTextHeight: CGFloat = 64
+    /// Air between the featured block and the next feed section.
+    static let bottomGap: CGFloat = 20
     let songWidth: CGFloat
     let albumWidth: CGFloat
-    let albumColumns: Int
     let albumColumnWidth: CGFloat
-    var albumsPerPage: Int { albumColumns * 2 }
     let tile: CGFloat
     let songGridHeight: CGFloat
     let albumContentHeight: CGFloat
@@ -26,34 +29,26 @@ struct HomeFeaturedLayout {
     let albumCardHeight: CGFloat
     let totalHeight: CGFloat
 
-    init(width: CGFloat, hasSongs: Bool, hasAlbums: Bool, songCount: Int = 9, albumCount: Int = 2) {
-        wide = width >= 900
-        let inner = max(0, width - Self.horizontalInset * 2)
-        let songAvailable = wide && hasAlbums ? inner - Self.sectionGap - Self.minimumAlbumColumnWidth : inner
-        tile = min(wide ? 144 : 140, max(0, (songAvailable - 16) / 3))
-        songWidth = 3 * tile + 16
-        albumWidth = wide && hasSongs ? max(0, inner - Self.sectionGap - songWidth) : inner
-        let availableColumns = max(1, Int((albumWidth + Self.sectionGap) / (Self.minimumAlbumColumnWidth + Self.sectionGap)))
-        albumColumns = min(3, max(1, (albumCount + 1) / 2), availableColumns)
-        albumColumnWidth = (albumWidth - CGFloat(albumColumns - 1) * Self.sectionGap) / CGFloat(albumColumns)
-        let songRows = hasSongs ? CGFloat((min(9, max(1, songCount)) + 2) / 3) : 0
-        songGridHeight = songRows * tile + max(0, songRows - 1) * 8
-        let albumRows = hasAlbums ? CGFloat(min(2, max(1, albumCount))) : 0
-        if wide && hasSongs && hasAlbums {
-            albumCardHeight = min(212, max(152, (songGridHeight - max(0, albumRows - 1) * Self.albumGap) / albumRows))
-        } else {
-            albumCardHeight = min(212, max(164, albumColumnWidth * 0.3))
-        }
-        albumContentHeight = albumRows * albumCardHeight + max(0, albumRows - 1) * Self.albumGap
-        let chrome = Self.headerHeight + Self.contentGap + Self.footerHeight
-        songPanelHeight = hasSongs ? chrome + songGridHeight : 0
-        albumPanelHeight = hasAlbums ? chrome + albumContentHeight : 0
-        totalHeight = wide ? max(songPanelHeight, albumPanelHeight) :
-            songPanelHeight + albumPanelHeight + (hasSongs && hasAlbums ? Self.stackGap : 0)
+    init(width: CGFloat, hasSongs: Bool, hasAlbums: Bool, songCount: Int = 9, albumCount: Int = 2,
+         trailingInset: CGFloat = Self.horizontalInset) {
+        let inner = max(0, width - Self.horizontalInset - max(0, trailingInset))
+        songWidth = inner
+        albumWidth = inner
+        tile = Self.songTileWidth
+        albumColumnWidth = Self.albumCardWidth
+        let rows = hasSongs ? CGFloat(min(3, max(0, songCount))) : 0
+        songGridHeight = rows * 126 + max(0, rows - 1) * 12
+        albumCardHeight = albumColumnWidth + Self.albumTextHeight
+        albumContentHeight = hasAlbums ? albumCardHeight : 0
+        songPanelHeight = hasSongs ? 46 + songGridHeight : 0
+        albumPanelHeight = hasAlbums ? 46 + albumContentHeight : 0
+        totalHeight = songPanelHeight + albumPanelHeight + (hasSongs && hasAlbums ? 30 : 0) + (hasSongs || hasAlbums ? Self.bottomGap : 0)
     }
 
-    static func height(width: CGFloat, hasSongs: Bool, hasAlbums: Bool, songCount: Int = 9, albumCount: Int = 2) -> CGFloat {
-        Self(width: width, hasSongs: hasSongs, hasAlbums: hasAlbums, songCount: songCount, albumCount: albumCount).totalHeight
+    static func height(width: CGFloat, hasSongs: Bool, hasAlbums: Bool, songCount: Int = 9, albumCount: Int = 2,
+                       trailingInset: CGFloat = Self.horizontalInset) -> CGFloat {
+        Self(width: width, hasSongs: hasSongs, hasAlbums: hasAlbums, songCount: songCount,
+             albumCount: albumCount, trailingInset: trailingInset).totalHeight
     }
 }
 
@@ -63,6 +58,7 @@ struct HomeFeaturedView: View {
     let collections: [HomeItemRecord]
     let collectionKind: HomeFeaturedCollectionKind
     let width: CGFloat
+    var trailingInset: CGFloat = HomeFeaturedLayout.horizontalInset
     let resetKey: String
     var metadataSessionKey: String? = nil
     let loadingCollectionID: String?
@@ -75,92 +71,103 @@ struct HomeFeaturedView: View {
     var playbackContext: QueueContext? = nil
     var isPlaying: Bool = false
 
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var albumMetadataModel = HomeAlbumMetadataModel()
     @State private var playlistMetadataModel = HomePlaylistMetadataModel()
-    @State private var songPage = 0
-    @State private var collectionAnchor = 0
-
+    @State private var visibleCollectionIDs: [String] = []
+    @State private var showsAll = false
+    @State private var visibleSheetIDs: [String] = []
     private var layout: HomeFeaturedLayout {
-        HomeFeaturedLayout(width: width, hasSongs: !songs.isEmpty, hasAlbums: !collections.isEmpty, songCount: songs.count, albumCount: collections.count)
+        HomeFeaturedLayout(width: width, hasSongs: !songs.isEmpty, hasAlbums: !collections.isEmpty,
+            songCount: songs.count, albumCount: collections.count, trailingInset: trailingInset)
     }
-    private var wide: Bool { layout.wide }
-    private var leftWidth: CGFloat { layout.songWidth }
-    private var albumWidth: CGFloat { layout.albumWidth }
-    private var songPages: [[HomeItemRecord]] { Self.pages(songs, size: 9, limit: 3) }
-    private var collectionPages: [[HomeItemRecord]] { Self.pages(collections, size: layout.albumsPerPage, limit: 6) }
-    private var collectionPage: Int { min(collectionAnchor / layout.albumsPerPage, max(0, collectionPages.count - 1)) }
-    private var collectionPageBinding: Binding<Int> {
-        Binding(get: { collectionPage }, set: { collectionAnchor = $0 * layout.albumsPerPage })
-    }
-    private var songIDs: [String] { songs.map(Self.identity) }
     private var collectionIDs: [String] { collections.map(Self.identity) }
 
     var body: some View {
         let _ = L10n.revision
-        // AnyLayout preserves the panels (and their artwork/tasks) across the
-        // stacked/side-by-side breakpoint instead of replacing the view tree.
-        let panelLayout = wide
-            ? AnyLayout(HStackLayout(alignment: .top, spacing: HomeFeaturedLayout.sectionGap))
-            : AnyLayout(VStackLayout(alignment: .leading, spacing: HomeFeaturedLayout.stackGap))
-        panelLayout {
+        VStack(alignment: .leading, spacing: HomeFeaturedLayout.sectionGap) {
             if !songs.isEmpty {
-                HomeSpeedDialPanel(songs: songs, page: $songPage,
-                    tileSize: layout.tile, gridHeight: layout.songGridHeight, panelHeight: layout.songPanelHeight,
-                    playbackContext: playbackContext, isPlaying: isPlaying,
-                    onSong: onSong, menuProvider: menuProvider) { record, tileSize in
-                        HomeSpeedDialSongArtwork(record: record, tileSize: tileSize)
-                    }
-                    .frame(width: wide && !collections.isEmpty ? leftWidth : nil, alignment: .leading)
+                VStack(spacing: 8) {
+                    HStack { Text(L10n.text("app.home.speedDial")).font(.system(size: 22, weight: .bold)); Spacer() }.frame(height: 38)
+                    HomeFeaturedNativeRail(records: Array(songs.prefix(27)), rows: min(3, songs.count), itemWidth: layout.tile, itemHeight: 126,
+                        session: resetKey, playback: playbackContext, playing: isPlaying, onOpen: onSong, onPlay: onSong, menu: menuProvider)
+                        .frame(height: layout.songGridHeight)
+                }
+
             }
             if !collections.isEmpty { collectionsPanel }
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
-        .padding(.horizontal, HomeFeaturedLayout.horizontalInset)
+        .padding(.leading, HomeFeaturedLayout.horizontalInset)
+        .padding(.trailing, max(0, trailingInset))
         .frame(width: width, height: layout.totalHeight, alignment: .topLeading)
         .task(id: metadataRequest) {
             switch collectionKind {
             case .albums:
-                await albumMetadataModel.load(items: currentCollectionPage, core: core, sessionKey: metadataSessionKey ?? resetKey)
+                await albumMetadataModel.load(items: visibleCollections, core: core, sessionKey: metadataSessionKey ?? resetKey)
             case .playlists:
-                await playlistMetadataModel.load(items: currentCollectionPage, core: core, sessionKey: metadataSessionKey ?? resetKey)
+                await playlistMetadataModel.load(items: visibleCollections, core: core, sessionKey: metadataSessionKey ?? resetKey)
             }
         }
-        .onChange(of: resetKey) { _, _ in resetPages() }
-        .onChange(of: songIDs) { _, _ in songPage = 0 }
-        .onChange(of: collectionIDs) { oldIDs, newIDs in
-            // Preserve the visible collection across capacity changes and bounded continuation growth.
-            let anchorID = oldIDs.indices.contains(collectionAnchor) ? oldIDs[collectionAnchor] : nil
-            collectionAnchor = anchorID.flatMap { newIDs.firstIndex(of: $0) } ?? 0
+        .sheet(isPresented: $showsAll) {
+            VStack {
+                HStack { Text(collectionKind.title).font(.title2); Spacer(); Button(L10n.text("app.close")) { showsAll = false }.keyboardShortcut(.cancelAction) }
+                ScrollView {
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 180))], spacing: 14) {
+                        ForEach(collections.map(FeaturedItem.init)) { item in
+                            collectionCard(item.record, width: 180, height: 180 + HomeFeaturedLayout.albumTextHeight)
+                                .id(item.id)
+                        }
+                    }.scrollTargetLayout()
+                }
+                .onScrollTargetVisibilityChange(idType: String.self, threshold: 0.01) { visibleSheetIDs = $0 }
+            }.padding(24).frame(width: min(840, max(320, width - 48)), height: 500)
         }
-        .onChange(of: collectionKind) { _, _ in collectionAnchor = 0 }
-        .onChange(of: songPages.count) { _, count in songPage = min(songPage, max(0, count - 1)) }
+        .onChange(of: resetKey) { _, _ in showsAll = false; visibleSheetIDs = [] }
     }
 
-    @ViewBuilder private var collectionsPanel: some View {
-        if !collections.isEmpty {
-            VStack(spacing: 0) {
-                sectionHeader(collectionKind.title)
-                ZStack(alignment: .topLeading) {
-                    HomeFeaturedCollectionLayout(columnWidth: layout.albumColumnWidth,
-                                                 cardHeight: albumCardHeight) {
-                        ForEach(currentCollectionPage.map(FeaturedItem.init), id: \.id) { item in
-                            collectionCard(item.record, width: layout.albumColumnWidth, height: albumCardHeight)
-                                .overlay { NativeContextMenuOverlay { menuProvider?(item.record) } }
-                                .transition(.opacity)
-                        }
+    private var collectionsPanel: some View {
+        // Read observable metadata while SwiftUI tracks this presentation, then pass
+        // immutable values into AppKit callbacks.
+        let metadata = Dictionary(collections.map { (Self.identity($0), collectionMetadata(for: $0)) }, uniquingKeysWith: { first, _ in first })
+        return VStack(spacing: HomeFeaturedLayout.contentGap) {
+            HStack {
+                Text(collectionKind.title).font(.system(size: 22, weight: .bold))
+                Spacer()
+                Button { visibleSheetIDs = []; showsAll = true } label: {
+                    HStack(spacing: 3) {
+                        Text(L10n.text("detail.viewAll"))
+                        Image(systemName: "chevron.right").font(.system(size: 10, weight: .bold))
                     }
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.secondary)
                 }
-                .frame(width: albumWidth, height: layout.albumContentHeight, alignment: .topLeading)
-                .clipped()
-                .overlay { HomeFeaturedPageWheel(enabled: collectionPages.count > 1) { delta in move(collectionPageBinding, by: delta, count: collectionPages.count) } }
-                .padding(.top, HomeFeaturedLayout.contentGap)
-                HomeFeaturedPageControls(page: collectionPageBinding, count: collectionPages.count, label: collectionKind.title)
-                    .padding(.top, 8)
-            }
-            .padding(.bottom, 16)
-            .frame(height: layout.albumPanelHeight, alignment: .top)
+                .buttonStyle(.plain)
+            }.frame(height: HomeFeaturedLayout.headerHeight)
+            HomeFeaturedNativeRail(records: collections, rows: 1, itemWidth: layout.albumColumnWidth, itemHeight: layout.albumCardHeight,
+                session: resetKey + collectionKind.rawValue, playback: playbackContext, playing: isPlaying, loadingID: loadingCollectionID,
+                revision: metadataRevision(metadata),
+                display: { record in
+                    let value = metadata[Self.identity(record)]!
+                    var result = record
+                    result.title = value.title
+                    result.artists = value.credit
+                    result.artistId = value.creditID
+                    return result
+                },
+                summary: { record in metadata[Self.identity(record)]!.firstLine },
+                onOpen: openCollection, onPlay: { onPlayCollection($0, false) }, onArtist: onArtist, menu: menuProvider,
+                onVisible: { visibleCollectionIDs = $0 }).frame(height: layout.albumContentHeight)
         }
+    }
+
+    private func metadataRevision(_ metadata: [String: CollectionMetadata]) -> Int {
+        var hasher = Hasher()
+        for key in metadata.keys.sorted() {
+            let value = metadata[key]!
+            hasher.combine(key); hasher.combine(value.title); hasher.combine(value.credit)
+            hasher.combine(value.creditID); hasher.combine(value.firstLine)
+        }
+        return hasher.finalize()
     }
 
     private struct MetadataRequest: Equatable {
@@ -170,11 +177,12 @@ struct HomeFeaturedView: View {
         let coreIdentity: ObjectIdentifier?
     }
     private var metadataRequest: MetadataRequest {
-        MetadataRequest(session: metadataSessionKey ?? resetKey, collectionIDs: currentCollectionPage.map(\.id), kind: collectionKind, coreIdentity: core.map(ObjectIdentifier.init))
+        MetadataRequest(session: metadataSessionKey ?? resetKey, collectionIDs: visibleCollections.map(\.id), kind: collectionKind, coreIdentity: core.map(ObjectIdentifier.init))
     }
 
-    private var currentCollectionPage: [HomeItemRecord] { collectionPages.indices.contains(collectionPage) ? collectionPages[collectionPage] : [] }
-    private var albumCardHeight: CGFloat { layout.albumCardHeight }
+    private var visibleCollections: [HomeItemRecord] {
+        collections.filter { (showsAll ? visibleSheetIDs : visibleCollectionIDs).contains(Self.identity($0)) }
+    }
 
     private var collectionName: String { collectionKind == .albums ? L10n.text("metadata.album").lowercased() : L10n.text("metadata.playlist").lowercased() }
     private var collectionBadge: String { collectionKind == .albums ? L10n.text("metadata.album").uppercased() : L10n.text("metadata.playlist.short").uppercased() }
@@ -183,7 +191,8 @@ struct HomeFeaturedView: View {
         let title: String
         let credit: String?
         let creditID: String?
-        let summary: String
+        let firstLine: String
+        let duration: String
     }
 
     private func collectionMetadata(for record: HomeItemRecord) -> CollectionMetadata {
@@ -191,40 +200,35 @@ struct HomeFeaturedView: View {
         case .albums:
             let value = albumMetadataModel.display(for: record, sessionKey: metadataSessionKey ?? resetKey)
             return CollectionMetadata(title: value.title, credit: value.artist,
-                creditID: value.artistID, summary: value.summary)
+                creditID: value.artistID, firstLine: value.cardSummary, duration: value.duration ?? "")
         case .playlists:
             let value = playlistMetadataModel.display(for: record, sessionKey: metadataSessionKey ?? resetKey)
             return CollectionMetadata(title: value.title, credit: value.creator,
-                creditID: value.creatorID, summary: value.summary)
+                creditID: value.creatorID, firstLine: value.cardSummary, duration: value.duration ?? "")
         }
     }
 
     private func collectionCard(_ record: HomeItemRecord, width: CGFloat, height: CGFloat) -> some View {
         let metadata = collectionMetadata(for: record)
-        let spacious = height >= 190
-        return HStack(alignment: .top, spacing: 16) {
+        return VStack(alignment: .leading, spacing: 0) {
             MediaArtworkControls(
                 isCollection: true,
                 isActive: MediaPlaybackIdentity.isCollectionActive(kind: record.kind, id: record.id, context: playbackContext),
                 isPlaying: isPlaying,
                 isLoading: loadingCollectionID.map(MenuIDNormalizer.normalize) == MenuIDNormalizer.normalize(record.id),
                 showsIndicator: true, accessibilityTitle: metadata.title,
-                onOpen: { onCollection(record) }, onPlay: { onPlayCollection(record, false) },
+                onOpen: { openCollection(record) }, onPlay: { onPlayCollection(record, false) },
                 menuProvider: menuProvider.map { provider in { provider(record) } }
             ) {
-                artwork(record.thumbnail, radius: 5)
+                artwork(record.thumbnail, radius: 10).frame(width: width, height: width)
             }
-            .frame(width: height, height: height)
+            .frame(width: width, height: width)
 
-            VStack(alignment: .leading, spacing: spacious ? 7 : 5) {
-                Text(collectionBadge).font(.system(size: 10, weight: .bold))
-                    .tracking(1.3).foregroundStyle(.secondary)
-                    .allowsHitTesting(false)
-                Button { onCollection(record) } label: {
+            VStack(alignment: .leading, spacing: 2) {
+                Button { openCollection(record) } label: {
                     Text(metadata.title)
-                        .font(.system(size: spacious ? 25 : 22, weight: .bold))
+                        .font(.system(size: 13, weight: .semibold))
                         .lineLimit(1)
-                        .minimumScaleFactor(0.8)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .buttonStyle(.plain).mediaCardFocusControl()
@@ -235,29 +239,33 @@ struct HomeFeaturedView: View {
                             Button(artist) {
                                 var artistRecord = record
                                 artistRecord.artistId = artistID
+                                showsAll = false
                                 onArtist(artistRecord)
                             }.buttonStyle(.plain).mediaCardFocusControl()
                         } else { Text(artist).allowsHitTesting(false) }
                     }
-                    .font(.system(size: spacious ? 15 : 13, weight: .semibold))
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
                     .lineLimit(1)
                 }
-                Text(metadata.summary)
-                    .font(.system(size: spacious ? 12 : 11))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .allowsHitTesting(false)
-                Spacer(minLength: 8)
+                Text(metadata.firstLine)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .frame(height: height, alignment: .topLeading)
-
+            .padding(.top, 8)
+            .frame(width: width, alignment: .topLeading)
         }
         .frame(width: width, height: height, alignment: .topLeading)
         .contentShape(Rectangle())
-        .mediaCardActivation(label: L10n.text("search.open_card", args: [metadata.title])) { onCollection(record) }
+        .mediaCardActivation(label: L10n.text("search.open_card", args: [metadata.title])) { openCollection(record) }
         .mediaCardSurface()
+        .overlay { NativeContextMenuOverlay { menuProvider?(record) } }
+    }
+
+    private func openCollection(_ record: HomeItemRecord) {
+        showsAll = false
+        onCollection(record)
     }
 
     private func artwork(_ source: String?, radius: CGFloat) -> some View {
@@ -270,257 +278,26 @@ struct HomeFeaturedView: View {
         .clipped()
     }
 
-    private func sectionHeader(_ title: String) -> some View {
-        HStack {
-            Text(title).font(.system(size: 20, weight: .semibold))
-            Spacer()
-        }
-        .frame(height: HomeFeaturedLayout.headerHeight)
-    }
-
-    private func move(_ page: Binding<Int>, by delta: Int, count: Int) {
-        changePage(page, to: min(max(page.wrappedValue + delta, 0), max(0, count - 1)))
-    }
-    private func changePage(_ page: Binding<Int>, to value: Int) {
-        guard value != page.wrappedValue else { return }
-        if reduceMotion { page.wrappedValue = value }
-        else { withAnimation(.easeInOut(duration: 0.14)) { page.wrappedValue = value } }
-    }
-    private func resetPages() { songPage = 0; collectionAnchor = 0 }
-
     private static func identity(_ record: HomeItemRecord) -> String { "\(record.kind):\(record.id)" }
     private struct FeaturedItem: Identifiable {
         let record: HomeItemRecord
         var id: String { "\(record.kind):\(record.id)" }
     }
-    private static func pages(_ records: [HomeItemRecord], size: Int, limit: Int) -> [[HomeItemRecord]] {
-        stride(from: 0, to: min(records.count, size * limit), by: size).map { start in
-            Array(records[start..<min(start + size, records.count)])
-        }
-    }
+
 }
 
-/// Speed Dial only depends on its own geometry. At wide sidebar widths the
-/// tiles stay fixed while the album panel changes width beside them.
-struct HomeSpeedDialPanel<Tile: View>: View {
-    let songs: [HomeItemRecord]
-    @Binding var page: Int
-    let tileSize: CGFloat
-    let gridHeight: CGFloat
-    let panelHeight: CGFloat
-    let playbackContext: QueueContext?
-    let isPlaying: Bool
-    let onSong: (HomeItemRecord) -> Void
-    var menuProvider: ((HomeItemRecord) -> NSMenu?)?
-    @ViewBuilder let tile: (HomeItemRecord, CGFloat) -> Tile
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    private var pages: [[HomeItemRecord]] {
-        stride(from: 0, to: min(songs.count, 27), by: 9).map { start in
-            Array(songs[start..<min(start + 9, songs.count)])
-        }
-    }
-    private var currentPage: [HomeItemRecord] { pages.indices.contains(page) ? pages[page] : [] }
-
-    var body: some View {
-        let _ = L10n.revision
-        VStack(spacing: 0) {
-            HStack {
-                Text(L10n.text("app.home.speedDial")).font(.system(size: 20, weight: .semibold))
-                Spacer()
-            }
-            .frame(height: HomeFeaturedLayout.headerHeight)
-            ZStack(alignment: .topLeading) {
-                LazyVGrid(columns: Array(repeating: GridItem(.fixed(tileSize), spacing: 8), count: 3), spacing: 8) {
-                    ForEach(currentPage.map(SongItem.init), id: \.id) { item in
-                        let record = item.record
-                        let isRadioOrigin = MediaPlaybackIdentity.isRadioOrigin(videoID: record.id, context: playbackContext)
-                        MediaArtworkControls(
-                            isCollection: false, isActive: isRadioOrigin, isPlaying: isPlaying, showsIndicator: true,
-                            accessibilityTitle: record.title,
-                            onOpen: { onSong(record) }, onPlay: { onSong(record) },
-                            menuProvider: menuProvider.map { provider in { provider(record) } }
-                        ) {
-                            tile(record, tileSize)
-                        }
-                        .frame(width: tileSize, height: tileSize)
-                        .help(isRadioOrigin
-                            ? L10n.text(isPlaying ? "home.radio.pause" : "home.radio.resume", args: [record.title])
-                            : L10n.text("home.radio.start", args: [record.title]))
-                    }
-                }
-                .frame(width: 3 * tileSize + 16, alignment: .leading)
-                .id(page)
-                .transition(.opacity)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .frame(height: gridHeight, alignment: .topLeading)
-            .clipped()
-            .overlay { HomeFeaturedPageWheel(enabled: pages.count > 1) { delta in
-                let next = min(max(page + delta, 0), max(0, pages.count - 1))
-                guard next != page else { return }
-                if reduceMotion { page = next }
-                else { withAnimation(.easeInOut(duration: 0.14)) { page = next } }
-            } }
-            .padding(.top, HomeFeaturedLayout.contentGap)
-            HomeFeaturedPageControls(page: $page, count: pages.count, label: L10n.text("search.filter.songs"))
-                .padding(.top, 8)
-        }
-        .padding(.bottom, 16)
-        .frame(height: panelHeight, alignment: .top)
-    }
-
-    private struct SongItem: Identifiable {
-        let record: HomeItemRecord
-        var id: String { "\(record.kind):\(record.id)" }
-    }
-}
-
-private struct HomeSpeedDialSongArtwork: View {
-    let record: HomeItemRecord
-    let tileSize: CGFloat
-
-    var body: some View {
-        ZStack(alignment: .bottomLeading) {
-            CachedAsyncImage(url: ImageURLHelper.optimizedThumbnailURL(from: record.thumbnail, targetPixelSize: 480),
-                             targetSize: CGSize(width: 240, height: 240)) { image in
-                image.resizable().aspectRatio(contentMode: .fill)
-            } placeholder: {
-                Rectangle().fill(.white.opacity(0.06)).overlay(Image(systemName: "music.note").foregroundStyle(.tertiary))
-            }
-            .clipShape(RoundedRectangle(cornerRadius: 5))
-            .clipped()
-            LinearGradient(colors: [.clear, .black.opacity(0.78)], startPoint: .center, endPoint: .bottom)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(record.title).font(.system(size: 12, weight: .semibold)).lineLimit(1)
-                if tileSize >= 110, let artist = record.artists, !artist.isEmpty {
-                    Text(artist).font(.system(size: 10)).foregroundStyle(.white.opacity(0.76)).lineLimit(1)
-                }
-            }
-            .multilineTextAlignment(.leading)
-            .foregroundStyle(.white)
-            .padding(.horizontal, 8)
-            .padding(.bottom, 7)
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .clipShape(RoundedRectangle(cornerRadius: 5))
-        .contentShape(RoundedRectangle(cornerRadius: 5))
-    }
-}
-
-private struct HomeFeaturedPageControls: View {
-    @Binding var page: Int
-    let count: Int
-    let label: String
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    var body: some View {
-        HStack(spacing: 7) {
-            Button { move(by: -1, count: count) } label: {
-                Image(systemName: "chevron.left").font(.system(size: 10, weight: .semibold)).frame(width: 20, height: 24)
-            }
-            .disabled(count < 2 || page == 0)
-            .accessibilityLabel(L10n.text("home.page.previous", args: [label]))
-            HStack(spacing: 5) {
-                ForEach(0..<count, id: \.self) { index in
-                    Button { changePage(to: index) } label: {
-                        Circle().fill(index == page ? Color.primary.opacity(0.8) : Color.secondary.opacity(0.35))
-                            .frame(width: 7, height: 7).frame(width: 14, height: 24)
-                    }
-                    .buttonStyle(.plain)
-                .accessibilityLabel(L10n.text("home.page.position", args: [label, String(index + 1), String(count)]))
-                    .accessibilityAddTraits(index == page ? .isSelected : [])
-                }
-            }
-            Button { move(by: 1, count: count) } label: {
-                Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold)).frame(width: 20, height: 24)
-            }
-            .disabled(count < 2 || page >= count - 1)
-            .accessibilityLabel(L10n.text("home.page.next", args: [label]))
-        }
-        .buttonStyle(.plain)
-        .foregroundStyle(.secondary)
-        .frame(height: 24)
-        .frame(maxWidth: .infinity)
-    }
-
-    private func move(by delta: Int, count: Int) {
-        changePage(to: min(max(page + delta, 0), max(0, count - 1)))
-    }
-    private func changePage(to value: Int) {
-        guard value != page else { return }
-        if reduceMotion { page = value }
-        else { withAnimation(.easeInOut(duration: 0.14)) { page = value } }
-    }
-}
-
-/// One identity domain for the visible collections. Adding a column only mounts
-/// the new cards; existing cards never move to a different ForEach parent.
-struct HomeFeaturedCollectionLayout: Layout {
-    let columnWidth: CGFloat
-    let cardHeight: CGFloat
-
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let columns = CGFloat((subviews.count + 1) / 2)
-        let rows = CGFloat(min(2, subviews.count))
-        return CGSize(width: columns * columnWidth + max(0, columns - 1) * HomeFeaturedLayout.sectionGap,
-                      height: rows * cardHeight + max(0, rows - 1) * HomeFeaturedLayout.albumGap)
-    }
-
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        for (index, subview) in subviews.enumerated() {
-            subview.place(at: CGPoint(x: bounds.minX + CGFloat(index / 2) * (columnWidth + HomeFeaturedLayout.sectionGap),
-                                     y: bounds.minY + CGFloat(index % 2) * (cardHeight + HomeFeaturedLayout.albumGap)),
-                          anchor: .topLeading,
-                          proposal: ProposedViewSize(width: columnWidth, height: cardHeight))
-        }
-    }
-}
-
-/// One native responder per panel: horizontal wheel gestures page, vertical gestures pass to the feed.
-private struct HomeFeaturedPageWheel: NSViewRepresentable {
-    let enabled: Bool
-    let onPage: (Int) -> Void
-    func makeNSView(context: Context) -> HomeFeaturedWheelView { HomeFeaturedWheelView() }
-    func updateNSView(_ view: HomeFeaturedWheelView, context: Context) { view.onPage = onPage; view.ownsHorizontalNavigationGesture = enabled }
-}
-
-struct HomeFeaturedWheelInput {
-    private var accumulated: CGFloat = 0
-    private var handled = false
-    private var lastTimestamp: TimeInterval = 0
-
-    mutating func reset() { accumulated = 0; handled = false }
-    mutating func consume(x: CGFloat, y: CGFloat, timestamp: TimeInterval, momentum: Bool) -> Int? {
-        guard !momentum, abs(x) > abs(y) * 1.4, abs(x) > 0.5 else { return nil }
-        if timestamp - lastTimestamp > 0.35 { reset() }
-        lastTimestamp = timestamp
-        guard !handled else { return nil }
-        accumulated += x
-        guard abs(accumulated) >= 40 else { return nil }
-        handled = true
-        return accumulated < 0 ? 1 : -1
-    }
-}
-
-final class HomeFeaturedWheelView: NSView, HorizontalNavigationGestureOwner {
-    var ownsHorizontalNavigationGesture = false
-    var onPage: ((Int) -> Void)?
-    private var input = HomeFeaturedWheelInput()
-    override var isOpaque: Bool { false }
-    override func hitTest(_ point: NSPoint) -> NSView? {
-        guard ownsHorizontalNavigationGesture, let event = NSApp.currentEvent, event.type == .scrollWheel,
-              super.hitTest(point) != nil else { return nil }
-        if event.phase.contains(.began) || event.phase.contains(.ended) || event.phase.contains(.cancelled) {
-            input.reset()
-        }
-        return abs(event.scrollingDeltaX) > abs(event.scrollingDeltaY) * 1.4 &&
-            abs(event.scrollingDeltaX) > 0.5 ? self : nil
-    }
-    override func scrollWheel(with event: NSEvent) {
-        if let delta = input.consume(x: event.scrollingDeltaX, y: event.scrollingDeltaY,
-                                    timestamp: event.timestamp, momentum: !event.momentumPhase.isEmpty) {
-            onPage?(delta)
-        }
+/// Intersect card bounds, excluding gaps, without mounting or fetching the catalogue.
+enum HomeFeaturedRailViewport {
+    static func visibleIDs(ids: [String], itemWidth: CGFloat, rows: Int, spacing: CGFloat,
+                           offset: CGFloat, width: CGFloat) -> [String] {
+        guard width > 0, itemWidth > 0, rows > 0 else { return [] }
+        let stride = itemWidth + spacing
+        let first = max(0, Int(floor(max(0, offset) / stride))) * rows
+        let end = min(ids.count, Int(ceil((max(0, offset) + width) / stride)) * rows)
+        guard first < end else { return [] }
+        return (first..<end).filter { index in
+            let x = CGFloat(index / rows) * stride
+            return x + itemWidth > offset && x < offset + width
+        }.map { ids[$0] }
     }
 }

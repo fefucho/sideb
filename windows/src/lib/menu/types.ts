@@ -3,7 +3,7 @@ import { normalizeHomeSongCard } from '../home/songMetadata';
 import { contentRating } from '../contentRating';
 
 export type MenuTarget =
-  | { kind: 'song'; song: SongDto; entryId?: string }
+  | { kind: 'song'; song: SongDto; entryId?: string; queueRecommendationId?: string; queueRecommendationGeneration?: number; queueRecommendationSession?: number }
   | { kind: 'album'; card: BrowseCardDto; detail?: AlbumDetailDto }
   | { kind: 'artist'; card: BrowseCardDto; detail?: ArtistDetailDto }
   | { kind: 'playlist'; card: BrowseCardDto; detail?: PlaylistDetailDto };

@@ -1,13 +1,13 @@
 <script lang="ts">
-  import HorizontalNavigation from '../common/HorizontalNavigation.svelte';
+  import VirtualStack from '../common/VirtualStack.svelte';
+  import ArtistShelf from './ArtistShelf.svelte';
+  import { artistShelves, artistShelfKey, artistShelfHeight } from '$lib/detail/artistShelf';
   import ControlButton from '$lib/components/common/ControlButton.svelte';
   import MenuIcon from '$lib/components/menu/MenuIcon.svelte';
 
   import { t , language, resolveMessage } from '$lib/i18n';
-  import { providerHeading } from '$lib/i18n/presentation';
   import MoreIcon from '$lib/components/common/MoreIcon.svelte';
   import TrackTable from "./TrackTable.svelte";
-  import MediaCard from "../common/MediaCard.svelte";
   import type { ArtistDetailDto, BrowseCardDto } from "$lib/types";
   import DescriptionModal from "./DescriptionModal.svelte";
   import { createMenuHandlers } from "$lib/menu/hooks";
@@ -54,6 +54,13 @@
   const createMenu = createMenuHandlers();
 
   const visibleTopSongs = $derived(artist?.topSongs.slice(0, 5) ?? []);
+  // Only the shelves near the viewport are mounted (VirtualStack); each one windows its own cards.
+  // Horizontal offsets survive shelf recycling and reset when the section list changes.
+  const shelves = $derived(artistShelves(artist?.sections ?? []).map((section, index) => ({ section, key: artistShelfKey(section, index) })));
+  const shelfSignature = $derived(shelves.map(shelf => shelf.key).join('\u0000'));
+  const shelfOffsets = new Map<string, number>();
+  let offsetSignature = '';
+  $effect.pre(() => { if (shelfSignature !== offsetSignature) { offsetSignature = shelfSignature; shelfOffsets.clear(); } });
 
   async function startRadio() {
     if (!artist?.radioPlaylistId || radioPending) return;
@@ -172,25 +179,19 @@
         </section>
       {/if}
 
-      {#each artist.sections as section, sectionIndex (`${section.title}:${sectionIndex}`)}
-        {#if section.items.length > 0}
-          <section class="carousel-section" aria-label={providerHeading(section.title,$language)}>
-            <div class="section-heading">
-              <h2>{providerHeading(section.title,$language)}</h2>
-              {#if section.moreBrowseId && !section.moreBrowseId.startsWith("FE")}
-                <ControlButton emphasis="quiet" size="utility" type="button" onclick={() => onOpenCatalog(section.moreBrowseId!, section.moreParams, section.title)}>{$t('home.see_all')}</ControlButton>
-              {/if}
-            </div>
-            <HorizontalNavigation label={providerHeading(section.title,$language)} revision={artist.channelId} center="80px">
-            <div class="carousel" data-horizontal-scroll>
-              {#each section.items as card, index (`${card.kind}:${card.id}:${index}`)}
-                <div class="carousel-card"><MediaCard {card} onOpen={()=>openCard(card)} onPlay={()=>onPlaySong?.(card)} {onOpenArtist} {onOpenAlbum} /></div>
-              {/each}
-            </div>
-            </HorizontalNavigation>
-          </section>
-        {/if}
-      {/each}
+      {#if shelves.length > 0}
+        <div class="shelves">
+          <VirtualStack items={shelves} height={artistShelfHeight} key={shelf => shelf.key}>
+            {#snippet children(shelf)}
+              {@const section = shelf.section}
+              <ArtistShelf {section} revision={artist.channelId} offset={shelfOffsets.get(shelf.key) ?? 0}
+                onOffset={value => shelfOffsets.set(shelf.key, value)}
+                onMore={() => onOpenCatalog(section.moreBrowseId!, section.moreParams, section.title)}
+                onOpen={openCard} onPlay={card => onPlaySong?.(card)} {onOpenArtist} {onOpenAlbum} />
+            {/snippet}
+          </VirtualStack>
+        </div>
+      {/if}
     </div>
   {:else}
     <div class="state-card">
@@ -205,9 +206,9 @@
   <DescriptionModal title={artist.name} description={artist.description} onClose={() => (showDescription = false)} />
 {/if}
 
-<style>.artist-page { min-height: 100%; padding: 14px 0 120px; color: var(--text-primary, #f5f5f6); }.artist-content { display: flex; flex-direction: column; gap: 32px; padding: 28px 32px 0; }.artist-header { display: flex; align-items: center; gap: 28px; min-height: 180px; }.avatar { width: 180px; height: 180px; flex: 0 0 180px; border-radius: 50%; object-fit: cover; box-shadow: 0 8px 24px rgb(0 0 0 / 35%); }.avatar-fallback { display: grid; place-items: center; color: #fff; font-size: 64px; background: linear-gradient(135deg, rgb(163 61 69 / 55%), #1f1013); }.artist-info { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; min-height: 180px; flex: 1; gap: 8px; }.eyebrow { color: var(--text-secondary, #aaaab0); font-size: 11px; font-weight: 700; letter-spacing: 1.2px; }h1 { margin: 0; max-width: 100%; font-size: 34px; line-height: 1.12; font-weight: 700; overflow-wrap: anywhere; }.stats { display: flex; gap: 8px; color: var(--text-secondary, #aaaab0); font-size: 13px; font-weight: 500; }.description-preview { display: flex; align-items: flex-end; gap: 5px; max-width: 740px; max-height: 36px; overflow: hidden; padding: 2px 0 0; border: 0; background: transparent; color: var(--text-secondary, #aaaab0); text-align: left; font-size: 12px; line-height: 18px; cursor: pointer; }.description-preview span { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }.description-preview b { flex: none; color: var(--text-primary, #eee); font-size: 11px; }.actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 12px; margin-top: auto; }.action-error { margin: 0; color: #f08a90; font-size: 12px; }.divider { height: 1px; margin: 0 32px; background: rgb(255 255 255 / 12%); }.top-songs-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }.top-songs { display: flex; flex-direction: column; gap: 12px; }h2 { margin: 0; font-size: 20px; font-weight: 700; }.carousel-section { display: flex; flex-direction: column; gap: 14px; margin-inline: -32px; }.section-heading { display: flex; align-items: center; justify-content: space-between; padding-inline: 32px; }.carousel { display: flex; gap: 16px; overflow-x: auto; padding: 0 32px 4px; scrollbar-width: thin; }.carousel-card { display: flex; width: 144px; min-width: 144px; flex-direction: column; align-items: flex-start; gap: 6px; padding: 0; color: inherit; text-align: left; font: inherit; }.loading, .state-card { display: flex; min-height: 220px; flex-direction: column; align-items: center; justify-content: center; gap: 12px; color: var(--text-secondary, #aaaab0); text-align: center; }.state-card { margin: 0 32px; padding: 30px; }.state-card h2 { color: var(--text-primary, #eee); }.state-card p { max-width: 650px; margin: 0; font-size: 13px; }.state-icon { font-size: 32px; }.spinner { width: 18px; height: 18px; border: 2px solid rgb(255 255 255 / 22%); border-top-color: var(--sideb-highlight, #d06c70); border-radius: 50%; animation: spin .8s linear infinite; }.skeleton-header { display: flex; align-items: center; gap: 28px; }.skeleton-avatar { width: 180px; height: 180px; flex: 0 0 180px; border-radius: 50%; background: rgb(255 255 255 / 8%); }.skeleton-lines { display: flex; flex-direction: column; gap: 12px; }.skeleton-lines span { width: 260px; height: 18px; border-radius: 4px; background: rgb(255 255 255 / 7%); }.skeleton-lines span:first-child { width: 60px; height: 12px; }.skeleton-lines span:last-child { width: 160px; height: 14px; }
+<style>.artist-page { min-height: 100%; padding: 14px 0 120px; color: var(--text-primary, #f5f5f6); }.artist-content { display: flex; flex-direction: column; gap: 32px; padding: 28px 32px 0; }.artist-header { display: flex; align-items: center; gap: 28px; min-height: 180px; }.avatar { width: 180px; height: 180px; flex: 0 0 180px; border-radius: 50%; object-fit: cover; box-shadow: 0 8px 24px rgb(0 0 0 / 35%); }.avatar-fallback { display: grid; place-items: center; color: #fff; font-size: 64px; background: linear-gradient(135deg, rgb(163 61 69 / 55%), #1f1013); }.artist-info { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; min-height: 180px; flex: 1; gap: 8px; }.eyebrow { color: var(--text-secondary, #aaaab0); font-size: 11px; font-weight: 700; letter-spacing: 1.2px; }h1 { margin: 0; max-width: 100%; font-size: 34px; line-height: 1.12; font-weight: 700; overflow-wrap: anywhere; }.stats { display: flex; gap: 8px; color: var(--text-secondary, #aaaab0); font-size: 13px; font-weight: 500; }.description-preview { display: flex; align-items: flex-end; gap: 5px; max-width: 740px; max-height: 36px; overflow: hidden; padding: 2px 0 0; border: 0; background: transparent; color: var(--text-secondary, #aaaab0); text-align: left; font-size: 12px; line-height: 18px; cursor: pointer; }.description-preview span { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }.description-preview b { flex: none; color: var(--text-primary, #eee); font-size: 11px; }.actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 12px; margin-top: auto; }.action-error { margin: 0; color: #f08a90; font-size: 12px; }.divider { height: 1px; margin: 0 32px; background: rgb(255 255 255 / 12%); }.top-songs-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }.top-songs { display: flex; flex-direction: column; gap: 12px; }h2 { margin: 0; font-size: 20px; font-weight: 700; }.shelves { margin-inline: -32px; margin-bottom: -32px; }.loading, .state-card { display: flex; min-height: 220px; flex-direction: column; align-items: center; justify-content: center; gap: 12px; color: var(--text-secondary, #aaaab0); text-align: center; }.state-card { margin: 0 32px; padding: 30px; }.state-card h2 { color: var(--text-primary, #eee); }.state-card p { max-width: 650px; margin: 0; font-size: 13px; }.state-icon { font-size: 32px; }.spinner { width: 18px; height: 18px; border: 2px solid rgb(255 255 255 / 22%); border-top-color: var(--sideb-highlight, #d06c70); border-radius: 50%; animation: spin .8s linear infinite; }.skeleton-header { display: flex; align-items: center; gap: 28px; }.skeleton-avatar { width: 180px; height: 180px; flex: 0 0 180px; border-radius: 50%; background: rgb(255 255 255 / 8%); }.skeleton-lines { display: flex; flex-direction: column; gap: 12px; }.skeleton-lines span { width: 260px; height: 18px; border-radius: 4px; background: rgb(255 255 255 / 7%); }.skeleton-lines span:first-child { width: 60px; height: 12px; }.skeleton-lines span:last-child { width: 160px; height: 14px; }
   @keyframes spin {to { transform: rotate(360deg); } }
-  @media (max-width: 760px) {.artist-page { padding-top: 8px; }.artist-content { gap: 24px; padding-inline: 20px; }.artist-header { align-items: flex-start; gap: 18px; }.avatar { width: 112px; height: 112px; flex-basis: 112px; }.artist-info { min-height: 112px; }h1 { font-size: 27px; }.description-preview { max-height: 36px; }.description-preview span { -webkit-line-clamp: 2; line-clamp: 2; }.divider { margin-inline: 20px; }.carousel-section { margin-inline: -20px; }.section-heading, .carousel { padding-inline: 20px; }.skeleton-header { gap: 18px; }.skeleton-avatar { width: 112px; height: 112px; flex-basis: 112px; }.skeleton-lines span { width: 160px; } }
+  @media (max-width: 760px) {.artist-page { padding-top: 8px; }.artist-content { gap: 24px; padding-inline: 20px; }.artist-header { align-items: flex-start; gap: 18px; }.avatar { width: 112px; height: 112px; flex-basis: 112px; }.artist-info { min-height: 112px; }h1 { font-size: 27px; }.description-preview { max-height: 36px; }.description-preview span { -webkit-line-clamp: 2; line-clamp: 2; }.divider { margin-inline: 20px; }.shelves { margin-inline: -20px; }.skeleton-header { gap: 18px; }.skeleton-avatar { width: 112px; height: 112px; flex-basis: 112px; }.skeleton-lines span { width: 160px; } }
   @media (max-width: 520px) {.artist-header { flex-direction: column; align-items: flex-start; }.artist-info { min-height: 0; width: 100%; }.avatar { align-self: center; }.skeleton-header { align-items: flex-start; }.skeleton-avatar { width: 96px; height: 96px; flex-basis: 96px; }.skeleton-lines span { width: 120px; } }
 </style>
 

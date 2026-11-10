@@ -148,3 +148,32 @@ test('context heading keeps independent loading messages, partial count and loca
   assert.ok(html.includes('Álbum: Álbum'));
   assert.ok(html.includes('2 canciones'));
 });
+
+test('continuous queue renders two headers, earlier tracks and one compact proposal action', () => {
+  const state = playback([entry('previous'), entry('now'), entry('next')]);
+  state.queue.currentIndex = 1;
+  state.queue.recommendations = [entry('suggestion')];
+  const html = panel({ playback: state, onRecommendationAction: noop });
+  assert.doesNotMatch(html, /Anteriores|previous-toggle|aria-expanded/);
+  assert.ok(html.indexOf('data-entry-id="previous"') < html.indexOf('data-entry-id="now"'));
+  assert.match(html, /Ahora/);
+  assert.doesNotMatch(html, /A continuación/);
+  assert.match(html, /Recomendaciones/);
+  const proposed = html.slice(html.indexOf('data-entry-id="suggestion"'));
+  assert.doesNotMatch(proposed, /Play next|Reproducir después/);
+  assert.match(proposed, /Add to end|Agregar al final/);
+  assert.doesNotMatch(proposed, /Dismiss suggestion|Quitar propuesta/);
+  assert.equal((proposed.match(/class="proposal-action[^"]*"/g) ?? []).length, 1);
+  assert.doesNotMatch(proposed, /reorder-handle/);
+});
+
+test('large previous prefix opens near current and keeps the mounted rows bounded', () => {
+  const items = Array.from({ length: 10002 }, (_, index) => entry(`history-${index}`));
+  const state = playback(items);
+  state.queue.currentIndex = 10000;
+  const html = panel({ playback: state });
+  assert.doesNotMatch(html, /previous-toggle|aria-expanded/);
+  assert.match(html, /data-entry-id="history-10000"/);
+  assert.doesNotMatch(html, /data-entry-id="history-0"/);
+  assert.ok((html.match(/class="queue-row track-row/g) ?? []).length < 30);
+});

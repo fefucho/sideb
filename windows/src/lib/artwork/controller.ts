@@ -94,6 +94,14 @@ export class AnimatedArtworkController<Request, Asset> {
     this.barrier = operation.catch(() => {});
     return operation;
   }
+  /** Drop the current source/lease synchronously (the file may be about to disappear) and ask again if still eligible. */
+  refresh() {
+    if (this.disposed || this.blocked) return Promise.resolve();
+    this.attempted = false;
+    const released = this.release();
+    this.schedule();
+    return released;
+  }
   fail() { this.attempted = true; return this.release(); }
   clear() { this.blocked = true; return this.release(); }
   dispose() { this.disposed = true; return this.release(); }

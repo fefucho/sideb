@@ -116,13 +116,13 @@ private func nextResult(_ items: [SongItemRecord], continuation: String?) -> Nex
 @Test @MainActor func providerActionPreservesOpaqueParamsAndContinuationOccurrences() async {
     let core = ProviderActionCore(), fixture = providerActionPlayer(core, suffix: UUID().uuidString), player = fixture.player
     defer { fixture.cleanup() }
-    let action = SearchActionRecord(title: "Shuffle", videoId: "repeat", playlistId: "RDopaque",
+    let action = SearchActionRecord(title: "Shuffle", videoId: "repeat", playlistId: "PLopaque",
         browseId: nil, params: "opaque+shuffle%3D")
 
     player.activateProviderSearchAction(action, title: "Provider section")
     await core.gate.waitForAction(1)
     #expect(await core.gate.actionArguments(0).0 == "repeat")
-    #expect(await core.gate.actionArguments(0).1 == "RDopaque")
+    #expect(await core.gate.actionArguments(0).1 == "PLopaque")
     #expect(await core.gate.actionArguments(0).2 == "opaque+shuffle%3D")
     await core.gate.succeedAction(0, nextResult([providerActionSong("repeat", setVideoId: "set-first")], continuation: "cursor-1"))
     await waitForProviderActionQueue(player, count: 1)
@@ -136,7 +136,7 @@ private func nextResult(_ items: [SongItemRecord], continuation: String?) -> Nex
         providerActionSong("repeat", setVideoId: "set-third")
     ], continuation: "cursor-2"))
     let deadline = ContinuousClock.now + .seconds(2)
-    while player.isLoadingPlaylistContinuation && ContinuousClock.now < deadline { await Task.yield() }
+    while (player.isLoadingPlaylistContinuation || player.queueManager.isLoadingAutoplay) && ContinuousClock.now < deadline { await Task.yield() }
 
     #expect(player.queueManager.queue.map(\.videoId) == ["repeat", "repeat", "repeat"])
     #expect(player.queueManager.queue.map(\.setVideoId) == ["set-first", "set-second", "set-third"])
@@ -216,8 +216,8 @@ private func nextResult(_ items: [SongItemRecord], continuation: String?) -> Nex
     await core.gate.waitForContinuation(1)
     await core.gate.failContinuation(0)
     let deadline = ContinuousClock.now + .seconds(2)
-    while player.isLoadingPlaylistContinuation && ContinuousClock.now < deadline { await Task.yield() }
-    #expect(player.queueManager.continuationToken == "retry-cursor")
+    while (player.isLoadingPlaylistContinuation || player.queueManager.isLoadingAutoplay) && ContinuousClock.now < deadline { await Task.yield() }
+    #expect(player.queueManager.radioContinuationToken == "retry-cursor")
     #expect(player.queueManager.queue.map(\.videoId) == ["seed"])
 
     player.extendProviderActionIfNeeded()
@@ -225,8 +225,9 @@ private func nextResult(_ items: [SongItemRecord], continuation: String?) -> Nex
     #expect(await core.gate.continuationToken(1) == "retry-cursor")
     await core.gate.succeedContinuation(1, nextResult([providerActionSong("tail", setVideoId: "tail-set")], continuation: nil))
     let retryDeadline = ContinuousClock.now + .seconds(2)
-    while player.isLoadingPlaylistContinuation && ContinuousClock.now < retryDeadline { await Task.yield() }
-    #expect(player.queueManager.queue.map(\.videoId) == ["seed", "tail"])
+    while (player.isLoadingPlaylistContinuation || player.queueManager.isLoadingAutoplay) && ContinuousClock.now < retryDeadline { await Task.yield() }
+    #expect(player.queueManager.queue.map(\.videoId) == ["seed"])
+    #expect(player.queueManager.recommendationEntries.map { $0.track.videoId } == ["tail"])
     #expect(player.queueManager.continuationToken == nil)
     #expect(await core.gate.continuationCount() == 2)
 }

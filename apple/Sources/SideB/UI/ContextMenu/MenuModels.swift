@@ -83,6 +83,7 @@ public enum MenuOrigin: Equatable, Sendable {
     case library
     case history
     case queue(occurrenceIndex: Int)
+    case queueRecommendation(id: String, sessionID: UUID)
     case nowPlaying
     case recommendations
     case sidebar

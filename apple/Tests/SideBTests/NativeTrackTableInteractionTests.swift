@@ -15,6 +15,9 @@ private func tableTestTrack(_ id: String) -> SongItemRecord {
                        eventNumber: number, clickCount: 1, pressure: 1)!
 }
 
+@Suite(.serialized)
+@MainActor
+struct NativeTrackTableInteractionTests {
 @Test func singleClickAndThumbnailPlayDelegateOneOccurrence() {
     let repeated = tableTestTrack("same-video")
     let projection = TrackTableRowProjection.make(sections: [
@@ -353,4 +356,5 @@ private func tableTestTrack(_ id: String) -> SongItemRecord {
     player.currentTrack = catalogTrack
     audio.onPlaybackProgress?(1, 200)
     #expect(player.queueManager.queue[0].duration == "3:19")
+}
 }

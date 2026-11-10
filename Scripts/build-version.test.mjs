@@ -178,3 +178,43 @@ test('Mac packaging handles paths with spaces and refuses overwrite/signing fail
   assert.notEqual(run(app).status, 0);
   assert.notEqual(run(join(root, 'unsigned', 'Side B.app'), { TEST_SIGN_FAIL: '1' }).status, 0);
 });
+
+function withProviderSource(root) {
+  mkdirSync(join(root, 'extensions', 'spotify-canvas'), { recursive: true });
+  writeFileSync(join(root, 'extensions', 'spotify-canvas', 'Cargo.toml'), '[package]\nversion = "0.2.0"\n');
+}
+function stagedWindowsProvider(root) {
+  const dir = join(root, 'windows', 'src-tauri', 'provider', 'spotify-canvas');
+  mkdirSync(dir, { recursive: true });
+  for (const name of ['manifest.json', 'sideb-spotify-canvas.exe', 'SHA256SUMS', 'LICENSE']) writeFileSync(join(dir, name), name);
+}
+
+test('Windows carries the factory-installed provider next to the executable and hashes it; its absence fails the build', async t => {
+  const root = fixture(t); withProviderSource(root);
+  const deps = { host: 'win32', architecture: 'x64', powerShell: 'mock-powershell', snapshot, execute: async (command, args) => { if (args[args.indexOf('-Action') + 1] === 'build') nativeArtifacts(root, 'release'); } };
+  await assert.rejects(buildVersion(root, parseArguments(['windows']), deps), /Falta el proveedor visual preinstalado/);
+  stagedWindowsProvider(root);
+  const result = await buildVersion(root, parseArguments(['windows']), deps);
+  for (const name of ['manifest.json', 'sideb-spotify-canvas.exe', 'SHA256SUMS', 'LICENSE']) {
+    assert.equal(readFileSync(join(result.directory, 'provider', 'spotify-canvas', name), 'utf8'), name);
+    assert.match(result.metadata.artifactSHA256[`provider/spotify-canvas/${name}`], /^[a-f0-9]{64}$/);
+  }
+});
+
+test('Mac requires the factory-installed provider inside the bundle when its source exists', async t => {
+  const root = fixture(t); withProviderSource(root);
+  const bundle = (withProvider) => async (command, args) => {
+    if (command === 'bash' && args[0].endsWith('build-macos.sh')) {
+      mkdirSync(join(args[2], 'Contents', 'MacOS'), { recursive: true }); writeFileSync(join(args[2], 'Contents', 'MacOS', 'Side B'), 'binary');
+      if (withProvider) {
+        const dir = join(args[2], 'Contents', 'Resources', 'VisualProviders', 'spotify-canvas');
+        mkdirSync(dir, { recursive: true });
+        for (const name of ['manifest.json', 'sideb-spotify-canvas', 'SHA256SUMS']) writeFileSync(join(dir, name), name);
+      }
+    }
+  };
+  const deps = { host: 'darwin', architecture: 'arm64', snapshot };
+  await assert.rejects(buildVersion(root, parseArguments(['macos']), { ...deps, execute: bundle(false) }), /Falta el proveedor visual preinstalado en el bundle Mac/);
+  const result = await buildVersion(root, parseArguments(['macos']), { ...deps, execute: bundle(true) });
+  assert.match(result.metadata.artifactSHA256['Side B.app/Contents/Resources/VisualProviders/spotify-canvas/sideb-spotify-canvas'], /^[a-f0-9]{64}$/);
+});

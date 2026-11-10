@@ -12,6 +12,9 @@ struct ExperimentalLyricsPanel: View {
     let onShowOriginalLyrics: () -> Void
     let onRefresh: () -> Void
     let isRefreshing: Bool
+    var source: String = "auto"
+    var onSelectSource: (String) -> Void = { _ in }
+    var showsControls = true
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorSchemeContrast) private var contrast
@@ -22,11 +25,17 @@ struct ExperimentalLyricsPanel: View {
     @State private var offsetMS: Double = 0
     @State private var cachedItems: (document: ExperimentalLyricsDocument, duration: Double, items: [ExperimentalLyricsDisplayItem])
     @State private var recenterRevision: UInt64 = 0
+    @State private var visibleItemIDs: Set<String> = []
 
     init(document: ExperimentalLyricsDocument, player: AVPlayer, playbackIdentity: UUID,
          duration: Double, seekSnapshot: AudioPlayerSeekSnapshot = .idle, onSeek: @escaping (Double) -> Void,
          onShowOriginalLyrics: @escaping () -> Void = {}, onRefresh: @escaping () -> Void = {},
-         isRefreshing: Bool = false, presentation: LyricsPresentationSettings? = nil) {
+         isRefreshing: Bool = false, presentation: LyricsPresentationSettings? = nil,
+         source: String = "auto", onSelectSource: @escaping (String) -> Void = { _ in },
+         showsControls: Bool = true) {
+        self.showsControls = showsControls
+        self.source = source
+        self.onSelectSource = onSelectSource
         self.document = document
         self.player = player
         self.playbackIdentity = playbackIdentity
@@ -42,6 +51,8 @@ struct ExperimentalLyricsPanel: View {
 
     private var mode: ExperimentalLyricsMode { presentation.mode }
     private var fontSize: CGFloat { presentation.fontSize }
+    private var canFollow: Bool { document.hasLineTimings }
+    private var isFollowing: Bool { presentation.experimentalScroll.isFollowing }
 
     var body: some View {
         Group {
@@ -59,24 +70,33 @@ struct ExperimentalLyricsPanel: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .overlay(alignment: .topTrailing) {
-            controls.padding(.trailing, 8)
+            if showsControls { controls.padding(.trailing, 8) }
         }
         .background(ExperimentalLyricsVisibility { clock.setVisible($0) }.frame(width: 0, height: 0))
-        .onAppear { startClock() }
+        .onAppear { startClock(recenterAfterUpdate: false) }
         .onDisappear {
+            presentation.experimentalScroll.invalidatePending()
             presentation.followState.invalidateRequests()
             clock.stop()
         }
         .onChange(of: lifecycleInput) { previous, next in
             let newOccurrence = previous.playbackIdentity != next.playbackIdentity
+            presentation.experimentalScroll.documentChanged(newOccurrence: newOccurrence)
             presentation.followState.documentChanged(newOccurrence: newOccurrence)
+            visibleItemIDs.removeAll()
             if newOccurrence { offsetMS = 0 }
-            startClock()
+            startClock(recenterAfterUpdate: true)
         }
         .onChange(of: duration) { _, next in
-            cachedItems = (document, next, Self.items(document: document, duration: next))
+            let previousIDs = cachedItems.items.map(\.id)
+            let previousTarget = scrollTarget
+            let updatedItems = Self.items(document: document, duration: next)
+            cachedItems = (document, next, updatedItems)
             clock.updateDuration(next)
-            recenterRevision &+= 1
+            let nextIDs = updatedItems.map(\.id)
+            if scrollTarget != previousTarget || Self.layoutPrefixChanged(previous: previousIDs, next: nextIDs, upTo: scrollTarget) {
+                recenterRevision &+= 1
+            }
         }
         .onChange(of: seekSnapshot) { _, next in clock.reconcileSeek(next) }
         .onChange(of: mode) { _, _ in configureClock() }
@@ -96,6 +116,7 @@ struct ExperimentalLyricsPanel: View {
                 Text(L10n.text("lyrics.experimental.source", args: [document.provider]))
                 Text(timingDescription)
             }
+            LyricsSourceOptions(source: source, onSelect: onSelectSource)
             LyricsPresentationOptions(settings: presentation)
             Toggle(L10n.text("lyrics.experimental.wordMotion"), isOn: $wordMotion)
                 .help(L10n.text("lyrics.experimental.wordMotion.help"))
@@ -117,10 +138,12 @@ struct ExperimentalLyricsPanel: View {
 
     private var lyricsScroll: some View {
         GeometryReader { geometry in
-            let horizontalPadding: CGFloat = geometry.size.width >= 330 ? 32 : 20
-            // Match the measured phrase width; the trailing room also protects
-            // sustained-word drawing without adding an unused sharing action.
-            let textWidth = max(1, geometry.size.width - horizontalPadding * 2 - (mode == .karaoke ? 48 : 0))
+            let horizontalPadding = LyricsLayoutMetrics.horizontalMargin
+            let textWidth = LyricsLayoutMetrics.textWidth(viewportWidth: geometry.size.width)
+            let verticalPadding = LyricsLayoutMetrics.verticalCenteringPadding(
+                viewportHeight: geometry.size.height,
+                canCenterActiveLine: canFollow
+            )
             ScrollViewReader { proxy in
                 let currentItems = currentDisplayItems
                 let isIntro = clock.interludes.contains { $0.id == clock.activeInterludeID && $0.kind == .intro }
@@ -131,18 +154,19 @@ struct ExperimentalLyricsPanel: View {
                 let focusAnchor = focused.flatMap { document.presentationAnchorIndex(for: $0) }
                 let focusOrdinal = currentItems.first { $0.group?.anchorLineIndex == focusAnchor }?.ordinal ?? (isIntro ? -1 : 0)
                 ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 0) {
+                    VStack(alignment: .leading, spacing: 0) {
                         ForEach(currentItems) { item in
                             if let group = item.group {
                                 lyricGroup(group,
                                            distance: ExperimentalLyricsStyle.visualDistance(abs(item.ordinal - focusOrdinal)),
                                            focused: focused, active: active,
                                            onSeek: { seek($0, target: item.id, using: proxy) })
-                                    .frame(maxWidth: textWidth, alignment: .leading)
+                                    .frame(width: textWidth, alignment: .leading)
                                     .padding(.vertical, mode == .karaoke ? 10 : 8)
                                     .id(item.id)
                                     .onScrollVisibilityChange(threshold: 0.01) { isVisible in
                                         clock.setPresentationGroupVisible(id: item.id, visible: isVisible)
+                                        recordItemVisibility(id: item.id, isVisible: isVisible, in: currentItems)
                                     }
                             } else if let interlude = item.interlude {
                                 ExperimentalLyricsInterludeRow(
@@ -152,28 +176,38 @@ struct ExperimentalLyricsPanel: View {
                                     staticPresentation: reduceMotion || !wordMotion || mode != .karaoke,
                                     increasedContrast: contrast == .increased
                                 )
+                                .frame(width: textWidth, alignment: .leading)
                                 .id(item.id)
                                 .onScrollVisibilityChange(threshold: 0.01) { isVisible in
                                     clock.setInterludeVisible(id: interlude.id, visible: isVisible)
+                                    recordItemVisibility(id: item.id, isVisible: isVisible, in: currentItems)
                                 }
                             }
                         }
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .frame(width: textWidth, alignment: .leading)
                     .padding(.horizontal, horizontalPadding)
-                    // This centering belongs only to the temporary presentation.
-                    .padding(.vertical, mode == .karaoke && document.hasLineTimings ? geometry.size.height / 2 : 12)
+                    .padding(.vertical, verticalPadding)
+                    .frame(maxWidth: .infinity, alignment: .center)
                 }
                 .scrollIndicators(.hidden)
                 .mask { LyricsViewportMask(height: geometry.size.height, increasedContrast: contrast == .increased) }
                 .onScrollPhaseChange { _, phase in
-                    if document.hasLineTimings && (phase == .tracking || phase == .interacting) { presentation.followState.userScrolled() }
+                    if canFollow && (phase == .tracking || phase == .interacting) {
+                        presentation.noteUserScrolled()
+                        updateManualReadingAnchor(in: currentItems)
+                    }
                 }
                 .overlay(alignment: .bottom) {
-                    if document.hasLineTimings && !presentation.followState.isFollowing {
+                    if canFollow && !isFollowing {
                         Button {
-                            presentation.followState.resume()
-                            center(target, using: proxy, animated: true)
+                            presentation.noteFollowResumed()
+                            if let command = presentation.experimentalScroll.resumeFollowing(
+                                activeTarget: target,
+                                reduceMotion: reduceMotion
+                            ) {
+                                applyImmediately(command, using: proxy)
+                            }
                         } label: {
                             SideBControlLabel(title: L10n.text("fullscreen.returnToCurrentLyric"), symbol: "location.fill")
                         }
@@ -183,14 +217,27 @@ struct ExperimentalLyricsPanel: View {
                     }
                 }
                 .onChange(of: target) { _, next in
-                    scheduleCenter(next, using: proxy, animated: true)
+                    if let command = presentation.experimentalScroll.activeTargetChanged(
+                        to: next,
+                        canFollow: canFollow,
+                        reduceMotion: reduceMotion
+                    ) {
+                        scheduleCommand(command, using: proxy)
+                    }
                 }
-                .onChange(of: geometry.size) { _, _ in recenter(using: proxy) }
-                .onChange(of: fontSize) { _, _ in recenter(using: proxy) }
-                .onChange(of: showTranslation) { _, _ in recenter(using: proxy) }
-                .onChange(of: mode) { _, _ in recenter(using: proxy) }
-                .onChange(of: recenterRevision) { _, _ in recenter(using: proxy) }
-                .onAppear { recenter(using: proxy) }
+                .onChange(of: geometry.size) { _, _ in recenterForLayout(using: proxy) }
+                .onChange(of: fontSize) { _, _ in recenterForLayout(using: proxy) }
+                .onChange(of: showTranslation) { _, _ in recenterForLayout(using: proxy) }
+                .onChange(of: mode) { _, _ in recenterForLayout(using: proxy) }
+                .onChange(of: recenterRevision) { _, _ in recenterForLayout(using: proxy) }
+                .onAppear {
+                    if let command = presentation.experimentalScroll.restoreOnAppear(
+                        activeTarget: target,
+                        canFollow: canFollow
+                    ) {
+                        scheduleCommand(command, using: proxy)
+                    }
+                }
             }
         }
     }
@@ -210,7 +257,7 @@ struct ExperimentalLyricsPanel: View {
                         karaoke: mode == .karaoke, offsetMS: offsetMS,
                         fontSize: fontSize, showTranslation: showTranslation,
                         reduceMotion: reduceMotion, increasedContrast: contrast == .increased,
-                        wordMotion: wordMotion, isFollowing: presentation.followState.isFollowing, onSeek: onSeek
+                        wordMotion: wordMotion, isFollowing: isFollowing, onSeek: onSeek
                     )
                 }
             }
@@ -241,41 +288,73 @@ struct ExperimentalLyricsPanel: View {
 
     private func seek(_ lineMS: Double, target: String, using proxy: ScrollViewProxy) {
         guard let seconds = ExperimentalLyricsSeekTarget.audioSeconds(lineMS: lineMS, offsetMS: offsetMS, duration: duration) else { return }
-        presentation.followState.resume()
+        presentation.noteFollowResumed()
+        let command = presentation.experimentalScroll.seek(to: target, reduceMotion: reduceMotion)
         clock.notifySeek(toAudioSeconds: seconds)
-        center(target, using: proxy, animated: true)
+        applyImmediately(command, using: proxy)
         onSeek(seconds)
     }
 
-    private func center(_ target: String?, using proxy: ScrollViewProxy, animated: Bool) {
-        guard let target else { return }
-        if animated && !reduceMotion {
-            withAnimation(.spring(response: ExperimentalLyricsStyle.focusTransitionDuration, dampingFraction: 0.96)) {
-                proxy.scrollTo(target, anchor: .center)
-            }
-        } else { proxy.scrollTo(target, anchor: .center) }
-    }
-
-    private func recenter(using proxy: ScrollViewProxy) {
-        scheduleCenter(scrollTarget, using: proxy, animated: false)
-    }
-
-    private func scheduleCenter(_ target: String?, using proxy: ScrollViewProxy, animated: Bool) {
-        guard let request = presentation.followState.beginRequest() else { return }
-        Task { @MainActor in
-            await Task.yield()
-            guard presentation.followState.canApply(request) else { return }
-            center(target, using: proxy, animated: animated)
+    private func recenterForLayout(using proxy: ScrollViewProxy) {
+        if let command = presentation.experimentalScroll.recenterForLayoutChange(
+            activeTarget: scrollTarget,
+            canFollow: canFollow,
+            reduceMotion: reduceMotion
+        ) {
+            scheduleCommand(command, using: proxy)
         }
     }
 
-    private func startClock() {
+    private func scheduleCommand(_ command: LyricsScrollCoordinator<String>.Command, using proxy: ScrollViewProxy) {
+        Task { @MainActor in
+            await Task.yield()
+            guard presentation.experimentalScroll.canApply(command) else { return }
+            applyImmediately(command, using: proxy)
+        }
+    }
+
+    private func applyImmediately(_ command: LyricsScrollCoordinator<String>.Command, using proxy: ScrollViewProxy) {
+        if command.animated && !reduceMotion {
+            withAnimation(.spring(response: ExperimentalLyricsStyle.focusTransitionDuration, dampingFraction: 0.96)) {
+                proxy.scrollTo(command.target, anchor: .center)
+            }
+        } else {
+            proxy.scrollTo(command.target, anchor: .center)
+        }
+    }
+
+    private func recordItemVisibility(id: String, isVisible: Bool, in items: [ExperimentalLyricsDisplayItem]) {
+        let changed = isVisible ? visibleItemIDs.insert(id).inserted : visibleItemIDs.remove(id) != nil
+        if changed && !isFollowing {
+            updateManualReadingAnchor(in: items)
+        }
+    }
+
+    private func updateManualReadingAnchor(in items: [ExperimentalLyricsDisplayItem]) {
+        guard !isFollowing else { return }
+        let orderedVisible = items.filter { visibleItemIDs.contains($0.id) }
+        guard !orderedVisible.isEmpty else { return }
+        let midAnchor = orderedVisible[orderedVisible.count / 2].id
+        presentation.experimentalScroll.recordVisibleManualAnchor(midAnchor)
+    }
+
+    private static func layoutPrefixChanged(previous: [String], next: [String], upTo target: String?) -> Bool {
+        guard let target else { return previous != next }
+        let prevIdx = previous.firstIndex(of: target)
+        let nextIdx = next.firstIndex(of: target)
+        guard let prevIdx, let nextIdx, prevIdx == nextIdx else { return true }
+        return previous[...prevIdx] != next[...nextIdx]
+    }
+
+    private func startClock(recenterAfterUpdate: Bool) {
         presentation.activate(playbackIdentity)
         cachedItems = (document, duration, Self.items(document: document, duration: duration))
         clock.start(player: player, document: document, duration: duration,
                     playbackIdentity: playbackIdentity, seekSnapshot: seekSnapshot)
         configureClock()
-        recenterRevision &+= 1
+        if recenterAfterUpdate {
+            recenterRevision &+= 1
+        }
     }
 
     private var currentDisplayItems: [ExperimentalLyricsDisplayItem] {

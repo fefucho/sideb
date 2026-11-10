@@ -11,6 +11,7 @@ final class NativeQueueTrackCellView: NSTableCellView, NativeTrackCellPresenting
     private let albumLabel = NSTextField(labelWithString: "")
     private let durationLabel = NSTextField(labelWithString: "")
     private let reorderHandleImageView = NSImageView()
+    private let addToQueueButton = HomeFocusTrackingButton()
 
     private let likeButton = HomeFocusTrackingButton()
     private let dislikeButton = HomeFocusTrackingButton()
@@ -29,6 +30,7 @@ final class NativeQueueTrackCellView: NSTableCellView, NativeTrackCellPresenting
     var onArtistDestination: ((String?,String)->Void)?
     var onLike: ((SongItemRecord) -> Void)?
     var onDislike: ((SongItemRecord) -> Void)?
+    private var onAddToQueue: (() -> Void)?
 
     private var artworkWidthConstraint: NSLayoutConstraint?
     private var artworkHeightConstraint: NSLayoutConstraint?
@@ -36,6 +38,15 @@ final class NativeQueueTrackCellView: NSTableCellView, NativeTrackCellPresenting
     private var likeButtonHeightConstraint: NSLayoutConstraint?
     private var dislikeButtonWidthConstraint: NSLayoutConstraint?
     private var dislikeButtonHeightConstraint: NSLayoutConstraint?
+    private var addToQueueWidthConstraint: NSLayoutConstraint?
+    private var addToQueueHeightConstraint: NSLayoutConstraint?
+    private var addToQueueCenterDurationConstraint: NSLayoutConstraint?
+    private var addToQueueWidthDurationConstraint: NSLayoutConstraint?
+    private var addToQueueHeightDurationConstraint: NSLayoutConstraint?
+    private var dislikeToLikeConstraint: NSLayoutConstraint?
+    private var addToQueueToLikeConstraint: NSLayoutConstraint?
+    private var dislikeToAddToQueueConstraint: NSLayoutConstraint?
+    private var showsAddToQueueBesideLike: Bool = false
     private var reorderHandleWidthConstraint: NSLayoutConstraint?
     private var reorderHandleHeightConstraint: NSLayoutConstraint?
     private var playingIconWidthConstraint: NSLayoutConstraint?
@@ -57,6 +68,10 @@ final class NativeQueueTrackCellView: NSTableCellView, NativeTrackCellPresenting
 
     override func prepareForReuse() {
         super.prepareForReuse()
+        if showsAddToQueueBesideLike {
+            showsAddToQueueBesideLike = false
+            updateRecommendationConstraints()
+        }
         imageFetchTask?.cancel()
         imageFetchTask = nil
         imageRequestID = nil
@@ -72,6 +87,8 @@ final class NativeQueueTrackCellView: NSTableCellView, NativeTrackCellPresenting
         isCreditFocused = false
         onLike = nil
         onDislike = nil
+        onAddToQueue = nil
+        addToQueueButton.isHidden = true
         likeButton.isHidden = true
         dislikeButton.isHidden = true
         likeButton.alphaValue = 0
@@ -205,6 +222,48 @@ final class NativeQueueTrackCellView: NSTableCellView, NativeTrackCellPresenting
         reorderHandleImageView.setAccessibilityLabel(L10n.text("queue.track.reorderSong"))
         addSubview(reorderHandleImageView)
 
+        addToQueueButton.bezelStyle = .regularSquare
+        addToQueueButton.isBordered = false
+        addToQueueButton.imagePosition = .imageOnly
+        addToQueueButton.imageScaling = .scaleProportionallyDown
+        addToQueueButton.image = NSImage(systemSymbolName: "plus", accessibilityDescription: nil)
+        addToQueueButton.contentTintColor = NSColor.white.withAlphaComponent(0.65)
+        addToQueueButton.target = self
+        addToQueueButton.action = #selector(onAddToQueueClicked)
+        addToQueueButton.translatesAutoresizingMaskIntoConstraints = false
+        addToQueueButton.isHidden = true
+        addToQueueButton.setAccessibilityIdentifier("NativeQueueTrackAddToQueue")
+        addToQueueButton.onFocusChanged = { [weak self] in
+            Task { @MainActor [weak self] in
+                await Task.yield()
+                guard let self else { return }
+                self.updateCreditFocus(self.containsKeyboardFocus)
+            }
+        }
+        addSubview(addToQueueButton)
+
+        let addW = addToQueueButton.widthAnchor.constraint(equalToConstant: 22)
+        let addH = addToQueueButton.heightAnchor.constraint(equalToConstant: 22)
+        self.addToQueueWidthConstraint = addW
+        self.addToQueueHeightConstraint = addH
+
+        let addCenter = addToQueueButton.centerXAnchor.constraint(equalTo: durationLabel.centerXAnchor)
+        let addWSlot = addToQueueButton.widthAnchor.constraint(equalTo: durationLabel.widthAnchor)
+        let addHSlot = addToQueueButton.heightAnchor.constraint(equalToConstant: 28)
+        let disToLike = dislikeButton.trailingAnchor.constraint(equalTo: likeButton.leadingAnchor, constant: -6)
+
+        self.addToQueueCenterDurationConstraint = addCenter
+        self.addToQueueWidthDurationConstraint = addWSlot
+        self.addToQueueHeightDurationConstraint = addHSlot
+        self.dislikeToLikeConstraint = disToLike
+
+        // Sidebar recommendations read dislike, like, add: add sits in the duration slot, right of like.
+        let addToLike = addToQueueButton.leadingAnchor.constraint(equalTo: likeButton.trailingAnchor, constant: 6)
+        let disToAdd = dislikeButton.trailingAnchor.constraint(equalTo: addToQueueButton.leadingAnchor, constant: -6)
+
+        self.addToQueueToLikeConstraint = addToLike
+        self.dislikeToAddToQueueConstraint = disToAdd
+
         let reorderW = reorderHandleImageView.widthAnchor.constraint(equalToConstant: 18)
         let reorderH = reorderHandleImageView.heightAnchor.constraint(equalToConstant: 16)
         self.reorderHandleWidthConstraint = reorderW
@@ -258,7 +317,7 @@ final class NativeQueueTrackCellView: NSTableCellView, NativeTrackCellPresenting
             albumLabel.widthAnchor.constraint(lessThanOrEqualToConstant: 160),
 
             // Botón Dislike
-            dislikeButton.trailingAnchor.constraint(equalTo: likeButton.leadingAnchor, constant: -6),
+            disToLike,
             dislikeButton.centerYAnchor.constraint(equalTo: centerYAnchor),
             dislikeW,
             dislikeH,
@@ -279,6 +338,12 @@ final class NativeQueueTrackCellView: NSTableCellView, NativeTrackCellPresenting
             reorderHandleImageView.centerYAnchor.constraint(equalTo: centerYAnchor),
             reorderW,
             reorderH,
+
+            // Same trailing slot as duration/reorder; proposals never reserve extra width.
+            addToQueueButton.centerYAnchor.constraint(equalTo: centerYAnchor),
+            addCenter,
+            addWSlot,
+            addHSlot,
 
             // Activación inicial sin álbum separado
             tNoAlbum,
@@ -303,6 +368,18 @@ final class NativeQueueTrackCellView: NSTableCellView, NativeTrackCellPresenting
     func updateHover(isHovered: Bool) {
         isPointerHovered = isHovered
         updateActionVisibility()
+    }
+
+    func setAddToQueueAction(_ action: (() -> Void)?) {
+        onAddToQueue = action
+        addToQueueButton.toolTip = L10n.text("menu.add_to_queue")
+        addToQueueButton.setAccessibilityLabel(L10n.text("menu.add_to_queue"))
+        updateActionVisibility()
+    }
+
+    @objc private func onAddToQueueClicked() {
+        let action = onAddToQueue
+        DispatchQueue.main.async { action?() }
     }
 
     func updateSelection(isSelected: Bool) {
@@ -334,6 +411,8 @@ final class NativeQueueTrackCellView: NSTableCellView, NativeTrackCellPresenting
         artworkImageView.setAccessibilityLabel(L10n.text("detail.track.artwork"))
         reorderHandleImageView.setAccessibilityLabel(L10n.text("queue.track.reorderSong"))
         reorderHandleImageView.toolTip = L10n.text("queue.track.reorderSong")
+        addToQueueButton.toolTip = L10n.text("menu.add_to_queue")
+        addToQueueButton.setAccessibilityLabel(L10n.text("menu.add_to_queue"))
     }
 
     var containsKeyboardFocus: Bool {
@@ -348,12 +427,70 @@ final class NativeQueueTrackCellView: NSTableCellView, NativeTrackCellPresenting
 
     private func updateActionVisibility() {
         let controlsAreActive = isPointerHovered || isCreditFocused || containsKeyboardFocus
-        durationLabel.isHidden = isReorderable && controlsAreActive
-        reorderHandleImageView.isHidden = !(isReorderable && controlsAreActive)
-        likeButton.isHidden = false
-        dislikeButton.isHidden = !controlsAreActive
-        likeButton.alphaValue = 1
-        dislikeButton.alphaValue = controlsAreActive ? 0.70 : 0
+        let offersAdd = onAddToQueue != nil
+        if showsAddToQueueBesideLike {
+            // The add button takes the duration slot while the row is active.
+            durationLabel.isHidden = (isReorderable || offersAdd) && controlsAreActive
+            reorderHandleImageView.isHidden = !(isReorderable && !offersAdd && controlsAreActive)
+            addToQueueButton.isHidden = !(offersAdd && controlsAreActive)
+            addToQueueButton.alphaValue = controlsAreActive ? 0.70 : 0
+            likeButton.isHidden = false
+            dislikeButton.isHidden = !controlsAreActive
+            likeButton.alphaValue = 1
+            dislikeButton.alphaValue = controlsAreActive ? 0.70 : 0
+        } else {
+            durationLabel.isHidden = (isReorderable || offersAdd) && controlsAreActive
+            reorderHandleImageView.isHidden = !(isReorderable && !offersAdd && controlsAreActive)
+            addToQueueButton.isHidden = !(offersAdd && controlsAreActive)
+            addToQueueButton.alphaValue = 1.0
+            likeButton.isHidden = false
+            dislikeButton.isHidden = !controlsAreActive
+            likeButton.alphaValue = 1
+            dislikeButton.alphaValue = controlsAreActive ? 0.70 : 0
+        }
+    }
+
+    func setPreviousAppearance(_ previous: Bool) {
+        titleLabel.alphaValue = previous ? 0.65 : 1
+        subtitleLabel.alphaValue = previous ? 0.75 : 1
+        artworkImageView.alphaValue = previous ? 0.6 : 1
+    }
+
+    /// Sidebar recommendations sit on a chromatic surface instead of a dark table.
+    func setSidebarRecommendationAppearance() {
+        if !showsAddToQueueBesideLike {
+            showsAddToQueueBesideLike = true
+            updateRecommendationConstraints()
+        }
+        titleLabel.textColor = .white
+        subtitleLabel.textColor = NSColor.white.withAlphaComponent(0.85)
+        indexLabel.textColor = NSColor.white.withAlphaComponent(0.75)
+        durationLabel.textColor = NSColor.white.withAlphaComponent(0.8)
+        addToQueueButton.contentTintColor = NSColor.white.withAlphaComponent(0.65)
+    }
+
+    private func updateRecommendationConstraints() {
+        if showsAddToQueueBesideLike {
+            addToQueueCenterDurationConstraint?.isActive = false
+            addToQueueWidthDurationConstraint?.isActive = false
+            addToQueueHeightDurationConstraint?.isActive = false
+            dislikeToAddToQueueConstraint?.isActive = false
+
+            addToQueueWidthConstraint?.isActive = true
+            addToQueueHeightConstraint?.isActive = true
+            addToQueueToLikeConstraint?.isActive = true
+            dislikeToLikeConstraint?.isActive = true
+        } else {
+            addToQueueToLikeConstraint?.isActive = false
+            dislikeToAddToQueueConstraint?.isActive = false
+            addToQueueWidthConstraint?.isActive = false
+            addToQueueHeightConstraint?.isActive = false
+
+            addToQueueCenterDurationConstraint?.isActive = true
+            addToQueueWidthDurationConstraint?.isActive = true
+            addToQueueHeightDurationConstraint?.isActive = true
+            dislikeToLikeConstraint?.isActive = true
+        }
     }
 
     func configure(
@@ -367,6 +504,12 @@ final class NativeQueueTrackCellView: NSTableCellView, NativeTrackCellPresenting
         isReorderable: Bool,
         rowHeight: CGFloat
     ) {
+        if showsAddToQueueBesideLike {
+            showsAddToQueueBesideLike = false
+            updateRecommendationConstraints()
+        }
+        onAddToQueue = nil
+        setPreviousAppearance(false)
         imageFetchTask?.cancel()
         imageFetchTask = nil
         imageRequestID = nil
@@ -441,9 +584,12 @@ final class NativeQueueTrackCellView: NSTableCellView, NativeTrackCellPresenting
         likeButtonHeightConstraint?.constant = buttonSize
         dislikeButtonWidthConstraint?.constant = buttonSize
         dislikeButtonHeightConstraint?.constant = buttonSize
+        addToQueueWidthConstraint?.constant = buttonSize
+        addToQueueHeightConstraint?.constant = buttonSize
 
         let buttonSymbolPtSize: CGFloat = isCompact ? 12.0 : (isLarge ? 14.0 : 13.0)
         let buttonSymbolConfig = NSImage.SymbolConfiguration(pointSize: buttonSymbolPtSize, weight: .regular)
+        addToQueueButton.image = NSImage(systemSymbolName: "plus", accessibilityDescription: nil)?.withSymbolConfiguration(buttonSymbolConfig)
 
         let heartSymbol = isLiked ? "heart.fill" : "heart"
         likeButton.image = NSImage(systemSymbolName: heartSymbol, accessibilityDescription: L10n.text(isLiked ? "detail.track.unlike" : "detail.track.like"))?.withSymbolConfiguration(buttonSymbolConfig)

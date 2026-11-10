@@ -6,6 +6,20 @@ import SideBCore
 struct PlayerBarView: View {
     @Bindable var viewModel: PlayerViewModel
     var router: NavigationRouter?
+    var isSidebar = false
+    var sidebarHeight: CGFloat?
+    var sidebarIsPortrait = false
+    var sidebarWidth: CGFloat = 380
+    /// Supplied by the lateral scene so the sample reuses the lyrics renderers and state.
+    var sidebarLyricsPreview: ((CGFloat) -> AnyView)?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    @AppStorage(SidebarBottomContentPreferences.preferenceKey, store: HomeAppearance.preferences)
+    private var sidebarBottomContentRaw = SidebarBottomContent.queue.rawValue
+
+    private var sidebarBottomContent: SidebarBottomContent {
+        SidebarBottomContent.resolve(sidebarBottomContentRaw)
+    }
 
     // Estados de interacción
     @State private var isVolumeExpanded: Bool = false
@@ -13,13 +27,89 @@ struct PlayerBarView: View {
     @State private var isDraggingVolume: Bool = false
     @State private var isHoveringAlbum: Bool = false
 
-    init(viewModel: PlayerViewModel, router: NavigationRouter? = nil, isVolumeExpanded: Bool = false) {
+    init(viewModel: PlayerViewModel, router: NavigationRouter? = nil, isVolumeExpanded: Bool = false, isSidebar: Bool = false, sidebarHeight: CGFloat? = nil, sidebarIsPortrait: Bool = false, sidebarWidth: CGFloat = 380,
+         sidebarLyricsPreview: ((CGFloat) -> AnyView)? = nil) {
+        self.sidebarLyricsPreview = sidebarLyricsPreview
         _isVolumeExpanded = State(initialValue: isVolumeExpanded)
         self.viewModel = viewModel
         self.router = router
+        self.isSidebar = isSidebar
+        self.sidebarHeight = sidebarHeight
+        self.sidebarIsPortrait = sidebarIsPortrait
+        self.sidebarWidth = sidebarWidth
     }
 
     public var body: some View {
+        Group {
+            if isSidebar { sidebarControls } else { floatingBar }
+        }
+        .onChange(of: viewModel.playbackPresentation.mode) { old, new in
+            if new != .bar { isVolumeExpanded = false; isDraggingVolume = false }
+        }
+    }
+
+    private var sidebarControls: some View {
+        VStack(spacing: 0) {
+            if viewModel.selectedSidebarPanel != .artwork {
+                SidebarTrackMetadata(viewModel: viewModel, router: router)
+                Spacer(minLength: 16)
+            }
+            Spacer(minLength: 10)
+            PlayerBarProgressView(viewModel: viewModel, horizontalInset: 0, isStacked: true)
+            if viewModel.selectedSidebarPanel == .artwork && !sidebarIsPortrait {
+                Color.clear
+                    .frame(height: PlaybackSidebarLayout.progressToTransportSpacing(for: sidebarHeight ?? 628))
+                    .accessibilityHidden(true)
+            } else {
+                Spacer(minLength: 10)
+            }
+            transportControlsSection(isCompact: false)
+                .frame(maxWidth: .infinity)
+            if PlaybackSidebarLayout.showsUpcoming(for: sidebarHeight ?? 628, panel: viewModel.selectedSidebarPanel, isPortrait: sidebarIsPortrait) {
+                Group {
+                    if sidebarBottomContent == .lyrics, let sidebarLyricsPreview {
+                        GeometryReader { proxy in
+                            sidebarLyricsPreview(proxy.size.height)
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    } else {
+                        SidebarUpcomingQueue(viewModel: viewModel)
+                            .frame(height: 122)
+                    }
+                }
+                .padding(.top, 16)
+                .padding(.bottom, 12)
+                .transition(reduceMotion ? .opacity : .opacity.combined(with: .offset(y: 8)))
+            } else {
+                Spacer(minLength: 8)
+            }
+            if sidebarBottomContent != .lyrics || !PlaybackSidebarLayout.showsUpcoming(for: sidebarHeight ?? 628, panel: viewModel.selectedSidebarPanel, isPortrait: sidebarIsPortrait) {
+                Spacer(minLength: 0)
+            }
+            HStack(spacing: 12) {
+                Button { viewModel.toggleMute() } label: {
+                    Image(systemName: volumeIcon).frame(width: 28, height: 28)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(L10n.text(PlayerVolumePresentation.muteAction(volume: viewModel.volume)))
+                Slider(value: $viewModel.volume, in: 0...1)
+                    .tint(.white)
+                    .accessibilityLabel(L10n.text("player.showVolume"))
+                    .windowGestureRegion(.volumeCapsule)
+                AirPlayButton()
+            }
+            .foregroundStyle(.white.opacity(0.8))
+            .frame(height: 32)
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 12)
+        .frame(height: PlaybackSidebarLayout.footerHeight(
+            for: sidebarHeight ?? 628, panel: viewModel.selectedSidebarPanel, isPortrait: sidebarIsPortrait, width: sidebarWidth
+        ))
+        .animation(.easeInOut(duration: reduceMotion ? 0.10 : 0.18), value: sidebarIsPortrait)
+    }
+
+    private var floatingBar: some View {
         GeometryReader { geometry in
             let isCompact = geometry.size.width < 760
             VStack(spacing: 5) {
@@ -61,15 +151,15 @@ struct PlayerBarView: View {
 
     // MARK: - 2. Controles de Transporte (Izquierda - Sin rebordes, botones más amplios y proporcionados)
     private func transportControlsSection(isCompact: Bool) -> some View {
-        HStack(spacing: isCompact ? 4 : 10) {
+        HStack(spacing: isSidebar ? 17 : (isCompact ? 4 : 10)) {
             // Shuffle
             Button {
                 viewModel.queueManager.toggleShuffle()
             } label: {
                 Image(systemName: "shuffle")
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.system(size: isSidebar ? 18 : 15, weight: .semibold))
                     .foregroundStyle(viewModel.queueManager.isShuffle ? Color.sidebAccentHighlight : Color.white.opacity(0.60))
-                    .frame(width: isCompact ? 24 : 32, height: 32)
+                    .frame(width: isSidebar ? 40 : (isCompact ? 24 : 32), height: isSidebar ? 48 : 32)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -85,9 +175,9 @@ struct PlayerBarView: View {
                 }
             } label: {
                 Image(systemName: "backward.fill")
-                    .font(.system(size: 16))
+                    .font(.system(size: isSidebar ? 32 : 16))
                     .foregroundStyle(viewModel.currentTrack == nil ? Color.white.opacity(0.25) : Color.white.opacity(0.85))
-                    .frame(width: isCompact ? 24 : 32, height: 32)
+                    .frame(width: isSidebar ? 40 : (isCompact ? 24 : 32), height: isSidebar ? 48 : 32)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -107,7 +197,7 @@ struct PlayerBarView: View {
                     if viewModel.currentTrack != nil && viewModel.errorMessage == nil {
                         Circle()
                             .fill(Color.sidebAccent)
-                            .frame(width: 38, height: 38)
+                            .frame(width: isSidebar ? 78 : 38, height: isSidebar ? 78 : 38)
                     }
 
                     Group {
@@ -121,13 +211,13 @@ struct PlayerBarView: View {
                                 .foregroundStyle(Color.yellow)
                         } else {
                             Image(systemName: viewModel.isPlaying ? "pause.fill" : "play.fill")
-                                .font(.system(size: 20, weight: .bold))
+                                .font(.system(size: isSidebar ? 34 : 20, weight: .bold))
                                 .foregroundStyle(viewModel.currentTrack == nil ? Color.white.opacity(0.30) : Color.white)
                                 .offset(x: viewModel.isPlaying ? 0 : 1)
                         }
                     }
                 }
-                .frame(width: isCompact ? 32 : 40, height: 40)
+                .frame(width: isSidebar ? 78 : (isCompact ? 32 : 40), height: isSidebar ? 78 : 40)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -140,9 +230,9 @@ struct PlayerBarView: View {
                 viewModel.playNext()
             } label: {
                 Image(systemName: "forward.fill")
-                    .font(.system(size: 16))
+                    .font(.system(size: isSidebar ? 32 : 16))
                     .foregroundStyle(viewModel.queueManager.hasNext ? Color.white.opacity(0.85) : Color.white.opacity(0.25))
-                    .frame(width: isCompact ? 24 : 32, height: 32)
+                    .frame(width: isSidebar ? 40 : (isCompact ? 24 : 32), height: isSidebar ? 48 : 32)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -154,10 +244,10 @@ struct PlayerBarView: View {
             Button {
                 viewModel.queueManager.isRepeat.toggle()
             } label: {
-                Image(systemName: "repeat")
-                    .font(.system(size: 15, weight: .semibold))
+                Image(systemName: isSidebar && viewModel.queueManager.isRepeat ? "repeat.1" : "repeat")
+                    .font(.system(size: isSidebar ? 18 : 15, weight: .semibold))
                     .foregroundStyle(viewModel.queueManager.isRepeat ? Color.sidebAccentHighlight : Color.white.opacity(0.60))
-                    .frame(width: isCompact ? 24 : 32, height: 32)
+                    .frame(width: isSidebar ? 40 : (isCompact ? 24 : 32), height: isSidebar ? 48 : 32)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -167,32 +257,43 @@ struct PlayerBarView: View {
     }
 
     // MARK: - 3. Portada, metadata flexible y acciones de la pista
-    private func trackInfoSection(isCompact: Bool) -> some View {
-        let artworkSize: CGFloat = isCompact ? 40 : 46
-        return HStack(spacing: isCompact ? 8 : 12) {
-            // La carátula cede un poco de ancho solo en ventanas compactas.
-            if let thumbnailUrl = viewModel.currentTrack?.thumbnail,
-               let url = ImageURLHelper.optimizedThumbnailURL(from: thumbnailUrl, targetPixelSize: 92) {
-                CachedAsyncImage(url: url, targetSize: CGSize(width: 92, height: 92)) { image in
-                    image
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                } placeholder: {
+    @ViewBuilder
+    private func trackInfoSection(isCompact: Bool, showsArtwork: Bool = true) -> some View {
+        if showsArtwork {
+            let artworkSize: CGFloat = isCompact ? 40 : 46
+            HStack(spacing: isCompact ? 8 : 12) {
+                // La carátula cede un poco de ancho solo en ventanas compactas.
+                if let thumbnailUrl = viewModel.currentTrack?.thumbnail,
+                   let url = ImageURLHelper.optimizedThumbnailURL(from: thumbnailUrl, targetPixelSize: 92) {
+                    CachedAsyncImage(url: url, targetSize: CGSize(width: 92, height: 92)) { image in
+                        image
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                    } placeholder: {
+                        fallbackArtwork(size: artworkSize)
+                    }
+                    .id(viewModel.currentTrack?.videoId ?? url.absoluteString)
+                    .frame(width: artworkSize, height: artworkSize)
+                    .clipShape(RoundedRectangle(cornerRadius: AppTheme.artworkThumbnailRadius, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: AppTheme.artworkThumbnailRadius, style: .continuous)
+                            .stroke(Color.white.opacity(0.10), lineWidth: 0.5)
+                    )
+                    .shadow(color: .black.opacity(0.25), radius: 6, y: 2)
+                } else {
                     fallbackArtwork(size: artworkSize)
                 }
-                .id(viewModel.currentTrack?.videoId ?? url.absoluteString)
-                .frame(width: artworkSize, height: artworkSize)
-                .clipShape(RoundedRectangle(cornerRadius: AppTheme.artworkThumbnailRadius, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: AppTheme.artworkThumbnailRadius, style: .continuous)
-                        .stroke(Color.white.opacity(0.10), lineWidth: 0.5)
-                )
-                .shadow(color: .black.opacity(0.25), radius: 6, y: 2)
-            } else {
-                fallbackArtwork(size: artworkSize)
-            }
 
-            PlayerBarMetadataActionLayout {
+                trackMetadataAndActions
+            }
+            .frame(minWidth: 0, maxWidth: .infinity)
+        } else {
+            trackMetadataAndActions
+        }
+    }
+
+    private var trackMetadataAndActions: some View {
+        PlayerBarMetadataActionLayout {
                 // Both lines share their ideal width; actions sit after the longer line.
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 7) {
@@ -303,8 +404,6 @@ struct PlayerBarView: View {
                 .frame(width: 60, height: 46)
             }
             .frame(minWidth: 0, maxWidth: .infinity)
-        }
-        .frame(minWidth: 0, maxWidth: .infinity)
     }
 
     private var likeButton: some View {
@@ -609,7 +708,7 @@ struct PlayerBarView: View {
             .frame(width: size, height: size)
             .overlay(
                 Image(systemName: "music.note")
-                    .font(.system(size: 16))
+                    .font(.system(size: isSidebar ? 32 : 16))
                     .foregroundStyle(.secondary)
             )
             .shadow(color: .black.opacity(0.2), radius: 4, y: 1)

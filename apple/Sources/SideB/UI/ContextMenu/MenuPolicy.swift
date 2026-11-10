@@ -225,6 +225,9 @@ public enum MenuPolicy {
             }
         }
 
+        if case .queueRecommendation = origin {
+            destructiveItems.append(MenuActionItem(id: .removeFromQueue(index: -1), title: L10n.text("menu.remove_from_queue"), systemImage: "minus.circle", isDestructive: true))
+        }
         if !destructiveItems.isEmpty {
             sections.append(MenuSection(kind: .destructive, items: destructiveItems))
         }

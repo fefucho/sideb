@@ -28,9 +28,12 @@
     confirmedVolume?:number; volumeFeedback?:boolean; volumeAnnouncement?:string;
     onVolumeSurfaceChange?:()=>void;
     playback: PlaybackStateDto; geniusState:GeniusState;geniusController:GeniusController;onOpenExternal:(url:string)=>void;
+    focusQueueEntryId?: string | null;
+    onQueueFocusHandled?: (entryId: string) => void;
     onSelectQueue: (index: number) => void;
     onTogglePlayback: () => void;
-    onMoveQueue: (entryId: string, beforeEntryId: string | null) => Promise<void>;
+    onMoveQueue: (entryId: string, beforeEntryId: string | null) => void | PlaybackStateDto | Promise<void | PlaybackStateDto>;
+    onRevealQueueWindow?: (startIndex: number, generation: number) => void | Promise<void>;
     lyricsState: LyricsState;
     recommendationsState: RecommendationsSnapshot;
     onSeek: (seconds: number) => void;
@@ -61,14 +64,15 @@
     likesLoading?: boolean;
     onToggleQueueLike?: (entry: QueueEntryDto) => void;
     onDislikeQueueEntry?: (entry: QueueEntryDto) => void;
+    onRecommendationAction?: (entryId: string, placement: 'next' | 'end' | 'now' | 'remove', generation: number) => void | PlaybackStateDto | Promise<void | PlaybackStateDto>;
   }
 
   let {
-    session,pullDistance=0,pulling=false,confirmedVolume=100,volumeFeedback=false,volumeAnnouncement='',onVolumeSurfaceChange,geniusState,geniusController,onOpenExternal,playback, onSelectQueue, onTogglePlayback, onClose, selectedPanel, lyricsMode='synced', onShowGenius, onSelectPanel, onOpenArtist, onOpenAlbum,
+    session,pullDistance=0,pulling=false,confirmedVolume=100,volumeFeedback=false,volumeAnnouncement='',onVolumeSurfaceChange,geniusState,geniusController,onOpenExternal,playback, focusQueueEntryId=null, onQueueFocusHandled, onSelectQueue, onTogglePlayback, onClose, selectedPanel, lyricsMode='synced', onShowGenius, onSelectPanel, onOpenArtist, onOpenAlbum,
     onOpenMenu, onQueueContextMenu, loggedIn = false, liked = false, likePending = false,
     onToggleLike, onRetryRadio, onRetrySource, likedIds = new Set<string>(), pendingIds = new Set<string>(), likesLoading = false,
-    onToggleQueueLike, onDislikeQueueEntry,
-    onMoveQueue, lyricsState, recommendationsState, onSeek, onRetryLyrics,
+    onToggleQueueLike, onDislikeQueueEntry, onRecommendationAction,
+    onMoveQueue, onRevealQueueWindow, lyricsState, recommendationsState, onSeek, onRetryLyrics,
     onRefreshRecommendations, onSuspendRecommendations, onPlayRecommendation, onEnqueueRecommendation,
     onSongContextMenu, onArtistContextMenu,
   }: Props = $props();
@@ -187,7 +191,7 @@
       <div id="fullscreen-panel" class="panel" role="tabpanel" tabindex="0" aria-labelledby={`fullscreen-tab-${panel}`}>
         <LyricsPanel state={lyricsState} {playback} {session} active={panel==='lyrics'&&lyricsMode!=='genius'} {onSeek} onRetry={onRetryLyrics} />
         {#if panel === "queue"}
-          <QueuePanel {playback} {onSelectQueue} {onTogglePlayback} {onOpenArtist} {onOpenAlbum} {onMoveQueue} {onQueueContextMenu} {onRetryRadio} {onRetrySource} {loggedIn} {likedIds} {pendingIds} {likesLoading} onToggleLike={onToggleQueueLike} onDislike={onDislikeQueueEntry} />
+          <QueuePanel {playback} {focusQueueEntryId} {onQueueFocusHandled} {onSelectQueue} {onTogglePlayback} {onOpenArtist} {onOpenAlbum} {onMoveQueue} {onRevealQueueWindow} {onQueueContextMenu} {onRetryRadio} {onRetrySource} {loggedIn} {likedIds} {pendingIds} {likesLoading} onToggleLike={onToggleQueueLike} onDislike={onDislikeQueueEntry} {onRecommendationAction} />
         {:else if panel === "lyrics"}
           {#if lyricsMode==='genius'}
             <GeniusPanel state={geniusState} controller={geniusController} title={currentTrack?.title??''} artists={currentTrack?.artists??''} artwork={selectedArtworkUrl} {onOpenExternal} />

@@ -1,0 +1,58 @@
+{
+  "queue.now": {
+    "es": "Ahora suena",
+    "en": "Now playing"
+  },
+  "queue.recommendations": {
+    "es": "Recomendaciones",
+    "en": "Recommendations"
+  },
+  "queue.repeatNote": {
+    "es": "Desactivá repetir para continuar con las recomendaciones.",
+    "en": "Turn repeat off to continue with recommendations."
+  },
+  "queue.moreSource": {
+    "es": "Mostrar más canciones de la colección",
+    "en": "Show more songs from the collection"
+  },
+  "queue.recommendationsError": {
+    "es": "No se pudieron cargar las recomendaciones.",
+    "en": "Could not load recommendations."
+  },
+  "queue.retryRecommendations": {
+    "es": "Reintentar recomendaciones",
+    "en": "Retry recommendations"
+  },
+  "queue.moveNext": {
+    "es": "Mover al comienzo",
+    "en": "Move to next"
+  },
+  "queue.moveEnd": {
+    "es": "Mover al final",
+    "en": "Move to end"
+  },
+  "queue.noRecommendations": {
+    "es": "No hay más recomendaciones disponibles.",
+    "en": "No more recommendations available."
+  },
+  "queue.settings.title": {
+    "es": "Cola",
+    "en": "Queue"
+  },
+  "queue.selection.label": {
+    "es": "Al seleccionar una recomendación",
+    "en": "When selecting a recommendation"
+  },
+  "queue.selection.advance": {
+    "es": "Avanzar hasta esa canción",
+    "en": "Advance to that song"
+  },
+  "queue.selection.playOnly": {
+    "es": "Reproducir sólo la elegida",
+    "en": "Play only the selected song"
+  },
+  "queue.selection.hint": {
+    "es": "Avanzar deja las recomendaciones saltadas en anteriores, sin registrarlas como escuchadas. Las canciones que elegiste siguen pendientes.",
+    "en": "Advancing places skipped recommendations in previous songs without marking them as listened. Songs you chose remain queued."
+  }
+}

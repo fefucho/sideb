@@ -17,7 +17,6 @@ struct HomeView: View {
     var topContentInset: CGFloat = 0
     var router: NavigationRouter?
     var onNavigate: ((PageDestination) -> Void)?
-    @State private var observedFeaturedCapacity = 2
     @State private var greetingHour = HomeGreeting.localHour()
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.sideBPageIsActive) private var pageIsActive
@@ -27,7 +26,6 @@ struct HomeView: View {
 
     var body: some View {
         let _ = L10n.revision
-        let songCount = homeViewModel.featured.songs.count
         // The hidden native feed retains its old size. Keep that size inside
         // the page's proposed viewport so it cannot enlarge the window shell.
         return GeometryReader { viewport in
@@ -48,15 +46,13 @@ struct HomeView: View {
                   let core = playerViewModel.rustCore else { return }
             await homeViewModel.loadHomeFeed(core: core)
         }
-        .onGeometryChange(for: Int.self) { geometry in
-            HomeFeaturedLayout(width: geometry.size.width, hasSongs: songCount > 0,
-                hasAlbums: true, songCount: songCount, albumCount: 36).albumsPerPage
-        } action: { capacity in
-            observedFeaturedCapacity = capacity
-            if !isObscured { homeViewModel.setFeaturedCapacity(capacity) }
+        .onAppear {
+            // Keep the bounded feed projection stable across resizes. Detail requests
+            // are independently limited to the featured rail viewport.
+            if !isObscured { homeViewModel.setFeaturedCapacity(6) }
         }
         .onChange(of: isObscured) { _, obscured in
-            if !obscured { homeViewModel.setFeaturedCapacity(observedFeaturedCapacity) }
+            if !obscured { homeViewModel.setFeaturedCapacity(6) }
         }
         .onChange(of: router?.refreshTrigger) { _, _ in refresh() }
     }
@@ -136,16 +132,19 @@ struct HomeView: View {
             loadingCollectionID: homeViewModel.featured.collectionKind == .albums
                 ? playerViewModel.loadingRecommendedAlbumID : playerViewModel.loadingRecommendedPlaylistID,
             coreIdentity: playerViewModel.rustCore.map(ObjectIdentifier.init),
-            homeIdentity: ObjectIdentifier(homeViewModel))
+            homeIdentity: ObjectIdentifier(homeViewModel),
+            playbackSidebarPresented: playerViewModel.isPlaybackSidebarPresented)
     }
 
     private var featuredHeight: (CGFloat) -> CGFloat {
         let introHeight = scrollHeaderHeight
         let songCount = homeViewModel.featured.songs.count
         let collectionCount = homeViewModel.featured.collections.count
+        let trailingInset: CGFloat = playerViewModel.isPlaybackSidebarPresented ? 0 : HomeFeaturedLayout.horizontalInset
         return { width in
             introHeight + HomeFeaturedLayout.height(width: width, hasSongs: songCount > 0,
-                hasAlbums: collectionCount > 0, songCount: songCount, albumCount: collectionCount)
+                hasAlbums: collectionCount > 0, songCount: songCount, albumCount: collectionCount,
+                trailingInset: trailingInset)
         }
     }
 
@@ -158,6 +157,7 @@ struct HomeView: View {
         let core = playerViewModel.rustCore
         let playbackContext = playerViewModel.queueManager.context
         let isPlaying = playerViewModel.isPlaying
+        let trailingInset: CGFloat = playerViewModel.isPlaybackSidebarPresented ? 0 : HomeFeaturedLayout.horizontalInset
         let intro = AnyView(scrollHeader)
         let introHeight = scrollHeaderHeight
         return { width, actions in
@@ -165,6 +165,7 @@ struct HomeView: View {
                 intro
                 HomeFeaturedView(
                     songs: featured.songs, collections: featured.collections, collectionKind: featured.collectionKind, width: width,
+                    trailingInset: trailingInset,
                     resetKey: key, metadataSessionKey: String(sessionRevision), loadingCollectionID: loading, core: core,
                     onSong: { playerViewModel.activateMediaRadio(SongItemRecord(fromHomeItem: $0)) },
                     onCollection: { item in
@@ -180,7 +181,8 @@ struct HomeView: View {
                 )
             }.frame(width: width, height: introHeight + HomeFeaturedLayout.height(
                 width: width, hasSongs: !featured.songs.isEmpty, hasAlbums: !featured.collections.isEmpty,
-                songCount: featured.songs.count, albumCount: featured.collections.count), alignment: .topLeading))
+                songCount: featured.songs.count, albumCount: featured.collections.count,
+                trailingInset: trailingInset), alignment: .topLeading))
         }
     }
 

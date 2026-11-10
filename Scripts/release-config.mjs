@@ -38,7 +38,11 @@ export function compiledBuild(root, platform, version, build, commit) {
     const actual = createHash('sha256').update(readFileSync(path)).digest('hex');
     if (actual !== expected) throw new Error(`Artifact checksum mismatch: ${name}`);
   }
-  const required = platform === 'windows' ? ['sideb-windows.exe','libmpv-2.dll','vulkan-1.dll','VulkanRT-License.txt'] : ['Side B.app/Contents/MacOS/Side B','Side B.app/Contents/Info.plist'];
+  // Spotify Canvas is factory-installed in both apps (removable plugin): a release must carry and hash it.
+  const mac = 'Side B.app/Contents/Resources/VisualProviders/spotify-canvas/';
+  const required = platform === 'windows'
+    ? ['sideb-windows.exe','libmpv-2.dll','vulkan-1.dll','VulkanRT-License.txt','provider/spotify-canvas/manifest.json','provider/spotify-canvas/sideb-spotify-canvas.exe','provider/spotify-canvas/SHA256SUMS']
+    : ['Side B.app/Contents/MacOS/Side B','Side B.app/Contents/Info.plist',mac+'manifest.json',mac+'sideb-spotify-canvas',mac+'SHA256SUMS'];
   for (const name of required) if (!metadata.artifactSHA256[name]) throw new Error(`Required artifact not verified: ${name}`);
   return directory;
 }

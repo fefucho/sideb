@@ -1,0 +1,14 @@
+{
+  "lyrics.source.choose": {
+    "es": "Fuente de letras",
+    "en": "Lyrics source"
+  },
+  "lyrics.source.auto": {
+    "es": "Automático",
+    "en": "Automatic"
+  },
+  "lyrics.source.empty": {
+    "es": "No hay letra en esta fuente",
+    "en": "No lyrics from this source"
+  }
+}

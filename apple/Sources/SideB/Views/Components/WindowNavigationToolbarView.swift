@@ -11,6 +11,7 @@ struct AnimatedWindowNavigationToolbarView: View {
     let isHistoryDisabled: Bool
     let showsHistory: Bool
     var viewportWidth: CGFloat = ShellLayout.navigationMinimumWidth
+    var playbackTrailingInset: CGFloat = 0
     var isHomeSettingsPresented: Bool = false
     var onHistoryFrameChanged: ((CGRect) -> Void)? = nil
     var onHomeSettings: () -> Void = {}
@@ -38,7 +39,7 @@ struct AnimatedWindowNavigationToolbarView: View {
             history: HistoryToolbarView(router: router, isDisabled: isHistoryDisabled,
                                         isHomeSettingsPresented: isHomeSettingsPresented,
                                         onHomeSettings: onHomeSettings), showsHistory: showsHistory,
-            viewportWidth: viewportWidth, onHistoryFrameChanged: onHistoryFrameChanged,
+            viewportWidth: viewportWidth, playbackTrailingInset: playbackTrailingInset, onHistoryFrameChanged: onHistoryFrameChanged,
             isSidebarExpanded: isSidebarExpanded, isSearchExpanded: isSearchExpanded,
             searchQuery: searchQuery, searchFocusRevision: searchFocusRevision,
             searchSessionRevision: searchSessionRevision,
@@ -54,6 +55,7 @@ struct WindowNavigationToolbarView: NSViewRepresentable {
     let history: HistoryToolbarView
     let showsHistory: Bool
     var viewportWidth: CGFloat = ShellLayout.navigationMinimumWidth
+    var playbackTrailingInset: CGFloat = 0
     var onHistoryFrameChanged: ((CGRect) -> Void)? = nil
     var isSidebarExpanded: Bool = false
     var isSearchExpanded: Bool = false
@@ -120,6 +122,7 @@ struct WindowNavigationToolbarView: NSViewRepresentable {
         header.searchBar.selectionLabel = searchSelectionLabel
         header.searchResultsHost.setContent(searchResultsContent)
         header.viewportWidth = viewportWidth
+        header.playbackTrailingInset = playbackTrailingInset
         header.onHistoryFrameChanged = onHistoryFrameChanged
         header.setPresentation(sidebarExpanded: isSidebarExpanded, searchExpanded: isSearchExpanded,
                                visible: showsHistory, reduceMotion: navigation.reduceMotion,
@@ -229,6 +232,7 @@ final class NativeNavigationHeader: NSView {
     let searchBar: NativeSearchBar
     let searchResultsHost = NavigationSearchResultsHost(frame: .zero)
     private weak var navigationCoordinator: TopNavigationView.Coordinator?
+    var playbackTrailingInset: CGFloat = 0
     var viewportWidth: CGFloat = ShellLayout.navigationMinimumWidth {
         didSet {
             guard oldValue != viewportWidth else { return }
@@ -264,6 +268,7 @@ final class NativeNavigationHeader: NSView {
         let visible: Bool
         let reduceMotion: Bool
         let focusRevision: Int
+        let playbackTrailingInset: CGFloat
     }
     private struct Geometry: Equatable {
         let bounds: CGRect
@@ -332,7 +337,7 @@ final class NativeNavigationHeader: NSView {
     func setPresentation(sidebarExpanded: Bool, searchExpanded: Bool, visible: Bool,
                          reduceMotion: Bool, focusRevision: Int = 0) {
         let next = Presentation(sidebarExpanded: sidebarExpanded, searchExpanded: searchExpanded,
-                                visible: visible, reduceMotion: reduceMotion, focusRevision: focusRevision)
+                                visible: visible, reduceMotion: reduceMotion, focusRevision: focusRevision, playbackTrailingInset: playbackTrailingInset)
         guard next != presentation else { return }
         let previous = presentation
         let now = CACurrentMediaTime()
@@ -341,7 +346,7 @@ final class NativeNavigationHeader: NSView {
         let opacity = visibleDestinationsOpacity(at: now)
         presentation = next
         searchBar.setExpanded(searchExpanded && visible)
-        let sidebarChanged = previous?.sidebarExpanded != sidebarExpanded || previous?.reduceMotion != reduceMotion
+        let sidebarChanged = previous?.sidebarExpanded != sidebarExpanded || previous?.reduceMotion != reduceMotion || previous?.playbackTrailingInset != playbackTrailingInset
         let searchChanged = previous?.searchExpanded != searchExpanded || previous?.reduceMotion != reduceMotion
         CATransaction.begin()
         CATransaction.setDisableActions(true)
@@ -680,7 +685,7 @@ final class NativeNavigationHeader: NSView {
         var center = NSPoint(x: bounds.midX, y: ShellLayout.navigationRowCenter)
         var windowTop = bounds.minY
         var leading = bounds.minX + 18
-        var trailing = bounds.maxX - 18
+        var trailing = bounds.maxX - 18 - playbackTrailingInset
         if let content = window?.contentView {
             let top = content.isFlipped ? content.bounds.minY : content.bounds.maxY
             windowTop = convert(NSPoint(x: content.bounds.midX, y: top), from: content).y
@@ -688,8 +693,9 @@ final class NativeNavigationHeader: NSView {
             center = convert(NSPoint(x: content.bounds.midX, y: y), from: content)
             leading = convert(NSPoint(x: content.bounds.minX + ShellLayout.sidebarReserveWidth(expanded: true) + 18,
                                       y: top), from: content).x
-            trailing = convert(NSPoint(x: content.bounds.maxX - 18, y: top), from: content).x
+            trailing = convert(NSPoint(x: content.bounds.maxX - 18 - playbackTrailingInset, y: top), from: content).x
         }
+        center.x -= playbackTrailingInset / 2
         return Geometry(bounds: bounds, center: center, leading: leading, trailing: trailing, windowTop: windowTop)
     }
     private func layoutClusters(retargetSidebar: Bool = true) {

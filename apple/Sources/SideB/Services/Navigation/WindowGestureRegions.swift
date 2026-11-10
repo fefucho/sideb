@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 /// Regions protect fullscreen dismissal from scrolling panels and controls.
-/// History uses the window viewport, with explicit Home horizontal exceptions.
+/// History uses the window viewport, with explicit horizontal content exceptions.
 enum WindowGestureRegion: Sendable {
     case content
     case excluded
@@ -38,13 +38,13 @@ final class WindowGestureRegionView: NSView {
 
 @MainActor
 enum WindowGestureRegions {
-    /// Base window eligibility. Home's explicitly reserved horizontal regions
+    /// Base window eligibility. Explicitly reserved horizontal regions
     /// are checked separately; generic controls/scroll views do not veto history.
     static func allowsHistory(at point: NSPoint, in root: NSView) -> Bool {
         !root.isHidden && root.alphaValue > 0.01 && root.bounds.contains(point)
     }
 
-    /// Only explicit horizontal markers and native owners reserve Home input.
+    /// Only explicit horizontal markers and native owners reserve horizontal input.
     /// An ancestor vertical scroll, a control or a whole shelf row never does.
     /// Foreground shell markers prevent an underlying carousel from claiming
     /// an event over the player, sidebar or navigation header.

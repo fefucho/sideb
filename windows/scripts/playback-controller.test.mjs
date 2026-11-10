@@ -36,6 +36,54 @@ test('exponential volume is native state and keeps slider percent and mute comma
   await player.setMuted(true);assert.equal(calls.at(-1).command,'set_playback_muted');assert.deepEqual(calls.at(-1).args,{muted:true,expectedGeneration:1});
 });
 
+test('progress snapshots reuse immutable queue publications until queue revision or auth changes', async () => {
+  const listeners = new Map();
+  const queue = { items: [{ entryId: 'a', videoId: 'a', title: 'A', artists: '', thumbnail: null, duration: 3, contentRating: 'clean' }],
+    currentIndex: 0, source: null, revision: 7, recommendations: [] };
+  const publications = [];
+  const player = new PlaybackController(async command => command === 'get_playback_state'
+    ? state(1, { queue, authGeneration: 2 }) : state(1, { queue, authGeneration: 2 }),
+  async (event, callback) => { listeners.set(event, callback); return () => {}; }, snapshot => publications.push(snapshot));
+  await player.connect();
+  const first = publications.at(-1).state.queue;
+  listeners.get('playback-progress')({ payload: { generation: 1, position: 9, duration: 44 } });
+  const progress = publications.at(-1).state.queue;
+  assert.equal(progress, first);
+  assert.equal(progress.items[0], first.items[0]);
+  listeners.get('playback-state-changed')({ payload: state(1, { queue: { ...queue, revision: 8,
+    items: [{ ...queue.items[0], title: 'Updated' }] }, authGeneration: 2 }) });
+  assert.notEqual(publications.at(-1).state.queue, first);
+  const revised = publications.at(-1).state.queue;
+  listeners.get('playback-state-changed')({ payload: state(1, { queue: { ...queue, revision: 8 }, authGeneration: 3 }) });
+  assert.notEqual(publications.at(-1).state.queue, revised);
+});
+
+test('progress publication does not traverse or clone queue rows', async () => {
+  const listeners = new Map(); let artistRunMaps = 0;
+  const items = Array.from({ length: 10000 }, (_, i) => ({ entryId: `e${i}`, videoId: `v${i}`, title: `T${i}`, artists: '',
+    thumbnail: null, duration: 4, artistRuns: new Proxy([], { get(target, property, receiver) {
+      if (property === 'map') artistRunMaps++;
+      return Reflect.get(target, property, receiver);
+    } }) }));
+  const queue = { items, currentIndex: 5000, source: null, revision: 41, recommendations: [] };
+  const player = new PlaybackController(async command => command === 'get_playback_state' ? state(9, { queue }) : state(9),
+    async (event, callback) => { listeners.set(event, callback); return () => {}; }, () => {});
+  await player.connect();
+  assert.equal(artistRunMaps > 0, true);
+  artistRunMaps = 0;
+  listeners.get('playback-progress')({ payload: { generation: 9, position: 27, duration: 180 } });
+  assert.equal(artistRunMaps, 0);
+});
+
+test('queue proposal actions forward stable ID, placement and the captured playback generation', async () => {
+  let call;
+  const player = new PlaybackController(async (command, args) => { call = { command, args }; return state(12); },
+    async () => () => {}, () => {});
+  await player.connect();
+  await player.actOnQueueRecommendation('proposal-1', 'end');
+  assert.deepEqual(call, { command: 'queue_recommendation_action', args: { entryId: 'proposal-1', placement: 'end', generation: 12 } });
+});
+
 test('failed exponential volume retains accepted mode and can be retried', async () => {
   let failed=true;
   const player=new PlaybackController(async(command)=>{
@@ -723,4 +771,18 @@ test('queued seek for an old occurrence never reaches the replacement track',asy
  const pending=player.seek(30);
  listeners.get('playback-state-changed')({payload:{...initial,generation:5,queue:{...initial.queue,items:[{...song('same'),entryId:'two'}]}}});
  await pending;assert.equal(calls.length,0);
+});
+
+test('direct recommendation selection forwards explicit mode and defaults to advancing', async () => {
+  const calls=[];
+  const player=new PlaybackController(async(command,args)=>{calls.push({command,args});return state(12);},async()=>()=>{},()=>{});
+  await player.connect();
+  await player.actOnQueueRecommendation('r8','now',12);
+  assert.deepEqual(calls.at(-1),{command:'queue_recommendation_action',args:{entryId:'r8',placement:'now',generation:12,advanceThrough:true}});
+  await player.actOnQueueRecommendation('r8','now',12,false);
+  assert.equal(calls.at(-1).args.advanceThrough,false);
+  await player.actOnQueueRecommendation('r8','next',12,true);
+  assert.equal('advanceThrough' in calls.at(-1).args,false);
+  await player.actOnQueueRecommendation('r8','end',12,true);
+  assert.equal('advanceThrough' in calls.at(-1).args,false);
 });

@@ -1,0 +1,106 @@
+{
+  "visualProvider.title": {
+    "es": "Proveedores visuales opcionales",
+    "en": "Optional visual providers"
+  },
+  "visualProvider.hint": {
+    "es": "Sólo para el reproductor lateral: se prioriza Apple Music y se usa este proveedor como alternativa. Instalá sólo proveedores de confianza; reciben la canción actual y el token guardado.",
+    "en": "Only for the sidebar player: Apple Music takes priority and this provider is a fallback. Only install providers you trust; they receive the current track and saved token."
+  },
+  "visualProvider.enable": {
+    "es": "Usar como alternativa en el reproductor lateral",
+    "en": "Use as a fallback in the sidebar player"
+  },
+  "visualProvider.token": {
+    "es": "Token temporal de sesión",
+    "en": "Temporary session token"
+  },
+  "visualProvider.saveToken": {
+    "es": "Guardar token en el Llavero",
+    "en": "Save token in Keychain"
+  },
+  "visualProvider.tokenHint": {
+    "es": "El token se guarda en el Llavero. Cuando venza, reemplazalo por uno nuevo. La portada actual se conserva si falla el proveedor.",
+    "en": "The token is stored in Keychain. Replace it when it expires. The current cover remains if the provider fails."
+  },
+  "visualProvider.install": {
+    "es": "Instalar proveedor…",
+    "en": "Install provider…"
+  },
+  "visualProvider.remove": {
+    "es": "Desinstalar y borrar token",
+    "en": "Uninstall and delete token"
+  },
+  "visualProvider.error": {
+    "es": "No se pudo completar la operación. Revisá el paquete o el acceso al Llavero.",
+    "en": "The operation could not be completed. Check the package or Keychain access."
+  },
+  "visualProvider.status.idle": {
+    "es": "Listo para intentar con la próxima canción visible.",
+    "en": "Ready to try the next visible track."
+  },
+  "visualProvider.status.tokenRequired": {
+    "es": "Guardá el Bearer en el llavero para activar el fallback.",
+    "en": "Save the Bearer in Keychain to enable the fallback."
+  },
+  "visualProvider.status.ready": {
+    "es": "Visual disponible.",
+    "en": "Visual available."
+  },
+  "visualProvider.status.absent": {
+    "es": "Esta canción no tiene un video compatible.",
+    "en": "This track has no compatible video."
+  },
+  "visualProvider.status.authRequired": {
+    "es": "La sesión venció o fue rechazada. Reemplazá el token.",
+    "en": "The session expired or was rejected. Replace the token."
+  },
+  "visualProvider.status.rateLimited": {
+    "es": "El proveedor pidió esperar. Se pausaron las consultas.",
+    "en": "The provider requested a delay. Queries are paused."
+  },
+  "visualProvider.status.unresolved": {
+    "es": "No se encontró una coincidencia de canción segura.",
+    "en": "No reliable track match was found."
+  },
+  "visualProvider.status.unsupported": {
+    "es": "Cambió la respuesta del proveedor. Puede requerir una actualización.",
+    "en": "The provider response changed. An update may be required."
+  },
+  "visualProvider.status.unavailable": {
+    "es": "Proveedor no disponible. Se conserva la portada habitual.",
+    "en": "Provider unavailable. Keeping the usual cover."
+  },
+  "visualProvider.signIn": {
+    "es": "Iniciar sesión…",
+    "en": "Sign in…"
+  },
+  "visualProvider.reconnect": {
+    "es": "Volver a conectar…",
+    "en": "Reconnect…"
+  },
+  "visualProvider.accountConnected": {
+    "es": "Cuenta conectada",
+    "en": "Account connected"
+  },
+  "visualProvider.loginSheetTitle": {
+    "es": "Iniciar sesión en %@",
+    "en": "Sign in to %@"
+  },
+  "visualProvider.loginSheetHint": {
+    "es": "Iniciá sesión para que Side B obtenga el token automáticamente. La sesión queda guardada en tu navegador.",
+    "en": "Sign in so Side B can obtain the token automatically. The session is saved in your browser."
+  },
+  "visualProvider.close": {
+    "es": "Cerrar",
+    "en": "Close"
+  },
+  "visualProvider.manualToken": {
+    "es": "Ingresar token manualmente",
+    "en": "Enter token manually"
+  },
+  "visualProvider.authenticating": {
+    "es": "Obteniendo token de sesión…",
+    "en": "Obtaining session token…"
+  }
+}

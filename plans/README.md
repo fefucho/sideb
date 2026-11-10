@@ -1,5 +1,15 @@
 # Planes generales
 
+- [Release 1.4.0 Mac/Windows](RELEASE-1.4.0.md) — preparada, no publicada: versión 1.4.0/build 22 y notas listas; paridad Windows de [PLAN-023](../windows/plans/PLAN-023-paridad-1.4.0.md) (FIX-302…309) verificada sólo en frontend; verify/build en PC, QA y publicación pendientes.
+
+- [PLAN-022: Proveedores visuales opcionales](PLAN-022-optional-visual-providers.md) — host genérico Mac y Spotify separado; Apple primero, alternativa sólo lateral. Desactivado por defecto; QA Spotify real y port Windows pendientes.
+
+- [PLAN-021: Investigación de Spotify Canvas](PLAN-021-spotify-canvas-research.md) — reporte comparativo terminado; Wolframe como referencia Rust para prototipo, integración y permisos pendientes. Sin cambios de producto.
+
+- [PLAN-019: Queue continua, reinserción y scroll sólo vertical](PLAN-019-continuous-queue.md) — Continua integrada en fuentes Mac/Windows (FIX-270/271/273/274/PAR-045); selección de recomendaciones configurable y persistente implementada en ambas plataformas,519frontend aprobadas/2omitidas/check0errores, nativo sin compilar por pedido, última build Mac0173 compiled/793Swift/firma/10hashes/fuentes estables: dos bloques y scroll vertical; geometría AppKit y8fixtures Chrome ES/EN aprobadas,515pruebas frontend. Build Mac0172 release compilada, firma y10hashes verificados, fuentes estables durante compilación. QA humana y Windows nativo pendientes.
+
+- [PLAN-018: Cola elegida y recomendaciones separadas](PLAN-018-queue-recommendations.md) — experimento implementado en fuentes Mac/Windows; usuario confirma funcionamiento en Mac0170. Propuesta visual original reemplazada por PLAN-019; validaciones nativas/performance pendientes no se dan por cerradas.
+
 - [Release 1.3.0 Mac/Windows](RELEASE-1.3.0.md) — FIX-269; publicada Latest desde SIDE B/5a4cb0d, CI nativo completo aprobado (1.049 Mac/1.089 Windows), cinco descargas públicas y hashes/manifiestos verificados; build local Mac 0168 conservada.
 
 - [PLAN-017: Unificación de latest y Mac local](PLAN-017-local-latest-unification.md) — FIX-267/268; unión de latest y trabajo local llevada a la carpeta habitual SIDE B; build0167 Release aprobada en SIDE B:1049Mac/core y501frontendWindows aprobadas, firma/hashes/fuentes estables.0004 queda como antecedente de la primera unión.
@@ -37,3 +47,5 @@ Herramientas compartidas o fixes para ambas plataformas. [Formato](../.agents/WO
 | [Release 1.1.5](RELEASE-1.1.5.md) | Beta publicada; entonces Latest en GitHub; build-0032 y hash remoto verificados |
 
 Los planes previos reunidos en `temp/documentation/plans/` son material local de importación, no compromisos vigentes. Trasladar sólo lo que se retome y verificarlo contra el código.
+
+- [PLAN-020: LyricsPlus y selector por canción](PLAN-020-lyrics-source-selection.md) — fuentes implementadas; sin compilación nativa por pedido, FIX-276/PAR-047.

@@ -101,24 +101,42 @@ pub(super) async fn resolve(
 
     let id = selected.collection_id.to_string();
     let document = fetch_album(client, &request.storefront, &id).await?;
-    let (id, master) = if let AlbumPayload::Master(master) = &document.payload {
-        (id, master.clone())
-    } else {
-        match resolve_related_document(&document, |id| async move {
-            fetch_album(client, &request.storefront, &id).await
-        })
-        .await?
-        {
-            Some(found) => found,
-            None => return Ok(Lookup::Absent),
+    let (id, square, tall) = match &document.payload {
+        AlbumPayload::Master { square, tall } => (id, square.clone(), tall.clone()),
+        AlbumPayload::Absent => {
+            match resolve_related_document(&document, |id| async move {
+                fetch_album(client, &request.storefront, &id).await
+            })
+            .await?
+            {
+                Some(found) => found,
+                None => return Ok(Lookup::Absent),
+            }
         }
     };
-    resolve_master(client, request, id, master).await
+
+    if request.prefer_tall {
+        if let Some(tall_master) = tall {
+            match resolve_master(client, request, id.clone(), tall_master, true).await {
+                Ok(Lookup::Found(found)) => return Ok(Lookup::Found(found)),
+                Err(e @ ProviderError::RateLimited { .. }) => return Err(e),
+                Ok(_) | Err(_) => {
+                    // Fall back to square if tall master failed or returned no variants
+                }
+            }
+        }
+        if let Some(square_master) = square {
+            return resolve_master(client, request, id, square_master, false).await;
+        }
+    } else if let Some(square_master) = square {
+        return resolve_master(client, request, id, square_master, false).await;
+    }
+    Ok(Lookup::Absent)
 }
 async fn resolve_related_document<F, Fut>(
     document: &AlbumDocument,
     mut fetch: F,
-) -> Result<Option<(String, String)>, ProviderError>
+) -> Result<Option<(String, Option<String>, Option<String>)>, ProviderError>
 where
     F: FnMut(String) -> Fut,
     Fut: std::future::Future<Output = Result<AlbumDocument, ProviderError>>,
@@ -141,8 +159,8 @@ where
             uncertain = true;
             continue;
         }
-        if let AlbumPayload::Master(master) = alternate.payload {
-            return Ok(Some((candidate.id, master)));
+        if let AlbumPayload::Master { square, tall } = alternate.payload {
+            return Ok(Some((candidate.id, square, tall)));
         }
         // Never traverse a second level. Keep uncertainty if an unchecked version was discovered.
         uncertain |= alternate.related.iter().any(|item| {
@@ -183,15 +201,16 @@ async fn resolve_master(
     request: &super::AnimatedArtworkRequest,
     id: String,
     master: String,
+    tall: bool,
 ) -> Result<Lookup, ProviderError> {
     let response = client.get(checked_url(&master)?).send().await?;
     let master_base = checked_url(response.url().as_str())?;
     let text = String::from_utf8(bounded_body(response, PLAYLIST_LIMIT, "master playlist").await?)
         .map_err(|_| ProviderError::Invalid("playlist is not UTF-8".into()))?;
-    let variants = parse_master(&text, master_base, request.prefer_hevc)?;
+    let variants = parse_master(&text, master_base, request.prefer_hevc, tall)?;
     if variants.is_empty() {
         return Err(ProviderError::Unsupported(
-            "no compatible square SDR variants".into(),
+            "no compatible SDR variants".into(),
         ));
     }
     let mut resolved = Vec::new();
@@ -408,10 +427,13 @@ pub(super) fn checked_url(raw: &str) -> Result<Url, ProviderError> {
     Ok(url)
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 enum AlbumPayload {
     Absent,
-    Master(String),
+    Master {
+        square: Option<String>,
+        tall: Option<String>,
+    },
 }
 #[derive(Debug)]
 struct AlbumDocument {
@@ -489,19 +511,35 @@ fn parse_album_document(html: &[u8], expected_id: &str) -> Result<AlbumDocument,
         }
     }
     let header = header.ok_or_else(|| unsupported("target album has no usable motion field"))?;
-    let motion = header
-        .get("videoArtwork")
-        .ok_or_else(|| unsupported("album videoArtwork field missing"))?;
-    let payload = if motion.is_null() {
+    let motion = header.get("videoArtwork");
+    let tall_motion = header.get("tallVideoArtwork");
+    if motion.is_none() && tall_motion.is_none() {
+        return Err(unsupported("album videoArtwork field missing"));
+    }
+
+    let square = motion
+        .filter(|v| !v.is_null())
+        .and_then(|v| v.pointer("/dictionary/motionDetailSquare/video"))
+        .and_then(Value::as_str)
+        .map(str::to_owned);
+
+    let tall = tall_motion
+        .filter(|v| !v.is_null())
+        .and_then(|v| v.pointer("/dictionary/motionDetailTall/video"))
+        .and_then(Value::as_str)
+        .map(str::to_owned);
+
+    if square.is_none()
+        && tall.is_none()
+        && (motion.is_some_and(|v| !v.is_null()) || tall_motion.is_some_and(|v| !v.is_null()))
+    {
+        return Err(unsupported("motion schema unknown"));
+    }
+
+    let payload = if square.is_none() && tall.is_none() {
         AlbumPayload::Absent
     } else {
-        AlbumPayload::Master(
-            motion
-                .pointer("/dictionary/motionDetailSquare/video")
-                .and_then(Value::as_str)
-                .ok_or_else(|| unsupported("motion schema unknown"))?
-                .to_owned(),
-        )
+        AlbumPayload::Master { square, tall }
     };
     if matches!(payload, AlbumPayload::Absent) && unknown_related {
         return Err(unsupported("other versions schema unknown"));
@@ -676,6 +714,7 @@ fn parse_master(
     text: &str,
     base: Url,
     prefer_hevc: bool,
+    tall: bool,
 ) -> Result<Vec<MotionVariant>, ProviderError> {
     if !text.lines().any(|l| l.trim() == "#EXTM3U") {
         return Err(ProviderError::Invalid("not an HLS playlist".into()));
@@ -709,10 +748,11 @@ fn parse_master(
         else {
             continue;
         };
+        let is_square = w == h && w <= 1080 && h <= 1080;
+        let ratio = w as f64 / h as f64;
+        let is_tall = h > w && (0.70..=0.80).contains(&ratio) && w <= 1080 && h <= 1440;
         if w == 0
-            || w != h
-            || w > 1080
-            || h > 1080
+            || !(if tall { is_tall } else { is_square })
             || attrs.get("VIDEO-RANGE").is_some_and(|v| v != "SDR")
         {
             continue;
@@ -753,6 +793,7 @@ fn parse_master(
     variants.sort_by(|a, b| {
         b.width
             .cmp(&a.width)
+            .then_with(|| b.height.cmp(&a.height))
             .then_with(|| b.frame_rate.total_cmp(&a.frame_rate))
             .then_with(|| {
                 let rank = |c: &str| {
@@ -774,6 +815,7 @@ fn parse_master(
     let mut selected = vec![primary.clone()];
     if let Some(alternate) = variants.iter().find(|v| {
         v.width == primary.width
+            && v.height == primary.height
             && v.frame_rate == primary.frame_rate
             && v.codec.starts_with("avc1") != primary.codec.starts_with("avc1")
     }) {

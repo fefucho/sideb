@@ -51,23 +51,6 @@ export function projectHome(sections: HomeSectionDto[], chip: string | null, set
   const artwork = [...new Set([...uniqueArt(collections).slice(0,2),...uniqueArt(songs).slice(0,2),...uniqueArt([...collections,...songs])])].slice(0,4);
   return { categories, songs, collections, shelves, artwork };
 }
-/** HomeFeaturedLayout in logical pixels; width includes the 28px insets. */
-export function featuredLayout(width:number,songCount:number,collectionCount:number) {
-  const wide=width>=900, inner=Math.max(0,width-56);
-  const tile=Math.min(wide?144:140,Math.max(0,((wide&&collectionCount?inner-24-432:inner)-16)/3));
-  const songWidth=3*tile+16;
-  const available=wide&&songCount?Math.max(0,inner-24-songWidth):inner;
-  const columns=Math.min(3,Math.max(1,Math.ceil(collectionCount/2)),Math.max(1,Math.floor((available+24)/456)));
-  const columnWidth=(available-(columns-1)*24)/columns;
-  const songRows=songCount?Math.ceil(Math.min(9,Math.max(1,songCount))/3):0;
-  const songHeight=songRows*tile+Math.max(0,songRows-1)*8;
-  const rows=collectionCount?Math.min(2,Math.max(1,collectionCount)):0;
-  const cardHeight=wide&&songCount&&collectionCount?Math.min(212,Math.max(152,(songHeight-Math.max(0,rows-1)*24)/rows)):Math.min(212,Math.max(164,columnWidth*.3));
-  return {wide,tile,songWidth,columns,capacity:columns*2,cardHeight};
-}
-export function featuredCapacity(width:number,count=Infinity,songCount=9) {
-  return featuredLayout(width,songCount,count).capacity;
-}
 export function visibleSignature(projection: ReturnType<typeof projectHome>) {
   return JSON.stringify([projection.songs, projection.collections, projection.shelves.map(s => [s.id, s.title, s.items])]);
 }

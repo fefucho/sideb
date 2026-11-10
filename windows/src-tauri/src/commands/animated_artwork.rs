@@ -16,7 +16,29 @@ pub(crate) struct AnimatedArtworkRequestDto {
     album_id: Option<String>,
     duration_secs: Option<u64>,
     storefront: String,
+    /// Accepted for contract parity; Windows requests are always H.264 (see `into_core`).
+    #[allow(dead_code)]
     prefer_hevc: bool,
+    #[serde(default)]
+    prefer_tall: bool,
+}
+
+impl AnimatedArtworkRequestDto {
+    /// WebView2 variants are H.264, so `prefer_hevc` is never forwarded. `prefer_tall` (side player) asks the
+    /// core for the portrait variant; the core falls back to the square one when the album has no tall master.
+    fn into_core(self) -> sideb_core::AnimatedArtworkRequest {
+        sideb_core::AnimatedArtworkRequest {
+            video_id: self.video_id,
+            title: self.title,
+            artists: self.artists,
+            album: self.album,
+            album_id: self.album_id,
+            duration_secs: self.duration_secs,
+            storefront: self.storefront,
+            prefer_hevc: false,
+            prefer_tall: self.prefer_tall,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -95,7 +117,6 @@ pub(crate) async fn prepare_animated_artwork(
 ) -> Result<Option<AnimatedArtworkAssetDto>, CommandError> {
     let generation = state.auth_generation.load(Ordering::SeqCst);
     let id = request_id.clone();
-    let _requested_preference = request.prefer_hevc;
     let cache = cache_dir(&app)?;
     let original_core = core(&state)?;
     requests()
@@ -103,21 +124,7 @@ pub(crate) async fn prepare_animated_artwork(
         .map_err(|_| CommandError::new("LOCK_ERROR", "No se pudo preparar la carátula."))?
         .insert(id.clone(), original_core.clone());
     let result = original_core
-        .prepare_animated_artwork(
-            sideb_core::AnimatedArtworkRequest {
-                video_id: request.video_id,
-                title: request.title,
-                artists: request.artists,
-                album: request.album,
-                album_id: request.album_id,
-                duration_secs: request.duration_secs,
-                storefront: request.storefront,
-                // WebView2 variants are H.264. Do not rely on HEVC support on Windows.
-                prefer_hevc: false,
-            },
-            request_id,
-            cache,
-        )
+        .prepare_animated_artwork(request.into_core(), request_id, cache)
         .await;
     if state.auth_generation.load(Ordering::SeqCst) != generation {
         original_core.cancel_animated_artwork(id.clone());
@@ -171,4 +178,33 @@ pub(crate) async fn clear_animated_artwork_cache(
         .clear_animated_artwork_cache(cache_dir(&app)?)
         .await
         .map_err(failed)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn parse(json: &str) -> AnimatedArtworkRequestDto {
+        serde_json::from_str(json).expect("request")
+    }
+    const BASE: &str = r#""videoId":"v","title":"t","artists":"a","album":"Al","albumId":"MPRE1","durationSecs":200,"storefront":"us","preferHevc":false"#;
+
+    #[test]
+    fn tall_is_opt_in_and_defaults_to_square() {
+        let square = parse(&format!("{{{BASE}}}")).into_core();
+        assert!(!square.prefer_tall);
+        let tall = parse(&format!("{{{BASE},\"preferTall\":true}}")).into_core();
+        assert!(tall.prefer_tall);
+        assert_eq!(tall.album_id.as_deref(), Some("MPRE1"));
+    }
+
+    #[test]
+    fn hevc_is_never_forwarded_on_windows() {
+        let request = parse(
+            &format!("{{{BASE},\"preferTall\":true}}")
+                .replace("\"preferHevc\":false", "\"preferHevc\":true"),
+        );
+        assert!(request.prefer_hevc);
+        assert!(!request.into_core().prefer_hevc);
+    }
 }

@@ -115,6 +115,7 @@ pub(crate) async fn get_karaoke_lyrics(
     album: Option<String>,
     duration: Option<f64>,
     force_refresh: bool,
+    source: Option<String>,
 ) -> Result<Option<KaraokeLyricsDto>, CommandError> {
     let video_id = video_id.trim();
     if video_id.is_empty() {
@@ -135,6 +136,7 @@ pub(crate) async fn get_karaoke_lyrics(
                 "El motor de Side B todavía no está listo.",
             )
         })?;
+    core.set_setting(format!("lyrics_source:{video_id}"), source.unwrap_or_else(|| "auto".into()));
     let result = core
         .get_karaoke_lyrics(
             video_id.to_owned(),

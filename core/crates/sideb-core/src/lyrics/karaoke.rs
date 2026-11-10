@@ -9,7 +9,7 @@ use serde_json::Value;
 use std::time::Duration;
 use unicode_normalization::UnicodeNormalization;
 
-const SCHEMA_VERSION: u32 = 4;
+const SCHEMA_VERSION: u32 = 6;
 const MAX_BODY_BYTES: usize = 2 * 1024 * 1024;
 const MAX_LINES: usize = 5000;
 const MAX_WORDS_PER_LINE: usize = 2048;
@@ -143,7 +143,9 @@ pub(crate) async fn get(
 ) -> Result<Option<Document>, SideBError> {
     let now = super::now_secs();
     let boidu_enabled = context.db.get_setting("lyrics_boidu").as_deref() != Some("false");
-    let key = cache_key(&req, boidu_enabled);
+    let source = context.db.get_setting(&format!("lyrics_source:{}", req.video_id))
+        .filter(|value| value != "auto");
+    let key = format!("{}:{}", cache_key(&req, boidu_enabled), source.as_deref().unwrap_or("auto"));
     if !force_refresh {
         if let Some(Some(json)) = context.db.get_lyrics(&key, now, MISS_TTL) {
             if let Ok(entry) = serde_json::from_str(&json) {
@@ -154,6 +156,21 @@ pub(crate) async fn get(
         }
     }
 
+    // A manual choice never reads another provider's cache or falls through.
+    if let Some(source) = source {
+        let hit = match source.as_str() {
+            "lyricsplus" => super::lyricsplus_get(&req).await.map(|v| v.map(Into::into)).map_err(|_| ()),
+            "boidu" => boidu(&req).await,
+            "lrclib" => lrclib(&req).await,
+            "netease" => super::netease_get(&req).await.map(|v| v.map(Into::into)).map_err(|_| ()),
+            "qq" => super::qqmusic_get(&req).await.map(|v| v.map(Into::into)).map_err(|_| ()),
+            "kugou" => super::kugou_get(&req).await.map(|v| v.map(Into::into)).map_err(|_| ()),
+            _ => Err(()),
+        }.map_err(|_| SideBError::NetworkError { message: "Lyrics source unavailable".into() })?;
+        save(context, &key, now, hit.as_ref());
+        return Ok(hit);
+    }
+
     // A read-only classic cache probe provides a safe line fallback. Its old parser's
     // word timestamps are deliberately not promoted to the experimental contract.
     let legacy_fallback = if force_refresh {
@@ -161,7 +178,7 @@ pub(crate) async fn get(
     } else {
         context
             .db
-            .get_lyrics(&req.video_id, now, super::MISS_TTL_SECS)
+            .get_lyrics(&format!("lyrics:v2:{}", req.video_id), now, super::MISS_TTL_SECS)
             .flatten()
             .and_then(|json| serde_json::from_str::<Lyrics>(&json).ok())
             .map(line_only)
@@ -171,6 +188,16 @@ pub(crate) async fn get(
     // order wins, and the read-only classic fallback is considered last.
     let mut fallback = None;
     let mut failed = false;
+    match super::lyricsplus_get(&req).await {
+        Ok(Some(hit)) if hit.instrumental || hit.lines.iter().any(|line| line.words.as_ref().is_some_and(|words| !words.is_empty())) => {
+            let hit = Document::from(hit);
+            save(context, &key, now, Some(&hit));
+            return Ok(Some(hit));
+        }
+        Ok(Some(hit)) => fallback = prefer(fallback, hit.into()),
+        Ok(None) => {}
+        Err(_) => failed = true,
+    }
     if boidu_enabled {
         match boidu(&req).await {
             Ok(Some(hit)) if has_words(&hit) || hit.instrumental => {
@@ -183,11 +210,31 @@ pub(crate) async fn get(
         }
     }
     match lrclib(&req).await {
+        Ok(Some(hit)) if hit.instrumental => { save(context, &key, now, Some(&hit)); return Ok(Some(hit)); }
         Ok(Some(hit)) => fallback = prefer(fallback, hit),
         Ok(None) => {}
         Err(()) => failed = true,
     }
 
+    for provider in ["netease", "qq", "kugou"] {
+        let result = match provider {
+            "netease" => super::netease_get(&req).await,
+            "qq" => super::qqmusic_get(&req).await,
+            _ => super::kugou_get(&req).await,
+        };
+        match result {
+            Ok(Some(hit)) => {
+                let hit = Document::from(hit);
+                if hit.instrumental || has_words(&hit) {
+                    save(context, &key, now, Some(&hit));
+                    return Ok(Some(hit));
+                }
+                fallback = prefer(fallback, hit);
+            }
+            Ok(None) => {},
+            Err(_) => failed = true,
+        }
+    }
     let fallback = prefer_classic_fallback(fallback, legacy_fallback);
     if let Some(hit) = fallback {
         // A refresh is fresh provider data only, never a stale experimental or legacy
@@ -244,8 +291,8 @@ fn prefer(current: Option<Document>, next: Document) -> Option<Document> {
         });
         (
             document.instrumental,
-            document.synced,
             has_words(document),
+            document.synced,
             metadata,
         )
     }
@@ -1552,7 +1599,35 @@ mod tests {
     }
 
     #[test]
-    fn rich_voice_metadata_survives_record_conversion_and_v4_cache_roundtrip() {
+    fn lyricsplus_words_beat_line_only_lrclib() {
+        let lrclib = provider_document("LRCLIB", "[00:01.00]Timed line");
+        let lyricsplus = Document {
+            source: "LyricsPlus".into(),
+            synced: true,
+            instrumental: false,
+            lines: vec![Line {
+                time_ms: Some(1000),
+                end_time_ms: Some(3000),
+                text: "Timed line".into(),
+                words: Some(vec![LyricWord {
+                    text: "Timed line".into(),
+                    start_ms: 1000,
+                    end_ms: 3000,
+                }]),
+                translation: None,
+                role: None,
+                agent: None,
+                group_id: None,
+                section: None,
+            }],
+        };
+        let chosen = prefer(Some(lrclib), lyricsplus).unwrap();
+        assert_eq!(chosen.source, "LyricsPlus");
+        assert!(has_words(&chosen));
+    }
+
+    #[test]
+    fn rich_voice_metadata_survives_record_conversion_and_v6_cache_roundtrip() {
         let mut document = Document::from(lyric());
         let line = &mut document.lines[0];
         line.role = Some("background".into());
@@ -1574,9 +1649,9 @@ mod tests {
         assert_eq!(info.lines[0].group_id.as_deref(), Some("ttml:p:7"));
         assert_eq!(info.lines[0].section.as_deref(), Some("Chorus"));
         assert_eq!(info.lines[0].words.len(), 2);
-        let old_key = cache_key(&request(), true).replacen("karaoke:v4:", "karaoke:v3:", 1);
+        let old_key = cache_key(&request(), true).replacen("karaoke:v6:", "karaoke:v5:", 1);
         assert_ne!(old_key, cache_key(&request(), true));
-        for version in [1, 2, 3] {
+        for version in [1, 2, 3, 4] {
             assert!(cached(
                 CacheEntry {
                     version,
@@ -1719,7 +1794,7 @@ mod tests {
     fn cache_expiry_schema_and_request_signature_are_independent_of_classic() {
         let req = request();
         let key = cache_key(&req, true);
-        assert!(key.starts_with("karaoke:v4:"));
+        assert!(key.starts_with("karaoke:v6:"));
         assert_ne!(key, req.video_id);
         assert_ne!(key, cache_key(&req, false));
         let mut other = request();

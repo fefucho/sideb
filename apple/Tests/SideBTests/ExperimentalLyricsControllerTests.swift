@@ -19,6 +19,20 @@ struct ExperimentalLyricsControllerTests {
         ])
     }
 
+    @Test("Cambiar fuente limpia la letra y una ausencia manual no restaura otra fuente")
+    func manualSourceMiss() async {
+        let controller = ExperimentalLyricsController()
+        var key = request()
+        let first = controller.activate(key) { _, _ in self.document("automatic") }
+        await first?.value
+        key.source = "lyricsplus"
+        let second = controller.activate(key) { _, _ in nil }
+        #expect(controller.document == nil)
+        await second?.value
+        #expect(controller.document == nil)
+        #expect(controller.activeRequest?.source == "lyricsplus")
+    }
+
     @Test("El modo clásico no consulta el endpoint experimental")
     func inactiveDoesNotFetch() async {
         let controller = ExperimentalLyricsController()

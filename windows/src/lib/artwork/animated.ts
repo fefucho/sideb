@@ -1,9 +1,14 @@
 import { invoke, convertFileSrc } from '@tauri-apps/api/core';
 import { AnimatedArtworkClearCoordinator } from './clearCoordinator';
+import { clearVisualProviderCache, getVisualProviderCacheSize } from '../visualProvider/api';
 
 export interface AnimatedArtworkRequest {
   videoId: string; title: string; artists: string; album: string | null; albumId: string | null;
   durationSecs: number | null; storefront: string; preferHevc: false;
+  /** Ask for the portrait (3:4) variant; the core falls back to the square one. Omitted = square only. */
+  preferTall?: boolean;
+  /** Only read by the optional visual provider (sidebar fallback); Apple ignores it. */
+  explicit?: boolean | null;
 }
 export interface AnimatedArtworkAsset {
   assetId: string; localPath: string; codec: string; width: number; height: number;
@@ -13,8 +18,11 @@ export const animatedArtworkUrl = (asset: AnimatedArtworkAsset) => convertFileSr
 export const prepareAnimatedArtwork = (request: AnimatedArtworkRequest, requestId: string) =>
   invoke<AnimatedArtworkAsset | null>('prepare_animated_artwork', { request, requestId });
 export const cancelAnimatedArtwork = (requestId: string) => invoke<void>('cancel_animated_artwork', { requestId });
-export const getAnimatedArtworkCacheSize = () => invoke<number>('get_animated_artwork_cache_size');
-export const clearAnimatedArtworkCache = () => invoke<number>('clear_animated_artwork_cache');
+/** Apple's cache plus the optional provider's private cache, like Mac `AnimatedArtworkManager.size/clear`. */
+export const getAnimatedArtworkCacheSize = async () =>
+  (await invoke<number>('get_animated_artwork_cache_size')) + (await getVisualProviderCacheSize().catch(() => 0));
+export const clearAnimatedArtworkCache = async () =>
+  (await invoke<number>('clear_animated_artwork_cache')) + (await clearVisualProviderCache().catch(() => 0));
 
 const clearCoordinator = new AnimatedArtworkClearCoordinator();
 export const animatedArtworkClearState = () => clearCoordinator.clearing;

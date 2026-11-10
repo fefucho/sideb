@@ -13,20 +13,20 @@ function harness(next,play=async()=>{}){
 }
 const songs=[{videoId:'same',setVideoId:'one'},{videoId:'same',setVideoId:'two'}];
 const section={id:'section',title:'Provider title'};
-test('provider action retains exact endpoint params, occurrence payloads, radio context and next continuation',async()=>{
+test('provider radio action always sends the batch and opaque continuation to the native radio command',async()=>{
  const ctx=harness({items:songs,continuation:'next-token',automixPlaylistId:null});
  await ctx.run({videoId:null,playlistId:'RD-provider',params:'shuffle-server-params'},section);
  assert.deepEqual(ctx.calls[0],{command:'search_action',args:{videoId:null,playlistId:'RD-provider',params:'shuffle-server-params'}});
- assert.deepEqual(ctx.calls[1].args,[songs,0,{kind:'search-radio',id:'RD-provider',title:section.title}]);
- assert.deepEqual(ctx.calls[2],{command:'continue',args:{kind:'search-radio',id:'RD-provider',continuation:'next-token'}});
+ assert.deepEqual(ctx.calls[1].args,[songs,{kind:'search-radio',id:'RD-provider',title:section.title},'RD-provider',0,'next-token']);
+ assert.equal(ctx.calls.length,2);
 });
 test('collection continuation uses next paging without inventing radio context',async()=>{
  const ctx=harness({items:songs,continuation:'collection-next',automixPlaylistId:null});await ctx.run({playlistId:'PL-provider',videoId:null,params:null},section);
  assert.equal(ctx.calls[1].args[2].kind,'search');assert.equal(ctx.calls[2].args.continuation,'collection-next');
 });
-test('a radio page without token retains its automix endpoint in native radio state',async()=>{
+test('a radio page without token still retains its automix endpoint in native radio state',async()=>{
  const ctx=harness({items:songs,continuation:null,automixPlaylistId:'RD-automix'});await ctx.run({videoId:'seed',playlistId:null,params:null},section);
- assert.equal(ctx.calls[1].command,'radio');assert.equal(ctx.calls[1].args[2],'RD-automix');assert.equal(ctx.calls.length,2);
+ assert.equal(ctx.calls[1].command,'radio');assert.equal(ctx.calls[1].args[2],'RD-automix');assert.equal(ctx.calls[1].args[4],null);assert.equal(ctx.calls.length,2);
 });
 test('changing playback while initial page loads discards the stale source',async()=>{let resolve;const pending=new Promise(r=>resolve=r);const ctx=harness(pending);const run=ctx.run({playlistId:'PL-old'},section);ctx.changePlayback();resolve({items:songs,continuation:'stale'});await run;assert.equal(ctx.calls.length,1);});
 test('account or playback change during load prevents attaching an old continuation to a new queue',async()=>{
@@ -35,4 +35,9 @@ test('account or playback change during load prevents attaching an old continuat
 
 test('browse action with params retains them even when a matching card exists',async()=>{const card={id:'browse',kind:'artist'};const ctx=harness(null);await ctx.run({browseId:'browse',params:'provider-browse-params'},{...section,items:[card]});assert.deepEqual(ctx.calls,[{command:'browse',args:['browse','provider-browse-params',section.title]}]);const plain=harness(null);await plain.run({browseId:'browse',params:null},{...section,items:[card]});assert.deepEqual(plain.calls,[{command:'card',card}]);});
 test('video endpoint selects its actual occurrence within the provider page and keeps its original queue order',async()=>{const items=[{videoId:'first'},{videoId:'target'},{videoId:'last'}];const ctx=harness({items,continuation:'token',automixPlaylistId:null});await ctx.run({videoId:'target',playlistId:'PL-provider'},section);assert.equal(ctx.calls[1].args[0],items);assert.equal(ctx.calls[1].args[1],1);});
-test('radio without a token starts the explicit video index through the native radio command',async()=>{const items=[{videoId:'first'},{videoId:'target'}];const ctx=harness({items,continuation:null,automixPlaylistId:'RD-automix'});await ctx.run({videoId:'target',playlistId:null},section);assert.equal(ctx.calls[1].command,'radio');assert.equal(ctx.calls[1].args[0],items);assert.equal(ctx.calls[1].args[3],1);});
+test('song radio without an automix ID uses the seed endpoint and keeps all batch tracks reserved',async()=>{
+ const items=[{videoId:'first'},{videoId:'target'}];const ctx=harness({items,continuation:'radio-next',automixPlaylistId:null});
+ await ctx.run({videoId:'target',playlistId:null},section);
+ assert.equal(ctx.calls[1].command,'radio');
+ assert.deepEqual(ctx.calls[1].args,[items,{kind:'search-radio',id:'RDAMVMtarget',title:section.title},'RDAMVMtarget',1,'radio-next']);
+});

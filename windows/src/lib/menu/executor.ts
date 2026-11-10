@@ -13,6 +13,7 @@ export interface MenuExecutorPorts {
   playPlaylist?: (playlist:PlaylistDetailDto,valid:()=>boolean)=>Promise<void>;
   enqueue: (songs: SongDto[], position: 'next' | 'end') => Promise<void>;
   removeQueue: (entryId: string) => Promise<void>;
+  recommendationAction?: (entryId: string, placement: 'next' | 'end' | 'now' | 'remove', generation: number, session: number) => Promise<unknown>;
   like: (song: SongDto) => Promise<void>;
   saveSong: (song: SongDto) => Promise<void>;
   addPlaylist: (id: string, song: SongDto) => Promise<void>;
@@ -55,6 +56,13 @@ export class MenuExecutor {
       if (action.type === 'sort-playlist') { await p.sortPlaylist(id, action.sort); return; }
     }
     if (target.kind === 'song') {
+      if (target.queueRecommendationId && ['play', 'enqueue-next', 'enqueue-end', 'remove-queue'].includes(action.type)) {
+        if (!valid() || !p.recommendationAction || target.queueRecommendationGeneration === undefined || target.queueRecommendationSession === undefined) return;
+        const placement = action.type === 'play' ? 'now' : action.type === 'enqueue-next' ? 'next'
+          : action.type === 'enqueue-end' ? 'end' : 'remove';
+        await p.recommendationAction(target.queueRecommendationId, placement, target.queueRecommendationGeneration, target.queueRecommendationSession);
+        return;
+      }
       if (action.type === 'like') { await p.like(target.song); return; }
       if (action.type === 'save-song') { await p.saveSong(target.song); return; }
       if (action.type === 'add-to-playlist') { await p.addPlaylist(action.playlistId, target.song); return; }

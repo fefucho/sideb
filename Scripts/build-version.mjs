@@ -96,6 +96,11 @@ export async function execute(command, args, { cwd, env, log }) {
   });
 }
 
+// Spotify Canvas ships inside both apps as a removable plugin. When its source exists the build must carry it;
+// without extensions/spotify-canvas (plugin removed from the sources) the app builds exactly as before.
+export const providerFiles = ['manifest.json', 'SHA256SUMS'];
+export function providerSourceExists(root) { return existsSync(join(root, 'extensions', 'spotify-canvas', 'Cargo.toml')); }
+
 function commandVersion(command, args, root) {
   const result = spawnSync(command, args, { cwd: root, encoding: 'utf8', windowsHide: true });
   return result.status === 0 ? result.stdout.trim() : 'no disponible';
@@ -171,6 +176,12 @@ export async function buildVersion(root, options, dependencies = {}) {
       artifact = join(build.directory, 'Side B.app');
       await step('bash', [join(root, 'Scripts', 'build-macos.sh'), options.configuration, artifact]);
       if (!existsSync(join(artifact, 'Contents', 'MacOS', 'Side B'))) throw new Error('Falta el ejecutable del bundle Mac.');
+      if (providerSourceExists(root)) {
+        const provider = join(artifact, 'Contents', 'Resources', 'VisualProviders', 'spotify-canvas');
+        for (const file of [...providerFiles, 'sideb-spotify-canvas']) {
+          if (!existsSync(join(provider, file))) throw new Error(`Falta el proveedor visual preinstalado en el bundle Mac: ${join(provider, file)}`);
+        }
+      }
     } else {
       const powerShell = dependencies.powerShell || selectPowerShell(root);
       if (!powerShell) throw new Error('Falta PowerShell.');
@@ -187,6 +198,19 @@ export async function buildVersion(root, options, dependencies = {}) {
         const source = join(root, 'windows', 'src-tauri', 'target', options.configuration, file);
         if (!existsSync(source)) throw new Error(`Falta el archivo standalone: ${source}`);
         copyFileSync(source, join(build.directory, file));
+      }
+      if (providerSourceExists(root)) {
+        // Staged by windows.ps1 (Ensure-VisualProviderPackage) and bundled by tauri.conf.json resources;
+        // keep the same files next to the portable executable: provider/spotify-canvas/.
+        const staged = join(root, 'windows', 'src-tauri', 'provider', 'spotify-canvas');
+        const destination = join(build.directory, 'provider', 'spotify-canvas');
+        for (const file of [...providerFiles, 'sideb-spotify-canvas.exe']) {
+          if (!existsSync(join(staged, file))) throw new Error(`Falta el proveedor visual preinstalado: ${join(staged, file)}`);
+        }
+        mkdirSync(destination, { recursive: true });
+        for (const entry of readdirSync(staged, { withFileTypes: true })) {
+          if (entry.isFile()) copyFileSync(join(staged, entry.name), join(destination, entry.name));
+        }
       }
       artifact = join(build.directory, 'sideb-windows.exe');
     }

@@ -1,6 +1,6 @@
 use crate::HomeArtistRunDto;
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -8,6 +8,10 @@ static NEXT_ENTRY_ID: AtomicU64 = AtomicU64::new(1);
 static SHUFFLE_COUNTER: AtomicU64 = AtomicU64::new(1);
 const PLAYLIST_BATCH_SIZE: usize = 100;
 const PLAYLIST_REFILL_THRESHOLD: usize = 10;
+const QUEUE_PROJECTION_WINDOW: usize = 100;
+const QUEUE_RECOMMENDATION_WINDOW: usize = 50;
+const QUEUE_RECENT_MANUAL_TAIL: usize = 100;
+const QUEUE_MAX_RECOMMENDATIONS: usize = 200;
 
 /// Responsive provider subtitles may contain counters in an album/credit slot.
 /// Require a numeric count, so genuine names such as Views, Plays or The 1975 survive.
@@ -275,6 +279,8 @@ pub struct QueueEntryDto {
     #[serde(default)]
     pub is_upload: bool,
     pub entry_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub queue_index: Option<usize>,
     /// Display identity in the source list, separate from fresh queue ownership.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source_occurrence_id: Option<String>,
@@ -346,6 +352,7 @@ impl QueueEntryDto {
             is_upload: false,
             content_rating: sideb_core::ContentRating::Unknown,
             entry_id: new_entry_id(),
+            queue_index: None,
             source_occurrence_id: None,
             video_id,
             title,
@@ -464,7 +471,14 @@ impl Default for QueueRadioDto {
 #[serde(rename_all = "camelCase")]
 pub struct QueueStateDto {
     pub items: Vec<QueueEntryDto>,
+    /// Automatic proposals not yet committed to playback order.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub recommendations: Vec<QueueEntryDto>,
     pub current_index: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub total_count: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pending_count: Option<usize>,
     pub source: Option<QueueSourceDto>,
     pub revision: u64,
     #[serde(default)]
@@ -481,6 +495,15 @@ pub struct QueueStateDto {
     next_source_rank: usize,
     #[serde(skip)]
     explicit_placements: HashMap<String, QueuePlacement>,
+    /// Index at which the next committed item will appear when no item is active.
+    #[serde(skip)]
+    resume_index: Option<usize>,
+    #[serde(skip)]
+    visible_start: Option<usize>,
+    #[serde(skip)]
+    radio_entries: HashSet<String>,
+    #[serde(skip)]
+    manual_end_ids: VecDeque<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -494,7 +517,10 @@ impl Default for QueueStateDto {
     fn default() -> Self {
         Self {
             items: vec![],
+            recommendations: vec![],
             current_index: None,
+            total_count: None,
+            pending_count: None,
             source: None,
             revision: 0,
             radio: None,
@@ -502,33 +528,102 @@ impl Default for QueueStateDto {
             source_ranks: HashMap::new(),
             next_source_rank: 0,
             explicit_placements: HashMap::new(),
+            resume_index: None,
+            visible_start: None,
+            radio_entries: HashSet::new(),
+            manual_end_ids: VecDeque::new(),
         }
     }
 }
 
 impl QueueStateDto {
     pub fn snapshot(&self) -> Self {
-        let len = if self
-            .source
-            .as_ref()
-            .is_some_and(|source| source.kind == "playlist")
-        {
-            self.visible_len.min(self.items.len())
-        } else {
-            self.items.len()
+        let total_count = self.items.len();
+        let pending_count = match self.current_index {
+            Some(index) => total_count.saturating_sub(index.saturating_add(1)),
+            None => self
+                .resume_index
+                .map_or(0, |index| total_count.saturating_sub(index)),
         };
+        let start = self.visible_start.unwrap_or_else(|| {
+            self.current_index
+                .map(|index| index.saturating_sub(QUEUE_PROJECTION_WINDOW / 2))
+                .or(self.resume_index)
+                .unwrap_or(0)
+        })
+        .min(total_count);
+        let end = start.saturating_add(QUEUE_PROJECTION_WINDOW).min(total_count);
+        let mut indices = (start..end).collect::<HashSet<_>>();
+        if let Some(current) = self.current_index.filter(|index| *index < total_count) {
+            indices.insert(current);
+        }
+        if self.current_index.is_none() {
+            if let Some(resume) = self.resume_index.filter(|index| *index < total_count) {
+                indices.insert(resume);
+            }
+        }
+        let recent_tail_ids = self
+            .manual_end_ids
+            .iter()
+            .rev()
+            .take(QUEUE_RECENT_MANUAL_TAIL)
+            .cloned()
+            .collect::<HashSet<_>>();
+        if !recent_tail_ids.is_empty() {
+            for (index, entry) in self.items.iter().enumerate().rev() {
+                if recent_tail_ids.contains(&entry.entry_id) {
+                    indices.insert(index);
+                }
+            }
+        }
+        let mut indices = indices.into_iter().collect::<Vec<_>>();
+        indices.sort_unstable();
+        let projected_items = indices
+            .iter()
+            .map(|&index| {
+                let mut entry = self.items[index].clone();
+                entry.queue_index = Some(index);
+                entry
+            })
+            .collect::<Vec<_>>();
+        let current_index = self
+            .current_index
+            .and_then(|index| indices.iter().position(|projected| *projected == index));
+        let projected_len = projected_items.len();
         Self {
-            items: self.items[..len].to_vec(),
-            current_index: self.current_index,
+            items: projected_items,
+            recommendations: self
+                .recommendations
+                .iter()
+                .take(QUEUE_RECOMMENDATION_WINDOW)
+                .cloned()
+                .collect(),
+            current_index,
+            total_count: Some(total_count),
+            pending_count: Some(pending_count),
             source: self.source.clone(),
             revision: self.revision,
             radio: self.radio.clone(),
-            visible_len: len,
+            visible_len: projected_len,
             // Playback policy stays native; public snapshots need only visible items.
             source_ranks: HashMap::new(),
             next_source_rank: 0,
             explicit_placements: HashMap::new(),
+            resume_index: self.resume_index,
+            visible_start: self.visible_start,
+            radio_entries: self.radio_entries.clone(),
+            manual_end_ids: self.manual_end_ids.clone(),
         }
+    }
+
+    pub(crate) fn reveal_window(&mut self, start_index: usize) -> bool {
+        let start_index = start_index.min(self.items.len().saturating_sub(1));
+        if self.visible_start == Some(start_index) {
+            return false;
+        }
+        self.visible_start = Some(start_index);
+        self.revision = self.revision.wrapping_add(1);
+        true
     }
 
     fn extend_visible_batch(&mut self) {
@@ -554,7 +649,8 @@ impl QueueStateDto {
         }
         // A replacement starts a new queue owner. Never trust occurrence IDs supplied
         // by the previous owner/client; stale asynchronous work must not match this queue.
-        self.items = items
+        let radio_source = matches!(source.kind.as_str(), "radio" | "search-radio");
+        let mut replaced = items
             .into_iter()
             .map(|mut item| {
                 item.normalize_metadata();
@@ -564,7 +660,29 @@ impl QueueStateDto {
                 item.entry_id = new_entry_id();
                 item
             })
-            .collect();
+            .collect::<Vec<_>>();
+        self.recommendations = if radio_source && current_index + 1 < replaced.len() {
+            replaced.split_off(current_index + 1)
+        } else {
+            Vec::new()
+        };
+        self.items = if radio_source {
+            vec![replaced.remove(current_index)]
+        } else {
+            replaced
+        };
+        let current_index = if radio_source { 0 } else { current_index };
+        if radio_source {
+            let mut known = self
+                .items
+                .iter()
+                .map(|entry| entry.video_id.clone())
+                .collect::<HashSet<_>>();
+            self.recommendations.retain(|entry| {
+                !entry.video_id.trim().is_empty() && known.insert(entry.video_id.clone())
+            });
+        }
+        self.current_index = Some(current_index);
         self.source_ranks = self
             .items
             .iter()
@@ -573,7 +691,9 @@ impl QueueStateDto {
             .collect();
         self.next_source_rank = self.items.len();
         self.explicit_placements.clear();
-        self.current_index = Some(current_index);
+        self.resume_index = None;
+        self.radio_entries.clear();
+        self.manual_end_ids.clear();
         self.visible_len = current_index
             .saturating_add(PLAYLIST_BATCH_SIZE)
             .min(self.items.len());
@@ -594,8 +714,10 @@ impl QueueStateDto {
             return None;
         }
         self.current_index = Some(index);
+        self.resume_index = None;
         self.extend_visible_batch();
         self.revision += 1;
+        self.trim_radio_history();
         self.current()
     }
 
@@ -612,12 +734,59 @@ impl QueueStateDto {
         self.select(next)
     }
 
-    pub fn next_or_first(&self, wrap_at_end: bool) -> Option<QueueEntryDto> {
-        let next_index = self.current_index?.checked_add(1)?;
-        self.items
-            .get(next_index)
-            .cloned()
-            .or_else(|| wrap_at_end.then(|| self.items.first().cloned()).flatten())
+    pub(crate) fn has_committed_next(&self) -> bool {
+        self.current_index
+            .is_some_and(|index| index.saturating_add(1) < self.items.len())
+            || self
+                .resume_index
+                .is_some_and(|index| index < self.items.len())
+    }
+
+    pub(crate) fn remaining_count(&self) -> usize {
+        let committed = match self.current_index {
+            Some(index) => self.items.len().saturating_sub(index),
+            None => self
+                .resume_index
+                .map_or(0, |index| self.items.len().saturating_sub(index)),
+        };
+        committed.saturating_add(self.recommendations.len())
+    }
+
+    fn trim_radio_history(&mut self) {
+        let boundary = self
+            .current_index
+            .map(|index| index)
+            .or(self.resume_index)
+            .unwrap_or(self.items.len())
+            .min(self.items.len());
+        let old_radio = self.items[..boundary]
+            .iter()
+            .filter(|entry| self.radio_entries.contains(&entry.entry_id))
+            .map(|entry| entry.entry_id.clone())
+            .collect::<Vec<_>>();
+        let excess = old_radio.len().saturating_sub(200);
+        for entry_id in old_radio.into_iter().take(excess) {
+            let _ = self.remove_entry(&entry_id);
+        }
+    }
+
+    pub fn next_or_first(&mut self, wrap_at_end: bool) -> Option<QueueEntryDto> {
+        let Some(current_index) = self.current_index else {
+            if let Some(index) = self.resume_index {
+                if let Some(entry) = self.items.get(index) {
+                    return Some(entry.clone());
+                }
+            }
+            return self.promote_next_recommendation();
+        };
+        let next_index = current_index.checked_add(1)?;
+        if let Some(entry) = self.items.get(next_index) {
+            return Some(entry.clone());
+        }
+        if wrap_at_end {
+            return self.items.first().cloned();
+        }
+        self.promote_next_recommendation()
     }
 
     /// Starts shuffle without treating entries before a randomly selected canonical
@@ -804,15 +973,22 @@ impl QueueStateDto {
             entry.normalize_metadata();
             entry.entry_id = new_unique_entry_id(&mut known_ids);
         }
+        let added_ids = entries.iter().map(|entry| entry.entry_id.clone()).collect::<Vec<_>>();
         let insert_at = if at_next {
             self.current_index
-                .map_or(self.items.len(), |index| index + 1)
+                .map_or(self.resume_index.unwrap_or(self.items.len()), |index| {
+                    index + 1
+                })
         } else {
             self.items.len()
         };
         let added_len = entries.len();
         let mut anchor = if at_next {
-            self.current().map(|entry| entry.entry_id)
+            self.current().map(|entry| entry.entry_id).or_else(|| {
+                self.resume_index
+                    .and_then(|index| index.checked_sub(1))
+                    .and_then(|index| self.items.get(index).map(|entry| entry.entry_id.clone()))
+            })
         } else {
             None
         };
@@ -827,14 +1003,19 @@ impl QueueStateDto {
             anchor = Some(entry.entry_id.clone());
         }
         self.items.splice(insert_at..insert_at, entries);
+        if !at_next {
+            self.manual_end_ids.extend(added_ids);
+        }
+        if let Some(resume) = self.resume_index.as_mut() {
+            if insert_at < *resume {
+                *resume += added_len;
+            }
+        }
         // Explicit edits retain their existing visibility, including "add to end".
-        self.visible_len = if at_next {
-            self.visible_len
-                .saturating_add(added_len)
-                .min(self.items.len())
-        } else {
-            self.items.len()
-        };
+        self.visible_len = self
+            .visible_len
+            .saturating_add(added_len)
+            .min(self.items.len());
         if self.source.is_none() {
             self.source = Some(QueueSourceDto {
                 kind: "manual".into(),
@@ -861,6 +1042,8 @@ impl QueueStateDto {
         self.items.remove(index);
         self.source_ranks.remove(entry_id);
         self.explicit_placements.remove(entry_id);
+        self.radio_entries.remove(entry_id);
+        self.manual_end_ids.retain(|id| id != entry_id);
         if index < self.visible_len {
             self.visible_len = self.visible_len.saturating_sub(1);
         }
@@ -868,14 +1051,18 @@ impl QueueStateDto {
             if index < current {
                 self.current_index = Some(current - 1);
             }
+        } else if let Some(resume) = self.resume_index.as_mut() {
+            if index < *resume {
+                *resume -= 1;
+            }
         }
         self.revision += 1;
         self.extend_visible_batch();
         Ok(true)
     }
 
-    /// Removes one exact occurrence and, when it was active, selects its successor or wraps
-    /// to the first remaining occurrence. Playback orchestration performs the actual load.
+    /// Removes one exact occurrence. An active tail promotes a reservation or leaves an
+    /// empty playback boundary; it never wraps into previously played history.
     pub fn dismiss_entry(&mut self, entry_id: &str) -> Option<(bool, Option<QueueEntryDto>)> {
         let index = self
             .items
@@ -886,20 +1073,30 @@ impl QueueStateDto {
         self.items.remove(index);
         self.source_ranks.remove(entry_id);
         self.explicit_placements.remove(entry_id);
+        self.radio_entries.remove(entry_id);
+        self.manual_end_ids.retain(|id| id != entry_id);
         if index < self.visible_len {
             self.visible_len = self.visible_len.saturating_sub(1);
         }
         if was_current {
-            self.current_index = if self.items.is_empty() {
-                None
-            } else if index < self.items.len() {
-                Some(index)
-            } else {
-                Some(0)
-            };
+            self.current_index = (index < self.items.len()).then_some(index);
+            self.resume_index = self.current_index.is_none().then_some(index);
+            if self.current_index.is_none() {
+                if let Some(promoted) = self.promote_next_recommendation() {
+                    self.current_index = self
+                        .items
+                        .iter()
+                        .position(|entry| entry.entry_id == promoted.entry_id);
+                    self.resume_index = None;
+                }
+            }
         } else if let Some(current) = self.current_index {
             if index < current {
                 self.current_index = Some(current - 1);
+            }
+        } else if let Some(resume) = self.resume_index.as_mut() {
+            if index < *resume {
+                *resume -= 1;
             }
         }
         self.revision += 1;
@@ -907,7 +1104,32 @@ impl QueueStateDto {
         Some((was_current, self.current()))
     }
 
-    /// Moves one occurrence before another (or to the end), preserving the playing occurrence.
+    /// User drop: repeat a previous/current occurrence, move an existing pending one.
+    /// Validate the destination before admitting a new manual occurrence.
+    pub fn place_entry(&mut self, entry_id: &str, before_entry_id: Option<&str>) -> Result<bool, QueueMoveError> {
+        let from = self.items.iter().position(|entry| entry.entry_id == entry_id)
+            .ok_or(QueueMoveError::EntryNotFound)?;
+        let before = match before_entry_id {
+            Some(id) => self.items.iter().position(|entry| entry.entry_id == id)
+                .ok_or(QueueMoveError::TargetNotFound)?,
+            None => self.items.len(),
+        };
+        let pending_start = self.current_index.map(|index| index + 1)
+            .or(self.resume_index).unwrap_or(0);
+        if before < pending_start { return Err(QueueMoveError::TargetNotFound); }
+        if from >= pending_start { return self.move_entry(entry_id, before_entry_id); }
+        let revision = self.revision;
+        let mut repeated = self.items[from].clone();
+        repeated.queue_index = None;
+        self.enqueue(vec![repeated], false);
+        let added = self.items.last().expect("enqueue admitted one entry").entry_id.clone();
+        // Source and target IDs remain valid; only the new occurrence is moved.
+        self.move_entry(&added, before_entry_id)?;
+        self.revision = revision.wrapping_add(1);
+        Ok(true)
+    }
+
+    /// Internal order edit, preserving the playing occurrence. User drops use place_entry.
     pub fn move_entry(
         &mut self,
         entry_id: &str,
@@ -948,7 +1170,10 @@ impl QueueStateDto {
             }),
         );
         if before_entry_id.is_none() {
-            self.visible_len = self.items.len();
+            self.manual_end_ids.retain(|id| id != entry_id);
+            self.manual_end_ids.push_back(entry_id.to_owned());
+        } else {
+            self.manual_end_ids.retain(|id| id != entry_id);
         }
         self.current_index =
             active_id.and_then(|id| self.items.iter().position(|entry| entry.entry_id == id));
@@ -1042,17 +1267,32 @@ impl QueueStateDto {
         for entry in &mut recommendations {
             entry.normalize_metadata();
         }
-        let mut known = self
-            .items
+        let split = self
+            .current_index
+            .map(|index| index.saturating_add(1))
+            .or(self.resume_index)
+            .unwrap_or(self.items.len())
+            .min(self.items.len());
+        let recent_start = split.saturating_sub(200);
+        let mut known = self.items[recent_start..split]
             .iter()
+            .chain(self.items[split..].iter())
             .map(|entry| entry.video_id.clone())
             .collect::<HashSet<_>>();
+        known.extend(
+            self.recommendations
+                .iter()
+                .map(|entry| entry.video_id.clone()),
+        );
         let mut metadata_changed = false;
         for recommendation in &recommendations {
             for existing in self
                 .items
                 .iter_mut()
-                .filter(|entry| entry.video_id == recommendation.video_id)
+                .chain(self.recommendations.iter_mut())
+                .filter(|entry| {
+                    known.contains(&entry.video_id) && entry.video_id == recommendation.video_id
+                })
             {
                 metadata_changed |= existing.enrich_missing_metadata(recommendation);
             }
@@ -1071,21 +1311,147 @@ impl QueueStateDto {
                 .iter()
                 .map(|entry| entry.entry_id.clone())
                 .collect::<HashSet<_>>();
+            entry_ids.extend(
+                self.recommendations
+                    .iter()
+                    .map(|entry| entry.entry_id.clone()),
+            );
             for entry in &mut added {
                 if entry.entry_id.trim().is_empty() || !entry_ids.insert(entry.entry_id.clone()) {
                     entry.entry_id = new_unique_entry_id(&mut entry_ids);
                 }
-                self.source_ranks
-                    .insert(entry.entry_id.clone(), self.next_source_rank);
-                self.next_source_rank += 1;
             }
-            self.items.extend(added);
+            self.recommendations.extend(added);
             metadata_changed = true;
         }
         if metadata_changed {
             self.revision += 1;
         }
         cursor
+    }
+
+    /// Commits exactly one automatic proposal after every already chosen occurrence.
+    /// The proposal receives a fresh occurrence identity and is anchored at the tail.
+    pub fn promote_next_recommendation(&mut self) -> Option<QueueEntryDto> {
+        let entry_id = self.recommendations.first()?.entry_id.clone();
+        let promoted = self.choose_recommendation(&entry_id, false)?;
+        self.radio_entries.insert(promoted.entry_id.clone());
+        Some(promoted)
+    }
+
+    /// Advances within the proposal stream while retaining chosen pending songs.
+    /// Skipped proposals become navigation history; no audio/listen event is emitted here.
+    pub fn advance_to_recommendation(&mut self, entry_id: &str) -> Option<QueueEntryDto> {
+        let index = self
+            .recommendations
+            .iter()
+            .position(|entry| entry.entry_id == entry_id)?;
+        let mut known = self
+            .items
+            .iter()
+            .chain(self.recommendations.iter())
+            .map(|entry| entry.entry_id.clone())
+            .collect::<HashSet<_>>();
+        let mut selected = self.recommendations.drain(..=index).collect::<Vec<_>>();
+        let insert_at = self
+            .current_index
+            .map(|current| current + 1)
+            .or(self.resume_index)
+            .unwrap_or(self.items.len());
+        let mut anchor = self.current().map(|entry| entry.entry_id).or_else(|| {
+            insert_at
+                .checked_sub(1)
+                .and_then(|previous| self.items.get(previous))
+                .map(|entry| entry.entry_id.clone())
+        });
+        let count = selected.len();
+        for (offset, entry) in selected.iter_mut().enumerate() {
+            entry.entry_id = new_unique_entry_id(&mut known);
+            self.explicit_placements.insert(
+                entry.entry_id.clone(),
+                anchor.map_or(QueuePlacement::End, QueuePlacement::After),
+            );
+            if offset + 1 < count {
+                self.radio_entries.insert(entry.entry_id.clone());
+            }
+            anchor = Some(entry.entry_id.clone());
+        }
+        let chosen = selected.last()?.clone();
+        self.items.splice(insert_at..insert_at, selected);
+        self.visible_len = self.visible_len.saturating_add(count).min(self.items.len());
+        self.revision = self.revision.wrapping_add(1);
+        Some(chosen)
+    }
+
+    /// Commits one explicitly selected proposal at the chosen or manual tail position.
+    pub fn choose_recommendation(
+        &mut self,
+        entry_id: &str,
+        at_next: bool,
+    ) -> Option<QueueEntryDto> {
+        let index = self
+            .recommendations
+            .iter()
+            .position(|entry| entry.entry_id == entry_id)?;
+        let mut entry = self.recommendations.remove(index);
+        let mut known = self
+            .items
+            .iter()
+            .map(|item| item.entry_id.clone())
+            .collect::<HashSet<_>>();
+        known.extend(
+            self.recommendations
+                .iter()
+                .map(|item| item.entry_id.clone()),
+        );
+        entry.entry_id = new_unique_entry_id(&mut known);
+        let insert_at = if at_next {
+            self.current_index
+                .map_or(self.resume_index.unwrap_or(self.items.len()), |index| {
+                    index + 1
+                })
+        } else {
+            self.items.len()
+        };
+        let anchor = if at_next {
+            self.current().map(|item| item.entry_id)
+        } else {
+            self.items.last().map(|item| item.entry_id.clone())
+        };
+        self.explicit_placements.insert(
+            entry.entry_id.clone(),
+            if at_next {
+                anchor.map_or(QueuePlacement::End, QueuePlacement::After)
+            } else {
+                QueuePlacement::End
+            },
+        );
+        self.items.insert(insert_at, entry.clone());
+        self.visible_len = if at_next {
+            self.visible_len.saturating_add(1).min(self.items.len())
+        } else {
+            self.items.len()
+        };
+        if let Some(current) = self.current_index.as_mut() {
+            if insert_at <= *current {
+                *current += 1;
+            }
+        } else if let Some(resume) = self.resume_index.as_mut() {
+            if insert_at < *resume {
+                *resume += 1;
+            }
+        }
+        self.revision = self.revision.wrapping_add(1);
+        Some(entry)
+    }
+
+    pub fn remove_recommendation(&mut self, entry_id: &str) -> Option<QueueEntryDto> {
+        let index = self
+            .recommendations
+            .iter()
+            .position(|entry| entry.entry_id == entry_id)?;
+        self.revision = self.revision.wrapping_add(1);
+        Some(self.recommendations.remove(index))
     }
 }
 
@@ -1094,6 +1460,10 @@ impl QueueStateDto {
 pub(crate) struct DurableQueue {
     queue: QueueStateDto,
     visible_len: usize,
+    #[serde(default)]
+    resume_index: Option<usize>,
+    #[serde(default)]
+    radio_entries: HashSet<String>,
     source_ranks: HashMap<String, usize>,
     next_source_rank: usize,
     explicit_placements: HashMap<String, QueuePlacement>,
@@ -1104,9 +1474,14 @@ impl QueueStateDto {
         for entry in &mut queue.items {
             entry.thumbnail = durable_thumbnail(&entry.thumbnail);
         }
+        for entry in &mut queue.recommendations {
+            entry.thumbnail = durable_thumbnail(&entry.thumbnail);
+        }
         DurableQueue {
             queue,
             visible_len: self.visible_len,
+            resume_index: self.resume_index,
+            radio_entries: self.radio_entries.clone(),
             source_ranks: self.source_ranks.clone(),
             next_source_rank: self.next_source_rank,
             explicit_placements: self.explicit_placements.clone(),
@@ -1124,7 +1499,13 @@ impl QueueStateDto {
             })
             .collect::<Vec<_>>();
         entries.sort_by_key(|(rank, _)| *rank);
-        entries.into_iter().map(|(_, id)| id).collect()
+        let mut ids = entries.into_iter().map(|(_, id)| id).collect::<Vec<_>>();
+        ids.extend(
+            self.recommendations
+                .iter()
+                .map(|entry| entry.video_id.clone()),
+        );
+        ids
     }
     pub(crate) fn filter_radio_recommendations(&mut self, video_id: &str) {
         let current = self.current().map(|entry| entry.entry_id);
@@ -1141,6 +1522,12 @@ impl QueueStateDto {
         for id in remove {
             let _ = self.remove_entry(&id);
         }
+        let previous_len = self.recommendations.len();
+        self.recommendations
+            .retain(|entry| entry.video_id != video_id);
+        if self.recommendations.len() != previous_len {
+            self.revision = self.revision.wrapping_add(1);
+        }
     }
     pub(crate) fn append_source(&mut self, items: Vec<QueueEntryDto>, shuffled: bool) {
         let current = self.current().map(|entry| entry.entry_id);
@@ -1153,6 +1540,7 @@ impl QueueStateDto {
             self.next_source_rank += 1;
             added.push(entry);
         }
+        let added_len = added.len();
         if shuffled {
             // Preserve the shuffled prefix and every manual slot. Only new suffix
             // occurrences are randomized; canonical ranks retain reversibility.
@@ -1180,6 +1568,11 @@ impl QueueStateDto {
                 })
                 .map_or(self.items.len(), |(index, _)| index);
             self.items.splice(insertion..insertion, added);
+            if let Some(resume) = self.resume_index.as_mut() {
+                if insertion <= *resume {
+                    *resume += added_len;
+                }
+            }
         } else {
             self.items.extend(added);
             self.restore_original_order();
@@ -1202,7 +1595,17 @@ impl DurableQueue {
             .iter()
             .map(|entry| entry.entry_id.as_str())
             .collect::<HashSet<_>>();
+        let recommendation_ids = queue
+            .recommendations
+            .iter()
+            .map(|entry| entry.entry_id.as_str())
+            .collect::<HashSet<_>>();
         if ids.len() != queue.items.len()
+            || recommendation_ids.len() != queue.recommendations.len()
+            || queue
+                .recommendations
+                .iter()
+                .any(|entry| ids.contains(entry.entry_id.as_str()))
             || queue
                 .items
                 .iter()
@@ -1210,6 +1613,9 @@ impl DurableQueue {
             || queue
                 .current_index
                 .is_some_and(|index| index >= queue.items.len())
+            || self
+                .resume_index
+                .is_some_and(|index| index > queue.items.len())
         {
             return None;
         }
@@ -1217,11 +1623,22 @@ impl DurableQueue {
             .visible_len
             .max(queue.current_index.map_or(0, |index| index + 1))
             .min(queue.items.len());
+        queue.resume_index = self.resume_index;
+        queue.radio_entries = self.radio_entries;
         queue.source_ranks = self.source_ranks;
         queue.next_source_rank = self.next_source_rank;
         queue.explicit_placements = self.explicit_placements;
+        queue
+            .radio_entries
+            .retain(|entry_id| ids.contains(entry_id.as_str()));
         queue.radio = None;
         for entry in &mut queue.items {
+            entry.normalize_metadata();
+        }
+        for entry in &mut queue.recommendations {
+            if entry.entry_id.is_empty() || entry.video_id.trim().is_empty() {
+                return None;
+            }
             entry.normalize_metadata();
         }
         Some(queue)
@@ -1537,6 +1954,114 @@ mod tests {
         let mut queue = QueueStateDto::default();
         queue.replace(vec![item("same"), item("same"), item("last")], 1, source());
         queue
+    }
+
+    #[test]
+    fn user_drop_repeats_previous_and_active_with_new_ids_and_keeps_audio_owner() {
+        let mut q = queue();
+        let ids = entry_ids(&q.items);
+        let active = q.current().unwrap();
+        let source = q.source.clone();
+        let revision = q.revision;
+        assert_eq!(q.place_entry(&ids[0], Some(&ids[2])), Ok(true));
+        let repeated = q.items[2].clone();
+        assert_eq!(repeated.video_id, q.items[0].video_id);
+        assert!(!ids.contains(&repeated.entry_id));
+        assert_eq!(q.items[0].entry_id, ids[0]);
+        assert_eq!(q.current(), Some(active.clone()));
+        assert_eq!(q.current_index, Some(1));
+        assert_eq!(q.revision, revision + 1);
+        assert_eq!(q.source, source);
+        assert_eq!(q.place_entry(&ids[1], None), Ok(true));
+        let current_copy = q.items.last().unwrap().entry_id.clone();
+        assert_ne!(current_copy, active.entry_id);
+        q.shuffle_after_current();
+        q.restore_original_order();
+        assert_eq!(q.current(), Some(active));
+        assert_eq!(q.items.last().unwrap().entry_id, current_copy);
+        let restored = q.durable().restore().unwrap();
+        assert_eq!(entry_ids(&restored.items), entry_ids(&q.items));
+        assert_eq!(restored.current_index, q.current_index);
+    }
+
+    #[test]
+    fn user_drop_moves_pending_and_rejects_history_or_stale_destinations_atomically() {
+        let mut q = queue();
+        let ids = entry_ids(&q.items);
+        let before = q.clone();
+        assert_eq!(q.place_entry(&ids[0], Some(&ids[1])), Err(QueueMoveError::TargetNotFound));
+        assert_eq!(q.place_entry(&ids[1], Some(&ids[0])), Err(QueueMoveError::TargetNotFound));
+        assert_eq!(q.place_entry(&ids[0], Some("stale")), Err(QueueMoveError::TargetNotFound));
+        assert_eq!(q.place_entry("stale", None), Err(QueueMoveError::EntryNotFound));
+        assert_eq!(q, before);
+        q.enqueue(vec![item("pending")], false);
+        let moved = q.items.last().unwrap().entry_id.clone();
+        let len = q.items.len();
+        assert_eq!(q.place_entry(&moved, Some(&ids[2])), Ok(true));
+        assert_eq!(q.items[2].entry_id, moved);
+        assert_eq!(q.items.len(), len);
+        assert_eq!(q.current().unwrap().entry_id, ids[1]);
+    }
+
+    #[test]
+    fn advancing_to_proposal_commits_skipped_prefix_and_preserves_manual_pending_order() {
+        let mut q = QueueStateDto::default();
+        q.replace(
+            ["a", "b", "c", "d"].into_iter().map(item).collect(),
+            1,
+            source(),
+        );
+        q.merge_radio(["r1", "r2", "r3", "r4"].into_iter().map(item).collect());
+        let ids = entry_ids(&q.items);
+        let target = q.recommendations[2].entry_id.clone();
+        let chosen = q.advance_to_recommendation(&target).unwrap();
+        q.select_entry(&chosen.entry_id).unwrap();
+        assert_eq!(
+            q.items
+                .iter()
+                .map(|entry| entry.video_id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["a", "b", "r1", "r2", "r3", "c", "d"]
+        );
+        assert_eq!(q.current_index, Some(4));
+        assert_eq!(
+            q.recommendations
+                .iter()
+                .map(|entry| entry.video_id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["r4"]
+        );
+        assert_eq!(q.items[0].entry_id, ids[0]);
+        assert_eq!(q.items[1].entry_id, ids[1]);
+        assert_eq!(q.items[5].entry_id, ids[2]);
+        assert!(q.radio_entries.contains(&q.items[2].entry_id));
+        assert!(q.radio_entries.contains(&q.items[3].entry_id));
+        assert!(!q.radio_entries.contains(&chosen.entry_id));
+        q.shuffle_after_current();
+        q.restore_original_order();
+        assert_eq!(q.current().unwrap().entry_id, chosen.entry_id);
+        let restored = q.durable().restore().unwrap();
+        assert_eq!(entry_ids(&restored.items), entry_ids(&q.items));
+        assert_eq!(restored.current_index, q.current_index);
+    }
+
+    #[test]
+    fn play_only_keeps_earlier_proposals_and_stale_advance_is_atomic() {
+        let mut q = queue();
+        q.merge_radio(["r1", "r2", "r3"].into_iter().map(item).collect());
+        let target = q.recommendations[1].entry_id.clone();
+        let chosen = q.choose_recommendation(&target, true).unwrap();
+        q.select_entry(&chosen.entry_id).unwrap();
+        assert_eq!(
+            q.recommendations
+                .iter()
+                .map(|entry| entry.video_id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["r1", "r3"]
+        );
+        let unchanged = q.clone();
+        assert!(q.advance_to_recommendation("stale").is_none());
+        assert_eq!(q, unchanged);
     }
 
     fn entry_ids(items: &[QueueEntryDto]) -> Vec<String> {
@@ -2153,8 +2678,20 @@ mod tests {
             queue.shuffle_after_current_with_seed(42);
             queue.restore_original_order();
             assert_eq!(queue.items, canonical, "source kind: {kind}");
-            assert_eq!(queue.items[3].video_id, "manual");
-            assert_eq!(queue.items.last().unwrap().video_id, "radio-b");
+            let active = queue.current_index.unwrap();
+            assert_eq!(queue.items[active + 1].video_id, "manual");
+            if kind == "radio" {
+                assert_eq!(
+                    queue
+                        .recommendations
+                        .iter()
+                        .map(|entry| entry.video_id.as_str())
+                        .collect::<Vec<_>>(),
+                    ["3", "4", "5", "6", "7", "8", "9", "radio-a", "radio-b"]
+                );
+            } else {
+                assert_eq!(queue.recommendations.len(), 2);
+            }
         }
     }
 
@@ -2417,24 +2954,49 @@ mod tests {
     }
 
     #[test]
-    fn dismissing_last_active_entry_wraps_to_first_remaining_or_leaves_empty_queue() {
+    fn dismissing_last_active_entry_preserves_history_without_wrapping() {
         let mut queue = queue();
         queue.select(2);
         let last = queue.current().unwrap().entry_id;
         let (was_current, next) = queue.dismiss_entry(&last).unwrap();
         assert!(was_current);
-        assert_eq!(next.unwrap().entry_id, queue.items[0].entry_id);
-        assert_eq!(queue.current_index, Some(0));
+        assert!(next.is_none());
+        assert_eq!(queue.items.len(), 2);
+        assert_eq!(queue.current_index, None);
+        assert!(queue.current().is_none());
+        assert_eq!(queue.next_or_first(false), None);
+    }
 
-        let first = queue.current().unwrap().entry_id;
-        let (_, only) = queue.dismiss_entry(&first).unwrap();
-        assert_eq!(only.unwrap().entry_id, queue.items[0].entry_id);
-        let only = queue.current().unwrap().entry_id;
-        let (was_current, next) = queue.dismiss_entry(&only).unwrap();
+    #[test]
+    fn dismissing_radio_tail_promotes_one_reserved_track_instead_of_history() {
+        let mut queue = QueueStateDto::default();
+        let mut radio = source();
+        radio.kind = "radio".into();
+        queue.replace(vec![item("seed"), item("r1"), item("r2")], 0, radio);
+        let active = queue.current().unwrap().entry_id;
+        let (was_current, next) = queue.dismiss_entry(&active).unwrap();
+        assert!(was_current);
+        assert_eq!(next.unwrap().video_id, "r1");
+        assert_eq!(queue.current_index, Some(0));
+        assert_eq!(queue.recommendations.len(), 1);
+    }
+
+    #[test]
+    fn empty_tail_keeps_a_resume_boundary_for_a_later_collection_page() {
+        let mut queue = QueueStateDto::default();
+        queue.replace(vec![item("a"), item("b")], 1, source());
+        let current = queue.current().unwrap().entry_id;
+        let (was_current, next) = queue.dismiss_entry(&current).unwrap();
         assert!(was_current);
         assert!(next.is_none());
-        assert!(queue.items.is_empty());
         assert_eq!(queue.current_index, None);
+        assert_eq!(queue.items.len(), 1); // keep the previous occurrence as history
+        assert!(!queue.has_committed_next());
+
+        queue.append_source(vec![item("c")], false);
+        assert!(queue.has_committed_next());
+        assert_eq!(queue.next_or_first(false).unwrap().video_id, "c");
+        assert_eq!(queue.current_index, None); // the caller commits playback via select_entry
     }
 
     #[test]
@@ -2538,9 +3100,86 @@ mod tests {
         );
         assert_eq!(
             queue
-                .items
+                .recommendations
                 .iter()
                 .filter(|entry| entry.video_id == "radio")
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn radio_duplicate_filter_uses_recent_history_and_all_pending_choices() {
+        let mut queue = QueueStateDto::default();
+        queue.replace(
+            (0..250)
+                .map(|index| item(&format!("song-{index}")))
+                .collect(),
+            249,
+            source(),
+        );
+        queue.enqueue(vec![item("manual-duplicate")], false);
+        let cursor = queue.merge_radio(vec![
+            item("song-0"),
+            item("song-249"),
+            item("manual-duplicate"),
+            item("fresh"),
+        ]);
+        assert_eq!(cursor.as_deref(), Some("fresh"));
+        assert_eq!(
+            queue
+                .recommendations
+                .iter()
+                .map(|entry| entry.video_id.as_str())
+                .collect::<Vec<_>>(),
+            ["song-0", "fresh"]
+        );
+        assert_eq!(
+            queue
+                .items
+                .iter()
+                .filter(|entry| entry.video_id == "manual-duplicate")
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn radio_previous_history_is_capped_at_200_without_pruning_manual_or_collection_rows() {
+        let mut queue = QueueStateDto::default();
+        queue.replace(vec![item("collection")], 0, source());
+        queue.enqueue(vec![item("manual")], false);
+        for index in 0..205 {
+            let entry = item(&format!("radio-{index}"));
+            queue.radio_entries.insert(entry.entry_id.clone());
+            queue.items.push(entry);
+        }
+        queue.current_index = Some(queue.items.len() - 1);
+        let active_id = queue.current().unwrap().entry_id;
+        queue.trim_radio_history();
+        assert_eq!(queue.current().unwrap().entry_id, active_id);
+        let index = queue.current_index.unwrap();
+        assert_eq!(
+            queue.items[..index]
+                .iter()
+                .filter(|entry| queue.radio_entries.contains(&entry.entry_id))
+                .count(),
+            200
+        );
+        assert!(!queue.items.iter().any(|entry| entry.video_id == "radio-0"));
+        assert_eq!(
+            queue
+                .items
+                .iter()
+                .filter(|entry| entry.video_id == "manual")
+                .count(),
+            1
+        );
+        assert_eq!(
+            queue
+                .items
+                .iter()
+                .filter(|entry| entry.video_id == "collection")
                 .count(),
             1
         );
@@ -2595,6 +3234,99 @@ mod tests {
         assert!(queue.radio.as_ref().unwrap().loading);
         queue.replace(vec![item("new")], 0, source());
         assert!(queue.radio.is_none());
+        assert!(queue.recommendations.is_empty());
+    }
+
+    #[test]
+    fn radio_recommendations_stay_reserved_until_one_is_promoted_after_chosen_items() {
+        let mut queue = QueueStateDto::default();
+        let mut radio = source();
+        radio.kind = "radio".into();
+        queue.replace(vec![item("seed"), item("r1"), item("r2")], 0, radio);
+        assert_eq!(
+            queue
+                .items
+                .iter()
+                .map(|entry| entry.video_id.as_str())
+                .collect::<Vec<_>>(),
+            ["seed"]
+        );
+        assert_eq!(
+            queue
+                .recommendations
+                .iter()
+                .map(|entry| entry.video_id.as_str())
+                .collect::<Vec<_>>(),
+            ["r1", "r2"]
+        );
+        queue.enqueue(vec![item("x"), item("y")], false);
+        let old_ids = queue
+            .recommendations
+            .iter()
+            .map(|entry| entry.entry_id.clone())
+            .collect::<Vec<_>>();
+        queue.current_index = Some(2);
+        let promoted = queue.next_or_first(false).unwrap();
+        assert_eq!(promoted.video_id, "r1");
+        assert_ne!(promoted.entry_id, old_ids[0]);
+        assert_eq!(
+            queue
+                .items
+                .iter()
+                .map(|entry| entry.video_id.as_str())
+                .collect::<Vec<_>>(),
+            ["seed", "x", "y", "r1"]
+        );
+        assert_eq!(
+            queue
+                .recommendations
+                .iter()
+                .map(|entry| entry.video_id.as_str())
+                .collect::<Vec<_>>(),
+            ["r2"]
+        );
+        queue.current_index = Some(3);
+        assert_eq!(queue.next_or_first(false).unwrap().video_id, "r2");
+    }
+
+    #[test]
+    fn search_radio_source_splits_provider_page_but_keeps_its_source_kind() {
+        let mut queue = QueueStateDto::default();
+        let mut search_radio = source();
+        search_radio.kind = "search-radio".into();
+        queue.replace(vec![item("seed"), item("r1"), item("r2")], 0, search_radio);
+        assert_eq!(queue.source.as_ref().unwrap().kind, "search-radio");
+        assert_eq!(
+            queue
+                .items
+                .iter()
+                .map(|entry| entry.video_id.as_str())
+                .collect::<Vec<_>>(),
+            ["seed"]
+        );
+        assert_eq!(
+            queue
+                .recommendations
+                .iter()
+                .map(|entry| entry.video_id.as_str())
+                .collect::<Vec<_>>(),
+            ["r1", "r2"]
+        );
+    }
+
+    #[test]
+    fn promotion_preserves_reservation_in_durable_and_snapshot_dtos() {
+        let mut queue = QueueStateDto::default();
+        queue.replace(vec![item("seed")], 0, source());
+        queue.merge_radio(vec![item("proposal")]);
+        let encoded = serde_json::to_string(&queue.snapshot()).unwrap();
+        assert!(encoded.contains("recommendations"));
+        let decoded: QueueStateDto = serde_json::from_str(&encoded).unwrap();
+        assert_eq!(decoded.recommendations[0].video_id, "proposal");
+        assert_eq!(
+            queue.durable().restore().unwrap().recommendations[0].video_id,
+            "proposal"
+        );
     }
 
     #[test]

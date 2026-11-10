@@ -1,0 +1,4 @@
+{
+  "settings.search.showVideos": { "es": "Mostrar videos en búsquedas", "en": "Show videos in search" },
+  "settings.search.showVideos.hint": { "es": "Desactivá esta opción para ocultar videos en los resultados y las sugerencias de búsqueda. Las canciones, los artistas, los álbumes y las listas siguen apareciendo.", "en": "Turn this off to hide videos in search results and suggestions. Songs, artists, albums, and playlists still appear." }
+}

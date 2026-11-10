@@ -219,7 +219,8 @@ final class HomeFeedScrollTests: XCTestCase {
         let base = makeFeed(hasHeader: false)
         let feed = HomeFeedTableView(
             featuredContent: { width in AnyView(Text("Cabecera y destacados \(width)")) },
-            featuredHeight: { 158 + HomeFeaturedLayout.height(width: $0, hasSongs: true, hasAlbums: true, songCount: 27, albumCount: 6) },
+            // Featured cards no longer scale, so model a width-dependent height explicitly.
+            featuredHeight: { 158 + HomeFeaturedLayout.height(width: $0, hasSongs: true, hasAlbums: true, songCount: 27, albumCount: 6) + $0 / 10 },
             sections: base.sections, isObscured: false, revision: 1, selectedChip: nil,
             hasMore: true, isLoadingMore: false, currentTrackID: nil, isPlaying: false,
             player: base.player, router: nil, onNavigate: { _ in }, onLoadMore: {}

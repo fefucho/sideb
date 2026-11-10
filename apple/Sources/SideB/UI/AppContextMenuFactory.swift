@@ -66,7 +66,8 @@ final class AppContextMenuFactory {
         core: SideBCore?,
         origin: MenuOrigin? = nil,
         playlistContext: (playlistId: String, isOwned: Bool)? = nil,
-        onRemoveFromPlaylist: (@MainActor @Sendable (SongItemRecord) -> Void)? = nil
+        onRemoveFromPlaylist: (@MainActor @Sendable (SongItemRecord) -> Void)? = nil,
+        actionInterceptor: ((MenuActionId) -> Bool)? = nil
     ) -> NSMenu {
         let resolvedOrigin: MenuOrigin
         if let origin {
@@ -107,7 +108,8 @@ final class AppContextMenuFactory {
             }
         }
 
-        let executor = MenuActionExecutor(player: player, router: router, core: core, origin: resolvedOrigin)
+        let executor = MenuActionExecutor(player: player, router: router, core: core, origin: resolvedOrigin,
+                                          actionInterceptor: actionInterceptor)
         let target = MenuTarget.song(song)
         let sections = MenuPolicy.resolveSections(target: target, origin: resolvedOrigin, facts: facts)
         return AppKitMenuAdapter.buildNSMenu(sections: sections, target: target, facts: facts, executor: executor)

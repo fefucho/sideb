@@ -6,8 +6,12 @@ struct AnimatedArtworkIdentity: Equatable {
     let sessionID: UUID
     let albumKey: String
 
-    init(track: SongItemRecord, sessionID: UUID) {
+    init(track: SongItemRecord, sessionID: UUID, visualProviderSalt: String? = nil) {
         self.sessionID = sessionID
+        if let visualProviderSalt {
+            albumKey = "extension:\(visualProviderSalt)|track:\(track.videoId)"
+            return
+        }
         let normalize: (String) -> String = {
             $0.precomposedStringWithCanonicalMapping.lowercased()
                 .split(whereSeparator: \.isWhitespace).joined(separator: " ")
@@ -37,14 +41,16 @@ struct AnimatedArtworkRequestFingerprint: Equatable {
     let albumID: String?
     let duration: UInt64?
     let storefront: String
+    let preferTall: Bool
 
-    init(track: SongItemRecord, storefront: String, audioDuration: Double? = nil) {
+    init(track: SongItemRecord, storefront: String, audioDuration: Double? = nil, preferTall: Bool = false) {
         title = track.title
         artist = AnimatedArtworkIdentity.principalArtist(track)
         album = track.album
         albumID = track.albumId
         duration = ExperimentalLyricsRequest.effectiveDurationSeconds(metadata: track.duration, audioDuration: audioDuration)
         self.storefront = storefront
+        self.preferTall = preferTall
     }
 }
 
@@ -80,8 +86,11 @@ struct AnimatedArtworkPolicy: Equatable {
     var playing = false
     var flipped = false
     var constrained = false
+    var suspended = false
+    var prepareWhilePaused = false
     var mustRelease: Bool { !enabled || !presented || constrained }
-    var canPrepare: Bool { !mustRelease && visible && playing && !flipped }
+    var canPrepare: Bool { !mustRelease && visible && playing && !flipped && !suspended }
+    var canResolve: Bool { !mustRelease && visible && !flipped && !suspended && (playing || prepareWhilePaused) }
 }
 
 /// Independent from audio and the lyrics clock. Only first-frame/error KVO touches presentation.
@@ -90,6 +99,11 @@ final class AnimatedArtworkController {
     typealias Fetch = (String, Bool) async throws -> AnimatedArtworkAsset?
     typealias Release = (String) -> Void
     let layer = AVPlayerLayer()
+    public private(set) var resolvedAssetSize: CGSize?
+    var onAssetResolved: ((CGSize) -> Void)?
+    var onFrameUnavailable: (() -> Void)?
+    var onFirstFrame: ((CGSize) -> Void)?
+    var onPreviewResolved: ((NSImage) -> Void)?
     private(set) var identity: AnimatedArtworkIdentity?
     private(set) var policy = AnimatedArtworkPolicy()
     private(set) var requestID: String?
@@ -99,6 +113,7 @@ final class AnimatedArtworkController {
     private var release: Release?
     private(set) var preparation: Task<Void, Never>?
     private var idleRelease: Task<Void, Never>?
+    private var previewTask: Task<Void, Never>?
     private var readyTimeout: Task<Void, Never>?
     private var player: AVQueuePlayer?
     private var looper: AVPlayerLooper?
@@ -115,7 +130,7 @@ final class AnimatedArtworkController {
     private let preparationDelay: Duration
     private let manager: AnimatedArtworkManager
 
-    init(preparationDelay: Duration = .milliseconds(300), manager: AnimatedArtworkManager? = nil) {
+    init(preparationDelay: Duration = .milliseconds(100), manager: AnimatedArtworkManager? = nil) {
         let manager = manager ?? AnimatedArtworkManager.shared
         self.preparationDelay = preparationDelay
         self.manager = manager
@@ -137,13 +152,20 @@ final class AnimatedArtworkController {
             }
         }
         let reopened = !policy.presented && nextPolicy.presented
-        if identity != next || reopened {
+        let orientationChanged = fingerprint?.preferTall != nextFingerprint?.preferTall
+        let sameTrack = identity?.sessionID == next?.sessionID
+            && fingerprint?.title == nextFingerprint?.title
+            && fingerprint?.artist == nextFingerprint?.artist
+            && (fingerprint?.preferTall == nextFingerprint?.preferTall)
+        if (identity != next && !(sameTrack && player != nil)) || reopened || orientationChanged {
             releaseResources()
             identity = next
             attempted = false
             suppressed = false
             preferHevc = true
             fallbackUsed = false
+        } else if sameTrack && player != nil {
+            identity = next
         } else if fingerprint != nextFingerprint && player == nil && !suppressed {
             releaseResources()
             attempted = false
@@ -159,7 +181,7 @@ final class AnimatedArtworkController {
             attempted = false
             return
         }
-        if !nextPolicy.canPrepare {
+        if !nextPolicy.canResolve {
             player?.pause()
             if preparation != nil { releaseResources(); attempted = false }
             scheduleIdleRelease()
@@ -168,8 +190,10 @@ final class AnimatedArtworkController {
         idleRelease?.cancel()
         idleRelease = nil
         if let player {
-            player.play()
-            if presentation.resume(eligible: nextPolicy.canPrepare) { reveal() }
+            // A visible paused portrait still needs its frame. Release after
+            // idle only when its presentation stops being eligible/visible.
+            if nextPolicy.canPrepare { player.play() } else { player.pause() }
+            if presentation.resume(eligible: nextPolicy.canResolve) { reveal() }
         } else if !attempted && !suppressed && !manager.isClearing,
                   let fetch {
             prepare(fetch)
@@ -194,7 +218,7 @@ final class AnimatedArtworkController {
         guard idleRelease == nil, player != nil else { return }
         idleRelease = Task { [weak self] in
             do { try await Task.sleep(for: .seconds(30)) } catch { return }
-            guard let self, !self.policy.canPrepare else { return }
+            guard let self, !self.policy.canResolve else { return }
             self.releaseResources()
             self.attempted = false
         }
@@ -208,6 +232,7 @@ final class AnimatedArtworkController {
         let id = UUID().uuidString
         requestID = id
         let requestedHevc = preferHevc
+        let allowTall = fingerprint?.preferTall ?? false
         preparation = Task { [weak self] in
             do {
                 if debounce { try await Task.sleep(for: self?.preparationDelay ?? .milliseconds(300)) }
@@ -219,11 +244,14 @@ final class AnimatedArtworkController {
                 guard let self, self.generation == revision else { return }
                 self.assetIsHevc = Self.isHevc(asset.codec)
                 do {
-                    let avAsset = try await Self.validate(asset)
+                    let (avAsset, size) = try await Self.validate(asset, allowTall: allowTall)
                     try Task.checkCancellation()
-                    guard self.generation == revision, self.policy.canPrepare else { return }
+                    guard self.generation == revision, self.policy.canResolve else { return }
                     self.preparation = nil
+                    self.resolvedAssetSize = size
+                    self.onAssetResolved?(size)
                     self.install(avAsset, revision: revision)
+                    if self.onPreviewResolved != nil { self.preparePreview(avAsset, revision: revision) }
                 } catch {
                     self.failedAsset(revision)
                 }
@@ -239,7 +267,7 @@ final class AnimatedArtworkController {
     }
 
     /// Stat and AVFoundation loading execute away from the UI executor.
-    nonisolated private static func validate(_ asset: AnimatedArtworkAsset) async throws -> AVAsset {
+    nonisolated private static func validate(_ asset: AnimatedArtworkAsset, allowTall: Bool) async throws -> (AVAsset, CGSize) {
         let path = asset.localPath
         let url = URL(fileURLWithPath: path)
         try await Task.detached(priority: .utility) {
@@ -249,8 +277,12 @@ final class AnimatedArtworkController {
         }.value
         try Task.checkCancellation()
         let avAsset = AVURLAsset(url: url)
+        let isSquare = asset.width == asset.height && asset.width <= 1080 && asset.height <= 1080
+        let isExtension = asset.assetId.hasPrefix("visual-extension:")
+        let isTall = Self.allowsTallDimensions(CGSize(width: CGFloat(asset.width), height: CGFloat(asset.height)), isExtension: isExtension)
         guard asset.sizeBytes <= 128 * 1024 * 1024,
-              asset.width > 0, asset.width == asset.height, asset.width <= 1080,
+              asset.width > 0, asset.height > 0,
+              (isSquare || (allowTall && isTall)),
               asset.frameRate.isFinite, asset.frameRate > 0, asset.frameRate <= 60.1,
               try await avAsset.load(.isPlayable) else { throw ArtworkError.invalidAsset }
         let duration = try await avAsset.load(.duration).seconds
@@ -259,11 +291,23 @@ final class AnimatedArtworkController {
               let track = tracks.first else { throw ArtworkError.invalidAsset }
         let size = try await track.load(.naturalSize)
         let fps = try await track.load(.nominalFrameRate)
-        guard size.width > 0, abs(size.width - size.height) <= 1,
-              max(size.width, size.height) <= 1080, fps > 0, fps <= 60.1 else {
+        let trackIsSquare = abs(size.width - size.height) <= 1 && max(size.width, size.height) <= 1080
+        let trackIsTall = Self.allowsTallDimensions(size, isExtension: isExtension)
+        guard size.width > 0, size.height > 0,
+              (trackIsSquare || (allowTall && trackIsTall)),
+              fps > 0, fps <= 60.1 else {
             throw ArtworkError.invalidAsset
         }
-        return avAsset
+        return (avAsset, size)
+    }
+
+    nonisolated static func allowsTallDimensions(_ size: CGSize, isExtension: Bool) -> Bool {
+        guard size.height > size.width, size.width <= 1080 else { return false }
+        let ratio = size.width / max(1, size.height)
+        if isExtension {
+            return (0.55...0.58).contains(ratio) && size.height <= 1920
+        }
+        return (0.70...0.80).contains(ratio) && size.height <= 1440
     }
 
     private func failedAsset(_ revision: UUID) {
@@ -273,7 +317,7 @@ final class AnimatedArtworkController {
         guard canFallback else { return }
         fallbackUsed = true
         preferHevc = false
-        if policy.canPrepare && !manager.isClearing, let fetch {
+        if policy.canResolve && !manager.isClearing, let fetch {
             prepare(fetch, debounce: false)
         } else {
             attempted = false
@@ -313,7 +357,13 @@ final class AnimatedArtworkController {
             let ready = layer.isReadyForDisplay
             Task { @MainActor [weak self] in
                 guard let self, self.generation == revision, ready else { return }
-                let reveal = self.presentation.receiveFrame(revision: revision, eligible: self.policy.canPrepare)
+                let firstFrame = !self.presentation.hasFrame
+                let reveal = self.presentation.receiveFrame(revision: revision, eligible: self.policy.canResolve)
+                if !self.policy.canPrepare {
+                    self.player?.pause()
+                    if !self.policy.canResolve { self.scheduleIdleRelease() }
+                }
+                if firstFrame, let size = self.resolvedAssetSize { self.onFirstFrame?(size) }
                 self.readyTimeout?.cancel()
                 self.readyTimeout = nil
                 if reveal { self.reveal() }
@@ -355,10 +405,31 @@ final class AnimatedArtworkController {
         queue.play()
     }
 
+    private func preparePreview(_ asset: AVAsset, revision: UUID) {
+        previewTask?.cancel()
+        previewTask = Task { [weak self] in
+            let generator = AVAssetImageGenerator(asset: asset)
+            generator.maximumSize = CGSize(width: 96, height: 128)
+            generator.appliesPreferredTrackTransform = true
+            guard let result = try? await generator.image(at: .zero), !Task.isCancelled,
+                  let self, self.generation == revision else { return }
+            self.onPreviewResolved?(NSImage(cgImage: result.image, size: .zero))
+        }
+    }
+
     private func releaseResources() {
+        let hadFrame = presentation.hasFrame
         generation = UUID()
+        if hadFrame {
+            Task { @MainActor [weak self] in
+                guard let self, !self.presentation.hasFrame else { return }
+                self.onFrameUnavailable?()
+            }
+        }
         preparation?.cancel()
         preparation = nil
+        previewTask?.cancel()
+        previewTask = nil
         idleRelease?.cancel()
         idleRelease = nil
         readyTimeout?.cancel()
@@ -376,6 +447,7 @@ final class AnimatedArtworkController {
         layer.opacity = 0
         CATransaction.commit()
         player = nil
+        resolvedAssetSize = nil
         presentation.reset(revision: generation)
         assetIsHevc = false
         if let requestID { release?(requestID) }

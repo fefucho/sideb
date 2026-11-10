@@ -1,5 +1,7 @@
 # Planes Windows
 
+- [PLAN-023: Paridad Mac → Windows para 1.4.0](PLAN-023-paridad-1.4.0.md) — FIX-302…309: Inicio, búsqueda/artista, reproductor lateral completo, Configuración, host de proveedores visuales y Spotify Canvas preinstalado. svelte-check 0 errores, 605 pruebas frontend aprobadas/3 omitidas/0 fallos; Rust nativa sin compilar en Windows; verify/build/QA en PC pendientes. PAR-046/048–053.
+
 - [PLAN-022: Barra de reproducción, ancho útil y título desplazable](PLAN-022-player-bar-space-marquee.md) — FIX-265/build0024 Release compiled/fuentes estables/cuatro hashes; verify1089pruebas/0fallos. Corazón destacado/dislike, acciones junto al texto corto, separadores invisibles, portada radio2, fullscreen activo sinE y flechas sin bandas negras; Edge16/12/26casos aprobados. Mac030/PAR-044; QA WebView2/Narrator/audio y Mac pendientes.
 
 - [PLAN-021: Indicadores de contenido explícito](PLAN-021-explicit-content-indicators.md) — FIX-262/263/265/PAR-040: metadata por entidad/ID; E proporcional en artista/álbum. Revisión265 excluye también créditos de canción activa fullscreen; barra/cola/Relacionado conservan indicador. Edge12casos/cuatro alternancias aprobados; build0024 Release compilada con verify1089aprobadas. QA nativa/cuenta pendiente.

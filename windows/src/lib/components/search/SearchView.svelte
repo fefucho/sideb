@@ -6,6 +6,8 @@
   import HorizontalNavigation from '../common/HorizontalNavigation.svelte';
   import SearchViewport from './SearchViewport.svelte';
   import {projectSearchDocument, estimateSearchEntryHeight, searchEntryCanFocus} from '$lib/search/document';
+  import {filterSearchPage} from '$lib/search/videoPreferences';
+  import {searchPreferences} from '$lib/search/searchPreferences';
 
   import {t} from '$lib/i18n';
 
@@ -60,10 +62,15 @@
   $effect(()=>{if(active)displayData=data;else dismissSearch();});
   let visiblePlayback=$state(untrack(()=>({currentTrackId,isPlaying})));
   $effect(()=>{if(active)visiblePlayback={currentTrackId,isPlaying};});
-  const entries=$derived(projectSearchDocument(displayData.page));
+  // The video preference projects the provider page only when the page or the preference changes
+  // (cached per DTO object); a hidden page keeps its last projection until it is shown again.
+  let visibleShowVideos=$state(untrack(()=>$searchPreferences));
+  $effect(()=>{if(active)visibleShowVideos=$searchPreferences;});
+  const displayPage=$derived(filterSearchPage(displayData.page,visibleShowVideos));
+  const entries=$derived(projectSearchDocument(displayPage));
   const documentKey=$derived(`${displayData.lastSearchedQuery}:${displayData.params??''}`);
   let expandedSections=$state<Record<string,boolean>>({});
-  $effect(()=>{documentKey;expandedSections={};});
+  $effect(()=>{documentKey;visibleShowVideos;expandedSections={};});
   let composing=false;
   let scrollbarGutter=$state(0);
   $effect(()=>{
@@ -225,7 +232,7 @@
       {/snippet}
     </SearchViewport>
     {#if displayData.page?.continuation}<ControlButton type="button" disabled={displayData.loadingMore} onclick={onLoadMore}>{$t(displayData.loadingMore?'common.loading':'search.provider.load_more')}</ControlButton>{/if}
-    {#if !displayData.isLoading&&!displayData.error&&!displayData.page?.sections.length}<div class="state empty-state"><strong>{$t(displayData.hasSearched?'search.empty.query':'search.empty.prompt_title',[displayData.lastSearchedQuery])}</strong></div>{/if}
+    {#if !displayData.isLoading&&!displayData.error&&!displayPage?.sections.length}<div class="state empty-state"><strong>{$t(displayData.hasSearched?'search.empty.query':'search.empty.prompt_title',[displayData.lastSearchedQuery])}</strong></div>{/if}
   </div>
 </div>
 

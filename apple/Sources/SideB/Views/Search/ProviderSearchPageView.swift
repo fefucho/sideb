@@ -34,6 +34,7 @@ enum ProviderSearchPageEntry {
 @MainActor final class ProviderSearchPageSnapshot {
     private var sourceRevision: UInt?
     private var expansion: Set<String> = []
+    private var showsVideos = true
     private var footerIdentity: [String] = []
     private(set) var sections: [ProviderSearchPreparedSection] = []
     private(set) var entries: [ProviderSearchViewportEntry] = []
@@ -42,17 +43,19 @@ enum ProviderSearchPageEntry {
     private(set) var projectionCount = 0
 
     func prepare(page: SearchPageRecord?, revision: UInt, expanded: Set<String>, loading: Bool,
-                 error: String?, loadingMore: Bool, localization: String) {
+                 error: String?, loadingMore: Bool, localization: String, showVideos: Bool = true) {
         let footer = [String(loading), error ?? "", String(loadingMore), localization]
-        let changedPage = sourceRevision != revision
+        let changedPage = sourceRevision != revision || showsVideos != showVideos
         guard changedPage || expansion != expanded || footerIdentity != footer else { return }
         if changedPage {
             sourceRevision = revision
+            showsVideos = showVideos
             let previous = Dictionary(uniqueKeysWithValues: sections.map { ($0.id, $0) })
-            sections = (page?.sections ?? []).enumerated().map { position, record in
+            sections = (page?.sections ?? []).enumerated().compactMap { position, source in
+                guard let record = SearchPreferences.section(source, showVideos: showVideos) else { return nil }
                 let old = previous["\(position):\(record.id)"]
                 return ProviderSearchPreparedSection(record: record, position: position,
-                    measurementRevision: old?.record == record ? old!.measurementRevision : revision)
+                    measurementRevision: old?.record == record ? old!.measurementRevision : self.revision &+ 1)
             }
             projectionCount += 1
         }
@@ -112,7 +115,8 @@ struct ProviderSearchPageView: View {
     var body: some View {
         let _ = snapshot.prepare(page: page, revision: model.providerPageRevision, expanded: expandedRelatedSections,
             loading: model.isCommittedLoading || model.isMixedLoading,
-            error: pageError, loadingMore: model.isLoadingMore, localization: String(L10n.revision))
+            error: pageError, loadingMore: model.isLoadingMore, localization: String(L10n.revision),
+            showVideos: SearchPreferences.shared.showVideos)
         ProviderSearchViewport(entries: snapshot.entries, resetIdentity: AnyHashable(model.providerRequestIdentity),
             snapshotRevision: AnyHashable(snapshot.revision),
             renderRevision: AnyHashable([player.currentTrack?.videoId ?? "", String(player.isPlaying), String(describing: player.queueManager.context)]),

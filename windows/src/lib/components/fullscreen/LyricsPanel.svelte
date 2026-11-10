@@ -15,6 +15,17 @@
   let rich = $state<KaraokeState>({occurrence:null,status:'idle',refreshing:false,document:null,error:null});
   const controller = new KaraokeController(invoke, next => rich=next);
   const clock = new KaraokeClock(), scroller = new LyricScroller();
+  function readSources():Record<string,string> {
+    try { const value=JSON.parse(localStorage.getItem('lyrics.sources')??'{}'); return value&&typeof value==='object'&&!Array.isArray(value)?value:{}; } catch { return {}; }
+  }
+  let sources=$state<Record<string,string>>(readSources());
+  const source=$derived(sources[playback.currentTrack?.videoId??'']??'auto');
+  function chooseProvider(value:string) {
+    const id=playback.currentTrack?.videoId;if(!id)return;
+    sources={...sources,[id]:value};
+    try { localStorage.setItem('lyrics.sources',JSON.stringify(sources)); } catch {}
+    original=false;
+  }
   let original=$state(false), reading=$state(false), size=$state(36), following=$state(true), menu=$state(false);
   let motion=$state(true), translations=$state(true), offset=$state(0), reduced=$state(false), contrast=$state(false);
   let focus=$state<number|null>(null), gapIndex=$state(-1), container=$state<HTMLDivElement|null>(null), height=$state(0);
@@ -36,7 +47,7 @@
     }catch{return null;}
   });
   const classic=$derived(currentClassic?prepareKaraoke({...currentClassic,instrumental:false,lines:currentClassic.lines.map(line=>({...line,words:[]}))},duration):null);
-  const lyricDocument=$derived(!original&&rich.occurrence===occurrence&&rich.document?rich.document:classic);
+  const lyricDocument=$derived(!original&&rich.occurrence===occurrence&&rich.document?rich.document:(!original&&source!=='auto'?null:classic));
   const isRich=$derived(!original&&rich.occurrence===occurrence&&!!rich.document);
   const geometry=$derived(JSON.stringify([size,reading,translations]));
   const effectiveOffset=$derived(isRich?offset:0);
@@ -57,8 +68,8 @@
   function selectSource() { if(!original){original=true;offset=0;}else useNew(); }
   function closeMenu() { menu=false; menuButton?.focus(); }
   $effect(()=>{
-    const track=playback.currentTrack,key=occurrence,seconds=duration,enabled=active&&!original;
-    untrack(()=>controller.setContext(track,key,seconds,enabled));
+    const track=playback.currentTrack,key=occurrence,seconds=duration,enabled=active&&!original,provider=source;
+    untrack(()=>controller.setContext(track,key,seconds,enabled,provider));
   });
   $effect(()=>{
     const key=occurrence;
@@ -117,6 +128,10 @@
     <button bind:this={menuButton} class="more" type="button" aria-label={$t('lyrics.experimental.options')} aria-expanded={menu} onclick={()=>menu=!menu}>•••</button>
     {#if menu}
       <div class="menu" role="dialog" tabindex="-1" aria-label={$t('lyrics.experimental.options')} onkeydown={event=>{if(event.key==='Escape'){event.preventDefault();event.stopPropagation();closeMenu();}}}>
+        <label>{$t('lyrics.source.choose')}<select value={source} onchange={event=>chooseProvider(event.currentTarget.value)}>
+          <option value="auto">{$t('lyrics.source.auto')}</option>
+          {#each [['lyricsplus','LyricsPlus'],['boidu','Boidu'],['lrclib','LRCLIB'],['netease','Netease'],['qq','QQ Music'],['kugou','Kugou']] as [id,label]}<option value={id}>{label}</option>{/each}
+        </select></label>
         <button type="button" aria-pressed={!reading} onclick={()=>reading=false}>{$t('lyrics.experimental.mode.karaoke')}</button>
         <button type="button" aria-pressed={reading} onclick={()=>reading=true}>{$t('lyrics.experimental.mode.reading')}</button>
         <label>{$t('lyrics.experimental.textSize')}<input aria-label={$t('lyrics.experimental.textSize')} type="range" min="20" max="48" step="2" bind:value={size}/><output>{size}</output></label>
@@ -166,7 +181,7 @@
     </div>
     {#if !following}<button type="button" class="follow" onclick={resume}>{$t('fullscreen.returnToCurrentLyric')}</button>{/if}
   {:else}
-    <div class="message" role="status"><p>{$t(!playback.currentTrack?'lyrics.experimental.noTrack':rich.status==='loading'||classicState.status==='loading'?'lyrics.experimental.loading':rich.status==='error'||classicState.status==='error'?'lyrics.experimental.error':'lyrics.experimental.empty')}</p><button type="button" disabled={busy} onclick={()=>{useNew();onRetry();}}>{$t('lyrics.experimental.retry')}</button></div>
+    <div class="message" role="status"><p>{$t(!playback.currentTrack?'lyrics.experimental.noTrack':rich.status==='loading'||(source==='auto'&&classicState.status==='loading')?'lyrics.experimental.loading':rich.status==='error'||(source==='auto'&&classicState.status==='error')?'lyrics.experimental.error':source!=='auto'?'lyrics.source.empty':'lyrics.experimental.empty')}</p><button type="button" disabled={busy} onclick={()=>{useNew();onRetry();}}>{$t('lyrics.experimental.retry')}</button></div>
   {/if}
   {#if rich.error&&lyricDocument&&!original}<span class="refresh-error" role="status">{$t('lyrics.experimental.error')}</span>{/if}
   {#if playback.seekError}<span class="refresh-error" role="status">{playback.seekError}</span>{/if}

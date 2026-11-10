@@ -10,16 +10,17 @@
   import CompactSongCard from './CompactSongCard.svelte';
   interface Props {active?:boolean;section:HomeSectionPresentation;onOpenAlbum?: (id:string)=>void;onOpenPlaylist?:(id:string)=>void;onOpenArtist?:(id:string)=>void;onPlaySong?:(item:HomeItemDto)=>void;onOpenCatalog?:(id:string,params:string|null,title:string)=>void;initialScroll?:number;onScroll?:(offset:number)=>void}
   let {active=true,section,onOpenAlbum,onOpenPlaylist,onOpenArtist,onPlaySong,onOpenCatalog,initialScroll=0,onScroll}:Props=$props();
-  let track:HTMLDivElement;let width=$state(1000);let left=$state(0);let narrow=$state(false);
+  let track:HTMLDivElement;let kept=0;let width=$state(1000);let left=$state(0);let narrow=$state(false);
   const compact=$derived(section.style==='compactSong');const rows=$derived(compact?4:1);
   const itemWidth=$derived(compact?(narrow?286:330):(narrow?140:160));const stride=$derived(itemWidth+16);
   const columns=$derived(Math.ceil(section.items.length/rows));
   const start=$derived(Math.max(0,Math.floor(left/stride)-1));const end=$derived(Math.min(columns,Math.ceil((left+width)/stride)+1));
   const visible=$derived(section.items.slice(start*rows,end*rows));
-  function sync(){if(!track||!active)return;width=track.clientWidth;left=track.scrollLeft;narrow=(track.closest('.home')?.getBoundingClientRect().width??width)<760;onScroll?.(left);}
-  $effect(()=>{if(active){const frame=requestAnimationFrame(sync);return()=>cancelAnimationFrame(frame);}});
+  function sync(){if(!track||!active)return;width=track.clientWidth;left=track.scrollLeft;kept=left;narrow=(track.closest('.home')?.getBoundingClientRect().width??width)<760;onScroll?.(left);}
+  // A retained (display:none) page resets its scrollers; put this one back where the user left it.
+  $effect(()=>{if(active){const frame=requestAnimationFrame(()=>{if(track&&Math.abs(track.scrollLeft-kept)>1)track.scrollLeft=kept;sync();});return()=>cancelAnimationFrame(frame);}});
   let mounted=$state(false);
-  onMount(()=>{track.scrollLeft=initialScroll;mounted=true;});
+  onMount(()=>{track.scrollLeft=initialScroll;kept=initialScroll;mounted=true;});
   $effect(()=>{if(!mounted||!active)return;sync();const observer=new ResizeObserver(sync);observer.observe(track);return()=>observer.disconnect();});
 </script>
 <section class="shelf" aria-label={providerHeading(section.title, $language)}>

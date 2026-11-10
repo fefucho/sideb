@@ -1,0 +1,15 @@
+{
+  "protocolVersion": 1,
+  "id": "spotify-canvas",
+  "name": "Spotify Canvas",
+  "version": "0.2.0",
+  "platform": "windows-x64",
+  "executable": "sideb-spotify-canvas.exe",
+  "credentialLabel": "Spotify Web Player Bearer",
+  "auth": {
+    "type": "webview",
+    "loginUrl": "https://accounts.spotify.com/login?continue=https%3A%2F%2Fopen.spotify.com%2F",
+    "targetHost": "open.spotify.com",
+    "tokenUrl": "https://open.spotify.com/get_access_token?reason=transport&productType=web_player"
+  }
+}

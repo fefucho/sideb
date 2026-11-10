@@ -1,7 +1,7 @@
 <script lang="ts">
   import { t , language, resolveMessage } from '$lib/i18n';
   import MoreIcon from '$lib/components/common/MoreIcon.svelte';
-  import { tick } from "svelte";
+  import { tick, type Snippet } from "svelte";
   import PlayerIcon from "./PlayerIcon.svelte";
   import type { PlaybackStateDto } from "$lib/types";
   import ArtistCredits from "$lib/components/ArtistCredits.svelte";
@@ -34,17 +34,25 @@
     onOpenArtist?: (id: string) => void;
     onOpenAlbum?: (id: string) => void;
     onOpenMenu?: (event: MouseEvent) => void;
+    /** `sidebar` is the vertical footer of the lateral panel: same actions and state, other geometry. */
+    variant?: 'bar' | 'sidebar';
+    /** Rendered above the progress (lateral Lyrics/Queue show the track metadata there). */
+    sidebarLead?: Snippet;
+    /** Rendered between the transport and the volume row (up next / lyrics sample). */
+    sidebarTail?: Snippet;
+    /** Fixed gap between progress and transport in px; null lets it flex. */
+    sidebarSpacing?: number | null;
   }
 
-  let { playback, onTogglePlayback, onRetryPlayback, onPrevious, onNext, onSeek, onVolumeChange, onVolumeSurfaceChange, onSetMuted, onSetShuffle, onSetRepeat, fullscreenOpen, onToggleFullscreen, loggedIn = false, liked = false, likePending = false, onToggleLike, onDislike, likeError = null, selectedPanel, lyricsMode = 'synced', onSelectPanel, onOpenArtist, onOpenAlbum, onOpenMenu }: Props = $props();
+  let { playback, onTogglePlayback, onRetryPlayback, onPrevious, onNext, onSeek, onVolumeChange, onVolumeSurfaceChange, onSetMuted, onSetShuffle, onSetRepeat, fullscreenOpen, onToggleFullscreen, loggedIn = false, liked = false, likePending = false, onToggleLike, onDislike, likeError = null, selectedPanel, lyricsMode = 'synced', onSelectPanel, onOpenArtist, onOpenAlbum, onOpenMenu, variant = 'bar', sidebarLead, sidebarTail, sidebarSpacing = null }: Props = $props();
   let seekDraft = $state<{ generation: number; value: number } | null>(null);
   let failedArtworkUrl = $state<string | null>(null);
   let volumeOpen = $state(false);
   let volumeDragging = $state(false);
   let volumeHovered = false;
   let lastAudibleVolume = 100;
-  let volumeRoot: HTMLDivElement;
-  let volumeButton: HTMLButtonElement;
+  let volumeRoot = $state<HTMLDivElement>();
+  let volumeButton = $state<HTMLButtonElement>();
   let volumeSlider = $state<HTMLInputElement>();
   let shufflePending = $state(false);
   let repeatPending = $state(false);
@@ -147,24 +155,85 @@
 
 <svelte:window onpointerdown={dismissVolume} onpointerup={finishVolumeDrag} onpointercancel={finishVolumeDrag} onkeydown={handleVolumeKeydown} onblur={() => { volumeDragging = false; closeVolume(); }} />
 
+{#snippet seekSlider()}
+  <input
+    class="seek"
+    type="range"
+    min="0"
+    max={duration || 1}
+    step="0.25"
+    value={position}
+    style={`--fill:${duration ? (position / duration) * 100 : 0}%`}
+    disabled={!hasTrack || playback.isLoading || duration === 0}
+    oninput={handleSeekInput}
+    onchange={handleSeekChange}
+    aria-label={$t('windows.ui.playbackPosition')}
+  />
+{/snippet}
+
+{#snippet transportButtons(sidebar: boolean)}
+  <button type="button" class="mode-toggle" class:mode-active={playback.isShuffle} disabled={shufflePending} aria-pressed={playback.isShuffle} aria-label={playback.isShuffle ? $t('windows.ui.disableShuffle') : $t('windows.ui.enableShuffle')} title={playback.isShuffle ? $t('windows.ui.disableShuffle') : $t('windows.ui.enableShuffle')} onclick={setShuffle}><PlayerIcon name="shuffle" size={sidebar ? 18 : 17} /></button>
+  <button type="button" class="skip" onclick={onPrevious} disabled={!hasTrack} aria-label={$t('menu.previous_track')} title={$t('menu.previous_track')}>
+    <PlayerIcon name="backward" size={sidebar ? 32 : 20} />
+  </button>
+  <button
+    type="button"
+    class="play-toggle"
+    class:errored={!!playback.error}
+    disabled={!hasTrack}
+    onclick={playback.error ? onRetryPlayback : onTogglePlayback}
+    aria-label={playLabel}
+    title={playLabel}
+  >
+    {#if playback.isLoading}
+      <span class="spinner" aria-hidden="true"></span>
+    {:else if playback.error}
+      <svg viewBox="0 0 24 24" aria-hidden="true" fill="none"><path d="M20 11a8 8 0 1 1-2.36-5.66M20 4v5h-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" /></svg>
+    {:else if playback.isPlaying}
+      <svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><rect x="5" y="3" width="5" height="18" rx="1" /><rect x="14" y="3" width="5" height="18" rx="1" /></svg>
+    {:else}
+      <svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><path d="M6 3.5a1 1 0 0 1 1.51-.86l13 8.5a1 1 0 0 1 0 1.72l-13 8.5A1 1 0 0 1 6 20.5z" /></svg>
+    {/if}
+  </button>
+  <button type="button" class="skip" onclick={onNext} disabled={!hasTrack || !canNext} aria-label={$t('windows.ui.nextTrack')} title={$t('windows.ui.nextTrack')}>
+    <PlayerIcon name="forward" size={sidebar ? 32 : 20} />
+  </button>
+  <button type="button" class="mode-toggle" class:mode-active={playback.isRepeat} disabled={repeatPending} aria-pressed={playback.isRepeat} aria-label={playback.isRepeat ? $t('player.repeat.disable') : $t('player.repeat.enable')} title={playback.isRepeat ? $t('player.repeat.disable') : $t('player.repeat.enable')} onclick={setRepeat}><PlayerIcon name={sidebar && playback.isRepeat ? 'repeat-one' : 'repeat'} size={sidebar ? 18 : 17} /></button>
+{/snippet}
+
+{#if variant === 'sidebar'}
+<div class="sidebar-controls" role="group" aria-label={$t('windows.ui.audioPlayer')}>
+  {#if sidebarLead}{@render sidebarLead()}{/if}
+  <div class="side-top" aria-hidden="true"></div>
+  <div class="side-progress">
+    {@render seekSlider()}
+    <div class="side-times">
+      <span class="time" aria-label={$t('windows.player.elapsed', [formatTime(position)])}>{formatTime(position)}</span>
+      <span class="time time-end" aria-label={$t('windows.player.duration', [formatTime(duration)])}>{formatTime(duration)}</span>
+    </div>
+  </div>
+  <div class="side-gap" style:flex={sidebarSpacing === null ? '1 1 10px' : `0 0 ${sidebarSpacing}px`} aria-hidden="true"></div>
+  <div class="transport side-transport">{@render transportButtons(true)}</div>
+  {#if sidebarTail}<div class="side-tail">{@render sidebarTail()}</div>{:else}<div class="side-flex" aria-hidden="true"></div>{/if}
+  <div class="side-volume" role="group" aria-label={$t('windows.ui.volumeControl')} data-volume-scroll="bar" data-volume-dragging={volumeDragging ? '' : undefined}>
+    <button type="button" class="volume-mute side-mute" aria-label={volume > 0 ? $t('player.mute') : $t('player.unmute')} title={`${volume > 0 ? $t('player.mute') : $t('player.unmute')} · ${Math.round(volume)}%`} onclick={toggleMute}>
+      <svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><path d="M3 9v6h4l5 5V4L7 9" />
+        {#if volume === 0}<path d="m16 9 5 6m0-6-5 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+        {:else}<path d="M15.5 12a4 4 0 0 0-2-3.46v6.92a4 4 0 0 0 2-3.46" />{/if}
+      </svg>
+    </button>
+    <input class="side-volume-slider" type="range" min="0" max="100" step="1" value={volume} style={`--fill:${volume}%`}
+      oninput={handleVolumeInput} onpointerdown={() => volumeDragging = true}
+      aria-label={$t('windows.ui.volume')} aria-valuetext={$t('windows.player.volumeValue', [Math.round(volume)])} />
+  </div>
+</div>
+{:else}
 <footer class="player-bar" aria-label={$t('windows.ui.audioPlayer')}>
   <div class="progress">
     <span class="time" aria-label={$t('windows.player.elapsed', [formatTime(position)])}>
       {formatTime(position)}
     </span>
-    <input
-      class="seek"
-      type="range"
-      min="0"
-      max={duration || 1}
-      step="0.25"
-      value={position}
-      style={`--fill:${duration ? (position / duration) * 100 : 0}%`}
-      disabled={!hasTrack || playback.isLoading || duration === 0}
-      oninput={handleSeekInput}
-      onchange={handleSeekChange}
-      aria-label={$t('windows.ui.playbackPosition')}
-    />
+    {@render seekSlider()}
     <span class="time time-end" aria-label={$t('windows.player.duration', [formatTime(duration)])}>
       {formatTime(duration)}
     </span>
@@ -172,33 +241,7 @@
 
   <div class="main-row">
     <div class="transport">
-      <button type="button" class="mode-toggle" class:mode-active={playback.isShuffle} disabled={shufflePending} aria-pressed={playback.isShuffle} aria-label={playback.isShuffle ? $t('windows.ui.disableShuffle') : $t('windows.ui.enableShuffle')} title={playback.isShuffle ? $t('windows.ui.disableShuffle') : $t('windows.ui.enableShuffle')} onclick={setShuffle}><PlayerIcon name="shuffle" size={17} /></button>
-      <button type="button" class="skip" onclick={onPrevious} disabled={!hasTrack} aria-label={$t('menu.previous_track')} title={$t('menu.previous_track')}>
-        <PlayerIcon name="backward" size={20} />
-      </button>
-      <button
-        type="button"
-        class="play-toggle"
-        class:errored={!!playback.error}
-        disabled={!hasTrack}
-        onclick={playback.error ? onRetryPlayback : onTogglePlayback}
-        aria-label={playLabel}
-        title={playLabel}
-      >
-        {#if playback.isLoading}
-          <span class="spinner" aria-hidden="true"></span>
-        {:else if playback.error}
-          <svg viewBox="0 0 24 24" aria-hidden="true" fill="none"><path d="M20 11a8 8 0 1 1-2.36-5.66M20 4v5h-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" /></svg>
-        {:else if playback.isPlaying}
-          <svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><rect x="5" y="3" width="5" height="18" rx="1" /><rect x="14" y="3" width="5" height="18" rx="1" /></svg>
-        {:else}
-          <svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><path d="M6 3.5a1 1 0 0 1 1.51-.86l13 8.5a1 1 0 0 1 0 1.72l-13 8.5A1 1 0 0 1 6 20.5z" /></svg>
-        {/if}
-      </button>
-      <button type="button" class="skip" onclick={onNext} disabled={!hasTrack || !canNext} aria-label={$t('windows.ui.nextTrack')} title={$t('windows.ui.nextTrack')}>
-        <PlayerIcon name="forward" size={20} />
-      </button>
-      <button type="button" class="mode-toggle" class:mode-active={playback.isRepeat} disabled={repeatPending} aria-pressed={playback.isRepeat} aria-label={playback.isRepeat ? $t('player.repeat.disable') : $t('player.repeat.enable')} title={playback.isRepeat ? $t('player.repeat.disable') : $t('player.repeat.enable')} onclick={setRepeat}><PlayerIcon name="repeat" size={17} /></button>
+      {@render transportButtons(false)}
     </div>
 
     <div class="track" role="group" aria-label={$t('windows.ui.currentSong')} oncontextmenu={(event) => { if (onOpenMenu && hasTrack) { event.preventDefault(); onOpenMenu(event); } }}>
@@ -301,6 +344,7 @@
     </div>
   </div>
 </footer>
+{/if}
 
 <style>
   .player-bar {
@@ -525,6 +569,27 @@
     transition: background-color var(--control-transition), color var(--control-transition), box-shadow var(--control-transition);
   }
   .skip:active:not(:disabled), .mode-toggle:active:not(:disabled), .panel-shortcut:active:not(:disabled), .more-toggle:active:not(:disabled), .volume-toggle:active:not(:disabled), .volume-mute:active:not(:disabled), .fullscreen-toggle:active:not(:disabled) { background-color: rgb(255 255 255 / 6%); }
+
+
+  /* Lateral panel footer (PLAN-023 W3). Same state and actions as the bar, vertical geometry. */
+  .sidebar-controls { box-sizing: border-box; display: flex; flex-direction: column; width: 100%; height: 100%; min-height: 0; padding: 12px 20px; color: #f5f5f6; }
+  .sidebar-controls .side-top { flex: 1 1 10px; min-height: 0; }
+  .side-progress { display: flex; flex: none; flex-direction: column; gap: 6px; }
+  .side-progress .seek { height: 4px; }
+  .side-times { display: flex; justify-content: space-between; }
+  .side-times .time { font-size: 11px; }
+  .side-transport { flex: none; justify-content: center; gap: 17px; width: 100%; }
+  .side-transport .skip, .side-transport .mode-toggle { width: 40px; height: 48px; border-radius: 12px; }
+  .side-transport .play-toggle { width: 78px; height: 78px; flex: 0 0 78px; padding: 20px; }
+  .side-transport .play-toggle svg { width: 34px; height: 34px; }
+  .side-transport .spinner { width: 28px; height: 28px; border-width: 3px; }
+  .side-tail { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; padding: 16px 0 12px; }
+  .side-flex { flex: 1 1 8px; min-height: 8px; }
+  .side-volume { display: flex; flex: none; align-items: center; gap: 12px; height: 32px; color: rgb(255 255 255 / 80%); }
+  .side-mute { width: 28px; height: 28px; flex: 0 0 28px; color: inherit; }
+  .side-volume-slider { flex: 1; height: 4px; border-radius: 999px; background: linear-gradient(to right, #fff 0 var(--fill), rgb(255 255 255 / 20%) var(--fill) 100%); }
+  .side-volume-slider::-webkit-slider-thumb { width: 12px; height: 12px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgb(0 0 0 / 50%); }
+  .side-volume-slider::-moz-range-thumb { width: 12px; height: 12px; border: 0; border-radius: 50%; background: #fff; }
 
   button:focus-visible, input:focus-visible {
     outline: 2px solid #d06c70;

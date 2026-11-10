@@ -32,10 +32,10 @@ export function menuItems(target: MenuTarget, origin: MenuOrigin, facts: MenuFac
   if (target.kind === 'song') {
     const { song, entryId } = target;
     const current = !!origin.nowPlaying || !!entryId && entryId === origin.currentQueueEntryId;
-    if (!origin.nowPlaying && !current) add('play', 'Reproducir ahora');
+    if (!origin.nowPlaying && !current) add('play', target.queueRecommendationId ? 'Play suggestion now' : 'Reproducir ahora');
     if (song.videoId) add('radio', 'Iniciar radio');
-    if (!current) add('enqueue-next', 'Reproducir a continuación');
-    add('enqueue-end', 'Agregar a la cola'); group();
+    if (!current) add('enqueue-next', target.queueRecommendationId ? 'Choose as next' : 'Reproducir a continuación');
+    add('enqueue-end', target.queueRecommendationId ? 'Add suggestion to end' : 'Agregar a la cola'); group();
     add('like', facts.likedIds.has(song.videoId) ? 'Quitar Me gusta' : 'Me gusta', auth);
     const token = song.library?.inLibrary ? song.library.removeToken : song.library?.addToken;
     if (token) add('save-song', song.library?.inLibrary ? 'Quitar de la biblioteca' : 'Guardar en biblioteca', auth);
@@ -47,7 +47,8 @@ export function menuItems(target: MenuTarget, origin: MenuOrigin, facts: MenuFac
     if (song.artistId && !(origin.view === 'artist_detail' && origin.currentId === song.artistId)) add('open-artist', 'Ir al artista');
     add('share', 'Copiar enlace');
     if (origin.playlistOwned && origin.playlistId && song.setVideoId) { group(); add('remove-playlist', 'Quitar de esta playlist', auth); }
-    if (entryId && !current) { group(); add('remove-queue', 'Quitar de la cola'); }
+    if (target.queueRecommendationId) { group(); add('remove-queue', 'Dismiss suggestion'); }
+    else if (entryId && !current) { group(); add('remove-queue', 'Quitar de la cola'); }
     return result;
   }
   const id = target.card.id.replace(/^VL/, '');

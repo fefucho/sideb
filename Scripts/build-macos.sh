@@ -92,6 +92,30 @@ if [ -f "$CREDITS_SRC" ]; then
     cp "$CREDITS_SRC" "$RESOURCES_DIR/Credits.rtf"
 fi
 
+# Proveedor visual opcional (Spotify Canvas): viaja instalado de fábrica pero retirable. El host Mac lo copia
+# a Application Support al primer arranque SIN activarlo; el usuario puede desinstalarlo. Si se retira el
+# directorio extensions/spotify-canvas del código fuente, la app se compila igual, sin el proveedor.
+PROVIDER_SRC="$SCRIPT_DIR/../extensions/spotify-canvas"
+if [ -f "$PROVIDER_SRC/Cargo.toml" ]; then
+    echo "📦 Compilando proveedor visual (macOS arm64)..."
+    cargo build --release --locked --target aarch64-apple-darwin \
+        --manifest-path "$PROVIDER_SRC/Cargo.toml" --target-dir "$PROVIDER_SRC/target"
+    PROVIDER_BIN="$PROVIDER_SRC/target/aarch64-apple-darwin/release/sideb-spotify-canvas"
+    PROVIDER_DEST="$RESOURCES_DIR/VisualProviders/spotify-canvas"
+    # Se firma una copia antes de empaquetar (el host copia el ejecutable fuera del bundle), de modo que
+    # SHA256SUMS describe exactamente el binario firmado que viaja en la app.
+    PROVIDER_STAGE="$(mktemp -d)"
+    trap 'rm -rf "$PROVIDER_STAGE"' EXIT
+    cp "$PROVIDER_BIN" "$PROVIDER_STAGE/sideb-spotify-canvas"
+    codesign --force -s - "$PROVIDER_STAGE/sideb-spotify-canvas"
+    node "$SCRIPT_DIR/package-visual-provider.mjs" --platform macos-arm64 \
+        --binary "$PROVIDER_STAGE/sideb-spotify-canvas" --out "$PROVIDER_DEST"
+    codesign --verify --strict "$PROVIDER_DEST/sideb-spotify-canvas"
+    echo "🎧 Proveedor visual incluido: $PROVIDER_DEST"
+else
+    echo "ℹ️  Sin extensions/spotify-canvas: la app se empaqueta sin proveedor visual."
+fi
+
 # Creamos un Info.plist básico
 cat > "$APP_DIR/Contents/Info.plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>

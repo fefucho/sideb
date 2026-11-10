@@ -1,0 +1,429 @@
+{
+  "consulted_on": "2026-11-01",
+  "timezone": "America/Montevideo",
+  "method": "Public GitHub connector, web primary sources, local source inspection. Static review only; no third-party code executed, no cookies or media download.",
+  "sideb_base_commit": "f7fc4796cd70fef4712dab10253690bdbb0b234f",
+  "sideb_worktree": "Existing uncommitted changes present; product files read only in this research.",
+  "repositories": [
+    {
+      "repository": "squeeeezy/Wolframe-spotify-canvas",
+      "url": "https://github.com/squeeeezy/Wolframe-spotify-canvas",
+      "branch": "main",
+      "head_sha": "e3b78a48e99137ed7313dfd6a09bb553fa15b23d",
+      "last_commit_utc": "2026-01-22T01:24:39Z",
+      "commit_url": "https://github.com/squeeeezy/Wolframe-spotify-canvas/commit/e3b78a48e99137ed7313dfd6a09bb553fa15b23d",
+      "license_declared": "MIT",
+      "version_in_manifest_or_code": "1.0.4",
+      "registry_publication_verified": false
+    },
+    {
+      "repository": "AliAkhtari78/SpotifyScraper",
+      "url": "https://github.com/AliAkhtari78/SpotifyScraper",
+      "branch": "master",
+      "head_sha": "9cbf05aa4963bac3684bb941270dcb62fc851ab7",
+      "last_commit_utc": "2026-06-26T09:58:24Z",
+      "commit_url": "https://github.com/AliAkhtari78/SpotifyScraper/commit/9cbf05aa4963bac3684bb941270dcb62fc851ab7",
+      "license_declared": "MIT",
+      "version_in_manifest_or_code": "3.9.2",
+      "registry_publication_verified": false
+    },
+    {
+      "repository": "InstaZDLL/spotify-canvas-downloader",
+      "url": "https://github.com/InstaZDLL/spotify-canvas-downloader",
+      "branch": "main",
+      "head_sha": "a4b464bd96de81357d33a871c7c25ce144301a94",
+      "last_commit_utc": "2026-07-31T22:11:22Z",
+      "commit_url": "https://github.com/InstaZDLL/spotify-canvas-downloader/commit/a4b464bd96de81357d33a871c7c25ce144301a94",
+      "license_declared": "GPL-3.0-only",
+      "version_in_manifest_or_code": "0.2.0",
+      "registry_publication_verified": false
+    },
+    {
+      "repository": "Delitefully/spotify-canvas-downloader",
+      "url": "https://github.com/Delitefully/spotify-canvas-downloader",
+      "branch": "master",
+      "head_sha": "8833588deeb5661bb6acdf8533a0489f8b9bc260",
+      "last_commit_utc": "2025-06-02T20:58:59Z",
+      "commit_url": "https://github.com/Delitefully/spotify-canvas-downloader/commit/8833588deeb5661bb6acdf8533a0489f8b9bc260",
+      "license_declared": "GPL-3.0",
+      "version_in_manifest_or_code": null,
+      "registry_publication_verified": false
+    },
+    {
+      "repository": "Paxsenix0/Spotify-Canvas-API",
+      "url": "https://github.com/Paxsenix0/Spotify-Canvas-API",
+      "branch": "main",
+      "head_sha": "881fb2380882e6312cb8ea03923763ede5234ea7",
+      "last_commit_utc": "2025-12-02T03:15:07Z",
+      "commit_url": "https://github.com/Paxsenix0/Spotify-Canvas-API/commit/881fb2380882e6312cb8ea03923763ede5234ea7",
+      "license_declared": "GPL-3.0",
+      "version_in_manifest_or_code": null,
+      "registry_publication_verified": false
+    },
+    {
+      "repository": "qbnu/yt-dlp-SpotifyCanvas",
+      "url": "https://github.com/qbnu/yt-dlp-SpotifyCanvas",
+      "branch": "main",
+      "head_sha": "a49ae20383cef8a3dc5f9c7a2504eb35649dfb7a",
+      "last_commit_utc": "2025-11-21T02:58:10Z",
+      "commit_url": "https://github.com/qbnu/yt-dlp-SpotifyCanvas/commit/a49ae20383cef8a3dc5f9c7a2504eb35649dfb7a",
+      "license_declared": "Unlicense",
+      "version_in_manifest_or_code": "2025.11.21",
+      "registry_publication_verified": false
+    },
+    {
+      "repository": "mwndl/spcanvas",
+      "url": "https://github.com/mwndl/spcanvas",
+      "branch": "main",
+      "head_sha": "09348e48d3ab874a2630e32d9cbe30005297f1d6",
+      "last_commit_utc": "2025-07-07T00:18:26Z",
+      "commit_url": "https://github.com/mwndl/spcanvas/commit/09348e48d3ab874a2630e32d9cbe30005297f1d6",
+      "license_declared": "MIT",
+      "version_in_manifest_or_code": null,
+      "registry_publication_verified": false
+    },
+    {
+      "repository": "bartleyg/my-spotify-canvas",
+      "url": "https://github.com/bartleyg/my-spotify-canvas",
+      "branch": "master",
+      "head_sha": "1dd0ba72976d08c0b63d5fce622669f34c4c789f",
+      "last_commit_utc": "2022-05-09T18:45:00Z",
+      "commit_url": "https://github.com/bartleyg/my-spotify-canvas/commit/1dd0ba72976d08c0b63d5fce622669f34c4c789f",
+      "license_declared": null,
+      "version_in_manifest_or_code": null,
+      "registry_publication_verified": false
+    }
+  ],
+  "secondary_sources": [
+    {
+      "url": "https://github.com/itsmeow/Spicetify-Canvas",
+      "archived": true,
+      "license_declared": "MIT",
+      "reviewed": "Repository metadata and README; depends on Spotify client."
+    },
+    {
+      "url": "https://github.com/pkgFiles/CanvasSync/blob/v2/README.md",
+      "license_declared": "MIT",
+      "reviewed": "README says CanvasSyncSpotify subproject missing; not buildable out of box."
+    },
+    {
+      "url": "https://www.canvasdownloader.com/about",
+      "reviewed": "Service identifies itself as unaffiliated; credits bartleyg. No download tested."
+    }
+  ],
+  "ci_caveat": {
+    "issue": "https://github.com/AliAkhtari78/SpotifyScraper/issues/166",
+    "run": "https://github.com/AliAkhtari78/SpotifyScraper/actions/runs/41272623718",
+    "jobs_api": "https://api.github.com/repos/AliAkhtari78/SpotifyScraper/actions/runs/41272623718/jobs",
+    "jobs": [
+      {
+        "name": "lyrics",
+        "conclusion": "success",
+        "steps": [
+          {
+            "name": "Set up job",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run uv sync --locked",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run live lyrics tests (skipped without the cookie)",
+            "conclusion": "success"
+          },
+          {
+            "name": "Post Run astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39",
+            "conclusion": "success"
+          },
+          {
+            "name": "Post Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0",
+            "conclusion": "success"
+          },
+          {
+            "name": "Complete job",
+            "conclusion": "success"
+          }
+        ]
+      },
+      {
+        "name": "live",
+        "conclusion": "failure",
+        "steps": [
+          {
+            "name": "Set up job",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run uv sync --locked --all-extras",
+            "conclusion": "success"
+          },
+          {
+            "name": "Run uv run playwright install --with-deps chromium",
+            "conclusion": "failure"
+          },
+          {
+            "name": "Run live tests (excluding lyrics)",
+            "conclusion": "skipped"
+          },
+          {
+            "name": "Post Run astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39",
+            "conclusion": "skipped"
+          },
+          {
+            "name": "Post Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0",
+            "conclusion": "success"
+          },
+          {
+            "name": "Complete job",
+            "conclusion": "success"
+          }
+        ]
+      },
+      {
+        "name": "report",
+        "conclusion": "success",
+        "steps": [
+          {
+            "name": "Set up job",
+            "conclusion": "success"
+          },
+          {
+            "name": "Open or update the breakage issue on failure",
+            "conclusion": "success"
+          },
+          {
+            "name": "Close the breakage issue on recovery",
+            "conclusion": "skipped"
+          },
+          {
+            "name": "Complete job",
+            "conclusion": "success"
+          }
+        ]
+      }
+    ],
+    "conclusion": "Live job failed during Chromium install. This does not demonstrate Canvas endpoint failure. Canvas live tests require a cookie and may skip or accept absence."
+  },
+  "official_sources": [
+    "https://support.spotify.com/us/artists/article/canvas-guidelines/",
+    "https://developer.spotify.com/documentation/web-api/reference/get-track",
+    "https://developer.spotify.com/policy",
+    "https://developer.spotify.com/terms"
+  ],
+  "limitations": [
+    "No authenticated positive/negative Canvas requests.",
+    "No media decoding/playback tests.",
+    "No third-party test suites run.",
+    "No complete transitive dependency/license audit.",
+    "crates.io/docs.rs pages inaccessible via web tool; Cargo version is not verified registry availability."
+  ],
+  "reviewed_files": [
+    {
+      "repository": "squeeeezy/Wolframe-spotify-canvas",
+      "path": "src/lib.rs",
+      "commit": "e3b78a48e99137ed7313dfd6a09bb553fa15b23d",
+      "url": "https://github.com/squeeeezy/Wolframe-spotify-canvas/blob/e3b78a48e99137ed7313dfd6a09bb553fa15b23d/src/lib.rs",
+      "content_read": true
+    },
+    {
+      "repository": "squeeeezy/Wolframe-spotify-canvas",
+      "path": "src/token.rs",
+      "commit": "e3b78a48e99137ed7313dfd6a09bb553fa15b23d",
+      "url": "https://github.com/squeeeezy/Wolframe-spotify-canvas/blob/e3b78a48e99137ed7313dfd6a09bb553fa15b23d/src/token.rs",
+      "content_read": true
+    },
+    {
+      "repository": "squeeeezy/Wolframe-spotify-canvas",
+      "path": "Cargo.toml",
+      "commit": "e3b78a48e99137ed7313dfd6a09bb553fa15b23d",
+      "url": "https://github.com/squeeeezy/Wolframe-spotify-canvas/blob/e3b78a48e99137ed7313dfd6a09bb553fa15b23d/Cargo.toml",
+      "content_read": true
+    },
+    {
+      "repository": "squeeeezy/Wolframe-spotify-canvas",
+      "path": "src/error.rs",
+      "commit": "e3b78a48e99137ed7313dfd6a09bb553fa15b23d",
+      "url": "https://github.com/squeeeezy/Wolframe-spotify-canvas/blob/e3b78a48e99137ed7313dfd6a09bb553fa15b23d/src/error.rs",
+      "content_read": true
+    },
+    {
+      "repository": "squeeeezy/Wolframe-spotify-canvas",
+      "path": ".github/workflows/ci.yml",
+      "commit": "e3b78a48e99137ed7313dfd6a09bb553fa15b23d",
+      "url": "https://github.com/squeeeezy/Wolframe-spotify-canvas/blob/e3b78a48e99137ed7313dfd6a09bb553fa15b23d/.github/workflows/ci.yml",
+      "content_read": true
+    },
+    {
+      "repository": "squeeeezy/Wolframe-spotify-canvas",
+      "path": "LICENSE",
+      "commit": "e3b78a48e99137ed7313dfd6a09bb553fa15b23d",
+      "url": "https://github.com/squeeeezy/Wolframe-spotify-canvas/blob/e3b78a48e99137ed7313dfd6a09bb553fa15b23d/LICENSE",
+      "content_read": true
+    },
+    {
+      "repository": "AliAkhtari78/SpotifyScraper",
+      "path": "src/spotify_scraper/auth/cookies.py",
+      "commit": "9cbf05aa4963bac3684bb941270dcb62fc851ab7",
+      "url": "https://github.com/AliAkhtari78/SpotifyScraper/blob/9cbf05aa4963bac3684bb941270dcb62fc851ab7/src/spotify_scraper/auth/cookies.py",
+      "content_read": true
+    },
+    {
+      "repository": "AliAkhtari78/SpotifyScraper",
+      "path": "src/spotify_scraper/auth/session.py",
+      "commit": "9cbf05aa4963bac3684bb941270dcb62fc851ab7",
+      "url": "https://github.com/AliAkhtari78/SpotifyScraper/blob/9cbf05aa4963bac3684bb941270dcb62fc851ab7/src/spotify_scraper/auth/session.py",
+      "content_read": true
+    },
+    {
+      "repository": "AliAkhtari78/SpotifyScraper",
+      "path": "src/spotify_scraper/auth/totp.py",
+      "commit": "9cbf05aa4963bac3684bb941270dcb62fc851ab7",
+      "url": "https://github.com/AliAkhtari78/SpotifyScraper/blob/9cbf05aa4963bac3684bb941270dcb62fc851ab7/src/spotify_scraper/auth/totp.py",
+      "content_read": true
+    },
+    {
+      "repository": "AliAkhtari78/SpotifyScraper",
+      "path": "src/spotify_scraper/api/pathfinder.py",
+      "commit": "9cbf05aa4963bac3684bb941270dcb62fc851ab7",
+      "url": "https://github.com/AliAkhtari78/SpotifyScraper/blob/9cbf05aa4963bac3684bb941270dcb62fc851ab7/src/spotify_scraper/api/pathfinder.py",
+      "content_read": true
+    },
+    {
+      "repository": "AliAkhtari78/SpotifyScraper",
+      "path": "src/spotify_scraper/media/video.py",
+      "commit": "9cbf05aa4963bac3684bb941270dcb62fc851ab7",
+      "url": "https://github.com/AliAkhtari78/SpotifyScraper/blob/9cbf05aa4963bac3684bb941270dcb62fc851ab7/src/spotify_scraper/media/video.py",
+      "content_read": true
+    },
+    {
+      "repository": "AliAkhtari78/SpotifyScraper",
+      "path": "src/spotify_scraper/models/canvas.py",
+      "commit": "9cbf05aa4963bac3684bb941270dcb62fc851ab7",
+      "url": "https://github.com/AliAkhtari78/SpotifyScraper/blob/9cbf05aa4963bac3684bb941270dcb62fc851ab7/src/spotify_scraper/models/canvas.py",
+      "content_read": true
+    },
+    {
+      "repository": "AliAkhtari78/SpotifyScraper",
+      "path": "src/spotify_scraper/api/parse_entities.py",
+      "commit": "9cbf05aa4963bac3684bb941270dcb62fc851ab7",
+      "url": "https://github.com/AliAkhtari78/SpotifyScraper/blob/9cbf05aa4963bac3684bb941270dcb62fc851ab7/src/spotify_scraper/api/parse_entities.py",
+      "content_read": true
+    },
+    {
+      "repository": "AliAkhtari78/SpotifyScraper",
+      "path": "tests/unit/test_client_canvas.py",
+      "commit": "9cbf05aa4963bac3684bb941270dcb62fc851ab7",
+      "url": "https://github.com/AliAkhtari78/SpotifyScraper/blob/9cbf05aa4963bac3684bb941270dcb62fc851ab7/tests/unit/test_client_canvas.py",
+      "content_read": true
+    },
+    {
+      "repository": "AliAkhtari78/SpotifyScraper",
+      "path": "tests/live/test_visual.py",
+      "commit": "9cbf05aa4963bac3684bb941270dcb62fc851ab7",
+      "url": "https://github.com/AliAkhtari78/SpotifyScraper/blob/9cbf05aa4963bac3684bb941270dcb62fc851ab7/tests/live/test_visual.py",
+      "content_read": true
+    },
+    {
+      "repository": "AliAkhtari78/SpotifyScraper",
+      "path": ".github/workflows/canary.yml",
+      "commit": "9cbf05aa4963bac3684bb941270dcb62fc851ab7",
+      "url": "https://github.com/AliAkhtari78/SpotifyScraper/blob/9cbf05aa4963bac3684bb941270dcb62fc851ab7/.github/workflows/canary.yml",
+      "content_read": true
+    },
+    {
+      "repository": "AliAkhtari78/SpotifyScraper",
+      "path": "LICENSE",
+      "commit": "9cbf05aa4963bac3684bb941270dcb62fc851ab7",
+      "url": "https://github.com/AliAkhtari78/SpotifyScraper/blob/9cbf05aa4963bac3684bb941270dcb62fc851ab7/LICENSE",
+      "content_read": true
+    },
+    {
+      "repository": "InstaZDLL/spotify-canvas-downloader",
+      "path": "src/spotify/canvas.rs",
+      "commit": "a4b464bd96de81357d33a871c7c25ce144301a94",
+      "url": "https://github.com/InstaZDLL/spotify-canvas-downloader/blob/a4b464bd96de81357d33a871c7c25ce144301a94/src/spotify/canvas.rs",
+      "content_read": true
+    },
+    {
+      "repository": "InstaZDLL/spotify-canvas-downloader",
+      "path": "src/spotify/auth.rs",
+      "commit": "a4b464bd96de81357d33a871c7c25ce144301a94",
+      "url": "https://github.com/InstaZDLL/spotify-canvas-downloader/blob/a4b464bd96de81357d33a871c7c25ce144301a94/src/spotify/auth.rs",
+      "content_read": true
+    },
+    {
+      "repository": "InstaZDLL/spotify-canvas-downloader",
+      "path": "tests/live_spotify.rs",
+      "commit": "a4b464bd96de81357d33a871c7c25ce144301a94",
+      "url": "https://github.com/InstaZDLL/spotify-canvas-downloader/blob/a4b464bd96de81357d33a871c7c25ce144301a94/tests/live_spotify.rs",
+      "content_read": true
+    },
+    {
+      "repository": "InstaZDLL/spotify-canvas-downloader",
+      "path": "Cargo.toml",
+      "commit": "a4b464bd96de81357d33a871c7c25ce144301a94",
+      "url": "https://github.com/InstaZDLL/spotify-canvas-downloader/blob/a4b464bd96de81357d33a871c7c25ce144301a94/Cargo.toml",
+      "content_read": true
+    },
+    {
+      "repository": "Delitefully/spotify-canvas-downloader",
+      "path": "src/auth.py",
+      "commit": "8833588deeb5661bb6acdf8533a0489f8b9bc260",
+      "url": "https://github.com/Delitefully/spotify-canvas-downloader/blob/8833588deeb5661bb6acdf8533a0489f8b9bc260/src/auth.py",
+      "content_read": true
+    },
+    {
+      "repository": "Delitefully/spotify-canvas-downloader",
+      "path": "src/canvas.py",
+      "commit": "8833588deeb5661bb6acdf8533a0489f8b9bc260",
+      "url": "https://github.com/Delitefully/spotify-canvas-downloader/blob/8833588deeb5661bb6acdf8533a0489f8b9bc260/src/canvas.py",
+      "content_read": true
+    },
+    {
+      "repository": "Paxsenix0/Spotify-Canvas-API",
+      "path": "services/spotifyAuthService.js",
+      "commit": "881fb2380882e6312cb8ea03923763ede5234ea7",
+      "url": "https://github.com/Paxsenix0/Spotify-Canvas-API/blob/881fb2380882e6312cb8ea03923763ede5234ea7/services/spotifyAuthService.js",
+      "content_read": true
+    },
+    {
+      "repository": "Paxsenix0/Spotify-Canvas-API",
+      "path": "services/spotifyCanvasService.js",
+      "commit": "881fb2380882e6312cb8ea03923763ede5234ea7",
+      "url": "https://github.com/Paxsenix0/Spotify-Canvas-API/blob/881fb2380882e6312cb8ea03923763ede5234ea7/services/spotifyCanvasService.js",
+      "content_read": true
+    },
+    {
+      "repository": "qbnu/yt-dlp-SpotifyCanvas",
+      "path": "yt_dlp_plugins/extractor/spotifycanvas.py",
+      "commit": "a49ae20383cef8a3dc5f9c7a2504eb35649dfb7a",
+      "url": "https://github.com/qbnu/yt-dlp-SpotifyCanvas/blob/a49ae20383cef8a3dc5f9c7a2504eb35649dfb7a/yt_dlp_plugins/extractor/spotifycanvas.py",
+      "content_read": true
+    },
+    {
+      "repository": "mwndl/spcanvas",
+      "path": "src/lib/canvasService.js",
+      "commit": "09348e48d3ab874a2630e32d9cbe30005297f1d6",
+      "url": "https://github.com/mwndl/spcanvas/blob/09348e48d3ab874a2630e32d9cbe30005297f1d6/src/lib/canvasService.js",
+      "content_read": true
+    }
+  ]
+}
+

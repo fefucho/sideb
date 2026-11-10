@@ -151,13 +151,71 @@ struct ExperimentalLyricsMaskStop: Equatable, Sendable {
 final class LyricsPresentationSettings {
     var fontSize: CGFloat = ExperimentalLyricsStyle.defaultFontSize
     var mode = ExperimentalLyricsMode.karaoke
-    var followState = ExperimentalLyricsFollowState()
+    var followState = ExperimentalLyricsFollowState() {
+        didSet {
+            syncCoordinatorsWithFollowState()
+        }
+    }
+    var experimentalScroll = LyricsScrollCoordinator<String>()
+    var classicScroll = LyricsScrollCoordinator<Int>()
+    var readingAnchor: String? {
+        get { experimentalScroll.manualAnchor }
+        set {
+            if let newValue {
+                if experimentalScroll.isFollowing {
+                    experimentalScroll.userScrolled()
+                    followState.userScrolled()
+                }
+                experimentalScroll.recordVisibleManualAnchor(newValue)
+            }
+        }
+    }
+    var classicReadingAnchor: Int? {
+        get { classicScroll.manualAnchor }
+        set {
+            if let newValue {
+                if classicScroll.isFollowing {
+                    classicScroll.userScrolled()
+                    followState.userScrolled()
+                }
+                classicScroll.recordVisibleManualAnchor(newValue)
+            }
+        }
+    }
     private var playbackIdentity: UUID?
 
     func activate(_ identity: UUID) {
-        guard playbackIdentity != identity else { return }
+        let isNewIdentity = playbackIdentity != identity
         playbackIdentity = identity
+        experimentalScroll.activate(playbackIdentity: identity)
+        classicScroll.activate(playbackIdentity: identity)
+        if isNewIdentity {
+            followState.documentChanged(newOccurrence: true)
+        }
+    }
+
+    /// A new visit follows playback; renderer/layout changes within a visit retain reading position.
+    func beginPanelVisit() {
+        experimentalScroll.documentChanged(newOccurrence: true)
+        classicScroll.documentChanged(newOccurrence: true)
         followState.documentChanged(newOccurrence: true)
+    }
+
+    func noteUserScrolled() {
+        experimentalScroll.userScrolled()
+        classicScroll.userScrolled()
+        followState.userScrolled()
+    }
+
+    func noteFollowResumed() {
+        followState.resume()
+    }
+
+    private func syncCoordinatorsWithFollowState() {
+        if !followState.isFollowing {
+            if experimentalScroll.isFollowing { experimentalScroll.userScrolled() }
+            if classicScroll.isFollowing { classicScroll.userScrolled() }
+        }
     }
 }
 

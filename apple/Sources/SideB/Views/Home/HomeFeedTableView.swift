@@ -23,6 +23,7 @@ struct HomeFeedHostedContentIdentity: Equatable {
     let loadingCollectionID: String?
     let coreIdentity: ObjectIdentifier?
     let homeIdentity: ObjectIdentifier?
+    var playbackSidebarPresented: Bool = false
 }
 
 /// Controls already mounted in SwiftUI dispatch through the current native

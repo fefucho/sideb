@@ -27,14 +27,16 @@ enum ExperimentalLyricsFetchFixture {
         let request = ExperimentalLyricsRequest(playbackID: UUID(), sessionID: UUID(),
             videoID: "synthetic-cues", title: "Synthetic track", artist: "Fixture artist",
             album: nil, durationSeconds: 230)
-        let result = try await ExperimentalLyricsController.fetch(request, forceRefresh: false,
-            core: ExperimentalLyricsFetchCore(info: info(withWords: withWords)))
+        let core = ExperimentalLyricsFetchCore(info: info(withWords: withWords))
+        let result = try await ExperimentalLyricsController.fetch(request, forceRefresh: false, core: core)
+        #expect(core.settings["lyrics_source:synthetic-cues"] == "auto")
         return try #require(result)
     }
 }
 
 final class ExperimentalLyricsFetchCore: SideBCore, @unchecked Sendable {
     private let info: KaraokeLyricsInfo?
+    private(set) var settings: [String: String] = [:]
 
     required init(unsafeFromRawPointer pointer: UnsafeMutableRawPointer) {
         info = nil
@@ -45,6 +47,9 @@ final class ExperimentalLyricsFetchCore: SideBCore, @unchecked Sendable {
         self.info = info
         super.init(noPointer: .init())
     }
+
+    // A no-pointer fixture must intercept every Rust call used by the adapter.
+    override func setSetting(key: String, value: String) { settings[key] = value }
 
     override func getKaraokeLyrics(videoId: String, title: String, artist: String,
         album: String?, durationSecs: UInt64?, forceRefresh: Bool) async throws -> KaraokeLyricsInfo? {

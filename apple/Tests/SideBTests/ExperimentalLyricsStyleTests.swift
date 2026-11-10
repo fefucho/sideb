@@ -51,6 +51,32 @@ struct ExperimentalLyricsStyleTests {
         #expect(LyricsPanelSelection.usesOriginal(prefersNew: false, hasNew: true, hasOriginal: true))
     }
 
+    @Test("Reentering the lyrics panel follows playback without resetting appearance")
+    @MainActor
+    func panelVisitResumesFollowing() {
+        let settings = LyricsPresentationSettings()
+        let identity = UUID()
+        settings.activate(identity)
+        settings.fontSize = 28
+        settings.mode = .reading
+        settings.noteUserScrolled()
+        settings.readingAnchor = "line:11"
+        settings.classicReadingAnchor = 11
+        let stale = settings.experimentalScroll.restoreOnAppear(activeTarget: "line:3", canFollow: true)
+        settings.beginPanelVisit()
+        settings.activate(identity)
+        #expect(settings.followState.isFollowing)
+        #expect(settings.experimentalScroll.isFollowing)
+        #expect(settings.classicScroll.isFollowing)
+        #expect(settings.readingAnchor == nil)
+        #expect(settings.classicReadingAnchor == nil)
+        #expect(settings.fontSize == 28)
+        #expect(settings.mode == .reading)
+        #expect(settings.experimentalScroll.restoreOnAppear(activeTarget: "line:8", canFollow: true)?.target == "line:8")
+        #expect(settings.classicScroll.restoreOnAppear(activeTarget: 8, canFollow: true)?.target == 8)
+        if let stale { #expect(!settings.experimentalScroll.canApply(stale)) }
+    }
+
     @Test("Switching renderers preserves manual reading and appearance within the same playback")
     @MainActor
     func sharedPresentation() {

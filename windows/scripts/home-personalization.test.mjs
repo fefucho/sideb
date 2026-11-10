@@ -9,7 +9,7 @@ const module = async (file, replacements={}) => {let source=compile(await readFi
 const settingsUrl=await module('home/settings'), presentationUrl=await module('home/presentation'),playerUrl=await module('player/controller');
 const { defaults, decodeSettings, categoryKey, orderCategories, accountSettingsKey, missingHomeSources }=await import(settingsUrl);
 const songMetadataUrl=await module('home/songMetadata');
-const { projectHome, featuredCapacity, featuredLayout, visibleSignature }=await import(await module('home/featured',{'./settings':settingsUrl,'./presentation':presentationUrl,'./songMetadata':songMetadataUrl}));
+const { projectHome, visibleSignature }=await import(await module('home/featured',{'./settings':settingsUrl,'./presentation':presentationUrl,'./songMetadata':songMetadataUrl}));
 const { sourceActive, occurrenceActive, mediaRequestCurrent, mediaKey }=await import(await module('player/media',{'../home/settings':settingsUrl,'./controller':playerUrl}));
 const { prepareCollectionPlayback, emptyPlaybackData }=await import(playerUrl);
 const { HomeController }=await import(await module('home/controller',{'./presentation':presentationUrl}));
@@ -17,7 +17,7 @@ const metadataUrl=await module('home/collectionMetadata');
 const { metadataFor, durationSeconds, providerDuration }=await import(metadataUrl);
 const { FeaturedMetadataController }=await import(await module('home/metadata',{'./collectionMetadata':metadataUrl}));
 const { samplePalette, choosePalette, hueDistance, ambientColor, neutral, collectionAmbientFrame }=await import(await module('home/ambient'));
-const { alignCollectionAnchor, featuredSelectionKey, FeaturedWheelInput }=await import(await module('home/pages'));
+const { featuredSelectionKey }=await import(await module('home/pages'));
 const item=(id,kind='album')=>({id,kind,title:id,subtitle:null,thumbnail:null,duration:null,artists:null,artistId:null,albumId:null,album:null,artistRuns:[],explicit:false});
 const section=(title,items)=>({title,items,format:'largeCards',moreBrowseId:null,moreParams:null});
 const albumPage=(count)=>[section('Albums for you',Array.from({length:count},(_,i)=>item(`album-${i}`)))];
@@ -47,7 +47,6 @@ test('disabled named families cannot return through Other Home; all disabled is 
 });
 test('12/24/36 distinct exposed collections; narrowing returns displaced items to shelves',()=>{
  for(const capacity of [2,4,6]){const p=projectHome(albumPage(40),null,defaults(),'albums',capacity);assert.equal(p.collections.length,6*capacity);assert.equal(p.shelves[0].items.length,40-6*capacity);}
- assert.equal(featuredCapacity(600),2);assert.equal(featuredCapacity(1600),4);assert.equal(featuredCapacity(2400),6);
 });
 test('hiding a category does not remove its featured candidates or Speed Dial',()=>{
  const s=defaults();s.hiddenCategoryKeys=['recommended-albums','quick-picks'];
@@ -176,21 +175,11 @@ test('Mac ambient thumbnails use two distinct collection covers before two disti
  const rows=[section('Albums for you',[{...item('a'),thumbnail:'a'},{...item('b'),thumbnail:'a'},{...item('c'),thumbnail:'b'}]),section('Quick picks',[{...item('s','song'),thumbnail:'s'},{...item('t','song'),thumbnail:'s'},{...item('u','song'),thumbnail:'t'}])];
  assert.deepEqual(projectHome(rows,null,defaults(),'albums',2).artwork,['a','b','s','t']);
 });
-test('Mac HomeFeaturedLayout matches 1100/1512/1920 capacities and gives absent dial space back',()=>{
- for(const [width,columns]of [[1100,1],[1512,2],[1920,3]]){const layout=featuredLayout(width,27,6);assert.equal(layout.columns,columns);assert.equal(layout.songWidth,448);assert.equal(layout.cardHeight,212);}
- assert.equal(featuredLayout(1100,0,20).capacity,4);assert.equal(featuredLayout(1920,9,1).capacity,2);assert.equal(featuredLayout(899,9,20).wide,false);assert.equal(featuredLayout(900,9,20).wide,true);
-});
-test('Mac pages keep exact anchor through narrowing/widening and category changes do not reset featured pages',()=>{
- const ids=['a','b','c','d','e','f'];let anchor=alignCollectionAnchor(2,ids,ids);
- assert.equal(Math.floor(anchor/4),0);anchor=alignCollectionAnchor(anchor,ids,ids);assert.equal(Math.floor(anchor/2),1);
- assert.equal(alignCollectionAnchor(2,ids,['new',...ids]),3);assert.equal(alignCollectionAnchor(2,ids,['a']),0);
+test('category changes do not reset the featured rails; session, chip, kind and sources do',()=>{
  const base=defaults(),changed={...base,categoryOrderMode:'youtube',hiddenCategoryKeys:['quick-picks']};
  assert.equal(featuredSelectionKey('a',null,'albums',base),featuredSelectionKey('a',null,'albums',changed));
  assert.notEqual(featuredSelectionKey('a',null,'albums',base),featuredSelectionKey('b',null,'albums',base));
  assert.notEqual(featuredSelectionKey('a',null,'albums',base),featuredSelectionKey('a',null,'albums',{...base,albumSources:[]}));
-});
-test('Mac horizontal wheel pages once per gesture and vertical motion passes through',()=>{
- const wheel=new FeaturedWheelInput();assert.equal(wheel.consume(5,30,1000),null);assert.equal(wheel.consume(25,1,1100),null);assert.equal(wheel.consume(25,1,1200),1);assert.equal(wheel.consume(100,1,1300),null);assert.equal(wheel.consume(-50,0,1700),-1);
 });
 test('Mac preload stops as soon as all enabled named sources arrive and ignores supplemental sources',async()=>{
  const settings={...defaults(),albumSources:[{source:'recommendedAlbums',enabled:true},{source:'recentAlbums',enabled:true}]};let data,calls=0;

@@ -3,11 +3,12 @@
  import type {BrowseCardDto,SongDto} from '$lib/types';
  import type {SearchPreviewData} from '$lib/search/preview';
  import {visibleSearchSuggestions} from '$lib/search/suggestions';
+ import {searchPreferences} from '$lib/search/searchPreferences';
  import SearchSongRow from './SearchSongRow.svelte';
  import MediaCard from '../common/MediaCard.svelte';
  interface Props {preview:SearchPreviewData;variant?:'spotlight'|'dropdown';onSelectCard:(card:BrowseCardDto)=>void;onPlaySong:(song:SongDto)=>void;onQuery?:(query:string)=>void;onRemoveSuggestion?:(token:string)=>void}
  let {preview,onSelectCard,onPlaySong,onQuery,onRemoveSuggestion}:Props=$props();
- const entries=$derived(visibleSearchSuggestions(preview.entries??[],preview.query));
+ const entries=$derived(visibleSearchSuggestions(preview.entries??[],preview.query,$searchPreferences));
  function open(kind:string,id:string){onSelectCard({kind,id,title:'',subtitle:null,thumbnail:null,duration:null});}
 </script>
 {#if preview.isLoading}<div class="state" role="status">{$t('search.loading.quick')}</div>{/if}

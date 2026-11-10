@@ -34,4 +34,6 @@
   Delete "$INSTDIR\vulkan-1.dll"
   Delete "$INSTDIR\VulkanRT-License.txt"
   RMDir /r "$INSTDIR\_up_"
+  ; Proveedor visual opcional preinstalado (Spotify Canvas): carga útil de la app, se retira con ella.
+  RMDir /r "$INSTDIR\provider"
 !macroend

@@ -12,6 +12,7 @@ fn request() -> super::super::AnimatedArtworkRequest {
         duration_secs: Some(200),
         storefront: "us".into(),
         prefer_hevc: true,
+        prefer_tall: false,
     }
 }
 
@@ -126,7 +127,7 @@ fn song_fallback_requires_artist_album_title_and_near_duration() {
 fn schema_distinguishes_valid_null_from_unknown_and_other_collection() {
     assert!(matches!(
         parse_album_html(ALBUM_HTML.as_bytes(), "1499378108").unwrap(),
-        AlbumPayload::Master(_)
+        AlbumPayload::Master { .. }
     ));
     let null = r#"<script id="serialized-server-data">{"data":[{"data":{"sections":[{"items":[{"id":"1499378108","videoArtwork":null}]}]}}]}</script>"#;
     assert!(matches!(
@@ -149,6 +150,7 @@ fn master_selection_keeps_best_square_quality_up_to_1080_60_and_codec_preference
         master,
         Url::parse("https://a1.phobos.apple.com/master.m3u8").unwrap(),
         true,
+        false,
     )
     .unwrap();
     assert_eq!(got.len(), 2);
@@ -209,6 +211,7 @@ fn portable_selection_uses_best_h264_even_when_hevc_is_larger() {
         master,
         Url::parse("https://mvod.itunes.apple.com/master.m3u8").unwrap(),
         false,
+        false,
     )
     .unwrap();
     assert_eq!(got.len(), 1);
@@ -224,7 +227,8 @@ fn rejects_multiple_initialization_resources_and_master_encryption() {
     assert!(parse_master(
         "#EXTM3U\n#EXT-X-SESSION-KEY:METHOD=SAMPLE-AES,URI=\"key\"\n",
         base,
-        true
+        true,
+        false
     )
     .is_err());
 }
@@ -509,7 +513,7 @@ fn primary_motion_survives_unknown_or_missing_related_section_items() {
         parse_album_document(unknown.as_bytes(), "1451901307")
             .unwrap()
             .payload,
-        AlbumPayload::Master(_)
+        AlbumPayload::Master { .. }
     ));
     let missing_items = text.replace(
         "\"items\":[{\"id\":\"other-versions",
@@ -519,7 +523,7 @@ fn primary_motion_survives_unknown_or_missing_related_section_items() {
         parse_album_document(missing_items.as_bytes(), "1451901307")
             .unwrap()
             .payload,
-        AlbumPayload::Master(_)
+        AlbumPayload::Master { .. }
     ));
     // Related sections may precede the primary header; parse ordering must not affect availability.
     let script = text
@@ -541,6 +545,85 @@ fn primary_motion_survives_unknown_or_missing_related_section_items() {
         parse_album_document(html.as_bytes(), "1451901307")
             .unwrap()
             .payload,
-        AlbumPayload::Master(_)
+        AlbumPayload::Master { .. }
     ));
+}
+
+#[test]
+fn tall_master_accepted_and_landscape_rejected() {
+    let master = "#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=8000000,RESOLUTION=1080x1440,FRAME-RATE=60.000,VIDEO-RANGE=SDR,CODECS=\"hvc1.2\"\ntall.m3u8\n#EXT-X-STREAM-INF:BANDWIDTH=8000000,RESOLUTION=1440x1080,FRAME-RATE=60.000,VIDEO-RANGE=SDR,CODECS=\"hvc1.2\"\nlandscape.m3u8\n#EXT-X-STREAM-INF:BANDWIDTH=8000000,RESOLUTION=1000x1200,FRAME-RATE=60.000,VIDEO-RANGE=SDR,CODECS=\"hvc1.2\"\noutofratio.m3u8\n";
+    let got = parse_master(
+        master,
+        Url::parse("https://a1.phobos.apple.com/master.m3u8").unwrap(),
+        true,
+        true,
+    )
+    .unwrap();
+    assert_eq!(got.len(), 1);
+    assert_eq!(got[0].width, 1080);
+    assert_eq!(got[0].height, 1440);
+    assert!(got[0].url.ends_with("/tall.m3u8"));
+}
+
+#[test]
+fn tall_only_album_is_master_payload() {
+    let tall_html = r#"<script id="serialized-server-data">{"data":[{"data":{"sections":[{"items":[{"id":"1499378108","videoArtwork":null,"tallVideoArtwork":{"dictionary":{"motionDetailTall":{"video":"https://mvod.itunes.apple.com/animated/tall_master.m3u8"}}}}]}]}}]}</script>"#;
+    let payload = parse_album_html(tall_html.as_bytes(), "1499378108").unwrap();
+    assert!(matches!(
+        payload,
+        AlbumPayload::Master {
+            square: None,
+            tall: Some(_)
+        }
+    ));
+}
+
+#[test]
+fn tall_album_tolerates_square_object_without_motion_detail() {
+    let html = r#"<script id="serialized-server-data">{"data":[{"data":{"sections":[{"items":[{"id":"1499378108","videoArtwork":{},"tallVideoArtwork":{"dictionary":{"motionDetailTall":{"video":"https://mvod.itunes.apple.com/animated/tall_master.m3u8"}}}}]}]}}]}</script>"#;
+    let payload = parse_album_html(html.as_bytes(), "1499378108").unwrap();
+    assert!(matches!(
+        payload,
+        AlbumPayload::Master {
+            square: None,
+            tall: Some(_)
+        }
+    ));
+}
+
+#[test]
+fn album_document_parses_both_square_and_tall() {
+    let html = r#"<script id="serialized-server-data">{"data":[{"data":{"sections":[{"items":[{"id":"1499378108","videoArtwork":{"dictionary":{"motionDetailSquare":{"video":"https://mvod.itunes.apple.com/animated/square.m3u8"}}},"tallVideoArtwork":{"dictionary":{"motionDetailTall":{"video":"https://mvod.itunes.apple.com/animated/tall.m3u8"}}}}]}]}}]}</script>"#;
+    let payload = parse_album_html(html.as_bytes(), "1499378108").unwrap();
+    assert!(matches!(
+        payload,
+        AlbumPayload::Master {
+            square: Some(ref s),
+            tall: Some(ref t),
+        } if s == "https://mvod.itunes.apple.com/animated/square.m3u8"
+            && t == "https://mvod.itunes.apple.com/animated/tall.m3u8"
+    ));
+}
+
+#[test]
+fn prefer_tall_request_key_differs() {
+    let mut req_square = request();
+    req_square.prefer_tall = false;
+    let mut req_tall = request();
+    req_tall.prefer_tall = true;
+    assert_ne!(
+        super::super::request_key(&req_square),
+        super::super::request_key(&req_tall)
+    );
+}
+
+#[test]
+fn mixed_master_filters_orientation_before_selecting_best_quality() {
+    let master = "#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=8000000,RESOLUTION=1080x1440,FRAME-RATE=24,VIDEO-RANGE=SDR,CODECS=\"avc1.640020\"\ntall.m3u8\n#EXT-X-STREAM-INF:BANDWIDTH=2000000,RESOLUTION=768x768,FRAME-RATE=24,VIDEO-RANGE=SDR,CODECS=\"avc1.640020\"\nsquare.m3u8\n";
+    for tall in [false, true] {
+        let got = parse_master(master, Url::parse("https://a1.phobos.apple.com/master.m3u8").unwrap(), false, tall).unwrap();
+        assert_eq!(got.len(), 1);
+        assert_eq!(got[0].height > got[0].width, tall);
+        assert!(got[0].url.ends_with(if tall { "/tall.m3u8" } else { "/square.m3u8" }));
+    }
 }

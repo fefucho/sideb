@@ -79,3 +79,21 @@ test('remove song from playlist passes full occurrence metadata and origin, shar
   await executor.execute({ type: 'share' }, { kind: 'playlist', card: { id: 'VLPLcase' } }, {});
   assert.equal(url, 'https://music.youtube.com/playlist?list=PLcase');
 });
+
+test('queue recommendation menu routes playback and placements through its ID and captured session generation', async () => {
+  const actions = [];
+  const executor = new MenuExecutor({ begin: () => () => true,
+    recommendationAction: async (...args) => actions.push(args),
+    play: async () => assert.fail('must not play through the generic song path'),
+    enqueue: async () => assert.fail('must not enqueue a second song occurrence generically'),
+    removeQueue: async () => assert.fail('must not remove from committed queue') });
+  const target = { kind: 'song', song: { videoId: 'same', title: 'Song' }, queueRecommendationId: 'proposal-occurrence',
+    queueRecommendationGeneration: 17, queueRecommendationSession: 4 };
+  for (const [type, placement] of [['play', 'now'], ['enqueue-next', 'next'], ['enqueue-end', 'end'], ['remove-queue', 'remove']]) {
+    await executor.execute({ type }, target, {});
+  }
+  assert.deepEqual(actions, [
+    ['proposal-occurrence', 'now', 17, 4], ['proposal-occurrence', 'next', 17, 4],
+    ['proposal-occurrence', 'end', 17, 4], ['proposal-occurrence', 'remove', 17, 4],
+  ]);
+});

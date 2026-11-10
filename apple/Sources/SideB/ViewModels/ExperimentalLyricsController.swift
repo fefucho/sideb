@@ -11,6 +11,7 @@ struct ExperimentalLyricsRequest: Equatable, Sendable {
     let title: String
     let artist: String
     let album: String?
+    var source: String = "auto"
     let durationSeconds: UInt64?
 
     init(playbackID: UUID, sessionID: UUID, videoID: String, title: String,
@@ -77,7 +78,7 @@ final class ExperimentalLyricsController {
             return nil
         }
         guard request != activeRequest else { return task }
-        let preservesDocument = activeRequest?.playbackID == request.playbackID && activeRequest?.sessionID == request.sessionID
+        let preservesDocument = activeRequest?.playbackID == request.playbackID && activeRequest?.sessionID == request.sessionID && activeRequest?.source == request.source
         task?.cancel()
         activeRequest = request
         if !preservesDocument { document = nil }
@@ -114,6 +115,7 @@ final class ExperimentalLyricsController {
                       self.activeRequest == request else { return }
                 // A transient empty refresh must not erase the usable document.
                 if let document { self.document = document }
+                else if request.source != "auto" { self.document = nil }
                 self.isLoading = false
                 self.task = nil
             } catch {
@@ -132,6 +134,7 @@ final class ExperimentalLyricsController {
 
     static func fetch(_ request: ExperimentalLyricsRequest, forceRefresh: Bool,
                       core: SideBCore) async throws -> ExperimentalLyricsDocument? {
+        core.setSetting(key: "lyrics_source:\(request.videoID)", value: request.source)
         let result = try await core.getKaraokeLyrics(
             videoId: request.videoID,
             title: request.title,

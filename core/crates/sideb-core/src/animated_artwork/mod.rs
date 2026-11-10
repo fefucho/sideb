@@ -26,6 +26,8 @@ pub struct AnimatedArtworkRequest {
     pub duration_secs: Option<u64>,
     pub storefront: String,
     pub prefer_hevc: bool,
+    #[serde(default)]
+    pub prefer_tall: bool,
 }
 #[derive(Clone, Debug, Serialize, Deserialize, uniffi::Record)]
 pub struct AnimatedArtworkAsset {
@@ -356,7 +358,7 @@ impl Engine {
             // Valid files outlive a provider locator/verdict TTL. Refresh only when the file is missing.
             let stored = { cache.lock().await.stored_metadata(&key) };
             if let Some(motion) = stored.as_ref().and_then(|m| m.motion.as_ref()) {
-                if let Some(variant) = select_variant(&motion.variants, request.prefer_hevc) {
+                if let Some(variant) = select_variant(&motion.variants, request.prefer_hevc, request.prefer_tall) {
                     if let Some(asset) = cache
                         .lock()
                         .await
@@ -405,7 +407,7 @@ impl Engine {
                 return Ok(None);
             };
             for renewal in 0..=1 {
-                let variant = select_variant(&motion.variants, request.prefer_hevc)
+                let variant = select_variant(&motion.variants, request.prefer_hevc, request.prefer_tall)
                     .ok_or(AnimatedArtworkError::InvalidMedia)?;
                 let id = asset_key(&motion.collection_id, variant);
                 if let Some(asset) = cache.lock().await.lookup(&id).await? {
@@ -586,12 +588,18 @@ fn request_key(r: &AnimatedArtworkRequest) -> String {
             r.duration_secs
         )
     };
-    hash(&format!(
+    let base = format!(
         "v1|{}|{}|{}",
         normalize(&r.storefront),
         r.prefer_hevc,
         identity
-    ))
+    );
+    let key_str = if r.prefer_tall {
+        format!("{base}|tall")
+    } else {
+        base
+    };
+    hash(&key_str)
 }
 fn asset_key(collection: &str, v: &StoredVariant) -> String {
     hash(&format!(
@@ -599,13 +607,20 @@ fn asset_key(collection: &str, v: &StoredVariant) -> String {
         v.codec, v.width, v.height, v.frame_rate, v.bandwidth
     ))
 }
-fn select_variant(variants: &[StoredVariant], prefer_hevc: bool) -> Option<&StoredVariant> {
+fn select_variant(variants: &[StoredVariant], prefer_hevc: bool, prefer_tall: bool) -> Option<&StoredVariant> {
     variants
         .iter()
         .filter(|v| {
-            v.width == v.height
-                && v.width > 0
+            let is_square = v.width == v.height && v.width <= 1080 && v.height <= 1080;
+            let ratio = v.width as f64 / v.height as f64;
+            let is_tall = v.height > v.width
+                && (0.70..=0.80).contains(&ratio)
                 && v.width <= 1080
+                && v.height <= 1440;
+
+            (is_square || (prefer_tall && is_tall))
+                && v.width > 0
+                && v.height > 0
                 && v.frame_rate.is_finite()
                 && v.frame_rate > 0.
                 && v.frame_rate <= 60.1
@@ -623,8 +638,10 @@ fn select_variant(variants: &[StoredVariant], prefer_hevc: bool) -> Option<&Stor
             let codec = |v: &StoredVariant| {
                 prefer_hevc && (v.codec.starts_with("hvc") || v.codec.starts_with("hev"))
             };
-            a.width
-                .cmp(&b.width)
+            (prefer_tall && a.height > a.width)
+                .cmp(&(prefer_tall && b.height > b.width))
+                .then(a.width.cmp(&b.width))
+                .then(a.height.cmp(&b.height))
                 .then(a.frame_rate.total_cmp(&b.frame_rate))
                 .then(codec(a).cmp(&codec(b)))
                 .then(a.bandwidth.cmp(&b.bandwidth))
@@ -853,6 +870,7 @@ mod tests {
             duration_secs: None,
             storefront: "us".into(),
             prefer_hevc: false,
+            prefer_tall: false,
         }
     }
     #[test]
@@ -862,11 +880,12 @@ mod tests {
         b.video_id = "track2".into();
         b.title = "Different".into();
         assert_eq!(request_key(&a), request_key(&b));
-        for change in 0..3 {
+        for change in 0..4 {
             let mut b = a.clone();
             match change {
                 0 => b.album = Some("Album Deluxe".into()),
                 1 => b.storefront = "uy".into(),
+                2 => b.prefer_tall = true,
                 _ => b.prefer_hevc = true,
             };
             assert_ne!(request_key(&a), request_key(&b));
@@ -891,8 +910,31 @@ mod tests {
             bandwidth: 100,
         };
         let v = vec![variant(768, 30.), variant(1080, 60.), variant(2160, 60.)];
-        assert_eq!(select_variant(&v, false).unwrap().width, 1080);
-        assert_eq!(select_variant(&v, false).unwrap().frame_rate, 60.);
+        assert_eq!(select_variant(&v, false, false).unwrap().width, 1080);
+        assert_eq!(select_variant(&v, false, false).unwrap().frame_rate, 60.);
+    }
+    #[test]
+    fn select_variant_accepts_tall_and_rejects_landscape() {
+        let variant = |w, h, f| StoredVariant {
+            url: String::new(),
+            width: w,
+            height: h,
+            frame_rate: f,
+            codec: "avc1.4d".into(),
+            bandwidth: 100,
+        };
+        // 1080x1440 has aspect ratio 0.75 (3:4)
+        let tall = variant(1080, 1440, 24.);
+        let landscape = variant(1440, 1080, 24.);
+        let too_wide = variant(900, 1000, 24.); // ratio 0.90 (not tall 0.70..=0.80)
+        assert!(select_variant(&[tall.clone()], false, false).is_none());
+        assert!(select_variant(&[tall.clone()], false, true).is_some());
+        let mixed = [variant(1080, 1080, 60.), variant(768, 1024, 24.)];
+        assert_eq!(select_variant(&mixed, false, false).unwrap().height, 1080);
+        assert_eq!(select_variant(&mixed, false, true).unwrap().height, 1024);
+        assert!(select_variant(&mixed[..1], false, true).is_some());
+        assert!(select_variant(&[landscape], false, true).is_none());
+        assert!(select_variant(&[too_wide], false, true).is_none());
     }
     #[test]
     fn cancellation_keeps_other_consumer() {

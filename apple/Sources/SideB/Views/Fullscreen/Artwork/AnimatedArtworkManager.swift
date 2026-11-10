@@ -26,13 +26,17 @@ final class AnimatedArtworkManager {
     func unregister(_ id: UUID) { consumers.removeValue(forKey: id) }
 
     func size(core: SideBCore) async throws -> UInt64 {
-        try await core.getAnimatedArtworkCacheSize(cacheDir: cacheDirectory.path)
+        let coreBytes = try await core.getAnimatedArtworkCacheSize(cacheDir: cacheDirectory.path)
+        let vpBytes = await VisualProviderHost.shared.cacheSize()
+        return coreBytes + vpBytes
     }
 
     @discardableResult
     func clear(core: SideBCore) async throws -> UInt64 {
         try await clear {
-            try await core.clearAnimatedArtworkCache(cacheDir: self.cacheDirectory.path)
+            let coreBytes = try await core.clearAnimatedArtworkCache(cacheDir: self.cacheDirectory.path)
+            let vpBytes = await VisualProviderHost.shared.clearCache()
+            return coreBytes + vpBytes
         }
     }
 

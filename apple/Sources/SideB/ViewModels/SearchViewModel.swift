@@ -92,11 +92,14 @@ public final class SearchViewModel {
     /// Keep media visible below a short set of query completions. The response and
     /// feedback tokens remain intact; an empty editor still shows its full history.
     public var visibleProviderSuggestions: [SearchSuggestionEntryRecord] {
+        let suggestions = providerSuggestions.filter {
+            SearchPreferences.includes($0, showVideos: SearchPreferences.shared.showVideos)
+        }
         guard !associatedQuickQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            return providerSuggestions
+            return suggestions
         }
         var textCount = 0
-        return providerSuggestions.filter { entry in
+        return suggestions.filter { entry in
             if entry.song != nil || entry.card != nil { return true }
             textCount += 1
             return textCount <= 3

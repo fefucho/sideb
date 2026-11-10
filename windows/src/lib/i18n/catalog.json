@@ -1847,6 +1847,18 @@
     "es": "Anima el brillo, la elevación y la ampliación de las palabras sostenidas.",
     "en": "Animate glow, lift and scale on sustained words."
   },
+  "lyrics.source.auto": {
+    "es": "Automático",
+    "en": "Automatic"
+  },
+  "lyrics.source.choose": {
+    "es": "Fuente de letras",
+    "en": "Lyrics source"
+  },
+  "lyrics.source.empty": {
+    "es": "No hay letra en esta fuente",
+    "en": "No lyrics from this source"
+  },
   "menu.accept": {
     "es": "Aceptar",
     "en": "OK"
@@ -2255,6 +2267,54 @@
     "es": "Buscar",
     "en": "Search"
   },
+  "playbackSidebar.close": {
+    "es": "Volver a la barra inferior",
+    "en": "Return to bottom player"
+  },
+  "playbackSidebar.lyricsPreview.noLyrics": {
+    "es": "Sin letras disponibles",
+    "en": "No lyrics available"
+  },
+  "playbackSidebar.lyricsPreview.openLyrics": {
+    "es": "Abrir letras completas",
+    "en": "Open full lyrics"
+  },
+  "playbackSidebar.lyricsPreview.searching": {
+    "es": "Buscando letra…",
+    "en": "Searching lyrics…"
+  },
+  "playbackSidebar.lyricsPreview.showMore": {
+    "es": "Mostrar más",
+    "en": "Show more"
+  },
+  "playbackSidebar.lyricsPreview.title": {
+    "es": "Muestra de la letra",
+    "en": "Lyrics preview"
+  },
+  "playbackSidebar.nowPlaying": {
+    "es": "Ahora suena",
+    "en": "Now Playing"
+  },
+  "playbackSidebar.open": {
+    "es": "Abrir reproductor lateral",
+    "en": "Open playback sidebar"
+  },
+  "playbackSidebar.position": {
+    "es": "Posición de reproducción",
+    "en": "Playback position"
+  },
+  "playbackSidebar.synced": {
+    "es": "Sincronizadas",
+    "en": "Synced"
+  },
+  "playbackSidebar.upNext": {
+    "es": "A continuación",
+    "en": "Up next"
+  },
+  "playbackSidebar.viewQueue": {
+    "es": "Ver cola",
+    "en": "View queue"
+  },
   "player.closeFullscreen": {
     "es": "Cerrar pantalla completa",
     "en": "Close full screen"
@@ -2531,9 +2591,65 @@
     "es": "Cola manual",
     "en": "Manual queue"
   },
+  "queue.moreSource": {
+    "es": "Mostrar más canciones de la colección",
+    "en": "Show more songs from the collection"
+  },
+  "queue.moveEnd": {
+    "es": "Mover al final",
+    "en": "Move to end"
+  },
+  "queue.moveNext": {
+    "es": "Mover al comienzo",
+    "en": "Move to next"
+  },
+  "queue.noRecommendations": {
+    "es": "No hay más recomendaciones disponibles.",
+    "en": "No more recommendations available."
+  },
+  "queue.now": {
+    "es": "Ahora suena",
+    "en": "Now playing"
+  },
   "queue.playlistContext": {
     "es": "Lista: %@",
     "en": "Playlist: %@"
+  },
+  "queue.recommendations": {
+    "es": "Recomendaciones",
+    "en": "Recommendations"
+  },
+  "queue.recommendationsError": {
+    "es": "No se pudieron cargar las recomendaciones.",
+    "en": "Could not load recommendations."
+  },
+  "queue.repeatNote": {
+    "es": "Desactivá repetir para continuar con las recomendaciones.",
+    "en": "Turn repeat off to continue with recommendations."
+  },
+  "queue.retryRecommendations": {
+    "es": "Reintentar recomendaciones",
+    "en": "Retry recommendations"
+  },
+  "queue.selection.advance": {
+    "es": "Avanzar hasta esa canción",
+    "en": "Advance to that song"
+  },
+  "queue.selection.hint": {
+    "es": "Avanzar deja las recomendaciones saltadas en anteriores, sin registrarlas como escuchadas. Las canciones que elegiste siguen pendientes.",
+    "en": "Advancing places skipped recommendations in previous songs without marking them as listened. Songs you chose remain queued."
+  },
+  "queue.selection.label": {
+    "es": "Al seleccionar una recomendación",
+    "en": "When selecting a recommendation"
+  },
+  "queue.selection.playOnly": {
+    "es": "Reproducir sólo la elegida",
+    "en": "Play only the selected song"
+  },
+  "queue.settings.title": {
+    "es": "Cola",
+    "en": "Queue"
   },
   "queue.title": {
     "es": "Cola de reproducción",
@@ -2799,6 +2915,34 @@
     "es": "Las categorías aparecerán cuando cargue Inicio.",
     "en": "Categories will appear when Home loads."
   },
+  "settings.category.account": {
+    "es": "Cuenta",
+    "en": "Account"
+  },
+  "settings.category.appearance": {
+    "es": "Apariencia",
+    "en": "Appearance"
+  },
+  "settings.category.general": {
+    "es": "General",
+    "en": "General"
+  },
+  "settings.category.homeFeed": {
+    "es": "Feed de Inicio",
+    "en": "Home Feed"
+  },
+  "settings.category.playback": {
+    "es": "Reproducción",
+    "en": "Playback"
+  },
+  "settings.category.shortcuts": {
+    "es": "Atajos de teclado",
+    "en": "Keyboard Shortcuts"
+  },
+  "settings.category.visualProviders": {
+    "es": "Proveedores visuales",
+    "en": "Visual Providers"
+  },
   "settings.close": {
     "es": "Cerrar configuración",
     "en": "Close settings"
@@ -2891,6 +3035,14 @@
     "es": "Reintentar biblioteca",
     "en": "Retry library"
   },
+  "settings.search.showVideos": {
+    "es": "Mostrar videos en búsquedas",
+    "en": "Show videos in search"
+  },
+  "settings.search.showVideos.hint": {
+    "es": "Desactivá esta opción para ocultar videos en los resultados y las sugerencias de búsqueda. Las canciones, los artistas, los álbumes y las listas siguen apareciendo.",
+    "en": "Turn this off to hide videos in search results and suggestions. Songs, artists, albums, and playlists still appear."
+  },
   "settings.searchCategory": {
     "es": "Buscar categoría",
     "en": "Search categories"
@@ -2899,9 +3051,33 @@
     "es": "Buscar categoría de Inicio",
     "en": "Search Home categories"
   },
+  "settings.searchPlaceholder": {
+    "es": "Buscar en configuración...",
+    "en": "Search settings..."
+  },
   "settings.showAll": {
     "es": "Mostrar todas las categorías",
     "en": "Show all categories"
+  },
+  "settings.sidebarBottomContent.cardTitle": {
+    "es": "Reproductor lateral",
+    "en": "Sidebar Player"
+  },
+  "settings.sidebarBottomContent.hint": {
+    "es": "Elegí si mostrar la cola de reproducción o una muestra de la letra en tiempo real debajo de los controles.",
+    "en": "Choose whether to show the upcoming queue or a live lyrics preview below controls."
+  },
+  "settings.sidebarBottomContent.label": {
+    "es": "Panel inferior del reproductor",
+    "en": "Bottom player panel"
+  },
+  "settings.sidebarBottomContent.lyrics": {
+    "es": "Muestra de la letra",
+    "en": "Lyrics preview"
+  },
+  "settings.sidebarBottomContent.queue": {
+    "es": "Cola (A continuación)",
+    "en": "Queue (Up next)"
   },
   "settings.sidebarLayout": {
     "es": "Vista de tu colección",
@@ -3214,5 +3390,109 @@
   "update.update_now": {
     "es": "Actualizar ahora",
     "en": "Update Now"
+  },
+  "visualProvider.accountConnected": {
+    "es": "Cuenta conectada",
+    "en": "Account connected"
+  },
+  "visualProvider.authenticating": {
+    "es": "Obteniendo token de sesión…",
+    "en": "Obtaining session token…"
+  },
+  "visualProvider.close": {
+    "es": "Cerrar",
+    "en": "Close"
+  },
+  "visualProvider.enable": {
+    "es": "Usar como alternativa en el reproductor lateral",
+    "en": "Use as a fallback in the sidebar player"
+  },
+  "visualProvider.error": {
+    "es": "No se pudo completar la operación. Revisá el paquete o el acceso al Llavero.",
+    "en": "The operation could not be completed. Check the package or Keychain access."
+  },
+  "visualProvider.hint": {
+    "es": "Sólo para el reproductor lateral: se prioriza Apple Music y se usa este proveedor como alternativa. Instalá sólo proveedores de confianza; reciben la canción actual y el token guardado.",
+    "en": "Only for the sidebar player: Apple Music takes priority and this provider is a fallback. Only install providers you trust; they receive the current track and saved token."
+  },
+  "visualProvider.install": {
+    "es": "Instalar proveedor…",
+    "en": "Install provider…"
+  },
+  "visualProvider.loginSheetHint": {
+    "es": "Iniciá sesión para que Side B obtenga el token automáticamente. La sesión queda guardada en tu navegador.",
+    "en": "Sign in so Side B can obtain the token automatically. The session is saved in your browser."
+  },
+  "visualProvider.loginSheetTitle": {
+    "es": "Iniciar sesión en %@",
+    "en": "Sign in to %@"
+  },
+  "visualProvider.manualToken": {
+    "es": "Ingresar token manualmente",
+    "en": "Enter token manually"
+  },
+  "visualProvider.reconnect": {
+    "es": "Volver a conectar…",
+    "en": "Reconnect…"
+  },
+  "visualProvider.remove": {
+    "es": "Desinstalar y borrar token",
+    "en": "Uninstall and delete token"
+  },
+  "visualProvider.saveToken": {
+    "es": "Guardar token en el Llavero",
+    "en": "Save token in Keychain"
+  },
+  "visualProvider.signIn": {
+    "es": "Iniciar sesión…",
+    "en": "Sign in…"
+  },
+  "visualProvider.status.absent": {
+    "es": "Esta canción no tiene un video compatible.",
+    "en": "This track has no compatible video."
+  },
+  "visualProvider.status.authRequired": {
+    "es": "La sesión venció o fue rechazada. Reemplazá el token.",
+    "en": "The session expired or was rejected. Replace the token."
+  },
+  "visualProvider.status.idle": {
+    "es": "Listo para intentar con la próxima canción visible.",
+    "en": "Ready to try the next visible track."
+  },
+  "visualProvider.status.rateLimited": {
+    "es": "El proveedor pidió esperar. Se pausaron las consultas.",
+    "en": "The provider requested a delay. Queries are paused."
+  },
+  "visualProvider.status.ready": {
+    "es": "Visual disponible.",
+    "en": "Visual available."
+  },
+  "visualProvider.status.tokenRequired": {
+    "es": "Guardá el Bearer en el llavero para activar el fallback.",
+    "en": "Save the Bearer in Keychain to enable the fallback."
+  },
+  "visualProvider.status.unavailable": {
+    "es": "Proveedor no disponible. Se conserva la portada habitual.",
+    "en": "Provider unavailable. Keeping the usual cover."
+  },
+  "visualProvider.status.unresolved": {
+    "es": "No se encontró una coincidencia de canción segura.",
+    "en": "No reliable track match was found."
+  },
+  "visualProvider.status.unsupported": {
+    "es": "Cambió la respuesta del proveedor. Puede requerir una actualización.",
+    "en": "The provider response changed. An update may be required."
+  },
+  "visualProvider.title": {
+    "es": "Proveedores visuales opcionales",
+    "en": "Optional visual providers"
+  },
+  "visualProvider.token": {
+    "es": "Token temporal de sesión",
+    "en": "Temporary session token"
+  },
+  "visualProvider.tokenHint": {
+    "es": "El token se guarda en el Llavero. Cuando venza, reemplazalo por uno nuevo. La portada actual se conserva si falla el proveedor.",
+    "en": "The token is stored in Keychain. Replace it when it expires. The current cover remains if the provider fails."
   }
 }

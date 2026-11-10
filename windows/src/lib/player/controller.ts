@@ -54,18 +54,20 @@ function errorMessage(error: unknown, fallback: string): string {
   if (typeof error === 'string') return error;
   return fallback;
 }
-function cloneState(state: PlaybackStateDto, previous?: PlaybackStateDto): PlaybackStateDto {
+function cloneState(state: PlaybackStateDto, previous?: PlaybackStateDto, reusedQueue?: QueueStateDto): PlaybackStateDto {
   const identity = (track: PlaybackTrackDto | QueueEntryDto) => `${track.isUpload ? 'upload' : 'youtube'}:${track.videoId}`;
   const known = new Map<string, PlaybackTrackDto | QueueEntryDto>();
   if (previous && (previous.authGeneration ?? 0) === (state.authGeneration ?? 0)) {
     for (const entry of previous.queue.items) if (contentRating(entry) !== 'unknown') known.set(identity(entry), entry);
+    for (const entry of previous.queue.recommendations ?? []) if (contentRating(entry) !== 'unknown') known.set(identity(entry), entry);
     if (previous.currentTrack && contentRating(previous.currentTrack) !== 'unknown') known.set(identity(previous.currentTrack), previous.currentTrack);
   }
   const ratingFor = (track: PlaybackTrackDto | QueueEntryDto) => ratingForIdentity(track, known.get(identity(track)));
   return { ...state, isShuffle: state.isShuffle ?? false, isRepeat: state.isRepeat ?? false,
     currentTrack: state.currentTrack ? { ...state.currentTrack, contentRating:ratingFor(state.currentTrack), artistRuns: state.currentTrack.artistRuns?.map(run => ({ ...run })) ?? [] } : null,
-    queue: { ...state.queue, radio: state.queue.radio ? { ...state.queue.radio } : null, source: state.queue.source ? { ...state.queue.source } : null,
-      items: state.queue.items.map((item) => ({ ...item, contentRating:ratingFor(item), artistRuns: item.artistRuns?.map(run => ({ ...run })) ?? [] })) } };
+    queue: reusedQueue ?? { ...state.queue, radio: state.queue.radio ? { ...state.queue.radio } : null, source: state.queue.source ? { ...state.queue.source } : null,
+      items: state.queue.items.map((item) => ({ ...item, contentRating:ratingFor(item), artistRuns: item.artistRuns?.map(run => ({ ...run })) ?? [] })),
+      recommendations: state.queue.recommendations?.map(item => ({ ...item, contentRating: ratingFor(item), artistRuns: item.artistRuns?.map(run => ({ ...run })) ?? [] })) } };
 }
 function songDuration(song: PlayerSong): number | null {
   const duration = song.duration;
@@ -91,6 +93,11 @@ type AudioIntent = { command: 'set_playback_volume' | 'set_playback_muted' | 'se
 /** Owns the playback snapshot while Rust remains authoritative for queue and audio state. */
 export class PlaybackController {
   private state = emptyPlaybackData();
+  private publishedQueue: QueueStateDto | null = null;
+  private publishedQueueRevision = -1;
+  private publishedQueueSource: QueueStateDto | null = null;
+  private publishedAuthGeneration = -1;
+  private publishedGeneration = -1;
   private error: string | null = null;
   private publish: (snapshot: PlaybackSnapshot) => void;
   private eventRevision = 0;
@@ -123,7 +130,21 @@ export class PlaybackController {
 
   get snapshot(): PlaybackSnapshot { return { state: cloneState(this.state), confirmedVolume: this.confirmedVolume, error: this.error }; }
 
-  private emit() { this.publish(this.snapshot); }
+  private emittedSnapshot(): PlaybackSnapshot {
+    const authGeneration = this.state.authGeneration ?? 0;
+    if (!this.publishedQueue || this.publishedQueueSource !== this.state.queue || this.publishedQueueRevision !== this.state.queue.revision
+      || this.publishedAuthGeneration !== authGeneration || this.publishedGeneration !== this.state.generation) {
+      this.publishedQueue = cloneState({ ...this.state, queue: this.state.queue }).queue;
+      this.publishedQueueRevision = this.state.queue.revision;
+      this.publishedQueueSource = this.state.queue;
+      this.publishedAuthGeneration = authGeneration;
+      this.publishedGeneration = this.state.generation;
+    }
+    const state = cloneState(this.state, undefined, this.publishedQueue);
+    return { state, confirmedVolume: this.confirmedVolume, error: this.error };
+  }
+
+  private emit() { this.publish(this.emittedSnapshot()); }
   private issue(key: string) {
     const revision = (this.operationRevision.get(key) ?? 0) + 1;
     this.operationRevision.set(key, revision);
@@ -294,18 +315,24 @@ export class PlaybackController {
   async enqueue(songs: PlayerSong[], position: 'next' | 'end') {
     return this.queueCommand('enqueue_tracks', { items: songs.map(entryFor), position });
   }
+  async actOnQueueRecommendation(entryId: string, placement: 'next' | 'end' | 'now' | 'remove', generation = this.state.generation, advanceThrough = true) {
+    return this.queueCommandState('queue_recommendation_action', { entryId, placement, generation, ...(placement === 'now' ? { advanceThrough } : {}) });
+  }
   async removeQueueEntry(entryId: string) {
     return this.queueCommand('remove_queue_entry', { entryId });
   }
-  async moveQueueEntry(entryId: string, beforeEntryId: string | null) {
-    return this.queueCommand('move_queue_entry', { entryId, beforeEntryId });
+  async moveQueueEntry(entryId: string, beforeEntryId: string | null): Promise<PlaybackStateDto> {
+    return this.queueCommandState('move_queue_entry', { entryId, beforeEntryId });
   }
   async beginProgressiveSource(source: {kind: 'playlist' | 'library' | 'search' | 'search-radio'; id: string | null; continuation: string | null}) {
     return this.queueCommand('begin_queue_source', { ...source, expectedGeneration: this.state.generation });
   }
+  async revealQueueWindow(startIndex: number, generation = this.state.generation) {
+    return this.queueCommand('reveal_queue_window', { startIndex, generation });
+  }
   async retrySource() { return this.queueCommand('retry_queue_source', {}); }
-  async startSourceRadio(items: PlayerSong[], source: PlaybackQueueSource, playlistId: string, selectedIndex = 0) {
-    return this.queueCommand('start_source_radio', { items: items.map(entryFor), source, playlistId, selectedIndex });
+  async startSourceRadio(items: PlayerSong[], source: PlaybackQueueSource, playlistId: string, selectedIndex = 0, continuation?: string | null) {
+    return this.queueCommand('start_source_radio', { items: items.map(entryFor), source, playlistId, selectedIndex, continuation: continuation ?? null });
   }
   async filterDislikedRecommendations(videoId: string) { return this.queueCommand('filter_disliked_recommendations', { videoId, expectedGeneration: this.state.generation }); }
   setMuted(muted: boolean): Promise<void> {
@@ -321,10 +348,15 @@ export class PlaybackController {
   async retryRadio() { return this.queueCommand('retry_radio', {}); }
 
   /** Queue mutations must report failure to menus without marking playable audio as broken. */
-  private async queueCommand(command: string, args: Record<string, unknown>) {
+  private async queueCommand(command: string, args: Record<string, unknown>): Promise<void> {
+    await this.queueCommandState(command, args);
+  }
+
+  private async queueCommandState(command: string, args: Record<string, unknown>): Promise<PlaybackStateDto> {
     const eventRevision = this.eventRevision;
     const next = await this.rpc<PlaybackStateDto>(command, args);
     this.acceptResponse(next, eventRevision);
+    return next;
   }
 
   async next(): Promise<void> { return this.command('next', 'next_track', {}, 'No se pudo avanzar la cola.'); }

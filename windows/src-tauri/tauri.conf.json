@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Side B",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "identifier": "com.fefucho.sideb.windows",
   "build": {
     "beforeDevCommand": "pnpm dev",
@@ -35,7 +35,12 @@
     "resources": [
       "libmpv-2.dll",
       "vulkan-1.dll",
-      "VulkanRT-License.txt"
+      "VulkanRT-License.txt",
+      "provider/spotify-canvas/manifest.json",
+      "provider/spotify-canvas/sideb-spotify-canvas.exe",
+      "provider/spotify-canvas/LICENSE",
+      "provider/spotify-canvas/THIRD_PARTY_NOTICES.md",
+      "provider/spotify-canvas/SHA256SUMS"
     ],
     "icon": [
       "icons/32x32.png",

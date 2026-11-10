@@ -1,3 +1,4 @@
+import AVFoundation
 import Foundation
 import SideBCore
 import Testing
@@ -14,6 +15,14 @@ struct AnimatedArtworkTests {
 
     private var active: AnimatedArtworkPolicy {
         AnimatedArtworkPolicy(enabled: true, presented: true, visible: true, playing: true)
+    }
+
+    @Test("La validación final admite Canvas Spotify 9:16 a 720×1280")
+    func spotifyCanvasDimensionsPassFinalArtworkValidation() {
+        #expect(AnimatedArtworkController.allowsTallDimensions(CGSize(width:720,height:1280), isExtension: true))
+        #expect(AnimatedArtworkController.allowsTallDimensions(CGSize(width:1080,height:1920), isExtension: true))
+        #expect(!AnimatedArtworkController.allowsTallDimensions(CGSize(width:1080,height:1921), isExtension: true))
+        #expect(!AnimatedArtworkController.allowsTallDimensions(CGSize(width:720,height:1280), isExtension: false))
     }
 
     @Test("El álbum conserva identidad entre pistas; sin álbum cada pista es independiente")
@@ -126,6 +135,139 @@ struct AnimatedArtworkTests {
         #expect(AnimatedArtworkRequestFingerprint(track: item, storefront: "us", audioDuration: .nan) == empty)
         item.duration = "3:20"
         #expect(AnimatedArtworkRequestFingerprint(track: item, storefront: "us", audioDuration: 210).duration == 200)
+    }
+
+    @Test("Prepara portada con audio activo o pausado; scroll conserva el reproductor", arguments: [false, true])
+    func scrollSuspensionRetainsPreparedPlayer(preparePaused: Bool) async throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("sideb-motion-\(UUID()).mov")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let writer = try AVAssetWriter(outputURL: url, fileType: .mov)
+        let input = AVAssetWriterInput(mediaType: .video, outputSettings: [
+            AVVideoCodecKey: AVVideoCodecType.h264,
+            AVVideoWidthKey: 32, AVVideoHeightKey: 32
+        ])
+        let adaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: input, sourcePixelBufferAttributes: [
+            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32ARGB,
+            kCVPixelBufferWidthKey as String: 32, kCVPixelBufferHeightKey as String: 32
+        ])
+        writer.add(input)
+        try #require(writer.startWriting())
+        writer.startSession(atSourceTime: .zero)
+        var buffer: CVPixelBuffer?
+        #expect(CVPixelBufferCreate(kCFAllocatorDefault, 32, 32, kCVPixelFormatType_32ARGB, nil, &buffer) == kCVReturnSuccess)
+        let pixel = try #require(buffer)
+        CVPixelBufferLockBaseAddress(pixel, [])
+        if let base = CVPixelBufferGetBaseAddress(pixel) {
+            memset(base, 0, CVPixelBufferGetDataSize(pixel))
+        }
+        CVPixelBufferUnlockBaseAddress(pixel, [])
+        for frame in 0..<3 {
+            while !input.isReadyForMoreMediaData { await Task.yield() }
+            #expect(adaptor.append(pixel, withPresentationTime: CMTime(value: Int64(frame), timescale: 24)))
+        }
+        input.markAsFinished()
+        await writer.finishWriting()
+        #expect(writer.status == .completed)
+        let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
+        let asset = AnimatedArtworkAsset(assetId: "scroll", localPath: url.path, codec: "avc1",
+            width: 32, height: 32, frameRate: 24, sizeBytes: UInt64(size))
+        let controller = AnimatedArtworkController(preparationDelay: .zero)
+        defer { controller.detach() }
+        var fetches = 0
+        var releases = 0
+        let fetch: AnimatedArtworkController.Fetch = { _, _ in fetches += 1; return asset }
+        let release: AnimatedArtworkController.Release = { _ in releases += 1 }
+        let identity = AnimatedArtworkIdentity(track: track("scroll"), sessionID: UUID())
+        var initialPolicy = active
+        initialPolicy.prepareWhilePaused = preparePaused
+        initialPolicy.playing = !preparePaused
+        controller.update(identity: identity, policy: initialPolicy, fetch: fetch, release: release)
+        await controller.preparation?.value
+        let original = try #require(controller.layer.player)
+        let requestID = controller.requestID
+        var suspended = active
+        suspended.suspended = true
+        controller.update(identity: identity, policy: suspended, fetch: fetch, release: release)
+        #expect(controller.layer.player === original)
+        #expect(original.rate == 0)
+        #expect(controller.requestID == requestID)
+        controller.update(identity: identity, policy: active, fetch: fetch, release: release)
+        #expect(controller.layer.player === original)
+        #expect(fetches == 1)
+        #expect(releases == 0)
+        var closed = active
+        closed.presented = false
+        controller.update(identity: identity, policy: closed, fetch: fetch, release: release)
+        #expect(controller.layer.player == nil)
+        #expect(releases == 1)
+    }
+
+    @Test("Metadatos de álbum enriquecidos para la misma pista conservan el reproductor activo")
+    func metadataPromotionRetainsActivePlayer() async throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("sideb-motion-\(UUID()).mov")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let writer = try AVAssetWriter(outputURL: url, fileType: .mov)
+        let input = AVAssetWriterInput(mediaType: .video, outputSettings: [
+            AVVideoCodecKey: AVVideoCodecType.h264,
+            AVVideoWidthKey: 32, AVVideoHeightKey: 32
+        ])
+        let adaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: input, sourcePixelBufferAttributes: [
+            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32ARGB,
+            kCVPixelBufferWidthKey as String: 32, kCVPixelBufferHeightKey as String: 32
+        ])
+        writer.add(input)
+        try #require(writer.startWriting())
+        writer.startSession(atSourceTime: .zero)
+        var buffer: CVPixelBuffer?
+        #expect(CVPixelBufferCreate(kCFAllocatorDefault, 32, 32, kCVPixelFormatType_32ARGB, nil, &buffer) == kCVReturnSuccess)
+        let pixel = try #require(buffer)
+        for frame in 0..<3 {
+            while !input.isReadyForMoreMediaData { await Task.yield() }
+            #expect(adaptor.append(pixel, withPresentationTime: CMTime(value: Int64(frame), timescale: 24)))
+        }
+        input.markAsFinished()
+        await writer.finishWriting()
+        let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
+        let asset = AnimatedArtworkAsset(assetId: "motion", localPath: url.path, codec: "avc1",
+            width: 32, height: 32, frameRate: 24, sizeBytes: UInt64(size))
+        let controller = AnimatedArtworkController(preparationDelay: .zero)
+        defer { controller.detach() }
+        var fetches = 0
+        var releases = 0
+        let fetch: AnimatedArtworkController.Fetch = { _, _ in fetches += 1; return asset }
+        let release: AnimatedArtworkController.Release = { _ in releases += 1 }
+
+        let session = UUID()
+        let initialTrack = track("same-song", album: nil, albumID: nil)
+        let initialIdentity = AnimatedArtworkIdentity(track: initialTrack, sessionID: session)
+        let initialFingerprint = AnimatedArtworkRequestFingerprint(track: initialTrack, storefront: "us")
+
+        controller.update(identity: initialIdentity, policy: active, fingerprint: initialFingerprint, fetch: fetch, release: release)
+        await controller.preparation?.value
+        let originalPlayer = try #require(controller.layer.player)
+
+        // Background enrichment arrives: album and albumID are populated
+        let enrichedTrack = track("same-song", album: "Enriched Album", albumID: "album-123")
+        let enrichedIdentity = AnimatedArtworkIdentity(track: enrichedTrack, sessionID: session)
+        let enrichedFingerprint = AnimatedArtworkRequestFingerprint(track: enrichedTrack, storefront: "us")
+
+        #expect(initialIdentity != enrichedIdentity)
+        controller.update(identity: enrichedIdentity, policy: active, fingerprint: enrichedFingerprint, fetch: fetch, release: release)
+
+        // Active player must be retained!
+        #expect(controller.layer.player === originalPlayer)
+        #expect(fetches == 1)
+        #expect(releases == 0)
+    }
+
+    @Test("preferTall cambia el fingerprint para recargar la orientación solicitada")
+    func preferTallDifferentiatesFingerprint() {
+        let item = track("one")
+        let square = AnimatedArtworkRequestFingerprint(track: item, storefront: "us", preferTall: false)
+        let tall = AnimatedArtworkRequestFingerprint(track: item, storefront: "us", preferTall: true)
+        #expect(square != tall)
+        #expect(!square.preferTall)
+        #expect(tall.preferTall)
     }
 
     @Test("Asset HEVC inválido permite un solo intento H264 con lease separado")

@@ -61,7 +61,8 @@ final class WindowConfigurationView: NSView {
                 guard let self else { return }
                 if notification.name == NSWindow.willEnterFullScreenNotification { self.enteringSystemFullscreen = true }
                 if notification.name == NSWindow.didExitFullScreenNotification { self.enteringSystemFullscreen = false }
-                self.scheduleConfiguration()
+                if notification.name == NSWindow.didResizeNotification { self.reconcileNow() }
+                else { self.scheduleConfiguration() }
             })
         }
         scheduleConfiguration()
@@ -69,7 +70,7 @@ final class WindowConfigurationView: NSView {
 
     override func layout() {
         super.layout()
-        scheduleConfiguration()
+        reconcileNow()
     }
 
     func setFullscreenPresented(_ fullscreen: Bool) {
@@ -162,19 +163,35 @@ final class WindowConfigurationView: NSView {
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             self.configurationPending = false
-            guard let window = self.window, let contentView = window.contentView else { return }
-            if window.isOpaque { window.isOpaque = false }
-            if window.backgroundColor != .clear { window.backgroundColor = .clear }
-            if !window.styleMask.contains(.fullSizeContentView) { window.styleMask.insert(.fullSizeContentView) }
-            if !window.titlebarAppearsTransparent { window.titlebarAppearsTransparent = true }
-            if window.titleVisibility != .hidden { window.titleVisibility = .hidden }
-            if window.toolbar?.showsBaselineSeparator == true { window.toolbar?.showsBaselineSeparator = false }
-            if window.toolbarStyle != .unifiedCompact { window.toolbarStyle = .unifiedCompact }
-            self.alignControls(in: window, contentView: contentView)
-            self.reportTitlebarHeight(in: window, contentView: contentView)
-            let width = contentView.bounds.width
-            if width > 0, self.reportedContentWidth.map({ abs($0 - width) > 0.5 }) ?? true {
-                self.reportedContentWidth = width
+            self.reconcile()
+        }
+    }
+
+    /// AppKit re-lays out the titlebar (and resets the traffic lights) on every live-resize
+    /// step. Re-applying the offset one run-loop turn later showed them jumping back and
+    /// forth, so layout and resize notifications reconcile in the same pass instead.
+    private func reconcileNow() {
+        guard window != nil else { return }
+        reconcile()
+    }
+
+    private func reconcile() {
+        guard let window, let contentView = window.contentView else { return }
+        if window.isOpaque { window.isOpaque = false }
+        if window.backgroundColor != .clear { window.backgroundColor = .clear }
+        if !window.styleMask.contains(.fullSizeContentView) { window.styleMask.insert(.fullSizeContentView) }
+        if !window.titlebarAppearsTransparent { window.titlebarAppearsTransparent = true }
+        if window.titleVisibility != .hidden { window.titleVisibility = .hidden }
+        if window.toolbar?.showsBaselineSeparator == true { window.toolbar?.showsBaselineSeparator = false }
+        if window.toolbarStyle != .unifiedCompact { window.toolbarStyle = .unifiedCompact }
+        alignControls(in: window, contentView: contentView)
+        reportTitlebarHeight(in: window, contentView: contentView)
+        let width = contentView.bounds.width
+        if width > 0, reportedContentWidth.map({ abs($0 - width) > 0.5 }) ?? true {
+            reportedContentWidth = width
+            // SwiftUI state must not change in the middle of a layout pass.
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.reportedContentWidth == width else { return }
                 self.onContentWidthChange?(width)
             }
         }

@@ -124,3 +124,21 @@ test('power saver bounds visible sweep callbacks to 30Hz even with a 120Hz anima
    for(let i=2;i<painted.length;i++)assert.ok(painted[i]-painted[i-1]>=1000/30-1e-8);
  }finally{clock.dispose();for(const [key,value] of Object.entries(saved)){if(value===undefined)delete globalThis[key];else globalThis[key]=value;}}
 });
+
+test('manual source clears old lyrics, ignores late replies and returns to automatic',async()=>{
+ const requests=[];const controller=new KaraokeController((command,args)=>{const pending=deferred();requests.push({args,...pending});return pending.promise;},()=>{});
+ controller.setContext(track,'one',100,true);
+ requests[0].resolve(info([line('automatic',0,1000)]));await settle();
+ controller.setContext(track,'one',100,true,'lyricsplus');
+ assert.equal(controller.state.document,null);
+ controller.setContext(track,'one',100,true,'boidu');
+ requests[1].resolve(info([line('late LyricsPlus',0,1000)]));await settle();
+ assert.equal(controller.state.document,null);
+ requests[2].resolve(null);await settle();
+ assert.equal(controller.state.status,'empty');assert.equal(controller.state.document,null);
+ assert.equal(requests[2].args.source,'boidu');
+ controller.setContext(track,'one',100,true,'auto');
+ assert.equal(requests[3].args.source,'auto');
+ requests[3].resolve(info([line('automatic again',0,1000)]));await settle();
+ assert.equal(controller.state.document.lines[0].text,'automatic again');controller.dispose();
+});

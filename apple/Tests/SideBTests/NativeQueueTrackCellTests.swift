@@ -23,6 +23,9 @@ private func queueCellTrack(_ id: String = "song", album: String? = "Mr. Morale 
     cell.layoutSubtreeIfNeeded()
 }
 
+@Suite(.serialized)
+@MainActor
+struct NativeQueueTrackCellTests {
 @Test @MainActor func nativeQueueCreditsRemainTogetherBelowTitleAcrossWidths() throws {
     let cell = NativeQueueTrackCellView(frame: NSRect(x: 0, y: 0, width: 576, height: 46))
     cell.translatesAutoresizingMaskIntoConstraints = false
@@ -77,7 +80,7 @@ private func queueCellTrack(_ id: String = "song", album: String? = "Mr. Morale 
     let grip = try queueSubview(cell, "NativeQueueTrackReorderGrip", as: NSImageView.self)
     let duration = try queueSubview(cell, "NativeQueueTrackDuration", as: NSTextField.self)
     #expect(!like.isHidden && dislike.isHidden && grip.isHidden && !duration.isHidden)
-    #expect(cell.subviews.compactMap { $0 as? NSButton }.count == 2)
+    #expect(cell.subviews.compactMap { $0 as? NSButton }.filter { !$0.isHidden }.count == 1)
     cell.updateSelection(isSelected: true)
     #expect(!like.isHidden && dislike.isHidden && grip.isHidden)
     cell.updateHover(isHovered: true)
@@ -134,4 +137,56 @@ private func queueCellTrack(_ id: String = "song", album: String? = "Mr. Morale 
     #expect(!like.isHidden && like.alphaValue == 1)
     configureQueueCell(cell, liked: true, current: true)
     #expect(!like.isHidden && like.accessibilityLabel() == "Quitar de Me gusta")
+}
+
+
+@Test @MainActor func nativeQueueProposalsShareGeometryAndSwapDurationForPlusOnlyOnHover() async throws {
+    let pending = NativeQueueTrackCellView(frame: NSRect(x: 0, y: 0, width: 576, height: 46))
+    let proposal = NativeQueueTrackCellView(frame: pending.frame)
+    configureQueueCell(pending)
+    proposal.configure(track: queueCellTrack("recommendation"), index: 0, isCurrentTrack: false, isPlaying: false,
+        isLiked: false, hideAlbum: true, showAlbumInSubtitle: true, isReorderable: false, rowHeight: 46)
+    var additions = 0
+    proposal.setAddToQueueAction { additions += 1 }
+    let plus = try queueSubview(proposal, "NativeQueueTrackAddToQueue", as: NSButton.self)
+    let duration = try queueSubview(proposal, "NativeQueueTrackDuration", as: NSTextField.self)
+    let grip = try queueSubview(pending, "NativeQueueTrackReorderGrip", as: NSImageView.self)
+    let proposalGrip = try queueSubview(proposal, "NativeQueueTrackReorderGrip", as: NSImageView.self)
+    #expect(plus.isHidden && !duration.isHidden)
+    for width: CGFloat in [350, 576, 900] {
+        for cell in [pending, proposal] {
+            cell.setFrameSize(NSSize(width: width, height: 46))
+            cell.layoutSubtreeIfNeeded()
+        }
+        for id in ["NativeQueueTrackArtwork", "NativeQueueTrackTitle", "NativeQueueTrackCredits", "NativeQueueTrackLike", "NativeQueueTrackDislike", "NativeQueueTrackDuration"] {
+            let a = try queueSubview(pending, id, as: NSView.self)
+            let b = try queueSubview(proposal, id, as: NSView.self)
+            let ar = pending.convert(a.bounds, from: a), br = proposal.convert(b.bounds, from: b)
+            #expect(abs(ar.minX - br.minX) < 0.1, "Alignment: \(id)")
+            #expect(abs(ar.midY - br.midY) < 0.1)
+            #expect(abs(ar.width - br.width) < 0.1)
+        }
+        proposal.updateHover(isHovered: true)
+        pending.updateHover(isHovered: true)
+        #expect(!plus.isHidden && duration.isHidden && proposalGrip.isHidden && !grip.isHidden)
+        #expect(abs(plus.frame.midX - grip.frame.midX) < 0.1)
+        // AppKit uses optical alignment insets for buttons and image views.
+        let plusAlignment = plus.alignmentRect(forFrame: plus.frame)
+        let gripAlignment = grip.alignmentRect(forFrame: grip.frame)
+        #expect(abs(plusAlignment.midY - gripAlignment.midY) < 0.1)
+        proposal.updateHover(isHovered: false)
+        #expect(plus.isHidden && !duration.isHidden)
+    }
+    proposal.updateCreditFocus(true)
+    #expect(!plus.isHidden && duration.isHidden)
+    plus.performClick(nil)
+    for _ in 0..<5 { await Task.yield() }
+    #expect(additions == 1)
+    proposal.prepareForReuse()
+    proposal.updateHover(isHovered: true)
+    #expect(plus.isHidden)
+    configureQueueCell(proposal)
+    proposal.updateHover(isHovered: true)
+    #expect(plus.isHidden && !proposalGrip.isHidden)
+}
 }

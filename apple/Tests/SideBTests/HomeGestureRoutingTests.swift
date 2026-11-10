@@ -105,7 +105,6 @@ final class HomeGestureRoutingTests: XCTestCase {
                 for point in [NSPoint(x: area.midX, y: area.minY - 15),
                               NSPoint(x: area.midX, y: area.maxY + 16),
                               NSPoint(x: 14, y: area.midY)] {
-                    XCTAssertTrue(host.bounds.contains(point))
                     XCTAssertFalse(HorizontalNavigationGestureRouting.contentOwnsGesture(at: point, in: host), "\(width): \(point)")
                 }
             }
@@ -137,12 +136,9 @@ final class HomeGestureRoutingTests: XCTestCase {
         for direction: CGFloat in [1, -1] {
             input(.init(phase: .mayBegin), at: cards)
             input(.init(phase: .began), at: cards)
-            var paging = HomeFeaturedWheelInput()
             let first = input(.init(deltaX: direction * 50, phase: .changed), at: cards)
             XCTAssertEqual(first.disposition, .passThrough)
-            XCTAssertNotNil(paging.consume(x: direction * 50, y: 0, timestamp: 1, momentum: false))
             XCTAssertEqual(input(.init(deltaX: direction * 300, phase: .changed), at: header).disposition, .passThrough)
-            XCTAssertNil(paging.consume(x: direction * 300, y: 0, timestamp: 1.1, momentum: false))
             XCTAssertNil(input(.init(phase: .ended), at: header).commit)
             XCTAssertEqual(input(.init(deltaX: direction * 500, momentumPhase: .changed), at: header).disposition, .passThrough)
             input(.init(momentumPhase: .ended), at: header)
@@ -156,9 +152,64 @@ final class HomeGestureRoutingTests: XCTestCase {
         XCTAssertEqual(input(.init(phase: .ended), at: cards).commit, .back)
         XCTAssertEqual(router.currentPage, .library)
         XCTAssertEqual(haptics, 1)
-        // The explicit reservation is scoped to Home, leaving other pages untouched.
-        XCTAssertTrue(coordinator.scrollContext(at: cards, in: root, enabled: true).allowsHorizontalNavigation)
+        // Explicit horizontal content also keeps its contact outside Home.
+        XCTAssertFalse(coordinator.scrollContext(at: cards, in: root, enabled: true).allowsHorizontalNavigation)
+        XCTAssertTrue(coordinator.scrollContext(at: header, in: root, enabled: true).allowsHorizontalNavigation)
         XCTAssertNil(root.window)
+    }
+
+    func testArtistAlbumAndCategoryContactsStayLocalThroughEndAndMomentum() {
+        for page: PageDestination in [.artist(browseId: "artist-test"),
+                                      .album(browseId: "album-test"), .explore(.discover)] {
+            let router = NavigationRouter()
+            router.navigate(to: .library)
+            router.navigate(to: page)
+            router.navigate(to: .history)
+            router.goBack()
+            let presentation = WindowGesturePresentation()
+            var haptics = 0
+            let coordinator = WindowNavigationCoordinator(performHaptic: { haptics += 1 })
+            coordinator.setup(router: router, presentation: presentation, isFullscreenPresented: false,
+                canHandleGestures: true, reduceMotion: true, onDismissFullscreen: {})
+            let root = NSView(frame: NSRect(x: 0, y: 0, width: 900, height: 700))
+            let carousel = WindowGestureRegionView(frame: NSRect(x: 30, y: 100, width: 840, height: 250))
+            carousel.region = .horizontalContent
+            root.addSubview(carousel)
+            let cards = NSPoint(x: 300, y: 200)
+            let heading = NSPoint(x: 300, y: 400)
+            for direction: CGFloat in [1, -1] {
+                let events: [(WindowGestureStateMachine.Event, NSPoint)] = [
+                    (.init(phase: .mayBegin), cards), (.init(phase: .began), cards),
+                    (.init(deltaX: direction * 300, phase: .changed), cards),
+                    (.init(deltaX: direction * 300, phase: .changed), heading),
+                    (.init(phase: .ended), heading),
+                    (.init(deltaX: direction * 500, momentumPhase: .changed), heading),
+                    (.init(momentumPhase: .ended), heading)
+                ]
+                for (event, point) in events {
+                    let output = coordinator.handleScrollInput(event, enabled: true) {
+                        coordinator.scrollContext(at: point, in: root, enabled: true)
+                    }
+                    XCTAssertEqual(output.disposition, .passThrough)
+                    XCTAssertNil(output.commit)
+                }
+                XCTAssertEqual(router.currentPage, page)
+                XCTAssertNil(presentation.horizontal)
+            }
+            XCTAssertEqual(haptics, 0)
+            // A new contact outside the viewport can still navigate history.
+            coordinator.handleScrollInput(.init(phase: .mayBegin), enabled: true) {
+                coordinator.scrollContext(at: heading, in: root, enabled: true)
+            }
+            coordinator.handleScrollInput(.init(deltaX: 100, phase: .changed), enabled: true) {
+                coordinator.scrollContext(at: heading, in: root, enabled: true)
+            }
+            let release = coordinator.handleScrollInput(.init(phase: .ended), enabled: true) {
+                coordinator.scrollContext(at: heading, in: root, enabled: true)
+            }
+            XCTAssertEqual(release.commit, .back)
+            XCTAssertEqual(router.currentPage, .library)
+        }
     }
 
     private func record(kind: String, id: Int) -> HomeItemRecord {

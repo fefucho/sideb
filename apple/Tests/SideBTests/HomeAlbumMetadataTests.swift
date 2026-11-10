@@ -28,6 +28,8 @@ private func metadataAlbum(_ id: String = "album", title: String = "Blonde", art
     #expect(value.title == "Blonde")
     #expect(value.artist == "Frank Ocean")
     #expect(value.summary == "Álbum • 2016 • 17 canciones • 1 h")
+    #expect(value.cardSummary == "2016 · 17 canciones")
+    #expect(value.duration == "1 h")
 }
 
 @Test func homeAlbumMetadataCleansTypeAndYearOutOfArtistFallback() {
@@ -40,6 +42,8 @@ private func metadataAlbum(_ id: String = "album", title: String = "Blonde", art
 @Test func homeAlbumMetadataDoesNotInventUnavailableCountsOrDuration() {
     let value = HomeAlbumMetadata.make(item: metadataItem("unknown", subtitle: "Álbum"), album: nil)
     #expect(value.summary == "Álbum")
+    #expect(value.cardSummary.isEmpty)
+    #expect(value.duration == nil)
     #expect(value.artist == nil)
 }
 

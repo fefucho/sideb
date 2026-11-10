@@ -15,13 +15,17 @@ struct HomeSettingsPanel: View {
     let titlebarHeight: CGFloat
     var toolbarBottom: CGFloat = 0
     let onClose: () -> Void
-    private enum Control: Hashable { case close, language, sidebarLayout, homeBackground, animatedArtwork, clearAnimatedArtwork, collectionKind, search, row(String), up(String), down(String), reset(String) }
+    private enum Control: Hashable { case close, language, visualProvider, searchVideos, queueSelection, sidebarBottomContent, sidebarLayout, homeBackground, animatedArtwork, clearAnimatedArtwork, collectionKind, search, row(String), up(String), down(String), reset(String) }
     @AppStorage(HomeAppearance.solidBackgroundKey, store: HomeAppearance.preferences)
     private var useSolidHomeBackground = false
     @AppStorage(SidebarStyle.preferenceKey, store: HomeAppearance.preferences)
     private var sidebarStyleRawValue = SidebarStyle.collection.rawValue
     @AppStorage(HomeAppearance.animatedArtworkKey, store: HomeAppearance.preferences)
     private var animatedArtworkEnabled = true
+    @AppStorage(QueuePreferences.selectionKey, store: HomeAppearance.preferences)
+    private var queueSelectionRaw = QueueRecommendationSelection.advance.rawValue
+    @AppStorage(SidebarBottomContentPreferences.preferenceKey, store: HomeAppearance.preferences)
+    private var sidebarBottomContentRaw = SidebarBottomContent.queue.rawValue
     @State private var animatedArtworkCacheBytes: UInt64?
     @State private var animatedArtworkCacheError = false
     @FocusState private var focusedControl: Control?
@@ -80,6 +84,45 @@ struct HomeSettingsPanel: View {
                     .pickerStyle(.menu)
                     .focused($focusedControl, equals: .language)
                     .accessibilityIdentifier("app-language-picker")
+                    Toggle(L10n.text("settings.search.showVideos"), isOn: Binding(
+                        get: { SearchPreferences.shared.showVideos },
+                        set: { SearchPreferences.shared.showVideos = $0 }
+                    ))
+                    .toggleStyle(.checkbox)
+                    .focused($focusedControl, equals: .searchVideos)
+                    .accessibilityIdentifier("search-show-videos-toggle")
+                    Text(L10n.text("settings.search.showVideos.hint"))
+                        .font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    Divider().padding(.vertical, 8)
+                    Text(L10n.text("queue.settings.title")).font(.system(size: 13, weight: .semibold)).accessibilityAddTraits(.isHeader)
+                    Picker(L10n.text("queue.selection.label"), selection: Binding(
+                        get: { QueueRecommendationSelection.resolve(queueSelectionRaw).rawValue },
+                        set: { queueSelectionRaw = $0 }
+                    )) {
+                        ForEach(QueueRecommendationSelection.allCases, id: \.rawValue) { mode in
+                            Text(L10n.text(mode.labelKey)).tag(mode.rawValue)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .focused($focusedControl, equals: .queueSelection)
+                    .accessibilityIdentifier("queue-recommendation-selection")
+                    Text(L10n.text("queue.selection.hint"))
+                        .font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    Divider().padding(.vertical, 8)
+                    Text(L10n.text("settings.sidebarBottomContent.cardTitle")).font(.system(size: 13, weight: .semibold)).accessibilityAddTraits(.isHeader)
+                    Picker(L10n.text("settings.sidebarBottomContent.label"), selection: Binding(
+                        get: { SidebarBottomContent.resolve(sidebarBottomContentRaw).rawValue },
+                        set: { sidebarBottomContentRaw = $0 }
+                    )) {
+                        ForEach(SidebarBottomContent.allCases) { option in
+                            Text(L10n.text(option.labelKey)).tag(option.rawValue)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .focused($focusedControl, equals: .sidebarBottomContent)
+                    .accessibilityIdentifier("sidebar-bottom-content-picker")
+                    Text(L10n.text("settings.sidebarBottomContent.hint"))
+                        .font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     Divider().padding(.vertical, 8)
                     Text(L10n.text("settings.appearance")).font(.system(size: 13, weight: .semibold)).accessibilityAddTraits(.isHeader)
                     Picker(L10n.text("settings.sidebarLayout"), selection: Binding(
@@ -117,6 +160,11 @@ struct HomeSettingsPanel: View {
                     if animatedArtworkCacheError {
                         Text(L10n.text("settings.animatedArtwork.cacheFailure"))
                             .font(.system(size: 11)).foregroundStyle(.secondary)
+                    }
+                    Divider().padding(.vertical, 8)
+                    VisualProviderSettings { focused in
+                        if focused { focusedControl = .visualProvider }
+                        else if focusedControl == .visualProvider { focusedControl = nil }
                     }
                     Divider().padding(.vertical, 8)
                     Text(L10n.text("settings.featured")).font(.system(size: 13, weight: .semibold)).accessibilityAddTraits(.isHeader)

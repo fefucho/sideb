@@ -4,33 +4,53 @@ import SwiftUI
 /// within a dedicated view subtree.
 struct PlayerBarProgressView: View {
     @Bindable var viewModel: PlayerViewModel
+    var horizontalInset: CGFloat = 32
+    var isStacked = false
 
     @State private var isHoveringScrubber = false
     @State private var isSeeking = false
     @State private var seekFraction = 0.0
 
     var body: some View {
-        HStack(spacing: 8) {
-            timeLabel(
-                isSeeking && viewModel.duration > 0
-                    ? viewModel.formattedTime(at: seekFraction * viewModel.duration)
-                    : viewModel.formattedElapsed,
-                alignment: .leading
-            )
-            scrubberBarSection
-            timeLabel(viewModel.formattedDuration, alignment: .trailing)
+        Group {
+            if isStacked {
+                VStack(spacing: 5) {
+                    scrubberBarSection
+                    HStack(spacing: 8) {
+                        timeLabel(
+                            isSeeking && viewModel.duration > 0
+                                ? viewModel.formattedTime(at: seekFraction * viewModel.duration)
+                                : viewModel.formattedElapsed,
+                            alignment: .leading
+                        )
+                        Spacer(minLength: 0)
+                        timeLabel(viewModel.formattedDuration, alignment: .trailing)
+                    }
+                }
+            } else {
+                HStack(spacing: 8) {
+                    timeLabel(
+                        isSeeking && viewModel.duration > 0
+                            ? viewModel.formattedTime(at: seekFraction * viewModel.duration)
+                            : viewModel.formattedElapsed,
+                        alignment: .leading
+                    )
+                    scrubberBarSection
+                    timeLabel(viewModel.formattedDuration, alignment: .trailing)
+                }
+                .frame(height: 14)
+                .padding(.horizontal, horizontalInset)
+                .padding(.top, 2)
+                .offset(y: 3)
+            }
         }
-        .frame(height: 14)
-        .padding(.horizontal, 32)
-        .padding(.top, 2)
-        .offset(y: 3)
     }
 
     private func timeLabel(_ value: String, alignment: Alignment) -> some View {
         Text(value)
             .font(.system(size: 10.5, weight: .medium, design: .rounded))
             .monospacedDigit()
-            .foregroundStyle(Color.white.opacity(0.62))
+            .foregroundStyle(Color.white.opacity(isStacked ? 0.85 : 0.62))
             .fixedSize(horizontal: true, vertical: false)
             .frame(minWidth: 40, alignment: alignment)
             .accessibilityLabel(value)
@@ -82,5 +102,14 @@ struct PlayerBarProgressView: View {
             )
         }
         .frame(height: 14)
+        .allowsHitTesting(viewModel.duration.isFinite && viewModel.duration > 0)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(L10n.text("playbackSidebar.position"))
+        .accessibilityValue(viewModel.formattedElapsed + " / " + viewModel.formattedDuration)
+        .accessibilityAdjustableAction { direction in
+            guard viewModel.duration.isFinite, viewModel.duration > 0 else { return }
+            let delta = direction == .increment ? 5.0 : -5.0
+            viewModel.seek(toFraction: min(1, max(0, (viewModel.currentTime + delta) / viewModel.duration)))
+        }
     }
 }

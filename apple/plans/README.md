@@ -1,5 +1,11 @@
 # Planes Apple
 
+- [PLAN-033: Scroll del perfil de artista](PLAN-033-artist-profile-scroll.md) — FIX-281/PAR-049, reciclado de filas/tarjetas y propiedad horizontal;54focales aprobadas, suite global/QA física pendientes.
+
+- [PLAN-032: Videos en búsqueda](PLAN-032-search-video-preferences.md) — ajuste persistente Apple; FIX-280, PAR-048.
+
+- [PLAN-031: Panel lateral Ahora suena](PLAN-031-now-playing-sidebar.md) — FIX-278/279, build0183 Release compiled;841Swift+298Rust aprobadas. Portada/datos unidos, Letras sin miniatura, controles ampliados, Info/centrado fullscreen y seguimiento restaurados. Iteración6/FIX-282 entregada en build0185 (855Swift+298Rust): metadata anclada tras recomendaciones con blur, próximas dos canciones, controles mayores y transición con botón exterior. PAR-046 abierta; Windows pendiente.
+
 - [Unificación de latest y Mac local](../../plans/PLAN-017-local-latest-unification.md) — integración de búsqueda nativa, preview/retención y Relacionado sobre latest1.2.7, conservando rating/marquee/Inter. FIX-267/268: código unificado en SIDE B, build0167 Release aprobada:1049pruebas, firma/hashes/fuentes estables;0004 antecedente.
 
 - [PLAN-030: Barra de reproducción, ancho útil y título desplazable](PLAN-030-player-bar-space-marquee.md) — FIX-264/265: marquee nativo con enlaces, Corazón destacado/dislike junto al ancho natural de metadata, separadores invisibles y portada radio2; créditos fullscreen activo sinE. Windows022/PAR-044; pruebas Swift preparadas, compilación/QA Mac pendientes desde Windows.
@@ -43,3 +49,5 @@
 | [PLAN-003: fullscreen/sidebar](PLAN-003-fullscreen-sidebar.md) | FIX-095 implementado; build-0008, validación visual pendiente | [FIX-095](../../FIXES.md#fix-095), PAR-008 |
 
 Planes previos en `temp/documentation/plans/` (material local de importación): comprobar estado/código antes de trasladar uno.
+
+| [PLAN-034: Inicio continuo](PLAN-034-home-continuous-cards.md) | Implementado y revisado; build-0186, 862 Swift + 298 Rust; QA visual pendiente | FIX-285, PAR-051 |

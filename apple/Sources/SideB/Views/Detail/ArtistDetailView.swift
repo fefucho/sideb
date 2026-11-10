@@ -28,32 +28,26 @@ struct ArtistDetailView: View {
                         .padding(.top, 36)
                     }
                 } else if let artist = viewModel.artist {
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 32) {
-                            // Cabecera interactiva del Artista
-                            headerView(artist: artist)
-                                .padding(.horizontal, 32)
-                                .padding(.top, 28)
-
-                            Divider()
-                                .opacity(0.2)
-                                .padding(.horizontal, 32)
-
-                            // Top Canciones
-                            if !artist.topSongs.isEmpty {
-                                topSongsSection(artist: artist)
+                    ArtistProfileViewport(
+                        artist: artist,
+                        isObscured: playerViewModel.isFullscreenPresented,
+                        header: AnyView(ArtistProfileHostedContent {
+                            AnyView(VStack(alignment: .leading, spacing: 32) {
+                                headerView(artist: artist)
                                     .padding(.horizontal, 32)
-                            }
-
-                            // Carruseles de Secciones (Álbumes, Sencillos, Vídeos, etc.)
-                            ForEach(artist.sections, id: \.title) { section in
-                                if !section.items.isEmpty {
-                                    carouselSection(section: section)
+                                    .padding(.top, 28)
+                                Divider().opacity(0.2).padding(.horizontal, 32)
+                                if !artist.topSongs.isEmpty {
+                                    topSongsSection(artist: artist).padding(.horizontal, 32)
                                 }
-                            }
+                            }.padding(.bottom, 32))
+                        }),
+                        makeCard: { card in AnyView(artistCardItem(card: card)) },
+                        onMore: { section in
+                            guard let id = section.moreBrowseId, !id.isEmpty else { return }
+                            router?.navigate(to: .catalog(browseId: id, params: section.moreParams, title: section.title))
                         }
-                        .padding(.bottom, 120) // Espacio para la barra de reproducción flotante
-                    }
+                    )
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if let error = viewModel.errorMessage {
                     VStack(spacing: 12) {
@@ -360,43 +354,6 @@ struct ArtistDetailView: View {
     }
 
     // MARK: - Secciones de Carruseles (Álbumes, Sencillos, etc.)
-    @ViewBuilder
-    private func carouselSection(section: ArtistCarouselRecord) -> some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack {
-                Text(section.title)
-                    .font(.system(size: 20, weight: .bold))
-
-                Spacer()
-
-                if let moreBrowseId = section.moreBrowseId, !moreBrowseId.isEmpty {
-                    Button(L10n.text("detail.viewAll")) {
-                        router?.navigate(to: .catalog(
-                            browseId: moreBrowseId,
-                            params: section.moreParams,
-                            title: section.title
-                        ))
-                    }
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(.primary)
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(L10n.text("detail.viewAllSection", args: [section.title]))
-                }
-            }
-            .padding(.horizontal, 32)
-
-            ScrollView(.horizontal, showsIndicators: false) {
-                LazyHStack(spacing: 16) {
-                    ForEach(section.items, id: \.id) { card in
-                        artistCardItem(card: card)
-                    }
-                }
-                .padding(.horizontal, 32)
-            }
-            .windowGestureRegion(.horizontalContent, active: !playerViewModel.isFullscreenPresented)
-        }
-    }
-
     @ViewBuilder
     private func artistCardItem(card: BrowseCardRecord) -> some View {
         let isArtist = card.kind.lowercased() == "artist"

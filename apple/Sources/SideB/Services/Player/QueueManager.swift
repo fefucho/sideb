@@ -16,6 +16,8 @@ public struct QueueOrderSnapshot: Codable, Equatable {
     public var currentOccurrenceID: String?
     public var visibleCount: Int
     public var nextSourceRank: Int
+    public var radioOccurrenceIDs: [String]? = nil
+    public var stoppedAtEnd: Bool? = nil
 
     public init(occurrenceIDs: [String], sourceRanks: [String: Int],
                 placements: [String: QueuePlacement], currentOccurrenceID: String?,
@@ -27,6 +29,12 @@ public struct QueueOrderSnapshot: Codable, Equatable {
         self.visibleCount = visibleCount
         self.nextSourceRank = nextSourceRank
     }
+}
+
+public struct QueueRecommendationEntry: Identifiable, Equatable {
+    public let id: String
+    public let track: SongItemRecord
+    public init(id: String, track: SongItemRecord) { self.id = id; self.track = track }
 }
 
 // MARK: - QueueContext
@@ -56,13 +64,26 @@ public final class QueueManager {
     private static let playlistBatchSize = 100
     private static let playlistRefillThreshold = 10
 
-    public private(set) var occurrenceIDs: [String] = []
+    private var occurrenceStructureRevision: UInt64 = 0
+    private var cachedIndexRevision: UInt64 = .max
+    private var cachedOccurrenceIndices: [String:Int] = [:]
+    private var pendingDisplayLimit = 100
+    public private(set) var occurrenceIDs: [String] = [] { didSet { occurrenceStructureRevision &+= 1 } }
     private var sourceRanks: [String: Int] = [:]
     private var nextSourceRank = 0
     private var placements: [String: QueuePlacement] = [:]
     private var visibleCount = 0
     private var mutationDepth = 0
     private var pendingNotification = false
+    public private(set) var recommendationEntries: [QueueRecommendationEntry] = []
+    public private(set) var presentationRevision: UInt64 = 0
+    public private(set) var recommendationSessionID = UUID()
+    public var radioCursorVideoID: String?
+    public var radioContinuationToken: String?
+    private var excludedRecommendations = Set<String>()
+    private var recentVideoIDs: [String] = []
+    private var recentlyInsertedOccurrenceIDs: [String] = []
+    private var radioCommittedIDs = Set<String>()
 
     // MARK: - Estado de Cola
     public var onStateChange: (() -> Void)?
@@ -106,9 +127,12 @@ public final class QueueManager {
     public init() {}
 
     public var orderSnapshot: QueueOrderSnapshot {
-        QueueOrderSnapshot(occurrenceIDs: occurrenceIDs, sourceRanks: sourceRanks,
+        var snapshot = QueueOrderSnapshot(occurrenceIDs: occurrenceIDs, sourceRanks: sourceRanks,
                            placements: placements, currentOccurrenceID: currentOccurrenceID,
                            visibleCount: visibleCount, nextSourceRank: nextSourceRank)
+        snapshot.radioOccurrenceIDs = radioCommittedIDs.isEmpty ? nil : radioCommittedIDs.sorted()
+        snapshot.stoppedAtEnd = !queue.isEmpty && currentIndex == queue.count ? true : nil
+        return snapshot
     }
 
     public var currentOccurrenceID: String? {
@@ -135,6 +159,27 @@ public final class QueueManager {
 
     /// Cola publicada a la interfaz. La cola autoritativa completa permanece en `queue`.
     public var tracks: [SongItemRecord] { Array(queue.prefix(visibleCount)) }
+    public var visiblePendingIndices: [Int] {
+        refreshOccurrenceIndicesIfNeeded()
+        let upper = min(visibleCount, currentIndex.saturatingAdd(1).saturatingAdd(pendingDisplayLimit))
+        var result = Set(currentIndex + 1 < upper ? Array((currentIndex + 1)..<upper) : [])
+        for id in recentlyInsertedOccurrenceIDs.suffix(100) {
+            if let index = cachedOccurrenceIndices[id], index >= upper, index > currentIndex { result.insert(index) }
+        }
+        return result.sorted()
+    }
+    public func revealMorePendingTracks() {
+        let next = min(queue.count, max(visibleCount, currentIndex.saturatingAdd(1).saturatingAdd(pendingDisplayLimit + Self.playlistBatchSize)))
+        pendingDisplayLimit += Self.playlistBatchSize
+        guard next != visibleCount || next > currentIndex + 1 else { return }
+        visibleCount = next
+        stateChanged()
+    }
+    private func refreshOccurrenceIndicesIfNeeded() {
+        guard cachedIndexRevision != occurrenceStructureRevision else { return }
+        cachedOccurrenceIndices = Dictionary(uniqueKeysWithValues: occurrenceIDs.enumerated().map { ($0.element, $0.offset) })
+        cachedIndexRevision = occurrenceStructureRevision
+    }
 
     public var currentTrack: SongItemRecord? {
         guard queue.indices.contains(currentIndex) else { return nil }
@@ -161,7 +206,7 @@ public final class QueueManager {
         return Array(queue[0..<currentIndex])
     }
 
-    public var hasNext: Bool { isRepeat ? !queue.isEmpty : currentIndex < queue.count - 1 }
+    public var hasNext: Bool { isRepeat ? !queue.isEmpty : currentIndex < queue.count - 1 || !recommendationEntries.isEmpty || radioContinuationToken != nil || isLoadingRadio || isLoadingAutoplay }
     public var hasPrevious: Bool { currentIndex > 0 }
 
     /// Indica si la reproducción se acerca al final de la cola activa (<= 2 pistas restantes)
@@ -195,16 +240,28 @@ public final class QueueManager {
         radioSeed: String? = nil,
         continuation: String? = nil,
         shuffle: Bool = false,
-        shuffleSeed: UInt64? = nil
+        shuffleSeed: UInt64? = nil,
+        restoringCommittedQueue: Bool = false
     ) {
         beginMutation(); defer { endMutation() }
         queueToken = UUID()
-        queue = items
-        occurrenceIDs = items.map { _ in UUID().uuidString }
+        pendingDisplayLimit = 100
+        recentlyInsertedOccurrenceIDs.removeAll()
+        recommendationEntries.removeAll(); excludedRecommendations.removeAll(); recentVideoIDs.removeAll(); radioCommittedIDs.removeAll()
+        recommendationSessionID = UUID(); radioCursorVideoID = nil; radioContinuationToken = nil
+        let radio = !restoringCommittedQueue && { if case .radio? = context { return true }; return false }()
+        let selectedIndex = items.isEmpty ? 0 : max(0, min(items.count - 1, index))
+        let committedItems = radio ? (items.isEmpty ? [] : [items[selectedIndex]]) : items
+        let rawReserved = radio && selectedIndex + 1 < items.count ? Array(items.dropFirst(selectedIndex + 1)) : []
+        var initialKnown = Set(committedItems.map(\.videoId))
+        let reserved = rawReserved.filter { initialKnown.insert($0.videoId).inserted }
+        recommendationEntries = reserved.map { QueueRecommendationEntry(id: UUID().uuidString, track: $0) }
+        queue = committedItems
+        occurrenceIDs = committedItems.map { _ in UUID().uuidString }
         sourceRanks = Dictionary(uniqueKeysWithValues: occurrenceIDs.enumerated().map { ($0.element, $0.offset) })
-        nextSourceRank = items.count
+        nextSourceRank = committedItems.count
         placements.removeAll(keepingCapacity: true)
-        currentIndex = items.isEmpty ? 0 : max(0, min(items.count - 1, index))
+        currentIndex = restoringCommittedQueue && index == items.count ? items.count : (radio ? 0 : selectedIndex)
         self.context = context
         if let title = contextTitle { self.contextTitle = title }
         else {
@@ -217,10 +274,12 @@ public final class QueueManager {
             }
         }
         self.radioSeed = radioSeed
-        continuationToken = continuation
+        continuationToken = radio ? nil : continuation
+        radioContinuationToken = radio ? continuation : nil
+        if radio, let current = committedItems.last { radioCursorVideoID = current.videoId }
         isShuffle = shuffle
         visibleCount = initialVisibleCount(for: currentIndex)
-        if shuffle, !items.isEmpty {
+        if shuffle, !items.isEmpty, !radio {
             // Initial shuffle chooses across the complete source. No entries are treated as history.
             var rng = ShuffleRandom(seed: shuffleSeed ?? Self.randomSeed())
             let first = rng.index(upperBound: queue.count)
@@ -243,9 +302,10 @@ public final class QueueManager {
             occurrenceIDs = snapshot.occurrenceIDs
             sourceRanks = snapshot.sourceRanks
             placements = snapshot.placements
+            radioCommittedIDs = Set(snapshot.radioOccurrenceIDs ?? []).intersection(snapshot.occurrenceIDs)
             nextSourceRank = snapshot.nextSourceRank
             visibleCount = snapshot.visibleCount
-            currentIndex = snapshot.currentOccurrenceID.flatMap { snapshot.occurrenceIDs.firstIndex(of: $0) } ?? 0
+            currentIndex = snapshot.stoppedAtEnd == true ? queue.count : (snapshot.currentOccurrenceID.flatMap { snapshot.occurrenceIDs.firstIndex(of: $0) } ?? 0)
         } else {
             occurrenceIDs = queue.map { _ in UUID().uuidString }
             if isShuffle {
@@ -268,19 +328,42 @@ public final class QueueManager {
     /// Añade temas recomendados de radio o automix deduplicando contra la cola y el lote.
     public func appendRadioTracks(_ tracks: [SongItemRecord], continuation: String? = nil) {
         beginMutation(); defer { endMutation() }
-        var known = Set(queue.map(\.videoId))
-        let fresh = tracks.filter { known.insert($0.videoId).inserted }
-        appendSourceItems(fresh)
-        if let continuation { continuationToken = continuation }
+        var known = Set(queue.indices.contains(currentIndex) ? queue[currentIndex...].map(\.videoId) : [])
+        known.formUnion(recommendationEntries.map { $0.track.videoId }); known.formUnion(recentVideoIDs)
+        let fresh = tracks.filter { !excludedRecommendations.contains($0.videoId) && known.insert($0.videoId).inserted }
+        recommendationEntries.append(contentsOf: fresh.map { QueueRecommendationEntry(id: UUID().uuidString, track: $0) })
+        radioContinuationToken = continuation
+        if let last = tracks.last { radioCursorVideoID = last.videoId }
+        stateChanged()
     }
 
     /// Añade ocurrencias de playlist preservando duplicados y el orden de origen.
     public func appendPlaylistTracks(_ tracks: [SongItemRecord], nextContinuation: String? = nil) {
         beginMutation(); defer { endMutation() }
+        let endManuals = occurrenceIDs.indices.filter { $0 > currentIndex && placements[occurrenceIDs[$0]] == .end }
+        let insertion = endManuals.first ?? queue.count
+        let oldVisible = visibleCount
+        let publishedIDs = Set(occurrenceIDs.prefix(oldVisible))
         appendSourceItems(tracks)
+        if insertion < queue.count {
+            let newRange = (queue.count - tracks.count)..<queue.count
+            let newItems = Array(queue[newRange]); let newIDs = Array(occurrenceIDs[newRange])
+            queue.removeSubrange(newRange); occurrenceIDs.removeSubrange(newRange)
+            queue.insert(contentsOf: newItems, at: insertion); occurrenceIDs.insert(contentsOf: newIDs, at: insertion)
+        }
+        visibleCount = min(queue.count, max(oldVisible, currentIndex + Self.playlistBatchSize))
         continuationToken = nextContinuation
-        if isShuffle { shufflePendingSource(seed: Self.randomSeed()) }
-        else { restoreSourceOrder() }
+        if !isShuffle { restoreSourceOrder() }
+        else if !tracks.isEmpty {
+            let positions = occurrenceIDs.indices.filter { $0 > currentIndex && sourceRanks[occurrenceIDs[$0]] != nil && !publishedIDs.contains(occurrenceIDs[$0]) }
+            if positions.count > 1 {
+                var rng = ShuffleRandom(seed: Self.randomSeed())
+                for offset in stride(from: positions.count - 1, through: 1, by: -1) {
+                    let other = rng.index(upperBound: offset + 1)
+                    queue.swapAt(positions[offset], positions[other]); occurrenceIDs.swapAt(positions[offset], positions[other])
+                }
+            }
+        }
     }
 
     /// Completes a partially loaded source without replacing occurrences, manual placements or playback.
@@ -307,6 +390,7 @@ public final class QueueManager {
             placements[id] = placementAnchor.map(QueuePlacement.after) ?? .end
             placementAnchor = id
         }
+        recentlyInsertedOccurrenceIDs.append(contentsOf: ids)
         if context == nil {
             context = .custom(title: "Cola manual")
             setContextLocalizationKey("queue.manual")
@@ -324,7 +408,91 @@ public final class QueueManager {
         }
         beginMutation(); defer { endMutation() }
         appendManualItems(tracks)
-        visibleCount = queue.count
+        recentlyInsertedOccurrenceIDs.append(contentsOf: occurrenceIDs.suffix(tracks.count))
+        visibleCount = min(queue.count, max(visibleCount, currentIndex + Self.playlistBatchSize))
+    }
+
+    public func enqueueRecommendation(id: String, next: Bool) {
+        guard let i = recommendationEntries.firstIndex(where: { $0.id == id }) else { return }
+        let entry = recommendationEntries.remove(at: i)
+        if next { playNext(entry.track) } else { addTrackToQueue(entry.track) }
+        stateChanged()
+    }
+
+    @discardableResult
+    public func playRecommendation(id: String, advanceThrough: Bool = false) -> SongItemRecord? {
+        guard let i = recommendationEntries.firstIndex(where: { $0.id == id }) else { return nil }
+        beginMutation(); defer { endMutation() }
+        let entries = advanceThrough ? Array(recommendationEntries.prefix(i + 1)) : [recommendationEntries[i]]
+        if advanceThrough { recommendationEntries.removeFirst(i + 1) }
+        else { recommendationEntries.remove(at: i) }
+        let at = min(currentIndex + 1, queue.count)
+        var anchor = currentOccurrenceID ?? (at > 0 ? occurrenceIDs[at - 1] : nil)
+        let ids = entries.map { _ in UUID().uuidString }
+        for (offset, occurrence) in ids.enumerated() {
+            placements[occurrence] = anchor.map(QueuePlacement.after) ?? .end
+            if advanceThrough && offset < entries.count - 1 { radioCommittedIDs.insert(occurrence) }
+            anchor = occurrence
+        }
+        queue.insert(contentsOf: entries.map(\.track), at: at)
+        occurrenceIDs.insert(contentsOf: ids, at: at)
+        currentIndex = at + entries.count - 1
+        visibleCount = min(queue.count, max(visibleCount + entries.count, currentIndex + 1))
+        if context == nil {
+            context = .custom(title: "Cola manual")
+            setContextLocalizationKey("queue.manual")
+        }
+        // Skipped proposals are navigation entries, not provider listens or recent playback.
+        pruneRadioHistoryIfNeeded()
+        stateChanged()
+        return entries.last?.track
+    }
+
+    public func removeRecommendation(id: String) {
+        guard let item = recommendationEntries.first(where: { $0.id == id }) else { return }
+        recommendationEntries.removeAll { $0.id == id }; excludedRecommendations.insert(item.track.videoId); stateChanged()
+    }
+
+    public func excludeRecommendationVideo(_ videoID: String) {
+        excludedRecommendations.insert(videoID); recommendationEntries.removeAll { $0.track.videoId == videoID }; stateChanged()
+    }
+
+    public func occurrenceIndex(id: String) -> Int? { refreshOccurrenceIndicesIfNeeded(); return cachedOccurrenceIndices[id] }
+
+    @discardableResult
+    public func advanceAfterRemovingCurrent() -> SongItemRecord? {
+        guard queue.indices.contains(currentIndex) else { return promoteRecommendation() }
+        beginMutation(); defer { endMutation() }
+        let old = currentIndex, removedID = occurrenceIDs[old]
+        detachDependents(of: removedID); queue.remove(at: old); occurrenceIDs.remove(at: old)
+        sourceRanks.removeValue(forKey: removedID); placements.removeValue(forKey: removedID)
+        radioCommittedIDs.remove(removedID)
+        recentlyInsertedOccurrenceIDs.removeAll { $0 == removedID }
+        if old < visibleCount { visibleCount -= 1 }
+        currentIndex = min(old, queue.count)
+        if old < queue.count { return queue[currentIndex] }
+        return promoteRecommendation()
+    }
+
+    private func promoteRecommendation() -> SongItemRecord? {
+        let known: Set<String> = queue.indices.contains(currentIndex) ? Set(queue[currentIndex...].map(\.videoId)) : []
+        guard continuationToken == nil else { return nil }
+        guard let i = recommendationEntries.firstIndex(where: { !known.contains($0.track.videoId) && !excludedRecommendations.contains($0.track.videoId) && !recentVideoIDs.contains($0.track.videoId) }) else {
+            if !recommendationEntries.isEmpty { recommendationEntries.removeAll(); stateChanged() }
+            return nil
+        }
+        if i > 0 { recommendationEntries.removeFirst(i) }
+        let item = recommendationEntries.removeFirst()
+        let anchor = currentOccurrenceID
+        beginMutation(); defer { endMutation() }
+        let id = UUID().uuidString; queue.append(item.track); occurrenceIDs.append(id)
+        radioCommittedIDs.insert(id)
+        placements[id] = anchor.map(QueuePlacement.after) ?? .end
+        currentIndex = queue.count - 1
+        if visibleCount < currentIndex + 1 { recentlyInsertedOccurrenceIDs.append(id) }
+        recentVideoIDs.append(item.track.videoId); if recentVideoIDs.count > 30 { recentVideoIDs.removeFirst(recentVideoIDs.count - 30) }
+        pruneRadioHistoryIfNeeded()
+        stateChanged(); return item.track
     }
 
     @discardableResult
@@ -337,7 +505,9 @@ public final class QueueManager {
         occurrenceIDs.remove(at: index)
         sourceRanks.removeValue(forKey: removedID)
         placements.removeValue(forKey: removedID)
+        radioCommittedIDs.remove(removedID)
         if index < visibleCount { visibleCount -= 1 }
+        recentlyInsertedOccurrenceIDs.removeAll { $0 == removedID }
         if index < currentIndex { currentIndex -= 1 }
         else if currentIndex >= queue.count { currentIndex = max(0, queue.count - 1) }
         extendVisibleBatch()
@@ -363,8 +533,31 @@ public final class QueueManager {
         if let targetID, anchorChainReaches(targetID, target: id) { detachDependents(of: id) }
         sourceRanks.removeValue(forKey: id)
         placements[id] = targetID.map(QueuePlacement.before) ?? .end
-        if targetID == nil { visibleCount = queue.count }
+        if targetID == nil { recentlyInsertedOccurrenceIDs.append(id) }
         currentIndex = activeID.flatMap { occurrenceIDs.firstIndex(of: $0) } ?? 0
+    }
+
+    /// Drops into the pending order. Previous/current entries are explicit repeats,
+    /// so their original occurrence and the active audio keep their identity.
+    @discardableResult
+    public func placeQueueOccurrence(id: String, beforeID: String?) -> String? {
+        guard let source = occurrenceIndex(id: id) else { return nil }
+        let target: Int
+        if let beforeID {
+            guard let index = occurrenceIndex(id: beforeID), index > currentIndex else { return nil }
+            target = index
+        } else { target = queue.count }
+        if source > currentIndex {
+            let destination = target > source ? target - 1 : target
+            moveTrack(from: source, to: destination)
+            return id
+        }
+        beginMutation(); defer { endMutation() }
+        let track = queue[source]
+        addTrackToQueue(track)
+        guard let added = occurrenceIDs.last else { return nil }
+        if target < queue.count - 1 { moveTrack(from: queue.count - 1, to: target) }
+        return added
     }
 
     public func clearQueue() {
@@ -373,6 +566,10 @@ public final class QueueManager {
         nextSourceRank = 0; visibleCount = 0; currentIndex = 0
         queueToken = UUID()
         context = nil; contextTitle = "Cola de reproducción"; radioSeed = nil; continuationToken = nil
+        radioCursorVideoID = nil; radioContinuationToken = nil; recommendationEntries.removeAll()
+        excludedRecommendations.removeAll(); recentVideoIDs.removeAll(); recentlyInsertedOccurrenceIDs.removeAll()
+        radioCommittedIDs.removeAll()
+        recommendationSessionID = UUID()
         isShuffle = false
     }
 
@@ -395,7 +592,8 @@ public final class QueueManager {
                 extendVisibleBatch()
                 return queue[0]
             }
-            return nil
+            guard !isRepeat, let promoted = promoteRecommendation() else { return nil }
+            return promoted
         }
         beginMutation(); defer { endMutation() }
         currentIndex += 1
@@ -493,13 +691,15 @@ public final class QueueManager {
         guard !queue.isEmpty else { return }
         let oldIDs = occurrenceIDs
         let activeID = currentOccurrenceID
-        let visibleExplicit = Set(occurrenceIDs.prefix(visibleCount).filter { placements[$0] != nil })
+        let stoppedAtEnd = !queue.isEmpty && currentIndex == queue.count
+        let frozenPrefix = sourceRanks[currentOccurrenceID ?? ""] == nil ? Array(oldIDs.prefix(currentIndex + 1)) : []
+        let frozen = Set(frozenPrefix)
         let known = Set(occurrenceIDs)
-        let sources = occurrenceIDs.filter { sourceRanks[$0] != nil }.sorted { sourceRanks[$0, default: 0] < sourceRanks[$1, default: 0] }
+        let sources = occurrenceIDs.filter { sourceRanks[$0] != nil && !frozen.contains($0) }.sorted { sourceRanks[$0, default: 0] < sourceRanks[$1, default: 0] }
         var before: [String: [String]] = [:]
         var after: [String: [String]] = [:]
         var end: [String] = []
-        for id in oldIDs where sourceRanks[id] == nil {
+        for id in oldIDs where sourceRanks[id] == nil && !frozen.contains(id) {
             switch placements[id] {
             case .before(let anchor) where known.contains(anchor): before[anchor, default: []].append(id)
             case .after(let anchor) where known.contains(anchor): after[anchor, default: []].append(id)
@@ -508,17 +708,34 @@ public final class QueueManager {
         }
         var ordered: [String] = []; ordered.reserveCapacity(oldIDs.count)
         var emitted = Set<String>()
-        for root in sources + end { Self.project(root, before: before, after: after, emitted: &emitted, result: &ordered) }
+        for root in frozenPrefix + sources + end { Self.project(root, before: before, after: after, emitted: &emitted, result: &ordered) }
         for id in oldIDs where emitted.insert(id).inserted { ordered.append(id) }
         if ordered != oldIDs {
             let itemsByID = Dictionary(uniqueKeysWithValues: zip(oldIDs, queue))
             queue = ordered.compactMap { itemsByID[$0] }
             occurrenceIDs = ordered
         }
-        currentIndex = activeID.flatMap { occurrenceIDs.firstIndex(of: $0) } ?? 0
-        visibleCount = min(queue.count, max(visibleCount, currentIndex.saturatingAdd(Self.playlistBatchSize)))
-        if let lastVisibleExplicit = occurrenceIDs.lastIndex(where: { visibleExplicit.contains($0) }) {
-            visibleCount = max(visibleCount, lastVisibleExplicit + 1)
+        currentIndex = activeID.flatMap { occurrenceIDs.firstIndex(of: $0) } ?? (stoppedAtEnd ? queue.count : 0)
+        if !stoppedAtEnd { visibleCount = min(queue.count, max(visibleCount, currentIndex.saturatingAdd(Self.playlistBatchSize))) }
+    }
+
+    private func pruneRadioHistoryIfNeeded() {
+        let radioHistory = occurrenceIDs.prefix(currentIndex).filter { radioCommittedIDs.contains($0) }
+        guard radioHistory.count > 220 else { return }
+        let removeCount = radioHistory.count - 200
+        for id in radioHistory.prefix(removeCount) {
+            guard let index = occurrenceIDs.firstIndex(of: id) else { continue }
+            let hasManualAnchor = placements.contains { key, placement in
+                guard !radioCommittedIDs.contains(key) else { return false }
+                switch placement { case .after(let anchor), .before(let anchor): return anchor == id; case .end: return false }
+            }
+            if hasManualAnchor { continue }
+            detachDependents(of: id)
+            queue.remove(at: index); occurrenceIDs.remove(at: index)
+            sourceRanks.removeValue(forKey: id); placements.removeValue(forKey: id); radioCommittedIDs.remove(id)
+            recentlyInsertedOccurrenceIDs.removeAll { $0 == id }
+            if index < currentIndex { currentIndex -= 1 }
+            if index < visibleCount { visibleCount -= 1 }
         }
     }
 
@@ -582,8 +799,8 @@ public final class QueueManager {
               !ids.contains(where: \.isEmpty),
               snapshot.visibleCount >= 0, snapshot.visibleCount <= ids.count,
               snapshot.nextSourceRank >= 0,
-              (queue.isEmpty ? snapshot.currentOccurrenceID == nil : snapshot.currentOccurrenceID.map(known.contains) == true),
-              (queue.isEmpty || snapshot.visibleCount >= ((snapshot.currentOccurrenceID.flatMap { ids.firstIndex(of: $0) } ?? ids.count) + 1)),
+              (queue.isEmpty ? snapshot.currentOccurrenceID == nil : (snapshot.currentOccurrenceID.map(known.contains) == true || (snapshot.stoppedAtEnd == true && snapshot.currentOccurrenceID == nil))),
+              (queue.isEmpty || snapshot.stoppedAtEnd == true || snapshot.visibleCount >= ((snapshot.currentOccurrenceID.flatMap { ids.firstIndex(of: $0) } ?? ids.count) + 1)),
               snapshot.sourceRanks.keys.allSatisfy(known.contains),
               snapshot.placements.keys.allSatisfy(known.contains),
               Set(snapshot.sourceRanks.keys).union(snapshot.placements.keys) == known,
@@ -615,6 +832,7 @@ public final class QueueManager {
         if mutationDepth == 0, pendingNotification { pendingNotification = false; onStateChange?() }
     }
     private func stateChanged() {
+        presentationRevision &+= 1
         if mutationDepth > 0 { pendingNotification = true } else { onStateChange?() }
     }
     private static func randomSeed() -> UInt64 { UInt64.random(in: 1...UInt64.max) }

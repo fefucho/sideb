@@ -1,112 +1,134 @@
 <script lang="ts">
-  import { appearance } from '$lib/appearance/preferences';
-  import { t, language, setLanguage } from '$lib/i18n';
-  import { providerHeading } from '$lib/i18n/presentation';
-  import { onMount } from 'svelte';
-  import { clearAnimatedArtworkCacheSafely, getAnimatedArtworkCacheSize } from '$lib/artwork/animated';
-  import { defaults, move, normalized, orderCategories, sourceLabels, type CollectionKind, type HomeSettings } from '$lib/home/settings';
-  import VirtualStack from '../common/VirtualStack.svelte';
+  import { onMount, untrack } from 'svelte';
+  import { t } from '$lib/i18n';
+  import type { CollectionKind, HomeSettings } from '$lib/home/settings';
+  import AccountSettings from '../settings/AccountSettings.svelte';
+  import AppearanceSettings from '../settings/AppearanceSettings.svelte';
+  import GeneralSettings from '../settings/GeneralSettings.svelte';
+  import HomeFeedSettings from '../settings/HomeFeedSettings.svelte';
+  import PlaybackSettings from '../settings/PlaybackSettings.svelte';
+  import SettingsIcon from '../settings/SettingsIcon.svelte';
+  import ShortcutsSettings from '../settings/ShortcutsSettings.svelte';
+  import VisualProviderSettings from '../settings/VisualProviderSettings.svelte';
+  import SettingsGroup from '../settings/SettingsGroup.svelte';
+  import { matchingCategories, settingsCategories, settingsSectionKey, settingsSections, type SettingsCategoryId } from '../settings/settingsCategories';
   interface Category { key:string; title:string }
-  interface Props { settings:HomeSettings; kind:CollectionKind; categories:Category[]; libraryError:string|null; onChange:(settings:HomeSettings)=>void; onKind:(kind:CollectionKind)=>void; onRetryLibrary:()=>void; onClose:()=>void; exponentialVolume?:boolean; volumeModePending?:boolean; onExponentialVolume?:(enabled:boolean)=>void }
-  let { settings, kind, categories, libraryError, onChange, onKind, onRetryLibrary, onClose, exponentialVolume=false, volumeModePending=false, onExponentialVolume }:Props=$props();
-  let query=$state(''); let close:HTMLButtonElement; let dragSource:number|null=null; let dragCategory:string|null=null;
-  let artworkCacheSize=$state<number|null>(null); let artworkCachePending=$state(false); let artworkCacheError=$state(false);
-  $effect(()=>{kind;dragSource=null;});
-  const field=$derived(kind==='albums'?'albumSources':'playlistSources');
-  const sources=$derived(settings[field]);
-  const ordered=$derived(settings.categoryOrderMode==='custom' ? [...categories].sort((a,b) => { const rank=(key:string) => {const i=settings.categoryOrder.indexOf(key);return i<0?1e9:i;}; return rank(a.key)-rank(b.key); }) : categories);
-  const filtered=$derived(ordered.filter(category=>normalized(category.title).includes(normalized(query)) || normalized(providerHeading(category.title,$language)).includes(normalized(query))));
-  function moveSource(from:number,to:number) { onChange({...settings,[field]:move(sources,from,to)}); }
-  function moveCategory(key:string,to:number) { onChange(orderCategories(settings,move(ordered.map(category=>category.key),ordered.findIndex(category=>category.key===key),to))); }
-  function toggleCategory(key:string,show:boolean) { onChange({...settings,hiddenCategoryKeys:show?settings.hiddenCategoryKeys.filter(k=>k!==key):[...settings.hiddenCategoryKeys,key]}); }
-  function dropSource(event:DragEvent,to:number) { event.preventDefault();if(dragSource!==null) moveSource(dragSource,to);dragSource=null; }
-  function dropCategory(event:DragEvent,key:string) { event.preventDefault();if(dragCategory) moveCategory(dragCategory,ordered.findIndex(category=>category.key===key));dragCategory=null; }
-  function requestVolumeMode(event: Event & { currentTarget: HTMLInputElement }) {
-    const requested = event.currentTarget.checked;
-    event.currentTarget.checked = exponentialVolume;
-    onExponentialVolume?.(requested);
+  interface Props { settings:HomeSettings; kind:CollectionKind; categories:Category[]; libraryError:string|null; onChange:(settings:HomeSettings)=>void; onKind:(kind:CollectionKind)=>void; onRetryLibrary:()=>void; onClose:()=>void; exponentialVolume?:boolean; volumeModePending?:boolean; onExponentialVolume?:(enabled:boolean)=>void; initialCategory?:SettingsCategoryId }
+  let { settings, kind, categories, libraryError, onChange, onKind, onRetryLibrary, onClose, exponentialVolume=false, volumeModePending=false, onExponentialVolume, initialCategory='general' }:Props=$props();
+  const detailSelector='.settings-detail';
+  const focusable='button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])';
+  let selected=$state<SettingsCategoryId>(untrack(()=>initialCategory));
+  let query=$state(''); let close:HTMLButtonElement; let dialog:HTMLElement; let search:HTMLInputElement; let nav:HTMLElement; let pressedScrim=false;
+  const matches=$derived(matchingCategories(query,key=>$t(key)));
+  const current=$derived(settingsCategories.find(category=>category.id===selected)??settingsCategories[0]);
+  onMount(()=>{ close.focus(); });
+  function onWindowKey(event:KeyboardEvent) {
+    if(event.key!=='Escape'||event.defaultPrevented) return;
+    event.preventDefault(); event.stopPropagation();
+    if(event.target===search&&query){ query=''; return; }
+    onClose();
   }
-  onMount(()=>{ close.focus(); void refreshArtworkCacheSize(); });
-  async function refreshArtworkCacheSize() { try { artworkCacheSize=await getAnimatedArtworkCacheSize(); } catch { artworkCacheError=true; } }
-  async function clearArtworkCache() {
-    if (artworkCachePending) return;
-    artworkCachePending=true; artworkCacheError=false;
-    try { artworkCacheSize=await clearAnimatedArtworkCacheSafely(); artworkCacheError=artworkCacheSize > 0; }
-    catch { artworkCacheError=true; }
-    finally { artworkCachePending=false; }
+  /** Modal focus trap: Tab cycles inside the panel; focus never reaches the page behind. */
+  function trapFocus(event:KeyboardEvent) {
+    if(event.key!=='Tab'||event.defaultPrevented||event.isComposing) return;
+    const items=[...dialog.querySelectorAll<HTMLElement>(focusable)].filter(element=>!element.closest('[hidden], [inert]')&&getComputedStyle(element).display!=='none');
+    const first=items[0],last=items.at(-1);
+    if(!first||!last){ event.preventDefault(); dialog.focus(); }
+    else if(event.shiftKey&&(document.activeElement===first||!dialog.contains(document.activeElement))){ event.preventDefault(); last.focus(); }
+    else if(!event.shiftKey&&(document.activeElement===last||!dialog.contains(document.activeElement))){ event.preventDefault(); first.focus(); }
+  }
+  function navigate(event:KeyboardEvent) {
+    if(event.altKey||event.ctrlKey||event.metaKey||!['ArrowUp','ArrowDown','Home','End'].includes(event.key)) return;
+    const items=[...nav.querySelectorAll<HTMLButtonElement>('button.item')]; if(!items.length) return;
+    const index=items.indexOf(document.activeElement as HTMLButtonElement);
+    const next=event.key==='Home'?0:event.key==='End'?items.length-1:Math.max(0,Math.min(items.length-1,(index<0?0:index)+(event.key==='ArrowDown'?1:-1)));
+    event.preventDefault(); items[next].focus();
   }
 </script>
-<svelte:window onkeydown={event=>{if(event.key==='Escape'&&!event.defaultPrevented){event.preventDefault();event.stopPropagation();onClose();}}} />
-<aside class="settings" aria-label={$t('windows.ui.homeSettings')}>
-  <header><h2>{$t('windows.ui.homeSettings')}</h2><button type="button" bind:this={close} aria-label={$t('settings.close')} onclick={onClose}>×</button></header>
-  <div class="settings-scroll">
-    {#if onExponentialVolume}<section><h3>{$t('windows.settings.audio')}</h3><label><input type="checkbox" checked={exponentialVolume} disabled={volumeModePending} onchange={requestVolumeMode} aria-describedby="exponential-volume-hint" /><span>{$t('windows.settings.exponentialVolume')}</span></label><p id="exponential-volume-hint">{$t('windows.settings.exponentialVolumeHint')}</p></section>{/if}
-    <section><h3>{$t('settings.general')}</h3><label>{$t('settings.language')} <select aria-label={$t('settings.language')} value={$language} onchange={event=>setLanguage(event.currentTarget.value==='en'?'en':'es')}><option value="es">Español</option><option value="en">English</option></select></label></section>
-    <section><h3>{$t('settings.appearance')}</h3>
-      <label for="sidebar-layout-picker">{$t('settings.sidebarLayout')}</label>
-      <select id="sidebar-layout-picker" value={$appearance.sidebarLayout}
-        onchange={event=>appearance.setSidebarLayout(event.currentTarget.value==='grid'?'grid':'list')}>
-        <option value="list">{$t('sidebar.layout.list')}</option>
-        <option value="grid">{$t('sidebar.layout.grid')}</option>
-      </select>
-      <label for="home-background-picker">{$t('settings.homeBackground')}</label>
-      <select id="home-background-picker" aria-describedby="home-background-hint" value={$appearance.homeBackground}
-        onchange={event=>appearance.setHomeBackground(event.currentTarget.value==='solid'?'solid':'artwork')}>
-        <option value="artwork">{$t('settings.homeBackground.ambient')}</option>
-        <option value="solid">{$t('settings.homeBackground.solid')}</option>
-      </select>
-      <p id="home-background-hint">{$t('settings.homeBackground.hint')}</p>
-      <label for="animated-artwork-toggle"><input id="animated-artwork-toggle" type="checkbox" checked={$appearance.animatedArtwork} onchange={event=>appearance.setAnimatedArtwork(event.currentTarget.checked)} /><span>{$t('settings.animatedArtwork')}</span></label>
-      <p id="animated-artwork-hint">{$t('settings.animatedArtwork.hint')}</p>
-      <button type="button" class="text-action" disabled={artworkCachePending || artworkCacheSize===null} onclick={clearArtworkCache}>{artworkCachePending ? $t('settings.animatedArtwork.cacheClearing') : $t('settings.animatedArtwork.clearCache', [artworkCacheSize===null ? '—' : (artworkCacheSize / (1024*1024)).toFixed(1)])}</button>
-      {#if artworkCacheError}<p class="error" role="status">{$t('settings.animatedArtwork.cacheFailure')}</p>{/if}
-    </section>
-    <section><h3>{$t('settings.featured')}</h3><div class="kinds" role="group" aria-label={$t('settings.featuredKind')}><button type="button" aria-pressed={kind==='albums'} onclick={()=>onKind('albums')}>{$t('sidebar.albums')}</button><button type="button" aria-pressed={kind==='playlists'} onclick={()=>onKind('playlists')}>{$t('windows.ui.playlists')}</button></div>
-    <p>{$t('settings.sourcesHint')}</p>
-    {#each sources as row,index (row.source)}
-      <!-- svelte-ignore a11y_no_static_element_interactions -->
-      <div class="setting-row" ondragover={event=>{if(dragSource!==null)event.preventDefault();}} ondrop={event=>dropSource(event,index)}>
-        <label><input type="checkbox" checked={row.enabled} onchange={event=>onChange({...settings,[field]:sources.map(r=>r.source===row.source?{...r,enabled:event.currentTarget.checked}:r)})} /><span>{$t('settings.source.' + row.source)}</span></label>
-        <button type="button" aria-label={$t('settings.up', [$t('settings.source.' + row.source)])} disabled={index===0} onclick={()=>moveSource(index,index-1)}>↑</button><button type="button" aria-label={$t('settings.down', [$t('settings.source.' + row.source)])} disabled={index===sources.length-1} onclick={()=>moveSource(index,index+1)}>↓</button>
-        <button type="button" class="handle" draggable="true" aria-label={$t('settings.dragAX', [$t('settings.source.' + row.source)])} ondragstart={event=>{dragSource=index;event.dataTransfer?.setData('text/plain',row.source);}} ondragend={()=>dragSource=null}>⠿</button>
+<svelte:window onkeydown={onWindowKey} />
+<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+<div class="scrim" onpointerdown={event=>{pressedScrim=event.target===event.currentTarget;}} onclick={event=>{if(pressedScrim&&event.target===event.currentTarget)onClose();pressedScrim=false;}}>
+  <div class="panel" role="dialog" aria-modal="true" aria-label={$t('settings.title')} tabindex="-1" bind:this={dialog} onkeydown={trapFocus}>
+    <div class="side">
+      <div class="side-top"><button type="button" class="close" bind:this={close} aria-label={$t('settings.close')} title={$t('settings.close')} onclick={onClose}><svg viewBox="0 0 12 12" aria-hidden="true"><path d="m3 3 6 6M9 3 3 9" /></svg></button></div>
+      <div class="search" role="search">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.5" /><path d="m10.5 10.5 3 3" /></svg>
+        <input type="search" bind:this={search} bind:value={query} aria-label={$t('settings.searchPlaceholder')} placeholder={$t('settings.searchPlaceholder')} autocomplete="off" spellcheck="false" />
+        {#if query}<button type="button" class="clear" aria-label={$t('windows.settings.clearSearch')} onclick={()=>{query='';search.focus();}}><svg viewBox="0 0 12 12" aria-hidden="true"><path d="m3 3 6 6M9 3 3 9" /></svg></button>{/if}
       </div>
-    {/each}
-    {#if !sources.some(s=>s.enabled)}<p role="status">{$t('settings.enableSource')}</p>{/if}
-    {#if libraryError}<p class="error" role="alert">{$t('settings.libraryError')}</p><button type="button" class="text-action" onclick={onRetryLibrary}>{$t('settings.retryLibrary')}</button>{/if}
-    <button type="button" class="text-action" onclick={()=>onChange({...settings,[field]:defaults()[field]})}>{$t('settings.restoreSources')}</button></section>
-    <section><h3>{$t('settings.categories')}</h3><p>{$t('settings.categoriesHint')}</p>
-    {#if categories.length>8}<input class="filter" aria-label={$t('settings.searchCategory')} placeholder={$t('settings.searchCategory')} bind:value={query} />{/if}
-    {#if !categories.length}<p>{$t('settings.categoriesLoading')}</p>{:else if !filtered.length}<p>{$t('settings.noCategories')}</p>{/if}
-    <VirtualStack items={filtered} height={()=>52} key={category=>category.key} scrollSelector=".settings-scroll">
-      {#snippet children(category)}
-        {@const index=ordered.findIndex(c=>c.key===category.key)}
-        {@const title=providerHeading(category.title,$language)}
-        <!-- svelte-ignore a11y_no_static_element_interactions -->
-        <div class="setting-row category" ondragover={event=>{if(dragCategory)event.preventDefault();}} ondrop={event=>dropCategory(event,category.key)}>
-          <label><input type="checkbox" aria-label={$t('windows.settings.showCategory', [title])} checked={!settings.hiddenCategoryKeys.includes(category.key)} onchange={event=>toggleCategory(category.key,event.currentTarget.checked)} /><span title={title}>{title}</span></label>
-          <button type="button" aria-label={$t('settings.up', [title])} disabled={index===0} onclick={()=>moveCategory(category.key,index-1)}>↑</button><button type="button" aria-label={$t('settings.down', [title])} disabled={index===ordered.length-1} onclick={()=>moveCategory(category.key,index+1)}>↓</button>
-          <button type="button" class="handle" draggable="true" aria-label={$t('settings.dragAX', [title])} ondragstart={event=>{dragCategory=category.key;event.dataTransfer?.setData('text/plain',category.key);}} ondragend={()=>dragCategory=null}>⠿</button>
+      <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+      <nav class="categories" bind:this={nav} aria-label={$t('windows.settings.categoriesNav')} onkeydown={navigate}>
+        {#each settingsSections as section (section)}
+          {@const items=matches.filter(category=>category.section===section)}
+          {#if items.length}
+            <div class="section" role="group" aria-labelledby={`settings-section-${section}`}>
+              <p class="section-title" id={`settings-section-${section}`}>{$t(settingsSectionKey(section))}</p>
+              {#each items as category (category.id)}
+                <button type="button" class="item" data-category={category.id} aria-current={selected===category.id?'page':undefined} onclick={()=>selected=category.id}>
+                  <span class="glyph"><SettingsIcon name={category.id} /></span><span class="label">{$t(category.titleKey)}</span>
+                </button>
+              {/each}
+            </div>
+          {/if}
+        {/each}
+        {#if !matches.length}<p class="empty" role="status">{$t('windows.settings.noResults')}</p>{/if}
+      </nav>
+    </div>
+    <div class="detail settings-detail" role="region" aria-labelledby="settings-category-title">
+      {#key selected}
+        <div class="content" data-category={selected}>
+          <header><h2 id="settings-category-title">{$t(current.titleKey)}</h2><p>{$t(current.subtitleKey)}</p></header>
+          {#if selected==='general'}<GeneralSettings />
+          {:else if selected==='playback'}<PlaybackSettings {exponentialVolume} {volumeModePending} {onExponentialVolume} />
+          {:else if selected==='appearance'}<AppearanceSettings />
+          {:else if selected==='visualProviders'}<SettingsGroup><div class="slot"><VisualProviderSettings /></div></SettingsGroup>
+          {:else if selected==='homeFeed'}<HomeFeedSettings {settings} {kind} {categories} {libraryError} {onChange} {onKind} {onRetryLibrary} scrollSelector={detailSelector} />
+          {:else if selected==='account'}<AccountSettings />
+          {:else}<ShortcutsSettings />{/if}
         </div>
-      {/snippet}
-    </VirtualStack>
-    <button type="button" class="text-action" onclick={()=>onChange({...settings,hiddenCategoryKeys:[]})}>{$t('settings.showAll')}</button>
-    <button type="button" class="text-action" onclick={()=>onChange({...settings,categoryOrderMode:'youtube',categoryOrder:[]})}>{$t('settings.youtubeOrder')}</button>
-    <button type="button" class="text-action" onclick={()=>onChange({...settings,categoryOrderMode:'sideB',categoryOrder:[]})}>{$t('settings.restoreOrder')}</button></section>
+      {/key}
+    </div>
   </div>
-</aside>
+</div>
 <style>
-  .settings { box-sizing:border-box; position:fixed; z-index:45; top:116px; right:16px; bottom:116px; width:min(292px,calc(100vw - var(--sidebar-width) - 24px)); display:flex; flex-direction:column; color:#f7f7fa; background:var(--sideb-acrylic-surface); backdrop-filter:var(--sideb-acrylic-blur); border:1px solid var(--sideb-surface-border); border-radius:14px; box-shadow:0 16px 50px #0007; }
-  header { display:flex; align-items:center; justify-content:space-between; padding:14px; gap:8px; } h2 { margin:0; font-size:14px; } header button { font-size:23px; }
-  .settings-scroll { overflow-y:auto; min-height:0; padding:0 12px 16px; } section+section { margin-top:24px; } h3 { font-size:14px; margin:8px 0; } p { font-size:12px; color:#b9b9c4; line-height:17px; }
-  button { border:0; border-radius:6px; background:transparent; color:inherit; cursor:pointer; font:inherit; } button:hover:not(:disabled) { background:#ffffff14; } button:disabled { opacity:.3; cursor:default; }
-  .kinds { display:flex; border-radius:8px; padding:3px; background:#0003; } .kinds button { flex:1; padding:6px 3px; font-size:12px; } [aria-pressed='true'] { background:#ffffff24; }
-  .setting-row { display:flex; align-items:center; gap:2px; min-height:44px; } .setting-row button { width:22px; height:28px; flex:none; font-size:13px; } .setting-row .handle { width:18px; cursor:grab; }
-  label { display:flex; align-items:center; gap:7px; min-width:0; flex:1; font-size:12px; } label span { overflow:hidden; text-overflow:ellipsis; } input[type=checkbox] { accent-color:var(--sideb-accent); flex:none; }
-  .category { height:52px; } .category label span { white-space:nowrap; } .filter { width:100%; box-sizing:border-box; margin:5px 0 8px; padding:8px; border:1px solid #fff3; border-radius:7px; background:#0003; color:white; }
-  select { max-width:100%; padding:7px 8px; border:1px solid #ffffff33; border-radius:6px; background:#29262b; color:white; font:inherit; font-size:12px; }
-  #home-background-picker, #sidebar-layout-picker { display:block; width:100%; margin:7px 0 12px; }
-  #animated-artwork-toggle { margin:0; }
-  .text-action { display:block; font-size:12px; padding:7px 4px; text-align:left; } .error { color:#ffb9c0; }
-  button:focus-visible,input:focus-visible,select:focus-visible { outline:2px solid var(--sideb-highlight); outline-offset:2px; }
-  @media (prefers-reduced-transparency:reduce) { .settings { background:#24242a; backdrop-filter:none; } }
+  .scrim { position:fixed; z-index:120; inset:var(--titlebar-height,32px) 0 0 0; display:grid; place-items:center; box-sizing:border-box; padding:8px; background:rgb(0 0 0 / 38%); }
+  /* Apple: up to 1240x860, never below 780x520, otherwise follows the window. */
+  .panel { box-sizing:border-box; display:grid; grid-template-columns:244px minmax(0,1fr); overflow:hidden; color:#f7f7fa;
+    width:min(clamp(780px,calc(100vw - 48px),1240px),calc(100vw - 16px)); height:min(clamp(520px,calc(100vh - 96px),860px),calc(100vh - var(--titlebar-height,32px) - 16px));
+    background:var(--sideb-acrylic-surface); backdrop-filter:var(--sideb-acrylic-blur); border:1px solid var(--sideb-surface-border); border-radius:16px; box-shadow:0 12px 24px #0006, 0 16px 50px #0007; }
+  .panel:focus { outline:none; }
+  .side { display:flex; flex-direction:column; min-height:0; background:rgb(0 0 0 / 12%); border-right:1px solid rgb(255 255 255 / 6%); }
+  .side-top { padding:14px 16px 0; }
+  button { border:0; color:inherit; font:inherit; cursor:pointer; }
+  .close { display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; padding:0; border-radius:50%; background:rgb(255 255 255 / 10%); color:var(--control-muted,#c3c3cb); }
+  .close:hover { background:rgb(255 255 255 / 18%); color:#fff; }
+  .close svg { width:10px; height:10px; }
+  svg { fill:none; stroke:currentColor; stroke-width:1.6; stroke-linecap:round; stroke-linejoin:round; }
+  .search { display:flex; align-items:center; gap:6px; box-sizing:border-box; height:28px; margin:12px 12px 6px; padding:0 9px; border-radius:8px; background:rgb(255 255 255 / 7%); color:var(--control-muted,#c3c3cb); }
+  .search:focus-within { outline:2px solid var(--sideb-highlight); outline-offset:1px; }
+  .search > svg { width:13px; height:13px; flex:none; }
+  .search input { flex:1; min-width:0; height:100%; border:0; padding:0; background:transparent; color:var(--control-foreground,#f3f3f6); font:inherit; font-size:13px; outline:none; }
+  .search input::-webkit-search-cancel-button { display:none; }
+  .clear { display:inline-flex; align-items:center; justify-content:center; flex:none; width:16px; height:16px; padding:0; border-radius:50%; background:transparent; color:inherit; }
+  .clear:hover { color:#fff; background:rgb(255 255 255 / 14%); } .clear svg { width:9px; height:9px; }
+  .clear:focus-visible { outline:2px solid var(--sideb-highlight); outline-offset:1px; }
+  .categories { flex:1; min-height:0; overflow-y:auto; display:flex; flex-direction:column; gap:14px; padding:8px 12px 12px; scrollbar-width:none; }
+  .section { display:flex; flex-direction:column; gap:2px; }
+  .section-title { margin:0; padding:0 10px 3px; font-size:11px; font-weight:600; line-height:14px; color:rgb(255 255 255 / 45%); }
+  .item { display:flex; align-items:center; gap:9px; box-sizing:border-box; width:100%; height:30px; padding:0 10px; border-radius:8px; background:transparent; text-align:left; color:var(--control-foreground,#f3f3f6); font-size:13px; }
+  .item:hover { background:rgb(255 255 255 / 5%); }
+  .item[aria-current='page'] { background:rgb(255 255 255 / 12%); }
+  .item:focus-visible { outline:2px solid var(--sideb-highlight); outline-offset:-2px; }
+  .glyph { display:inline-flex; width:20px; height:20px; flex:none; align-items:center; justify-content:center; color:var(--sideb-highlight); }
+  .glyph :global(svg) { width:17px; height:17px; }
+  .label { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .empty { margin:0; padding:0 10px; font-size:12px; color:var(--control-muted,#c3c3cb); }
+  .detail { min-width:0; min-height:0; overflow-y:auto; container-type:inline-size; container-name:settings-detail; }
+  .content { box-sizing:border-box; display:flex; flex-direction:column; gap:26px; width:100%; max-width:720px; margin-inline:auto; padding:34px 36px 32px; }
+  .content[data-category='homeFeed'] { max-width:980px; }
+  header { display:flex; flex-direction:column; gap:5px; }
+  h2 { margin:0; font-size:28px; line-height:34px; font-weight:700; }
+  header p { margin:0; font-size:13px; line-height:18px; color:var(--control-muted,#c3c3cb); }
+  .slot { display:flex; flex-direction:column; gap:6px; min-width:0; font-size:13px; }
+  @media (prefers-reduced-transparency:reduce) { .panel { background:#24242a; backdrop-filter:none; } }
 </style>

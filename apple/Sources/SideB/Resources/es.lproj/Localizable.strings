@@ -921,6 +921,12 @@ Historial: %@</string>
 	<string>Animar palabras</string>
 	<key>lyrics.experimental.wordMotion.help</key>
 	<string>Anima el brillo, la elevación y la ampliación de las palabras sostenidas.</string>
+	<key>lyrics.source.auto</key>
+	<string>Automático</string>
+	<key>lyrics.source.choose</key>
+	<string>Fuente de letras</string>
+	<key>lyrics.source.empty</key>
+	<string>No hay letra en esta fuente</string>
 	<key>menu.accept</key>
 	<string>Aceptar</string>
 	<key>menu.account</key>
@@ -1125,6 +1131,30 @@ Historial: %@</string>
 	<string>Actualizar recomendaciones (⌘R)</string>
 	<key>navigation.search</key>
 	<string>Buscar</string>
+	<key>playbackSidebar.close</key>
+	<string>Volver a la barra inferior</string>
+	<key>playbackSidebar.lyricsPreview.noLyrics</key>
+	<string>Sin letras disponibles</string>
+	<key>playbackSidebar.lyricsPreview.openLyrics</key>
+	<string>Abrir letras completas</string>
+	<key>playbackSidebar.lyricsPreview.searching</key>
+	<string>Buscando letra…</string>
+	<key>playbackSidebar.lyricsPreview.showMore</key>
+	<string>Mostrar más</string>
+	<key>playbackSidebar.lyricsPreview.title</key>
+	<string>Muestra de la letra</string>
+	<key>playbackSidebar.nowPlaying</key>
+	<string>Ahora suena</string>
+	<key>playbackSidebar.open</key>
+	<string>Abrir reproductor lateral</string>
+	<key>playbackSidebar.position</key>
+	<string>Posición de reproducción</string>
+	<key>playbackSidebar.synced</key>
+	<string>Sincronizadas</string>
+	<key>playbackSidebar.upNext</key>
+	<string>A continuación</string>
+	<key>playbackSidebar.viewQueue</key>
+	<string>Ver cola</string>
 	<key>player.closeFullscreen</key>
 	<string>Cerrar pantalla completa</string>
 	<key>player.error.completePlaylist</key>
@@ -1263,8 +1293,36 @@ Historial: %@</string>
 	<string>La lista devolvió una continuación repetida.</string>
 	<key>queue.manual</key>
 	<string>Cola manual</string>
+	<key>queue.moreSource</key>
+	<string>Mostrar más canciones de la colección</string>
+	<key>queue.moveEnd</key>
+	<string>Mover al final</string>
+	<key>queue.moveNext</key>
+	<string>Mover al comienzo</string>
+	<key>queue.noRecommendations</key>
+	<string>No hay más recomendaciones disponibles.</string>
+	<key>queue.now</key>
+	<string>Ahora suena</string>
 	<key>queue.playlistContext</key>
 	<string>Lista: %@</string>
+	<key>queue.recommendations</key>
+	<string>Recomendaciones</string>
+	<key>queue.recommendationsError</key>
+	<string>No se pudieron cargar las recomendaciones.</string>
+	<key>queue.repeatNote</key>
+	<string>Desactivá repetir para continuar con las recomendaciones.</string>
+	<key>queue.retryRecommendations</key>
+	<string>Reintentar recomendaciones</string>
+	<key>queue.selection.advance</key>
+	<string>Avanzar hasta esa canción</string>
+	<key>queue.selection.hint</key>
+	<string>Avanzar deja las recomendaciones saltadas en anteriores, sin registrarlas como escuchadas. Las canciones que elegiste siguen pendientes.</string>
+	<key>queue.selection.label</key>
+	<string>Al seleccionar una recomendación</string>
+	<key>queue.selection.playOnly</key>
+	<string>Reproducir sólo la elegida</string>
+	<key>queue.settings.title</key>
+	<string>Cola</string>
 	<key>queue.title</key>
 	<string>Cola de reproducción</string>
 	<key>queue.track.dislikeRemove</key>
@@ -1397,6 +1455,20 @@ Historial: %@</string>
 	<string>Ocultar un estante no impide que su fuente aporte destacados.</string>
 	<key>settings.categoriesLoading</key>
 	<string>Las categorías aparecerán cuando cargue Inicio.</string>
+	<key>settings.category.account</key>
+	<string>Cuenta</string>
+	<key>settings.category.appearance</key>
+	<string>Apariencia</string>
+	<key>settings.category.general</key>
+	<string>General</string>
+	<key>settings.category.homeFeed</key>
+	<string>Feed de Inicio</string>
+	<key>settings.category.playback</key>
+	<string>Reproducción</string>
+	<key>settings.category.shortcuts</key>
+	<string>Atajos de teclado</string>
+	<key>settings.category.visualProviders</key>
+	<string>Proveedores visuales</string>
 	<key>settings.close</key>
 	<string>Cerrar configuración</string>
 	<key>settings.down</key>
@@ -1443,12 +1515,28 @@ Historial: %@</string>
 	<string>Restaurar fuentes</string>
 	<key>settings.retryLibrary</key>
 	<string>Reintentar biblioteca</string>
+	<key>settings.search.showVideos</key>
+	<string>Mostrar videos en búsquedas</string>
+	<key>settings.search.showVideos.hint</key>
+	<string>Desactivá esta opción para ocultar videos en los resultados y las sugerencias de búsqueda. Las canciones, los artistas, los álbumes y las listas siguen apareciendo.</string>
 	<key>settings.searchCategory</key>
 	<string>Buscar categoría</string>
 	<key>settings.searchCategoryAX</key>
 	<string>Buscar categoría de Inicio</string>
+	<key>settings.searchPlaceholder</key>
+	<string>Buscar en configuración...</string>
 	<key>settings.showAll</key>
 	<string>Mostrar todas las categorías</string>
+	<key>settings.sidebarBottomContent.cardTitle</key>
+	<string>Reproductor lateral</string>
+	<key>settings.sidebarBottomContent.hint</key>
+	<string>Elegí si mostrar la cola de reproducción o una muestra de la letra en tiempo real debajo de los controles.</string>
+	<key>settings.sidebarBottomContent.label</key>
+	<string>Panel inferior del reproductor</string>
+	<key>settings.sidebarBottomContent.lyrics</key>
+	<string>Muestra de la letra</string>
+	<key>settings.sidebarBottomContent.queue</key>
+	<string>Cola (A continuación)</string>
 	<key>settings.sidebarLayout</key>
 	<string>Vista de tu colección</string>
 	<key>settings.source.forgottenFavorites</key>
@@ -1605,5 +1693,57 @@ Historial: %@</string>
 	<string>Side B está al día</string>
 	<key>update.update_now</key>
 	<string>Actualizar ahora</string>
+	<key>visualProvider.accountConnected</key>
+	<string>Cuenta conectada</string>
+	<key>visualProvider.authenticating</key>
+	<string>Obteniendo token de sesión…</string>
+	<key>visualProvider.close</key>
+	<string>Cerrar</string>
+	<key>visualProvider.enable</key>
+	<string>Usar como alternativa en el reproductor lateral</string>
+	<key>visualProvider.error</key>
+	<string>No se pudo completar la operación. Revisá el paquete o el acceso al Llavero.</string>
+	<key>visualProvider.hint</key>
+	<string>Sólo para el reproductor lateral: se prioriza Apple Music y se usa este proveedor como alternativa. Instalá sólo proveedores de confianza; reciben la canción actual y el token guardado.</string>
+	<key>visualProvider.install</key>
+	<string>Instalar proveedor…</string>
+	<key>visualProvider.loginSheetHint</key>
+	<string>Iniciá sesión para que Side B obtenga el token automáticamente. La sesión queda guardada en tu navegador.</string>
+	<key>visualProvider.loginSheetTitle</key>
+	<string>Iniciar sesión en %@</string>
+	<key>visualProvider.manualToken</key>
+	<string>Ingresar token manualmente</string>
+	<key>visualProvider.reconnect</key>
+	<string>Volver a conectar…</string>
+	<key>visualProvider.remove</key>
+	<string>Desinstalar y borrar token</string>
+	<key>visualProvider.saveToken</key>
+	<string>Guardar token en el Llavero</string>
+	<key>visualProvider.signIn</key>
+	<string>Iniciar sesión…</string>
+	<key>visualProvider.status.absent</key>
+	<string>Esta canción no tiene un video compatible.</string>
+	<key>visualProvider.status.authRequired</key>
+	<string>La sesión venció o fue rechazada. Reemplazá el token.</string>
+	<key>visualProvider.status.idle</key>
+	<string>Listo para intentar con la próxima canción visible.</string>
+	<key>visualProvider.status.rateLimited</key>
+	<string>El proveedor pidió esperar. Se pausaron las consultas.</string>
+	<key>visualProvider.status.ready</key>
+	<string>Visual disponible.</string>
+	<key>visualProvider.status.tokenRequired</key>
+	<string>Guardá el Bearer en el llavero para activar el fallback.</string>
+	<key>visualProvider.status.unavailable</key>
+	<string>Proveedor no disponible. Se conserva la portada habitual.</string>
+	<key>visualProvider.status.unresolved</key>
+	<string>No se encontró una coincidencia de canción segura.</string>
+	<key>visualProvider.status.unsupported</key>
+	<string>Cambió la respuesta del proveedor. Puede requerir una actualización.</string>
+	<key>visualProvider.title</key>
+	<string>Proveedores visuales opcionales</string>
+	<key>visualProvider.token</key>
+	<string>Token temporal de sesión</string>
+	<key>visualProvider.tokenHint</key>
+	<string>El token se guarda en el Llavero. Cuando venza, reemplazalo por uno nuevo. La portada actual se conserva si falla el proveedor.</string>
 </dict>
 </plist>

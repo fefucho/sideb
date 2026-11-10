@@ -1,0 +1,70 @@
+{
+  "playbackSidebar.nowPlaying": {
+    "es": "Ahora suena",
+    "en": "Now Playing"
+  },
+  "playbackSidebar.open": {
+    "es": "Abrir reproductor lateral",
+    "en": "Open playback sidebar"
+  },
+  "playbackSidebar.close": {
+    "es": "Volver a la barra inferior",
+    "en": "Return to bottom player"
+  },
+  "playbackSidebar.position": {
+    "es": "Posición de reproducción",
+    "en": "Playback position"
+  },
+  "playbackSidebar.upNext": {
+    "es": "A continuación",
+    "en": "Up next"
+  },
+  "playbackSidebar.viewQueue": {
+    "es": "Ver cola",
+    "en": "View queue"
+  },
+  "playbackSidebar.synced": {
+    "es": "Sincronizadas",
+    "en": "Synced"
+  },
+  "playbackSidebar.lyricsPreview.title": {
+    "es": "Muestra de la letra",
+    "en": "Lyrics preview"
+  },
+  "playbackSidebar.lyricsPreview.showMore": {
+    "es": "Mostrar más",
+    "en": "Show more"
+  },
+  "playbackSidebar.lyricsPreview.noLyrics": {
+    "es": "Sin letras disponibles",
+    "en": "No lyrics available"
+  },
+  "playbackSidebar.lyricsPreview.searching": {
+    "es": "Buscando letra…",
+    "en": "Searching lyrics…"
+  },
+  "playbackSidebar.lyricsPreview.openLyrics": {
+    "es": "Abrir letras completas",
+    "en": "Open full lyrics"
+  },
+  "settings.sidebarBottomContent.cardTitle": {
+    "es": "Reproductor lateral",
+    "en": "Sidebar Player"
+  },
+  "settings.sidebarBottomContent.label": {
+    "es": "Panel inferior del reproductor",
+    "en": "Bottom player panel"
+  },
+  "settings.sidebarBottomContent.hint": {
+    "es": "Elegí si mostrar la cola de reproducción o una muestra de la letra en tiempo real debajo de los controles.",
+    "en": "Choose whether to show the upcoming queue or a live lyrics preview below controls."
+  },
+  "settings.sidebarBottomContent.queue": {
+    "es": "Cola (A continuación)",
+    "en": "Queue (Up next)"
+  },
+  "settings.sidebarBottomContent.lyrics": {
+    "es": "Muestra de la letra",
+    "en": "Lyrics preview"
+  }
+}

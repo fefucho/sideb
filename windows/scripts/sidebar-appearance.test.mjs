@@ -26,6 +26,7 @@ async function moduleFor(filename) {
   modules.set(filename,url);
   const source=await readFile(filename,'utf8');
   let code=filename.endsWith('.json')?'export default '+source:filename.endsWith('.svelte')?compile(source,{filename,generate:'client',css:'external'}).js.code:ts.transpileModule(source,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText;
+  code=code.replace(/import\s+['"][^'"]+\.css['"];?/g,'');
   for(const match of [...code.matchAll(/(?:from\s+|import\s*\()(['"])(\$lib\/[^'"]+|\.{1,2}\/[^'"]+)\1/g)]) {
     let resolved=match[2].startsWith('$lib/')?path.join(root,'src/lib',match[2].slice(5)):path.resolve(path.dirname(filename),match[2]);
     if(!path.extname(resolved)){try{await readFile(resolved+'.ts');resolved+='.ts';}catch{resolved=path.join(resolved,'index.ts');}}
@@ -53,6 +54,7 @@ const {default:HomeBackground}=await import(await moduleFor(path.join(root,'src/
 const {default:HomeAmbient}=await import(await moduleFor(path.join(root,'src/lib/components/home/HomeAmbient.svelte')));
 const settle=async()=>{await tick();flushSync();await tick();};
 const click=async node=>{assert.ok(node);node.click();await settle();};
+const openCategory=async(target,id)=>click(target.querySelector(`button.item[data-category="${id}"]`));
 const ready={state:'ready',name:'Demo',handle:'@demo',email:null,thumbnail:null,message:null};
 const card=(kind,id,title)=>({kind,id,title,subtitle:'Original metadata',thumbnail:null,duration:null});
 function host(){const node=document.createElement('div');document.body.append(node);return node;}
@@ -114,6 +116,7 @@ test('appearance settings and sidebar toggle share one persisted collection view
   const settings=mount(HomeSettings,{target:settingsHost,props:{settings:defaults(),kind:'albums',categories:[],libraryError:null,
     onChange:()=>changed++,onKind:()=>changed++,onRetryLibrary:()=>changed++,onClose(){}}});await settle();
   try {
+    await openCategory(settingsHost,'appearance');
     const picker=settingsHost.querySelector('#sidebar-layout-picker');
     assert.equal(picker.value,'list');picker.value='grid';picker.dispatchEvent(new dom.Event('change',{bubbles:true}));await settle();
     assert.ok(sidebarHost.querySelector('.collection-list.grid'));
@@ -147,10 +150,24 @@ test('solid Home unmounts its ambient and persists through settings reopen, with
   let settings=mount(HomeSettings,{target:settingsHost,props:settingsProps});await settle();
   try {
     assert.ok(backgroundHost.querySelector('.ambient'));const paletteWorkers=workers.filter(worker=>worker.url.includes('ambient.worker'));const homeWorker=paletteWorkers.at(-2),detailWorker=paletteWorkers.at(-1);assert.ok(homeWorker&&detailWorker);
-    const select=settingsHost.querySelector('#home-background-picker');select.value='solid';select.dispatchEvent(new dom.Event('change',{bubbles:true}));await settle();
+    await openCategory(settingsHost,'appearance');const select=settingsHost.querySelector('#home-background-picker');select.value='solid';select.dispatchEvent(new dom.Event('change',{bubbles:true}));await settle();
     assert.ok(backgroundHost.querySelector('.home-solid'));assert.equal(backgroundHost.querySelector('.ambient'),null);assert.equal(homeWorker.terminated,true);assert.equal(detailWorker.terminated,false);assert.ok(detailHost.querySelector('.ambient.collection'));assert.equal(changed,0);
-    await unmount(settings);settings=mount(HomeSettings,{target:settingsHost,props:settingsProps});await settle();assert.equal(settingsHost.querySelector('#home-background-picker').value,'solid');assert.equal(get(createAppearancePreferences(dom.localStorage)).homeBackground,'solid');
+    await unmount(settings);settings=mount(HomeSettings,{target:settingsHost,props:settingsProps});await settle();await openCategory(settingsHost,'appearance');assert.equal(settingsHost.querySelector('#home-background-picker').value,'solid');assert.equal(get(createAppearancePreferences(dom.localStorage)).homeBackground,'solid');
     const again=settingsHost.querySelector('#home-background-picker');again.value='artwork';again.dispatchEvent(new dom.Event('change',{bubbles:true}));await settle();assert.ok(backgroundHost.querySelector('.ambient'));assert.equal(backgroundHost.querySelector('.home-solid'),null);assert.equal(changed,0);
   } finally {await unmount(settings);await unmount(background);await unmount(detail);backgroundHost.remove();settingsHost.remove();detailHost.remove();}
 });
+
+test('queue selection picker persists both modes without changing Home preferences',async()=>{
+ const {queuePreferences,createQueuePreferences}=await import(await moduleFor(path.join(root,'src/lib/player/queuePreferences.ts')));
+ queuePreferences.setSelection('advance');const target=host();let changed=0;
+ const props={settings:defaults(),kind:'albums',categories:[],libraryError:null,onChange:()=>changed++,onKind:()=>changed++,onRetryLibrary:()=>changed++,onClose(){}};
+ let settings=mount(HomeSettings,{target,props});await settle();
+ try {
+  await openCategory(target,'playback');const select=target.querySelector('#queue-recommendation-selection');assert.ok(select);assert.equal(select.value,'advance');
+  select.value='play-only';select.dispatchEvent(new dom.Event('change',{bubbles:true}));await settle();
+  assert.equal(queuePreferences.currentSelection(),'play-only');assert.equal(createQueuePreferences(dom.localStorage).currentSelection(),'play-only');assert.equal(changed,0);
+  await unmount(settings);settings=mount(HomeSettings,{target,props});await settle();await openCategory(target,'playback');assert.equal(target.querySelector('#queue-recommendation-selection').value,'play-only');
+ } finally {await unmount(settings);target.remove();queuePreferences.setSelection('advance');}
+});
+
 }

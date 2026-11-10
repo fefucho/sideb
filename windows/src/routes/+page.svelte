@@ -1,7 +1,8 @@
 <script lang="ts">
+  import { queuePreferences } from '$lib/player/queuePreferences';
   import { FEATURED_ARTIST_CONTEXT, FeaturedArtistService } from '$lib/featured/artists';
   import { type SearchOrigin } from '$lib/search/recents';
-  import { onMount, tick, setContext, untrack } from "svelte";
+  import { onMount, tick, setContext, untrack, type Snippet } from "svelte";
   import { t, language, translateOwnText, resolveMessage } from '$lib/i18n';
   import { captureTrackOccurrence, findTrackOccurrence, projectedPlayback, type TrackOrder } from '$lib/detail/projection';
   import { albumTrackWithCredit } from '$lib/detail/metadata';
@@ -38,6 +39,7 @@
   import PlaylistDeleteDialog from '$lib/components/detail/PlaylistDeleteDialog.svelte';
   import UpdateModal from '$lib/components/update/UpdateModal.svelte';
   import { UpdaterController } from '$lib/updater/controller';
+  import { SETTINGS_HOST_CONTEXT, type SettingsHost } from '$lib/components/settings/settingsCategories';
   import { CatalogController, emptyCatalogData, type CatalogData } from "$lib/catalog/controller";
   import { defaults, decodeSettings as decodeHomeSettings, accountSettingsKey, missingHomeSources, type CollectionKind, type HomeSettings } from "$lib/home/settings";
   import { projectHome, visibleSignature } from "$lib/home/featured";
@@ -57,6 +59,15 @@
   import { dispatchPlaybackSpace, playbackSpaceFocus } from '$lib/player/playback-shortcut';
   import { RecommendationsController, emptyRecommendationsSnapshot } from '$lib/player/recommendations';
   import FullscreenNowPlaying from "$lib/components/fullscreen/FullscreenNowPlaying.svelte";
+  import QueuePanel from '$lib/components/fullscreen/QueuePanel.svelte';
+  import LyricsPanel from '$lib/components/fullscreen/LyricsPanel.svelte';
+  import GeniusPanel from '$lib/components/fullscreen/GeniusPanel.svelte';
+  import PlaybackDock from '$lib/components/playback-sidebar/PlaybackDock.svelte';
+  import PlaybackSidebar from '$lib/components/playback-sidebar/PlaybackSidebar.svelte';
+  import { Tween } from 'svelte/motion';
+  import { initialPresentation, setFullscreen, toggleSidebar as toggleSidebarState, closeSidebar, selectSidebarPanel, fullscreenPanelFor,
+    contentReserve, dampedEase, syncProgress, type SidebarPanel } from '$lib/player/playbackPresentation';
+import { promotedEntryId } from "$lib/components/fullscreen/queueProjection";
   import { invoke } from "@tauri-apps/api/core";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import type {
@@ -78,9 +89,27 @@
   let sidebarCollapsed = $state(false);
   let searchScrollElement = $state<HTMLElement>();
   const retainedDestination = $derived(['feed', 'explore', 'library', 'search_results'].includes(activeView));
-  let isFullscreenOpen = $state(false);
+  // One authoritative presentation (bar | sidebar | fullscreen); every surface below derives from it.
+  let presentation = $state(initialPresentation());
+  const isFullscreenOpen = $derived(presentation.mode === 'fullscreen');
+  const sidebarOpen = $derived(presentation.mode === 'sidebar');
   let selectedPanel = $state<'queue' | 'lyrics' | 'related'>('queue');
   let lyricsMode = $state<'synced' | 'genius'>('synced');
+  const lyricsSurfaceVisible = $derived((isFullscreenOpen && selectedPanel === 'lyrics') || (sidebarOpen && presentation.sidebarPanel === 'lyrics'));
+  // Shared bar<->panel transition: one progress value retargeted from wherever it currently is.
+  let reducedMotion = $state(false);
+  let viewportWidth = $state(typeof window === 'undefined' ? 1280 : window.innerWidth);
+  const presentationProgress = new Tween(0, { easing: dampedEase });
+  $effect(() => { const mode = presentation.mode, reduced = reducedMotion; untrack(() => syncProgress(presentationProgress, mode, reduced)); });
+  onMount(() => {
+    const media = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const sync = () => { reducedMotion = media.matches; };
+    sync(); media.addEventListener('change', sync);
+    return () => media.removeEventListener('change', sync);
+  });
+  const sidebarMounted = $derived(presentation.mode === 'sidebar' || (presentation.mode === 'bar' && presentationProgress.current > 0.001));
+  const playbackReserve = $derived(contentReserve({ windowWidth: viewportWidth, leftReserve: sidebarCollapsed ? 60 : 253, presented: sidebarOpen }));
+  let playbackDock = $state<ReturnType<typeof PlaybackDock>>();
   let gestureProgress=$state(idleGesture());
   let gestureInput:ReturnType<typeof installNavigationGestures>|null=null;
   let shellError = $state<string | null>(null);
@@ -154,6 +183,7 @@
   let playlistCreationRevision = $state(0);
   let createdPlaylistForSong: string | null = null;
   let menuNotice = $state<string | null>(null);
+  let queueFocusEntryId = $state<string | null>(null);
   let nextMenuIdentity=0;
   const menuService: MenuService = {
     open(event, target, origin = {}) {
@@ -220,6 +250,11 @@
     },
   };
   setContext(MEDIA_CONTEXT, mediaService);
+  // Settings (rendered inside Home) reads account/update state live without extra props through Home.
+  setContext<SettingsHost>(SETTINGS_HOST_CONTEXT, {
+    get auth() { return authStatus; }, updater,
+    login: () => { void handleLogin(); }, cancelLogin: () => { void handleCancelLogin(); }, logout: () => { void handleLogout(); },
+  });
   setContext<PresentationService>(PRESENTATION_CONTEXT, {
     active: element => {
       const view=activeView;
@@ -240,7 +275,7 @@
     const acceptedTrack = playbackState.isLoading || playbackState.error ? null : playbackState.currentTrack;
     genius.setTrack(acceptedTrack,playbackState.generation,homeSession);
     if(playbackState.isPlaying)genius.playbackStarted();
-    if(isFullscreenOpen&&selectedPanel==='lyrics'&&lyricsMode==='genius')void genius.ensureNow();
+    if(lyricsSurfaceVisible&&lyricsMode==='genius')void genius.ensureNow();
     const lyricEntry = playbackState.queue.currentIndex === null ? null : playbackState.queue.items[playbackState.queue.currentIndex]?.entryId;
     lyrics.setTrack(acceptedTrack, playbackState.generation, playbackState.duration, JSON.stringify([sessionRevision, lyricEntry ?? null]));
     recommendations.setTrack(acceptedTrack);
@@ -459,6 +494,11 @@
       await setPlayerFullscreen(false);
       return;
     }
+    if (event.key === 'Escape' && sidebarOpen && !spotlightOpen) {
+      event.preventDefault();
+      closePlaybackSidebar();
+      return;
+    }
     if (event.key === 'F11') {
       event.preventDefault();
       try { await nativeWindow.toggleNativeFullscreen(); } catch (error) { shellError = extractErrorMessage(error, 'No se pudo cambiar la ventana.'); }
@@ -514,9 +554,10 @@
         const startingAt=Math.max(0,next.items.findIndex(song=>song.videoId===action.videoId));
         const playlistId=action.playlistId??next.automixPlaylistId;
         const radio=Boolean(playlistId?.startsWith('RD')||(!action.playlistId&&action.videoId));
-        const source={kind:radio?'search-radio' as const:'search' as const,id:playlistId??action.videoId??section.id,title:section.title};
-        if(radio&&!next.continuation&&playlistId) {
-          await player.startSourceRadio(next.items,source,playlistId,startingAt);
+        const radioId=radio?(playlistId??(action.videoId?`RDAMVM${action.videoId}`:null)):null;
+        const source={kind:radio?'search-radio' as const:'search' as const,id:radioId??playlistId??action.videoId??section.id,title:section.title};
+        if(radio&&radioId) {
+          await player.startSourceRadio(next.items,source,radioId,startingAt,next.continuation);
         } else {
           await playCollection(next.items,startingAt,source);
           if(revision!==collectionPlayRevision||session!==sessionRevision)return;
@@ -746,8 +787,25 @@
 
   function setPlayerFullscreen(open: boolean, panel = selectedPanel) {
     if (open) selectedPanel = panel;
-    isFullscreenOpen = open;
+    // Collapsing returns to where fullscreen was opened from (bar or lateral panel, keeping its section).
+    presentation = setFullscreen(presentation, open, selectedPanel);
   }
+  function selectSidebarSection(panel: SidebarPanel) {
+    presentation = selectSidebarPanel(presentation, panel);
+    selectedPanel = fullscreenPanelFor(panel, selectedPanel);
+  }
+  function toggleSidebar(panel?: SidebarPanel) {
+    const wasOpen = sidebarOpen;
+    presentation = toggleSidebarState(presentation, panel);
+    selectedPanel = fullscreenPanelFor(presentation.sidebarPanel, selectedPanel);
+    if (wasOpen && presentation.mode !== 'sidebar') void tick().then(() => playbackDock?.focusTrigger());
+  }
+  function closePlaybackSidebar() {
+    if (!sidebarOpen) return;
+    presentation = closeSidebar(presentation);
+    void tick().then(() => playbackDock?.focusTrigger());
+  }
+  function setLyricsMode(mode: 'synced' | 'genius') { lyricsMode = mode; }
   function openPlayerPanel(panel: 'queue' | 'lyrics' | 'related' | 'genius') {
     const nextPanel = panel === 'genius' ? 'lyrics' : panel;
     const nextMode = panel === 'genius' ? 'genius' : 'synced';
@@ -792,6 +850,13 @@
     sourceRadio:(tracks,source,playlistId)=>player.startSourceRadio(tracks,source,playlistId),
     radio: song => player.startRadio(song), enqueue: (tracks, position) => player.enqueue(tracks, position),
     removeQueue: id => player.removeQueueEntry(id), like: song => account.toggleLike(song), saveSong: song => account.toggleSaved(song),
+    recommendationAction: async (entryId, placement, generation, session) => {
+      if (session !== sessionRevision || generation !== playbackState.generation) return;
+      const oldIds = new Set(playbackState.queue.items.map(item => item.entryId));
+      const result = await player.actOnQueueRecommendation(entryId, placement, generation, queuePreferences.currentSelection() === 'advance');
+      if (placement !== 'remove') queueFocusEntryId = promotedEntryId(oldIds, result.queue);
+      return result;
+    },
     addPlaylist: (id, song) => account.addToPlaylist(id, song),
     removePlaylistSong: async (id, song) => { await account.removeFromPlaylist(id, song); patchPlaylistSnapshots(id); },
     sortPlaylist: async (id, sort) => { await account.setPlaylistSort(id, sort); patchPlaylistSnapshots(id); },
@@ -831,9 +896,48 @@
       if (!editingPlaylist && !deletingPlaylist && !creatingPlaylist && request.focus?.isConnected) request.focus.focus();
     }
   }
+  function dislikeNowPlaying() {
+      const track = playbackState.currentTrack;
+      if (!track || authStatus.state !== 'ready') return;
+      const index = playbackState.queue.currentIndex;
+      const entry = index === null ? undefined : playbackState.queue.items[index];
+      const session = sessionRevision;
+      void dislikeCurrentTrack({videoId:track.videoId,entryId:entry?.videoId===track.videoId?entry.entryId:undefined,session,currentSession:()=>sessionRevision,
+        rate:song=>account.dislike(song),removeRecommendation:id=>recommendations.removeSong(id),filterRecommendations:id=>player.filterDislikedRecommendations(id),removeEntry:id=>player.removeQueueEntry(id)
+      }).catch(error=>{if(session===sessionRevision)shellError=extractErrorMessage(error,'No se pudo quitar la canción.');});
+  }
   function openNowPlayingMenu(event: MouseEvent | KeyboardEvent) {
     if (playbackState.currentTrack) menuService.open(event, { kind: 'song', song: songFromQueue(playbackState.currentTrack) }, { nowPlaying: true });
   }
+  // Contents of the lateral panel reuse the page's own handlers; the native queue stays authoritative.
+  const sidebarMetadataProps = $derived({
+    loggedIn: authStatus.state === 'ready', liked: accountData.likedIds.has(playbackState.currentTrack?.videoId ?? ''),
+    likePending: accountData.pendingIds.has(playbackState.currentTrack?.videoId ?? ''), likeError: accountData.actionError || accountData.errors.likes,
+    onToggleLike: () => { if (playbackState.currentTrack) void account.toggleLike(playbackState.currentTrack); },
+    onDislike: dislikeNowPlaying,
+    // Mac's final metadata row is heart + menu (dislike lives in its menu). Windows' common menu has no dislike entry yet, so the button stays.
+    // No `onAddToQueue`: the menu already offers it and Mac has no such button here.
+    onOpenArtist: (id: string) => { void openArtistDetail(id); }, onOpenAlbum: (id: string) => { void openAlbumDetail(id); },
+    onOpenMenu: openNowPlayingMenu, onRetryPlayback: handleRetryPlayback,
+  });
+  const sidebarRecommendationsProps = $derived({
+    snapshot: recommendationsState, loggedIn: authStatus.state === 'ready', likedIds: accountData.likedIds, pendingIds: accountData.pendingIds,
+    onRequestLoad: () => { void recommendations.load(); }, onRefresh: () => { void recommendations.load(true); }, onSuspend: () => recommendations.suspend(),
+    onPlaySong: (song: SongDto) => { ++collectionPlayRevision; void player.startRadio(song).catch(() => {}); },
+    onTogglePlayback: handleTogglePlay,
+    onAddToQueue: (song: SongDto) => { void player.enqueue([song], 'end').catch(error => shellError = extractErrorMessage(error, 'No se pudo agregar a la cola.')); },
+    onToggleLike: (song: SongDto) => { void account.toggleLike(song); },
+    onDislike: (song: SongDto) => {
+      const session = sessionRevision;
+      void dislikeCurrentTrack({ videoId: song.videoId, session, currentSession: () => sessionRevision,
+        rate: item => account.dislike(item), removeRecommendation: id => recommendations.removeSong(id),
+        filterRecommendations: id => player.filterDislikedRecommendations(id), removeEntry: id => player.removeQueueEntry(id),
+      }).catch(error => { if (session === sessionRevision) shellError = extractErrorMessage(error, 'No se pudo quitar la canción.'); });
+    },
+    onOpenArtist: (id: string) => { void openArtistDetail(id); }, onOpenAlbum: (id: string) => { void openAlbumDetail(id); },
+    onSongContextMenu: (event: MouseEvent, song: SongDto) => menuService.open(event, { kind: 'song', song }),
+    onArtistContextMenu: (event: MouseEvent, card: BrowseCardDto) => menuService.open(event, { kind: 'artist', card }),
+  });
   function openPlaylistMenu(event: MouseEvent | KeyboardEvent) {
     const detail = accountData.playlist; if (!detail) return;
     menuService.open(event, { kind: 'playlist', card: { id: detail.id, kind: 'playlist', title: detail.title, subtitle: detail.subtitle, thumbnail: detail.thumbnail, duration: null }, detail });
@@ -948,7 +1052,25 @@
   });
 </script>
 
-<div class="app-frame" class:sidebar-collapsed={sidebarCollapsed} class:fullscreen-open={isFullscreenOpen}>
+<svelte:window bind:innerWidth={viewportWidth} />
+
+{#snippet playerControls(variant: 'bar' | 'sidebar', lead?: Snippet, tail?: Snippet, spacing: number | null = null)}
+  <PlayerBar {variant} sidebarLead={lead} sidebarTail={tail} sidebarSpacing={spacing} playback={playerBarState} onTogglePlayback={handleTogglePlay} onRetryPlayback={handleRetryPlayback} onPrevious={handlePrevious} onNext={handleNext} onSeek={handleSeek} onVolumeChange={handleVolumeChange} onVolumeSurfaceChange={()=>gestureInput?.invalidate()} onSetMuted={muted=>void player.setMuted(muted)} onSetShuffle={handleSetShuffle} onSetRepeat={handleSetRepeat} fullscreenOpen={isFullscreenOpen} onToggleFullscreen={() => setPlayerFullscreen(!isFullscreenOpen)}
+    {selectedPanel} {lyricsMode} onSelectPanel={openPlayerPanel}
+    onOpenArtist={(id) => { void setPlayerFullscreen(false); void openArtistDetail(id); }}
+    onOpenAlbum={(id) => { void setPlayerFullscreen(false); void openAlbumDetail(id); }} onOpenMenu={openNowPlayingMenu}
+    loggedIn={authStatus.state === 'ready'} liked={accountData.likedIds.has(playbackState.currentTrack?.videoId ?? '')}
+    likePending={accountData.pendingIds.has(playbackState.currentTrack?.videoId ?? '')}
+    likeError={accountData.actionError || accountData.errors.likes}
+    onDislike={dislikeNowPlaying}
+    onToggleLike={() => { if (playbackState.currentTrack) void account.toggleLike(playbackState.currentTrack); }} />
+{/snippet}
+
+{#snippet sidebarControls(lead: Snippet | undefined, tail: Snippet | undefined, spacing: number | null)}
+  {@render playerControls('sidebar', lead, tail, spacing)}
+{/snippet}
+
+<div class="app-frame" class:sidebar-collapsed={sidebarCollapsed} class:fullscreen-open={isFullscreenOpen} class:playback-sidebar-open={sidebarOpen} style:--playback-reserve={`${playbackReserve}px`}>
   {#if activeView==='feed'}<HomeBackground artwork={homeArtwork} session={homeSession} active={!isFullscreenOpen&&!spotlightOpen} />{:else if activeView==='album_detail'||activeView==='playlist_detail'}<HomeAmbient artwork={[(activeView==='album_detail'?selectedAlbum?.thumbnail:accountData.playlist?.thumbnail)??''].filter(Boolean)} session={homeSession} active={!isFullscreenOpen&&!spotlightOpen} visible={!isFullscreenOpen} collection />{/if}
   <TitleBar onBack={goBackFromDetail} onForward={goForward} {canBack} {canForward} modalOpen={spotlightOpen} />
   {#if gestureProgress.phase==='tracking'||gestureProgress.phase==='armed'}<div class="gesture-progress" role="status">{gestureProgress.action==='dismiss-fullscreen'?$t('windows.ui.closePlayer'):gestureProgress.action==='back'?'‹ '+$t('navigation.back'):$t('navigation.forward')+' ›'}<progress max="1" value={gestureProgress.progress}></progress></div>{/if}
@@ -974,7 +1096,7 @@
     onCheckUpdates={() => void updater.checkForUpdates(true)}
   />
   </div>
-  <div class="content-column" class:retained-content={retainedDestination}>
+  <div class="content-column" class:retained-content={retainedDestination} style:margin-right={playbackReserve ? `${playbackReserve}px` : undefined}>
 <main class="shell" class:home-shell={activeView !== "search_results"} class:search-shell={activeView === 'search_results'} class:explore-shell={activeView === 'explore'} class:retained-shell={retainedDestination} class:player-covered={isFullscreenOpen} inert={isFullscreenOpen || spotlightOpen}>
 
   {#if (backendStatus && !backendStatus.ready) || statusError}
@@ -1035,6 +1157,7 @@
     <RetainedPage id="feed" selected={activeView==='feed'} covered={isFullscreenOpen||spotlightOpen}>
       {#snippet children(pageActive)}
     <HomeView
+      sidebarOpen={playbackReserve > 0}
       chips={homePage?.chips ?? []}
       sections={homePage?.sections ?? []}
       selectedChipParams={homeData.chipParams}
@@ -1134,33 +1257,48 @@
   {/if}
 </main>
 
-<div class="player-dock" inert={spotlightOpen}>
-  <PlayerBar playback={playerBarState} onTogglePlayback={handleTogglePlay} onRetryPlayback={handleRetryPlayback} onPrevious={handlePrevious} onNext={handleNext} onSeek={handleSeek} onVolumeChange={handleVolumeChange} onVolumeSurfaceChange={()=>gestureInput?.invalidate()} onSetMuted={muted=>void player.setMuted(muted)} onSetShuffle={handleSetShuffle} onSetRepeat={handleSetRepeat} fullscreenOpen={isFullscreenOpen} onToggleFullscreen={() => setPlayerFullscreen(!isFullscreenOpen)}
-    {selectedPanel} {lyricsMode} onSelectPanel={openPlayerPanel}
-    onOpenArtist={(id) => { void setPlayerFullscreen(false); void openArtistDetail(id); }}
-    onOpenAlbum={(id) => { void setPlayerFullscreen(false); void openAlbumDetail(id); }} onOpenMenu={openNowPlayingMenu}
-    loggedIn={authStatus.state === 'ready'} liked={accountData.likedIds.has(playbackState.currentTrack?.videoId ?? '')}
-    likePending={accountData.pendingIds.has(playbackState.currentTrack?.videoId ?? '')}
-    likeError={accountData.actionError || accountData.errors.likes}
-    onDislike={() => {
-      const track = playbackState.currentTrack;
-      if (!track || authStatus.state !== 'ready') return;
-      const index = playbackState.queue.currentIndex;
-      const entry = index === null ? undefined : playbackState.queue.items[index];
-      const session = sessionRevision;
-      void dislikeCurrentTrack({videoId:track.videoId,entryId:entry?.videoId===track.videoId?entry.entryId:undefined,session,currentSession:()=>sessionRevision,
-        rate:song=>account.dislike(song),removeRecommendation:id=>recommendations.removeSong(id),filterRecommendations:id=>player.filterDislikedRecommendations(id),removeEntry:id=>player.removeQueueEntry(id)
-      }).catch(error=>{if(session===sessionRevision)shellError=extractErrorMessage(error,'No se pudo quitar la canción.');});
-    }}
-    onToggleLike={() => { if (playbackState.currentTrack) void account.toggleLike(playbackState.currentTrack); }} />
-</div>
+<PlaybackDock bind:this={playbackDock} mode={presentation.mode} progress={presentationProgress.current} reduced={reducedMotion}
+  modalOpen={spotlightOpen} onToggleSidebar={() => toggleSidebar()}>
+  {@render playerControls('bar')}
+</PlaybackDock>
   </div>
+  {#if sidebarMounted}
+    <PlaybackSidebar session={sessionRevision} playback={playerBarState} panel={presentation.sidebarPanel} onSelectPanel={selectSidebarSection}
+      {lyricsMode} onLyricsMode={setLyricsMode} progress={presentationProgress.current} reduced={reducedMotion}
+      interactive={sidebarOpen && !spotlightOpen} onClose={closePlaybackSidebar} onExpand={() => setPlayerFullscreen(true)} controls={sidebarControls} {lyricsState} onSelectQueue={playQueueIndex} metadataProps={sidebarMetadataProps} recommendationsProps={sidebarRecommendationsProps}>
+      {#snippet queueBody()}
+        <QueuePanel playback={playerBarState} focusQueueEntryId={queueFocusEntryId} onQueueFocusHandled={(entryId)=>{if(queueFocusEntryId===entryId)queueFocusEntryId=null;}} onSelectQueue={playQueueIndex} onTogglePlayback={handleTogglePlay}
+          onOpenArtist={(id) => { void openArtistDetail(id); }} onOpenAlbum={(id) => { void openAlbumDetail(id); }}
+          onMoveQueue={(entryId, beforeEntryId) => player.moveQueueEntry(entryId, beforeEntryId)}
+          onRevealQueueWindow={(startIndex, generation) => player.revealQueueWindow(startIndex, generation)}
+          onQueueContextMenu={(event, entry) => {
+            const proposal=playbackState.queue.recommendations?.some(item=>item.entryId===entry.entryId)??false;
+            menuService.open(event, {kind:'song',song:songFromQueue(entry),...(proposal
+              ? {queueRecommendationId:entry.entryId,queueRecommendationGeneration:playbackState.generation,queueRecommendationSession:sessionRevision}
+              : {entryId:entry.entryId})});
+          }}
+          onRetrySource={()=>void player.retrySource().catch(()=>{})}
+          onRetryRadio={() => { void player.retryRadio().catch(error => shellError = extractErrorMessage(error, 'No se pudo reintentar la radio.')); }}
+          loggedIn={authStatus.state === 'ready'} likedIds={accountData.likedIds} pendingIds={accountData.pendingIds} likesLoading={accountData.loading.likes}
+          onToggleLike={(entry) => { void account.toggleLike(entry); }}
+          onDislike={(entry)=>{const session=sessionRevision;const generation=playbackState.generation;const proposal=playbackState.queue.recommendations?.some(item=>item.entryId===entry.entryId)??false;void account.dislike(entry).then(async changed=>{if(changed&&session===sessionRevision&&generation===playbackState.generation){recommendations.removeSong(entry.videoId);await player.filterDislikedRecommendations(entry.videoId);if(!proposal)await player.removeQueueEntry(entry.entryId);}}).catch(error=>shellError=extractErrorMessage(error,'No se pudo quitar la canción.'));}}
+          onRecommendationAction={(entryId, placement, generation)=>player.actOnQueueRecommendation(entryId, placement, generation, queuePreferences.currentSelection() === 'advance').catch(error=>{shellError=extractErrorMessage(error,'No se pudo actualizar la cola.');return undefined;})} />
+      {/snippet}
+      {#snippet lyricsBody(mode)}
+        <LyricsPanel state={lyricsState} playback={playerBarState} session={sessionRevision} active={sidebarOpen && mode !== 'genius'} onSeek={handleSeek} onRetry={() => { void lyrics.retry(); }} />
+        {#if mode === 'genius'}
+          <GeniusPanel state={geniusState} controller={genius} title={playerBarState.currentTrack?.title ?? ''} artists={playerBarState.currentTrack?.artists ?? ''} artwork={playerBarState.currentTrack?.thumbnail ?? null} onOpenExternal={url=>void invoke('open_external_url',{url}).catch(()=>{})} />
+        {/if}
+      {/snippet}
+    </PlaybackSidebar>
+  {/if}
   {#if isFullscreenOpen}
     <div class="fullscreen-host" inert={spotlightOpen}>
-    <FullscreenNowPlaying session={sessionRevision} playback={playerBarState} {confirmedVolume} volumeFeedback={volumeFeedbackVisible} {volumeAnnouncement} onVolumeSurfaceChange={()=>gestureInput?.invalidate()} onTogglePlayback={handleTogglePlay} onSelectQueue={playQueueIndex} onClose={() => setPlayerFullscreen(false)}
+    <FullscreenNowPlaying session={sessionRevision} playback={playerBarState} focusQueueEntryId={queueFocusEntryId} onQueueFocusHandled={(entryId)=>{if(queueFocusEntryId===entryId)queueFocusEntryId=null;}} {confirmedVolume} volumeFeedback={volumeFeedbackVisible} {volumeAnnouncement} onVolumeSurfaceChange={()=>gestureInput?.invalidate()} onTogglePlayback={handleTogglePlay} onSelectQueue={playQueueIndex} onClose={() => setPlayerFullscreen(false)}
       pulling={gestureProgress.action==='dismiss-fullscreen'&&(gestureProgress.phase==='tracking'||gestureProgress.phase==='armed')}
       pullDistance={gestureProgress.action==='dismiss-fullscreen'&&(gestureProgress.phase==='tracking'||gestureProgress.phase==='armed')?gestureProgress.distance:0}
       onMoveQueue={(entryId, beforeEntryId) => player.moveQueueEntry(entryId, beforeEntryId)}
+      onRevealQueueWindow={(startIndex, generation) => player.revealQueueWindow(startIndex, generation)}
       {geniusState} geniusController={genius} {lyricsMode} onShowGenius={()=>{lyricsMode='genius';selectedPanel='lyrics';void genius.ensureNow();}} onOpenExternal={url=>void invoke('open_external_url',{url}).catch(()=>{})}
       {lyricsState} {recommendationsState} onSeek={handleSeek} onRetryLyrics={() => { void lyrics.retry(); }}
       onRefreshRecommendations={() => { void recommendations.load(true); }}
@@ -1175,10 +1313,16 @@
       onToggleLike={() => { if (playbackState.currentTrack) void account.toggleLike(playbackState.currentTrack); }}
       likedIds={accountData.likedIds} pendingIds={accountData.pendingIds} likesLoading={accountData.loading.likes}
       onToggleQueueLike={(entry) => { void account.toggleLike(entry); }}
-      onDislikeQueueEntry={(entry)=>{const session=sessionRevision;void account.dislike(entry).then(async changed=>{if(changed&&session===sessionRevision){recommendations.removeSong(entry.videoId);await player.filterDislikedRecommendations(entry.videoId);await player.removeQueueEntry(entry.entryId);}}).catch(error=>shellError=extractErrorMessage(error,'No se pudo quitar la canción.'));}}
+      onDislikeQueueEntry={(entry)=>{const session=sessionRevision;const generation=playbackState.generation;const proposal=playbackState.queue.recommendations?.some(item=>item.entryId===entry.entryId)??false;void account.dislike(entry).then(async changed=>{if(changed&&session===sessionRevision&&generation===playbackState.generation){recommendations.removeSong(entry.videoId);await player.filterDislikedRecommendations(entry.videoId);if(!proposal)await player.removeQueueEntry(entry.entryId);}}).catch(error=>shellError=extractErrorMessage(error,'No se pudo quitar la canción.'));}}
+      onRecommendationAction={(entryId, placement, generation)=>player.actOnQueueRecommendation(entryId, placement, generation, queuePreferences.currentSelection() === 'advance').catch(error=>{shellError=extractErrorMessage(error,'No se pudo actualizar la cola.');return undefined;})}
       onOpenArtist={(id) => { void setPlayerFullscreen(false); void openArtistDetail(id); }}
       onOpenAlbum={(id) => { void setPlayerFullscreen(false); void openAlbumDetail(id); }} onOpenMenu={openNowPlayingMenu}
-      onQueueContextMenu={(event, entry) => menuService.open(event, {kind:'song',song:songFromQueue(entry),entryId:entry.entryId})}
+      onQueueContextMenu={(event, entry) => {
+        const proposal=playbackState.queue.recommendations?.some(item=>item.entryId===entry.entryId)??false;
+        menuService.open(event, {kind:'song',song:songFromQueue(entry),...(proposal
+          ? {queueRecommendationId:entry.entryId,queueRecommendationGeneration:playbackState.generation,queueRecommendationSession:sessionRevision}
+          : {entryId:entry.entryId})});
+      }}
       onRetrySource={()=>void player.retrySource().catch(()=>{})}
       onRetryRadio={() => { void player.retryRadio().catch(error => shellError = extractErrorMessage(error, 'No se pudo reintentar la radio.')); }} />
     </div>
@@ -1342,25 +1486,8 @@
   }
 
   /* Vista Detalle de Álbum */
-  .player-dock {
-    position: fixed;
-    z-index: 100;
-    left: calc(var(--sidebar-width) + 24px);
-    right: 24px;
-    bottom: 20px;
-    display: flex;
-    justify-content: center;
-    pointer-events: none;
-  }
-
-  .player-dock :global(.player-bar) { pointer-events: auto; }
 
   @media (max-width: 640px) {
     .shell { padding-bottom: 9rem; }
-    .player-dock {
-      left: calc(var(--sidebar-width) + 8px);
-      right: 8px;
-      bottom: 8px;
-    }
   }
 </style>

@@ -167,6 +167,39 @@ function Invoke-Tauri([string[]] $Arguments) {
     finally { Pop-Location }
 }
 
+# Spotify Canvas viaja preinstalado pero es un plugin separable. tauri_build exige que existan los archivos de
+# bundle.resources, así que el paquete (manifest + sideb-spotify-canvas.exe) se compila y deja en
+# src-tauri\provider\spotify-canvas antes de cualquier cargo/tauri sobre src-tauri. No se reescribe si no cambió
+# (evita invalidar el build script de Tauri). Para retirar el plugin: borrar extensions\spotify-canvas y las
+# entradas provider/spotify-canvas/* de bundle.resources en tauri.conf.json.
+function Get-VisualProviderExtensionDir { Join-Path $RepoRoot 'extensions\spotify-canvas' }
+
+function Ensure-VisualProviderPackage {
+    $extension = Get-VisualProviderExtensionDir
+    if (-not (Test-Path -LiteralPath (Join-Path $extension 'Cargo.toml'))) {
+        Write-Host 'Sin extensions\spotify-canvas: se omite el proveedor visual preinstalado.'
+        return
+    }
+    Require-Command cargo; Require-Command node
+    $targetDir = Join-Path $extension 'target'
+    & cargo build --release --locked --target x86_64-pc-windows-msvc --manifest-path (Join-Path $extension 'Cargo.toml') --target-dir $targetDir
+    if ($LASTEXITCODE -ne 0) { throw "cargo build del proveedor visual falló ($LASTEXITCODE)." }
+    $binary = Join-Path $targetDir 'x86_64-pc-windows-msvc\release\sideb-spotify-canvas.exe'
+    $destination = Join-Path $WindowsDir 'src-tauri\provider\spotify-canvas'
+    $staging = Join-Path ([IO.Path]::GetTempPath()) ("sideb-provider-" + [guid]::NewGuid().ToString('N'))
+    try {
+        & node (Join-Path $RepoRoot 'Scripts\package-visual-provider.mjs') --platform windows-x64 --binary $binary --out $staging
+        if ($LASTEXITCODE -ne 0) { throw "package-visual-provider.mjs falló ($LASTEXITCODE)." }
+        $current = Join-Path $destination 'SHA256SUMS'
+        if ((Test-Path -LiteralPath $current) -and
+            ((Get-Content -LiteralPath $current -Raw) -ceq (Get-Content -LiteralPath (Join-Path $staging 'SHA256SUMS') -Raw))) { return }
+        if (Test-Path -LiteralPath $destination) { Remove-Item -LiteralPath $destination -Recurse -Force }
+        New-Item -ItemType Directory -Force -Path (Split-Path -Parent $destination) | Out-Null
+        Move-Item -LiteralPath $staging -Destination $destination
+        Write-Host "Proveedor visual preinstalado preparado en $destination"
+    } finally { Remove-Item -LiteralPath $staging -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
 function Show-Doctor {
     Write-Host "Repository: $RepoRoot"
     Write-Host "Windows project: $WindowsDir"
@@ -233,6 +266,7 @@ function Invoke-Verify {
     Require-Command pnpm; Require-Command cargo
     Ensure-MpvImportLibrary
     Import-VsDevEnvironment
+    Ensure-VisualProviderPackage
     Invoke-Pnpm @('install', '--frozen-lockfile')
     Invoke-Pnpm @('check')
     Invoke-Pnpm @('test')
@@ -244,6 +278,11 @@ function Invoke-Verify {
     Push-Location (Join-Path $WindowsDir 'src-tauri')
     try { & cargo test --locked --lib; if ($LASTEXITCODE -ne 0) { throw "cargo test --locked --lib falló ($LASTEXITCODE)." } }
     finally { Pop-Location }
+    $extension = Get-VisualProviderExtensionDir
+    if (Test-Path -LiteralPath (Join-Path $extension 'Cargo.toml')) {
+        & cargo test --locked --manifest-path (Join-Path $extension 'Cargo.toml') --target-dir (Join-Path $extension 'target')
+        if ($LASTEXITCODE -ne 0) { throw "cargo test del proveedor visual falló ($LASTEXITCODE)." }
+    }
 }
 
 switch ($Action) {
@@ -252,11 +291,13 @@ switch ($Action) {
     'verify' { Invoke-Verify }
     'dev' {
         Require-Command pnpm; Ensure-MpvImportLibrary; Import-VsDevEnvironment
+        Ensure-VisualProviderPackage
         Ensure-FrontendDependencies
         Invoke-Tauri @('dev')
     }
     'build' {
         Require-Command pnpm; Ensure-MpvImportLibrary; Import-VsDevEnvironment
+        Ensure-VisualProviderPackage
         Ensure-FrontendDependencies
         # Publish the runnable executable plus its adjacent DLL; a bundle is disabled until it
         # has a real Tauri resource mapping and runtime DLL lookup configured.
@@ -265,6 +306,7 @@ switch ($Action) {
     }
     'package' {
         Require-Command pnpm; Ensure-MpvImportLibrary; Import-VsDevEnvironment
+        Ensure-VisualProviderPackage
         Ensure-FrontendDependencies
         $mpvDir = Get-MpvDir
         $srcTauriDll = Join-Path $WindowsDir 'src-tauri\libmpv-2.dll'

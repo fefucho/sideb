@@ -54,3 +54,8 @@ Updates/
 
 # Material histórico/local de importación: conservar en disco, nunca publicar
 /temp/
+
+# Proveedor visual opcional: los ejecutables y paquetes se generan, no se versionan
+/extensions/spotify-canvas/package/*
+!/extensions/spotify-canvas/package/manifest.*.json
+/windows/src-tauri/provider/

@@ -14,12 +14,12 @@ enum WindowGestureDiagnostics {
             [0.1, 0.3, 0.55, 0.8].map { y -> [String: Any] in
                 let point = NSPoint(x: bounds.minX + bounds.width * x, y: bounds.minY + bounds.height * y)
                 let route = WindowGestureRegions.routing(at: point, in: root, includeNativeFallback: !fullscreen)
-                let homeOwner = isHome && !fullscreen &&
+                let horizontalOwner = !fullscreen &&
                     HorizontalNavigationGestureRouting.contentOwnsGesture(at: point, in: root)
                 return ["x": point.x, "y": point.y, "content": route.isInContent,
                         "excluded": route.isExcluded, "horizontal": route.ownsHorizontal,
-                        "vertical": route.ownsVertical, "homeOwner": homeOwner,
-                        "history": !fullscreen && route.allowsHistory && !homeOwner,
+                        "vertical": route.ownsVertical, "horizontalOwner": horizontalOwner,
+                        "history": !fullscreen && route.allowsHistory && !horizontalOwner,
                         "dismissal": route.allowsFullscreenDismissal]
             }
         }

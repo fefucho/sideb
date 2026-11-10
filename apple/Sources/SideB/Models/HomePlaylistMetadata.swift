@@ -8,8 +8,9 @@ struct HomePlaylistMetadata: Equatable {
     let creator: String?
     let creatorID: String?
     private let trackCount: Int?
-    private let duration: String?
+    let duration: String?
 
+    var cardSummary: String { trackCount.map { L10n.songCount($0) } ?? "" }
     var summary: String {
         var parts = [L10n.text("metadata.playlist")]
         if let trackCount { parts.append(L10n.songCount(trackCount)) }

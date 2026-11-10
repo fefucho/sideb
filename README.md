@@ -24,9 +24,11 @@ It started with the work of [Limusic](https://github.com/SimoHypers/limusic) and
 - **Search and discovery.** Find songs, artists, albums, and playlists; explore new releases, charts, moods, and genres.
 - **Your YouTube Music account.** Access liked songs, playlists, saved albums, and listening history. Create and edit playlists, add tracks, and manage your collection.
 - **A queue you can work with.** Reorder tracks, shuffle, repeat, and keep listening with song radio and recommendations.
+- **A side player.** Lyrics, Now Playing and the queue in a panel beside what you are browsing, with tall artwork and recommendations.
 - **Fullscreen listening.** Large artwork, backgrounds drawn from the cover's colors, and the queue and lyrics close at hand.
 - **Lyrics and Genius.** Synced lyrics when available, line annotations, song information, and credits.
 - **Everyday desktop controls.** A compact player, keyboard shortcuts, media keys, and system playback controls.
+- **Optional animated artwork.** A separate, removable plugin can show Spotify Canvas in the side player. It is off by default, needs a Spotify sign-in and relies on unofficial endpoints.
 - **English and Spanish.** Change the interface language in settings.
 
 The two apps share the same main features, with a few settings and system integrations specific to each platform. Side B is still being actively developed, so some edges are rough.

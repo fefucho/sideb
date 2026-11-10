@@ -25,7 +25,9 @@ mod commands {
     pub(crate) mod system;
     pub(crate) mod update_version;
     pub(crate) mod updater;
+    pub(crate) mod visual_provider;
 }
+mod visual_provider;
 pub use dto::*;
 use queue::{next_owner_epoch, QueueStateDto};
 
@@ -201,9 +203,16 @@ impl PlaybackManager {
             .current_index
             .filter(|index| *index < self.queue.items.len())
         else {
-            return false;
+            return self.queue.has_committed_next()
+                || !self.queue.recommendations.is_empty()
+                || self.runtime.source.as_ref().is_some_and(|source| {
+                    source.continuation.is_some() || source.needs_restart
+                })
+                || self.queue.source.as_ref().is_some_and(|source| source.kind == "radio")
+                    && !self.radio_exhausted;
         };
         index + 1 < self.queue.items.len()
+            || !self.queue.recommendations.is_empty()
             || self.is_repeat
             || self
                 .runtime
@@ -227,7 +236,9 @@ impl PlaybackManager {
             seek_pending,
             seek_error,
             can_next: self.can_next(),
-            source_load: self.runtime.source_load(self.queue.items.len()),
+            source_load: self.runtime.source_load(
+                self.queue.items.len().saturating_add(self.queue.recommendations.len()),
+            ),
             is_playing: self.is_playing,
             is_loading: self.is_loading,
             is_ended: self.is_ended,
@@ -564,6 +575,7 @@ pub(crate) fn invalidate_queue_owner(playback: &mut PlaybackManager) {
     playback.runtime.source = None;
     playback.runtime.pending_next = None;
     playback.runtime.disliked.clear();
+    playback.runtime.excluded_recommendations.clear();
 }
 
 fn auth_generation(app: &tauri::AppHandle) -> u64 {
@@ -919,6 +931,7 @@ pub fn run() {
             let core_to_restore = state.core.read().ok().and_then(|lock| lock.clone());
             app.manage(state);
             artwork_runtime::initialize(app.handle());
+            visual_provider::init(app.handle());
             #[cfg(windows)]
             {
                 let _ = media_controls::initialize(app.handle());
@@ -1015,6 +1028,7 @@ pub fn run() {
             commands::playback::start_song_radio,
             commands::playback::retry_radio,
             commands::playback::enqueue_tracks,
+            commands::playback::queue_recommendation_action,
             commands::playback::remove_queue_entry,
             commands::playback::move_queue_entry,
             commands::lyrics::get_lyrics,
@@ -1023,6 +1037,18 @@ pub fn run() {
             commands::animated_artwork::cancel_animated_artwork,
             commands::animated_artwork::get_animated_artwork_cache_size,
             commands::animated_artwork::clear_animated_artwork_cache,
+            commands::visual_provider::get_visual_provider_state,
+            commands::visual_provider::set_visual_provider_enabled,
+            commands::visual_provider::install_visual_provider_bundled,
+            commands::visual_provider::install_visual_provider_from_folder,
+            commands::visual_provider::uninstall_visual_provider,
+            commands::visual_provider::save_visual_provider_token,
+            commands::visual_provider::open_visual_provider_login,
+            commands::visual_provider::cancel_visual_provider_login,
+            commands::visual_provider::prepare_visual_provider_artwork,
+            commands::visual_provider::cancel_visual_provider_artwork,
+            commands::visual_provider::get_visual_provider_cache_size,
+            commands::visual_provider::clear_visual_provider_cache,
             commands::recommendations::get_related_tracks,
             commands::recommendations::get_related_artists,
             commands::playback::next_track,

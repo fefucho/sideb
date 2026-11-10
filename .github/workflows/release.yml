@@ -8,7 +8,7 @@ on:
       release_tag:
         description: Release tag matching version.env
         required: true
-        default: v1.3.0
+        default: v1.4.0
         type: string
 
 permissions:
@@ -93,7 +93,8 @@ jobs:
             ~/.cargo/registry/
             ~/.cargo/git/
             core/target/
-          key: release-macos-${{ hashFiles('core/Cargo.lock') }}
+            extensions/spotify-canvas/target/
+          key: release-macos-${{ hashFiles('core/Cargo.lock', 'extensions/spotify-canvas/Cargo.lock') }}
       - name: Verify, regenerate bindings and build numbered release
         run: node Scripts/build-version.mjs macos
       - name: Verify build revision, version and hashes
@@ -106,6 +107,14 @@ jobs:
           test "$(plutil -extract CFBundleShortVersionString raw "$app/Contents/Info.plist")" = "$VERSION"
           test "$(lipo -archs "$app/Contents/MacOS/Side B")" = arm64
           codesign --verify --deep --strict "$app"
+          # Spotify Canvas viaja instalado de fábrica (plugin retirable): debe estar íntegro dentro de la app.
+          provider="$app/Contents/Resources/VisualProviders/spotify-canvas"
+          test -x "$provider/sideb-spotify-canvas"
+          test "$(lipo -archs "$provider/sideb-spotify-canvas")" = arm64
+          codesign --verify --strict "$provider/sideb-spotify-canvas"
+          test "$(plutil -extract platform raw -o - "$provider/manifest.json")" = macos-arm64
+          test "$(plutil -extract executable raw -o - "$provider/manifest.json")" = sideb-spotify-canvas
+          (cd "$provider" && shasum -a 256 -c SHA256SUMS)
           ditto -c -k --keepParent "$app" "$RELEASE_BUILD_DIR/SideB-macOS.zip"
           cd "$RELEASE_BUILD_DIR"
           shasum -a 256 SideB-macOS.zip > SideB-macOS-SHA256.txt
@@ -150,7 +159,8 @@ jobs:
             core/target/
             windows/src-tauri/target/
             windows/.cache/mpv/
-          key: release-windows-${{ hashFiles('core/Cargo.lock', 'windows/src-tauri/Cargo.lock', 'windows/pnpm-lock.yaml', 'windows/scripts/windows.ps1') }}
+            extensions/spotify-canvas/target/
+          key: release-windows-${{ hashFiles('core/Cargo.lock', 'windows/src-tauri/Cargo.lock', 'extensions/spotify-canvas/Cargo.lock', 'windows/pnpm-lock.yaml', 'windows/scripts/windows.ps1') }}
       - name: Bootstrap pinned runtimes
         shell: pwsh
         run: ./windows/scripts/windows.ps1 bootstrap
@@ -177,8 +187,23 @@ jobs:
           $installers = @(Get-ChildItem -LiteralPath "$target/bundle/nsis" -Filter '*setup.exe')
           if ($installers.Count -ne 1) { throw 'Expected exactly one NSIS installer' }
           Copy-Item -LiteralPath $installers[0].FullName -Destination "$buildDir/SideB-Windows-x64-setup.exe"
-          $runtime = @('sideb-windows.exe', 'libmpv-2.dll', 'vulkan-1.dll', 'VulkanRT-License.txt') | ForEach-Object { Join-Path $buildDir $_ }
+          # Spotify Canvas (plugin retirable) viaja instalado de fábrica: el instalador lo recibe de
+          # bundle.resources (src-tauri/provider/spotify-canvas) y el zip portable lo lleva junto al .exe.
+          # Ambos deben ser exactamente los archivos verificados en BUILD.json.
+          foreach ($name in @('manifest.json', 'sideb-spotify-canvas.exe', 'SHA256SUMS')) {
+            $verified = $manifest.artifactSHA256.PSObject.Properties["provider/spotify-canvas/$name"].Value
+            foreach ($copy in @("$buildDir/provider/spotify-canvas/$name", "windows/src-tauri/provider/spotify-canvas/$name")) {
+              if ((Get-FileHash -LiteralPath $copy -Algorithm SHA256).Hash.ToLowerInvariant() -ne $verified) { throw "Proveedor visual distinto del verificado: $copy" }
+            }
+          }
+          $runtime = @('sideb-windows.exe', 'libmpv-2.dll', 'vulkan-1.dll', 'VulkanRT-License.txt', 'provider') | ForEach-Object { Join-Path $buildDir $_ }
           Compress-Archive -LiteralPath $runtime -DestinationPath "$buildDir/SideB-windows-x64.zip"
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $zip = [IO.Compression.ZipFile]::OpenRead("$buildDir/SideB-windows-x64.zip")
+          try { $entries = @($zip.Entries | ForEach-Object { $_.FullName -replace '\\', '/' }) } finally { $zip.Dispose() }
+          foreach ($name in @('provider/spotify-canvas/manifest.json', 'provider/spotify-canvas/sideb-spotify-canvas.exe')) {
+            if ($entries -notcontains $name) { throw "El zip portable no contiene $name" }
+          }
           $lines = @('SideB-Windows-x64-setup.exe', 'SideB-windows-x64.zip') | ForEach-Object {
             $hash = (Get-FileHash -LiteralPath (Join-Path $buildDir $_) -Algorithm SHA256).Hash.ToLowerInvariant()
             "$hash  $_"

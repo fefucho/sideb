@@ -99,6 +99,31 @@ final class CookieStorage {
             .joined()
     }
 
+    /// Account-bound identity for playback guards; reads credentials without rewriting them.
+    func playbackCacheIdentity() -> String {
+        let raw = (shouldUseKeychain ? getFromKeychain(key: cookieKey) : nil) ?? getFromFile()
+        return Self.playbackFingerprint(forCookieString: raw)
+    }
+
+    func legacyPlaybackCacheIdentity() -> String {
+        guard let raw = (shouldUseKeychain ? getFromKeychain(key: cookieKey) : nil) ?? getFromFile(), !raw.isEmpty else { return "guest" }
+        let canonical = Self.sanitizeCookieString(raw).split(separator: ";").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.sorted().joined(separator: ";")
+        return SHA256.hash(data: Data(canonical.utf8)).map { String(format: "%02x", $0) }.joined()
+    }
+
+    nonisolated static func playbackFingerprint(forCookieString raw: String?) -> String {
+        guard let raw, !raw.isEmpty else { return "guest" }
+        let pairs = raw.split(separator: ";").compactMap { part -> (String,String)? in
+            let value = part.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard let split = value.firstIndex(of: "=") else { return nil }
+            return (String(value[..<split]), String(value[value.index(after: split)...]))
+        }
+        let values = Dictionary(pairs, uniquingKeysWith: { _, last in last })
+        let token = ["SAPISID", "__Secure-3PAPISID", "__Secure-1PAPISID"].compactMap { values[$0] }.first
+        let canonical = token ?? pairs.map { $0.0 + "=" + $0.1 }.sorted().joined(separator: ";")
+        return SHA256.hash(data: Data(canonical.utf8)).map { String(format: "%02x", $0) }.joined()
+    }
+
     func removeSessionCookie() {
         self.deleteFromKeychain(key: self.cookieKey)
         if let url = self.debugFileUrl {

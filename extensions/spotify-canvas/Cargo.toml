@@ -1,0 +1,16 @@
+[package]
+name = "sideb-spotify-canvas"
+version = "0.2.0"
+edition = "2021"
+license = "MIT"
+
+# Deliberately outside the protected core workspace and the app's dependency graph.
+[workspace]
+
+[dependencies]
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-util", "io-std", "fs", "net"] }
+rand = "0.8"
+unicode-normalization = "0.1"

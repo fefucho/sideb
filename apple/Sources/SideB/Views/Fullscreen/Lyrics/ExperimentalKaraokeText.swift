@@ -128,7 +128,7 @@ struct ExperimentalKaraokeRenderer: TextRenderer {
                 var positioned = context
                 // Bound the transform to drawing room even for an exceptionally wide
                 // unbroken word. Its layout and timing remain intact.
-                let spare = max(0, 24 - 2 * effect.glowRadius)
+                let spare = max(0, LyricsLayoutMetrics.horizontalMargin - 2 * effect.glowRadius)
                 let scale = min(effect.scale, fragment.maximumScale,
                                 1 + spare / max(1, fragment.anchorBounds.width * 0.5))
                 let anchor = CGPoint(x: fragment.anchorBounds.midX, y: fragment.anchorBounds.maxY)

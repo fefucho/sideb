@@ -2761,10 +2761,11 @@ public struct AnimatedArtworkRequest {
     public var durationSecs: UInt64?
     public var storefront: String
     public var preferHevc: Bool
+    public var preferTall: Bool
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(videoId: String, title: String, artists: String, album: String?, albumId: String?, durationSecs: UInt64?, storefront: String, preferHevc: Bool) {
+    public init(videoId: String, title: String, artists: String, album: String?, albumId: String?, durationSecs: UInt64?, storefront: String, preferHevc: Bool, preferTall: Bool) {
         self.videoId = videoId
         self.title = title
         self.artists = artists
@@ -2773,6 +2774,7 @@ public struct AnimatedArtworkRequest {
         self.durationSecs = durationSecs
         self.storefront = storefront
         self.preferHevc = preferHevc
+        self.preferTall = preferTall
     }
 }
 
@@ -2804,6 +2806,9 @@ extension AnimatedArtworkRequest: Equatable, Hashable {
         if lhs.preferHevc != rhs.preferHevc {
             return false
         }
+        if lhs.preferTall != rhs.preferTall {
+            return false
+        }
         return true
     }
 
@@ -2816,6 +2821,7 @@ extension AnimatedArtworkRequest: Equatable, Hashable {
         hasher.combine(durationSecs)
         hasher.combine(storefront)
         hasher.combine(preferHevc)
+        hasher.combine(preferTall)
     }
 }
 
@@ -2834,7 +2840,8 @@ public struct FfiConverterTypeAnimatedArtworkRequest: FfiConverterRustBuffer {
                 albumId: FfiConverterOptionString.read(from: &buf), 
                 durationSecs: FfiConverterOptionUInt64.read(from: &buf), 
                 storefront: FfiConverterString.read(from: &buf), 
-                preferHevc: FfiConverterBool.read(from: &buf)
+                preferHevc: FfiConverterBool.read(from: &buf), 
+                preferTall: FfiConverterBool.read(from: &buf)
         )
     }
 
@@ -2847,6 +2854,7 @@ public struct FfiConverterTypeAnimatedArtworkRequest: FfiConverterRustBuffer {
         FfiConverterOptionUInt64.write(value.durationSecs, into: &buf)
         FfiConverterString.write(value.storefront, into: &buf)
         FfiConverterBool.write(value.preferHevc, into: &buf)
+        FfiConverterBool.write(value.preferTall, into: &buf)
     }
 }
 

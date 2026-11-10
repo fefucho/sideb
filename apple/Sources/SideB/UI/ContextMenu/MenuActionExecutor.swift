@@ -13,17 +13,20 @@ final class MenuActionExecutor {
     private weak var router: NavigationRouter?
     private let core: SideBCore?
     private let origin: MenuOrigin?
+    private let actionInterceptor: ((MenuActionId) -> Bool)?
 
     init(
         player: PlayerViewModel?,
         router: NavigationRouter?,
         core: SideBCore?,
-        origin: MenuOrigin? = nil
+        origin: MenuOrigin? = nil,
+        actionInterceptor: ((MenuActionId) -> Bool)? = nil
     ) {
         self.player = player
         self.router = router
         self.core = core
         self.origin = origin
+        self.actionInterceptor = actionInterceptor
     }
 
     // MARK: - Ejecución Central
@@ -33,6 +36,7 @@ final class MenuActionExecutor {
         target: MenuTarget,
         facts: MenuFacts
     ) {
+        if actionInterceptor?(action) == true { return }
         print("[MenuActionExecutor] Ejecutando acción: \(action) sobre \(target)")
         switch action {
         // --- 1. Reproducción ---

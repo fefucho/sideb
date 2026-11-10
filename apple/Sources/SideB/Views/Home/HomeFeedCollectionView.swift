@@ -820,7 +820,27 @@ private final class HomeCardTitleLabel: NativeTrackActionField {
 
 final class HomeItemView: NSView {
     // Dos líneas de título y detalle, más las separaciones. Compartido con el layout del estante.
+    var featuredSong = false
+    var featuredCollection = false
+    private let featuredGradient = CAGradientLayer()
+    private let featuredArtwork = CALayer()
+    private let featuredFooter = CALayer()
+    private static let featuredTints = NSCache<NSString, NSColor>()
+    private var featuredTint: NSColor?
+    private var tintTask: Task<Void, Never>?
+    func applyFeaturedLayout(song: Bool, summary: String = "") {
+        featuredSong = song
+        featuredCollection = !song
+        subtitle.stringValue = summary
+        if !song && subtitle.superview == nil { addSubview(subtitle) }
+        subtitle.isHidden = song
+        needsLayout = true
+    }
     static let largeCardTextHeight: CGFloat = 94
+    /// One fixed request size for featured artwork. Deriving it from the live card width gave
+    /// every intermediate resize width its own URL and cache entry, so covers reloaded.
+    static let featuredArtworkPixels = 480
+    static let featuredArtworkTarget = CGSize(width: 240, height: 240)
     private static let largeTitleFont = NSFont.systemFont(ofSize: 14, weight: .semibold)
     private static let largeMetadataFont = NSFont.systemFont(ofSize: 12, weight: .regular)
     private static let compactArtistMeasureFont = NSFont.systemFont(ofSize: 11.5, weight: .semibold)
@@ -863,6 +883,9 @@ final class HomeItemView: NSView {
     private let typeLabel = NSTextField(labelWithString: "")
     private let explicitBadge = NativeContentRatingBadge(frame: .zero)
     private let more = HomeInteractiveLinkButton()
+    var artworkLoader: ((URL, CGSize) async -> NSImage?)?
+    private(set) var artworkRequestCount = 0
+    private(set) var featuredArtworkSizeForTesting: CGSize?
     private var imageTask: Task<Void, Never>?
     private var generation: UInt64 = 0
     private var representedID: String?
@@ -1117,9 +1140,62 @@ final class HomeItemView: NSView {
             more.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.45).cgColor
             more.layer?.cornerRadius = 14
         }
+        if featuredSong || featuredCollection {
+            // Songs are full-bleed cards with a legibility gradient. Albums and playlists
+            // follow Apple Music: bare rounded artwork with text underneath, no frame.
+            layer?.masksToBounds = featuredSong
+            layer?.cornerRadius = featuredSong ? 10 : 0
+            layer?.borderWidth = 0
+            layer?.borderColor = NSColor.clear.cgColor
+            let artHeight = featuredSong ? bounds.height : bounds.width
+            cover.frame = NSRect(x: 0, y: 0, width: bounds.width, height: artHeight)
+            // CALayer aspect-fill has no intrinsic size and clips at the artwork contract.
+            cover.imageScaling = .scaleAxesIndependently
+            equalizerOverlay.frame = cover.frame
+            if featuredArtwork.superlayer == nil { cover.layer?.insertSublayer(featuredArtwork, at: 0) }
+            featuredArtwork.frame = cover.bounds
+            featuredArtwork.masksToBounds = true
+            featuredFooter.isHidden = true
+            if featuredGradient.superlayer == nil { cover.layer?.addSublayer(featuredGradient) }
+            featuredGradient.frame = cover.bounds
+            featuredGradient.colors = [NSColor.clear.cgColor, NSColor.black.withAlphaComponent(0.78).cgColor]
+            featuredGradient.locations = [0.55, 1]
+            featuredGradient.startPoint = CGPoint(x: 0.5, y: 0)
+            featuredGradient.endPoint = CGPoint(x: 0.5, y: 1)
+            featuredGradient.isHidden = !featuredSong
+            title.font = .systemFont(ofSize: featuredSong ? 12 : 13, weight: .semibold)
+            title.textColor = featuredSong ? .white : .labelColor
+            title.maximumNumberOfLines = 1
+            title.frame = NSRect(x: featuredSong ? 8 : 0, y: featuredSong ? bounds.height - 39 : artHeight + 10,
+                                 width: bounds.width - (featuredSong ? 16 : 0), height: 16)
+            artist.font = .systemFont(ofSize: featuredSong ? 10 : 12)
+            artist.contentTintColor = featuredSong ? .white : .secondaryLabelColor
+            artist.frame = NSRect(x: featuredSong ? 8 : 0, y: featuredSong ? bounds.height - 22 : artHeight + 28,
+                                  width: bounds.width - (featuredSong ? 16 : 0), height: 15)
+            largeArtistLabel.frame = artist.frame
+            largeArtistLabel.font = .systemFont(ofSize: featuredSong ? 10 : 12)
+            largeArtistLabel.textColor = featuredSong ? NSColor.white.withAlphaComponent(0.76) : .secondaryLabelColor
+            largeArtistLabel.isHidden = artist.isHidden
+            typeLabel.isHidden = true
+            subtitle.frame = NSRect(x: 0, y: artHeight + 45, width: bounds.width, height: 14)
+            subtitle.maximumNumberOfLines = 1
+            subtitle.font = .systemFont(ofSize: 11)
+            subtitle.textColor = .tertiaryLabelColor
+            bullet.isHidden = true
+            explicitBadge.isHidden = true
+            album.isHidden = true
+            more.frame = NSRect(x: bounds.width - 32, y: 4, width: 28, height: 28)
+            playButton.frame = NSRect(x: bounds.width - 40, y: artHeight - 40, width: 32, height: 32)
+            playSymbol.frame = playButton.frame.insetBy(dx: 9, dy: 9)
+        }
         cover.layer?.cornerRadius = style == .compactSong
             ? AppTheme.artworkThumbnailRadius
-            : (representedKind == "artist" ? bounds.width / 2 : AppTheme.artworkCardRadius)
+            : (featuredCollection ? 10 : (representedKind == "artist" ? bounds.width / 2 : AppTheme.artworkCardRadius))
+        if featuredCollection {
+            // A hairline keeps pale covers from dissolving into the page, like Apple Music.
+            cover.layer?.borderWidth = 0.5
+            cover.layer?.borderColor = NSColor.white.withAlphaComponent(0.10).cgColor
+        } else { cover.layer?.borderWidth = 0 }
         loadingIndicator?.frame = playSymbol.frame.insetBy(dx: -1, dy: -1)
         if !songArtistLinks.isHidden {
             songArtistLinks.frame = artist.frame
@@ -1298,24 +1374,37 @@ final class HomeItemView: NSView {
         needsLayout = true
 
         guard let url = ImageURLHelper.optimizedThumbnailURL(
-            from: record.thumbnail, targetPixelSize: style == .compactSong ? 112 : 320
+            from: record.thumbnail, targetPixelSize: featuredSong || featuredCollection ? Self.featuredArtworkPixels : (style == .compactSong ? 112 : 320)
         ) else {
             cover.image = NSImage(systemSymbolName: record.kind == "artist" ? "person.crop.circle" : "music.note", accessibilityDescription: nil)
             cover.contentTintColor = .secondaryLabelColor
             return
         }
-        let target = style == .compactSong ? CGSize(width: 48, height: 48) : CGSize(width: 156, height: 156)
+        let target = featuredSong || featuredCollection ? Self.featuredArtworkTarget : (style == .compactSong ? CGSize(width: 48, height: 48) : CGSize(width: 156, height: 156))
         if let cached = ImageCache.shared.imageFromMemoryCache(for: url, targetSize: target) {
-            cover.image = cached
+            setArtwork(cached)
             return
         }
         let expectedGeneration = generation
+        let loader = artworkLoader
+        artworkRequestCount += 1
         imageTask = Task(priority: .utility) { @MainActor [weak self] in
-            let image = await ImageCache.shared.image(for: url, targetSize: target)
+            let image = if let loader { await loader(url, target) } else { await ImageCache.shared.image(for: url, targetSize: target) }
             guard !Task.isCancelled else { return }
             guard let self, self.generation == expectedGeneration else { return }
-            self.cover.image = image
+            self.setArtwork(image)
         }
+    }
+
+    func setArtwork(_ image: NSImage?) {
+        if featuredSong || featuredCollection {
+            cover.image = nil
+            let bitmap = image?.cgImage(forProposedRect: nil, context: nil, hints: nil)
+            featuredArtwork.contents = bitmap
+            featuredArtworkSizeForTesting = bitmap.map { CGSize(width: $0.width, height: $0.height) }
+            featuredArtwork.contentsGravity = .resizeAspectFill
+            cover.layer?.masksToBounds = true
+        } else { cover.image = image }
     }
 
     private static func displayType(for record: HomeItemRecord) -> String {
@@ -1458,6 +1547,9 @@ final class HomeItemView: NSView {
         setLoading(false)
         imageTask?.cancel()
         imageTask = nil
+        tintTask?.cancel()
+        tintTask = nil
+        featuredTint = nil
         generation &+= 1
         equalizerOverlay.stopAnimating()
         isCurrent = false
@@ -1473,6 +1565,8 @@ final class HomeItemView: NSView {
         cardButton.title = ""
         cardButton.isTransparent = true
         cover.image = nil
+        featuredArtwork.contents = nil
+        featuredArtworkSizeForTesting = nil
         cover.contentTintColor = nil
         hovered = false
         isArtistHovered = false
@@ -1599,6 +1693,7 @@ final class HomeItemView: NSView {
         }
         return cardButton.isHidden || !cardButton.isEnabled ? nil : cardButton
     }
+    func currentMenuForTesting() -> NSMenu? { menuProvider?() }
     override func rightMouseDown(with event: NSEvent) {
         if let menu = menuProvider?() { NSMenu.popUpContextMenu(menu, with: event, for: self) }
         else { super.rightMouseDown(with: event) }

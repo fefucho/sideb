@@ -9,8 +9,9 @@ struct HomeAlbumMetadata: Equatable {
     let artistID: String?
     private let year: String?
     private let trackCount: Int?
-    private let duration: String?
+    let duration: String?
 
+    var cardSummary: String { [year, trackCount.map { L10n.songCount($0) }].compactMap { $0 }.joined(separator: " · ") }
     var summary: String {
         var parts = [L10n.text("metadata.album")]
         if let year { parts.append(year) }

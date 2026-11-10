@@ -95,15 +95,17 @@ export function karaokeGapIndex(document: KaraokeDocument, ms: number): number {
 export interface KaraokeState { occurrence: string | null; status: 'idle'|'loading'|'ready'|'empty'|'error'; refreshing: boolean; document: KaraokeDocument | null; error: string | null }
 type Rpc = <T>(command:string,args?:Record<string,unknown>)=>Promise<T>;
 export class KaraokeController {
+  private source='auto';
   private revision=0; private signature=''; private track:PlaybackTrackDto|null=null; private duration=0; private active=false; private forceNext=false;
   state:KaraokeState={occurrence:null,status:'idle',refreshing:false,document:null,error:null};
   constructor(private rpc:Rpc,private publish:(state:KaraokeState)=>void){}
-  setContext(track:PlaybackTrackDto|null, occurrence:string, duration:number, active:boolean) {
-    const signature=JSON.stringify([track?.videoId,track?.title,track?.artists,track?.album,Number.isFinite(duration)&&duration>0?Math.round(duration):null]);
+  setContext(track:PlaybackTrackDto|null, occurrence:string, duration:number, active:boolean, source:string = 'auto') {
+    const signature=JSON.stringify([source,track?.videoId,track?.title,track?.artists,track?.album,Number.isFinite(duration)&&duration>0?Math.round(duration):null]);
+    const changedSource=this.source!==source; this.source=source;
     const changedOccurrence=this.state.occurrence!==occurrence;
     const changed=changedOccurrence||signature!==this.signature;
     this.track=track;this.duration=duration;this.signature=signature;
-    if (changedOccurrence) {++this.revision;this.state={occurrence,status:'idle',refreshing:false,document:null,error:null};this.publish(this.state);}
+    if (changedOccurrence || changedSource) {++this.revision;this.state={occurrence,status:'idle',refreshing:false,document:null,error:null};this.publish(this.state);}
     if (!active) {if(this.active) {++this.revision;this.state={...this.state,refreshing:false,status:this.state.document?'ready':'idle'};this.publish(this.state);}this.active=false;return;}
     const resumed=!this.active;this.active=true;
     if(track && (changed || resumed || this.forceNext)) { const force=this.forceNext;this.forceNext=false;void this.load(force); }
@@ -115,10 +117,11 @@ export class KaraokeController {
     const revision=++this.revision;
     this.state={...this.state,status:this.state.document?'ready':'loading',refreshing:true,error:null};this.publish(this.state);
     try {
-      const info=await this.rpc<KaraokeLyrics|null>('get_karaoke_lyrics',{videoId:track.videoId,title:track.title,artists:track.artists,album:track.album??null,duration:this.duration>0?this.duration:null,forceRefresh});
+      const info=await this.rpc<KaraokeLyrics|null>('get_karaoke_lyrics',{videoId:track.videoId,title:track.title,artists:track.artists,album:track.album??null,duration:this.duration>0?this.duration:null,forceRefresh,source:this.source});
       if(revision!==this.revision||!this.active)return;
       const document=info && (info.instrumental||info.lines.length)?prepareKaraoke(info,this.duration):null;
-      this.state={...this.state,status:document||this.state.document?'ready':'empty',document:document??this.state.document,refreshing:false};
+      const retained=document??(this.source==='auto'?this.state.document:null);
+      this.state={...this.state,status:retained?'ready':'empty',document:retained,refreshing:false};
     }catch(error){if(revision!==this.revision||!this.active)return;this.state={...this.state,status:this.state.document?'ready':'error',refreshing:false,error:error instanceof Error?error.message:String(error)};}
     this.publish(this.state);
   }

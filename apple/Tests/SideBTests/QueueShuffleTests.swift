@@ -211,8 +211,9 @@ private func playlistQueue(_ songs: [SongItemRecord], startingAt index: Int = 0)
     let radio = QueueManager()
     radio.replaceQueue(with: [songs[0]], context: .radio(seedVideoId: "seed", title: "Radio", seedName: "Seed"))
     radio.appendRadioTracks([songs[1], songs[1], songs[0]])
-    #expect(radio.queue.map(\.videoId) == [songs[0].videoId, songs[1].videoId])
-    #expect(radio.orderSnapshot.sourceRanks.count == 2)
+    #expect(radio.queue.map(\.videoId) == [songs[0].videoId])
+    #expect(radio.recommendationEntries.map { $0.track.videoId } == [songs[1].videoId])
+    #expect(radio.orderSnapshot.sourceRanks.count == 1)
 
     let shuffledRadio = QueueManager()
     shuffledRadio.replaceQueue(with: Array(songs.prefix(12)),
@@ -221,7 +222,7 @@ private func playlistQueue(_ songs: [SongItemRecord], startingAt index: Int = 0)
     let priorOrder = shuffledRadio.queue.map(\.videoId)
     shuffledRadio.appendRadioTracks(Array(songs.dropFirst(12).prefix(3)))
     #expect(Array(shuffledRadio.queue.prefix(12)).map(\.videoId) == priorOrder)
-    #expect(shuffledRadio.queue.suffix(3).map(\.videoId) == songs.dropFirst(12).prefix(3).map(\.videoId))
+    #expect(shuffledRadio.recommendationEntries.suffix(3).map { $0.track.videoId } == Array(songs.dropFirst(12).prefix(3)).map(\.videoId))
 }
 
 @MainActor

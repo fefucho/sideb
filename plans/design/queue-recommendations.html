@@ -1,0 +1,227 @@
+<!-- Prototipo local Side B: datos ficticios, sin red, persistencia ni audio. -->
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Side B · Cola elegida y recomendaciones</title>
+<style>
+html,body{margin:0;padding:0;background:transparent}
+#queue-proposal{color-scheme:light dark;--q-text:light-dark(#25212a,#f1edf4);--q-secondary:light-dark(#6a626e,#b8aebe);--q-line:light-dark(#dad3dd,#443a4b);--q-surface:light-dark(#f5f1f6,#211b28);--q-subtle:light-dark(#eae4ed,#302735);--q-hover:light-dark(#e2d9e8,#41334b);--q-accent:light-dark(#634077,#d4b5eb);--q-art:light-dark(#c6b2d3,#70597f);color:var(--q-text);font:13px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;max-width:728px;margin:auto}
+#queue-proposal *{box-sizing:border-box}
+#queue-proposal button,#queue-proposal select{font:inherit;color:inherit}
+#queue-proposal button{cursor:pointer;border:0;background:transparent;border-radius:6px;padding:6px}
+#queue-proposal button:hover{background:var(--q-hover)}
+#queue-proposal button:disabled{opacity:.35;cursor:default}
+#queue-proposal :focus-visible{outline:2px solid var(--q-accent);outline-offset:2px}
+#queue-proposal .demo-controls{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:0 0 12px;color:var(--q-secondary);font-size:12px}
+#queue-proposal .demo-controls select{background:var(--q-subtle);border:1px solid var(--q-line);padding:6px;border-radius:6px;max-width:100%}
+#queue-proposal .demo-controls button{margin-left:auto}
+#queue-proposal .product{position:relative;padding:18px 20px;background:var(--q-surface);border-radius:16px}
+#queue-proposal .header{display:flex;align-items:center;gap:10px;padding-bottom:10px;border-bottom:1px solid var(--q-line)}
+#queue-proposal .header-title{font-size:18px;font-weight:600;flex:1}
+#queue-proposal .context{color:var(--q-secondary);font-size:12px;margin:4px 0 20px}
+#queue-proposal h2{font-size:12px;font-weight:600;letter-spacing:.025em;margin:18px 0 6px}
+#queue-proposal .heading{display:flex;align-items:center;gap:8px;margin-top:18px}
+#queue-proposal .heading h2{margin:0;flex:1}
+#queue-proposal .count{color:var(--q-secondary);font-size:12px;font-variant-numeric:tabular-nums}
+#queue-proposal .note{font-size:12px;color:var(--q-secondary);margin:5px 0 10px}
+#queue-proposal .row{display:flex;align-items:center;gap:8px;min-height:46px;padding:4px 0;position:relative;border-bottom:1px solid color-mix(in srgb,var(--q-line) 45%,transparent)}
+#queue-proposal .row.active{padding:8px;border-radius:10px;background:var(--q-subtle);border:0}
+#queue-proposal .art{flex:none;width:32px;height:32px;border-radius:5px;background:radial-gradient(ellipse at 70% 30%,var(--q-art),transparent 65%),linear-gradient(130deg,var(--q-subtle),var(--q-line));display:grid;place-items:center;color:var(--q-text);font-size:16px}
+#queue-proposal .active .art{width:40px;height:40px}
+#queue-proposal .meta{flex:1;min-width:0}
+#queue-proposal .song{display:block;font-weight:500;text-align:left;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:1px 0}
+#queue-proposal .credits{display:flex;gap:4px;align-items:center;min-width:0;color:var(--q-secondary);font-size:11px}
+#queue-proposal .credits button{padding:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;text-align:left}
+#queue-proposal .credits .album{max-width:48%}
+#queue-proposal .duration{font-size:12px;font-variant-numeric:tabular-nums;color:var(--q-secondary);min-width:32px;text-align:center}
+#queue-proposal .row-actions{display:flex;gap:2px;align-items:center;flex:none}
+#queue-proposal .icon{width:28px;height:28px;padding:2px;font-size:17px}
+#queue-proposal .icon[aria-pressed=true]{color:var(--q-accent)}
+#queue-proposal .grip{width:15px;text-align:center;color:var(--q-secondary);cursor:grab;flex:none;user-select:none}
+#queue-proposal .origin{color:var(--q-secondary);font-size:11px;padding-right:2px}
+#queue-proposal .rec-actions{display:flex;gap:4px;flex:none}
+#queue-proposal .rec-actions button{background:var(--q-subtle);font-size:11px;padding:6px 8px}
+#queue-proposal .empty{color:var(--q-secondary);padding:12px 0;font-size:12px}
+#queue-proposal .transport{display:flex;gap:10px;align-items:center;justify-content:center;margin:12px 0 4px}
+#queue-proposal .transport .icon{width:32px;height:32px}
+#queue-proposal .transport .play{background:var(--q-text);color:var(--q-surface);border-radius:50%;width:36px;height:36px;font-size:16px}
+#queue-proposal .recs-section{border-top:1px solid var(--q-line);margin-top:18px;padding-top:1px}
+#queue-proposal details.history{border-top:1px solid var(--q-line);margin-top:18px;padding-top:14px}
+#queue-proposal summary{color:var(--q-secondary);cursor:pointer;font-size:12px}
+#queue-proposal .status{min-height:32px;color:var(--q-accent);font-size:12px;padding-top:12px}
+#queue-proposal .drop-zone{min-height:40px}
+#queue-proposal .drop-zone.over{outline:1px dashed var(--q-accent);outline-offset:3px}
+#queue-proposal .menu{position:absolute;z-index:10;background:var(--q-surface);border:1px solid var(--q-line);padding:6px;border-radius:10px;min-width:195px;max-width:calc(100% - 16px);box-shadow:0 8px 24px color-mix(in srgb,var(--q-text) 12%,transparent)}
+#queue-proposal .menu button{display:block;width:100%;text-align:left;padding:8px;font-size:12px}
+#queue-proposal [hidden]{display:none!important}
+@media(hover:hover){#queue-proposal .pending .row-actions{opacity:0}#queue-proposal .pending .row:hover .row-actions,#queue-proposal .pending .row:focus-within .row-actions{opacity:1}}
+@media(max-width:480px){#queue-proposal .product{padding:14px 12px}#queue-proposal .row{gap:5px;flex-wrap:wrap}#queue-proposal .rec-actions{margin:0 0 4px 37px;width:calc(100% - 37px)}#queue-proposal .rec .row-actions .dislike{display:none}#queue-proposal .origin{display:none}#queue-proposal .credits .album{max-width:42%}#queue-proposal .header-title{font-size:16px}}
+@media(pointer:coarse){#queue-proposal button{min-height:40px}#queue-proposal .row-actions .icon{width:40px;height:40px}#queue-proposal .row{min-height:54px}}
+</style>
+</head>
+<body>
+<div id="queue-proposal" aria-label="Propuesta de cola Side B">
+<div class="demo-controls"><label for="scenario">Probar escenario</label><select id="scenario"><option value="playlist">Playlist · tres canciones</option><option value="radio">Radio · sin canciones agregadas</option></select><button id="eof">Simular fin de canción</button></div>
+<main class="product" aria-label="Cola de reproducción">
+<header class="header"><span class="header-title">Cola</span></header>
+<div id="context" class="context"></div>
+<h2>Ahora suena</h2><div id="now"></div>
+<section class="pending"><div class="heading"><h2>A continuación</h2><span class="count" id="pending-count"></span></div><div id="pending" class="drop-zone"></div></section>
+<section class="recs-section"><div class="heading"><h2>Recomendaciones</h2></div><p id="recommendations-note" class="note">Se reproducen cuando termine tu cola.</p><div id="recommendations"></div></section>
+<details class="history"><summary id="history-count">Anteriores</summary><div id="history"></div></details>
+<footer class="transport" aria-label="Barra de reproducción existente, simulada"><button id="shuffle" class="icon" aria-label="Aleatorio" aria-pressed="false">⤨</button><button id="previous" class="icon" aria-label="Anterior">⏮</button><button id="play" class="play" aria-label="Pausar">Ⅱ</button><button id="next" class="icon" aria-label="Siguiente">⏭</button><button id="repeat" class="icon" aria-label="Repetir" aria-pressed="false">↻</button></footer>
+<div id="status" class="status" role="status" aria-live="polite">Simulación local · sin audio</div>
+<div id="menu" class="menu" aria-label="Acciones de canción" hidden></div>
+</main>
+</div>
+<script>
+(() => {
+'use strict';
+const root = document.getElementById('queue-proposal');
+const get = id => root.querySelector('#' + id);
+const catalog = {
+ a: {title:'Glass Gardens',artist:'Mira Sol',album:'Soft Geometry',duration:'3:42'},
+ b: {title:'Night Ferry',artist:'Juniper Vale',album:'Blue Hour',duration:'4:08'},
+ c: {title:'Paper Moons',artist:'The Quiet Atlas',album:'Small Constellations',duration:'3:16'},
+ r1:{title:'Warm Current',artist:'Lumen Park',album:'Afterimage',duration:'3:51'},
+ r2:{title:'Still in Bloom',artist:'Nico Arlen',album:'Open Windows',duration:'4:22'},
+ r3:{title:'Low Tide Lines',artist:'Sora June',album:'Coastlight',duration:'3:37'}
+};
+let serial = 0, state, draggingID = null, menuAnchor = null, focusTransfer = null;
+const occurrence = (track, origin) => ({id:'entry-' + (++serial),track,origin});
+const clone = value => JSON.parse(JSON.stringify(value));
+function initialize(scenario) {
+ state = {scenario,current:occurrence(scenario==='radio'?'r1':'a',scenario==='radio'?'radio':'collection'),pending:scenario==='radio'?[]:[occurrence('b','collection'),occurrence('c','collection')],recs:(scenario==='radio'?['r2','r3','b']:['r1','r2','r3']).map(t=>occurrence(t,'recommendation')),history:[],shuffle:false,repeat:false,paused:false,likes:[],dislikes:[],message:'Simulación local · sin audio'};
+}
+const find = id => [state.current,...state.pending,...state.recs,...state.history].find(x=>x?.id===id);
+function selectRecommendation(id) {
+ const i=state.recs.findIndex(x=>x.id===id); if(i<0)return null;
+ const proposal=state.recs.splice(i,1)[0];
+ const selected=occurrence(proposal.track,'manual');
+ focusTransfer={from:id,to:selected.id};
+ return selected;
+}
+function enqueue(id, end) {
+ let entry=selectRecommendation(id);
+ // Existing chosen/current/history tracks create a new intentional occurrence.
+ if(!entry){const selected=find(id);if(selected)entry=occurrence(selected.track,'manual');}
+ if(!entry)return;
+ entry.placement=end?'end':'next';
+ end?state.pending.push(entry):state.pending.unshift(entry);
+ state.message=catalog[entry.track].title+(end?' · al final de tu cola':' · se reproduce a continuación');
+}
+function advance(manual,excludeCurrent=false) {
+ if(!manual&&state.repeat&&state.current&&!excludeCurrent){state.message='Repetir · continúa la canción actual';return;}
+ let next=state.pending.shift();
+ if(!next&&manual&&state.repeat&&!excludeCurrent&&(state.current||state.history.length)){const cycle=[...state.history,...(state.current?[state.current]:[])];state.current=cycle.shift();state.history=[];state.pending=cycle;state.paused=false;state.message='Volver al comienzo de la cola';return;}
+ if(!next&&state.recs.length){next=state.recs.shift();next.origin='radio';}
+ if(!next){if(excludeCurrent)state.current=null;state.paused=true;state.message='No hay más canciones en esta demostración';return;}
+ if(state.current&&next.id!==state.current.id&&!excludeCurrent)state.history.push(state.current);
+ state.current=next;state.paused=false;state.message='Ahora suena · '+catalog[next.track].title;
+}
+function playNow(id) {
+ let next=selectRecommendation(id);
+ if(!next){let i=state.pending.findIndex(x=>x.id===id);if(i>=0){const skipped=state.pending.splice(0,i);state.history.push(...(state.current?[state.current]:[]),...skipped);state.current=state.pending.shift();state.paused=false;state.message='Reproducción desde la cola';return;}}
+ if(!next){const i=state.history.findIndex(x=>x.id===id);if(i>=0){const selected=state.history[i];const subsequent=state.history.slice(i+1);state.pending=[...subsequent,...(state.current?[state.current]:[]),...state.pending];state.history=state.history.slice(0,i);state.current=selected;state.paused=false;state.message='Reproducción desde anteriores';return;}}
+ if(next){if(state.current)state.history.push(state.current);state.current=next;state.paused=false;state.message='Elección manual · conservamos tus pendientes';}
+ else if(state.current?.id===id)state.paused=!state.paused;
+}
+function shufflePending(enabled) {
+ // Preserve manual anchors in this small demo. Source entries alone change slots.
+ const sourceSlots=state.pending.map((x,i)=>x.origin==='collection'&&!x.placement?i:-1).filter(i=>i>=0);
+ if(enabled){state.sourceOrder=state.pending.filter(x=>x.origin==='collection'&&!x.placement).map(x=>x.id);const source=sourceSlots.map(i=>state.pending[i]).reverse();sourceSlots.forEach((slot,i)=>state.pending[slot]=source[i]);}
+ else{const ranks=new Map((state.sourceOrder||[]).map((id,i)=>[id,i]));const source=sourceSlots.map(i=>state.pending[i]).sort((a,b)=>(ranks.get(a.id)??1e6)-(ranks.get(b.id)??1e6));sourceSlots.forEach((slot,i)=>state.pending[slot]=source[i]);}
+ state.shuffle=enabled;state.message=enabled?'Aleatorio · colección mezclada; posiciones manuales conservadas':'Orden original de la colección restaurado';
+}
+function dispatch(action,payload) {
+ const active=document.activeElement;
+ const focusRow=active?.closest('.row')||menuAnchor;
+ const focusHint={identity:active?.dataset?.entry,action:active?.dataset?.action,group:focusRow?.parentElement?.id,index:focusRow?Array.from(focusRow.parentElement.children).indexOf(focusRow):0};
+ focusTransfer=null;
+ const id=typeof payload==='string'?payload:payload?.id;
+ switch(action){
+ case 'scenario':initialize((typeof payload==='string'?payload:payload?.scenario)==='radio'?'radio':'playlist');break;
+ case 'next':advance(true);break;
+ case 'eof':advance(false);break;
+ case 'previous':if(state.history.length){if(state.current)state.pending.unshift(state.current);state.current=state.history.pop();state.paused=false;state.message='Volver a la reproducción anterior';}break;
+ case 'play':playNow(id);break;
+ case 'pause':state.paused=!state.paused;state.message=state.paused?'En pausa':'Reproduciendo';break;
+ case 'enqueueNext':enqueue(id,false);break;
+ case 'enqueueEnd':enqueue(id,true);break;
+ case 'moveToNext':return dispatch('move',{id,before:state.pending[0]?.id});
+ case 'moveToEnd':return dispatch('move',{id});
+ case 'remove':state.pending=state.pending.filter(x=>x.id!==id);state.recs=state.recs.filter(x=>x.id!==id);if(state.current?.id===id)advance(true,true);state.message='Canción quitada · sin enviar Dislike';break;
+ case 'like':{const x=find(id);if(x){state.likes=state.likes.includes(x.track)?state.likes.filter(t=>t!==x.track):[...state.likes,x.track];state.dislikes=state.dislikes.filter(t=>t!==x.track);state.message='Me gusta actualizado · simulación';}break;}
+ case 'dislike':{const x=find(id);if(x){state.dislikes.push(x.track);state.likes=state.likes.filter(t=>t!==x.track);state.recs=state.recs.filter(p=>p.track!==x.track);state.pending=state.pending.filter(p=>p.id!==id);if(state.current?.id===id)advance(true,true);state.message='Dislike y quitar · simulación sin enviar a YouTube Music';}break;}
+ case 'shuffle':shufflePending(!state.shuffle);break;
+ case 'repeat':state.repeat=!state.repeat;state.message=state.repeat?'Repetir canción activado':'Repetir desactivado';break;
+ case 'move':{if(payload.before===id)break;const i=state.pending.findIndex(x=>x.id===id);if(i>=0){const [entry]=state.pending.splice(i,1);entry.placement='moved';const index=payload.before?state.pending.findIndex(x=>x.id===payload.before):-1;state.pending.splice(index<0?state.pending.length:index,0,entry);state.message='Orden de tu cola actualizado';}break;}
+ case 'drop':{const before=payload.before;let entry=selectRecommendation(id);if(entry){entry.placement='manual';const index=state.pending.findIndex(x=>x.id===before);state.pending.splice(index<0?state.pending.length:index,0,entry);state.message='Recomendación agregada a tu cola';}else return dispatch('move',payload);break;}
+ }
+ closeMenu(false);render(focusHint);return clone(state);
+}
+window.queueDemo={getState:()=>clone(state),dispatch};
+function button(label,text,action,id,className='icon') {
+ const b=document.createElement('button');b.type='button';b.className=className;b.setAttribute('aria-label',label);b.textContent=text;b.dataset.action=action;b.dataset.entry=id;return b;
+}
+function row(entry,where) {
+ const song=catalog[entry.track];const r=document.createElement('div');r.className='row '+(where==='current'?'active':where);r.dataset.entry=entry.id;
+ if(where==='pending'||where==='rec'){r.draggable=true;const grip=document.createElement('span');grip.className='grip';grip.textContent=where==='pending'?'⠿':'·';grip.setAttribute('aria-hidden','true');r.append(grip);}
+ const art=document.createElement('div');art.className='art';art.textContent=where==='current'&&!state.paused?'♫':'';art.setAttribute('aria-hidden','true');r.append(art);
+ const meta=document.createElement('div');meta.className='meta';meta.append(button('Reproducir '+song.title,song.title,'play',entry.id,'song'));
+ const credits=document.createElement('div');credits.className='credits';credits.append(button('Ver artista '+song.artist,song.artist,'artist',entry.id,''));const dot=document.createElement('span');dot.textContent='·';credits.append(dot);credits.append(button('Ver álbum '+song.album,song.album,'album',entry.id,'album'));meta.append(credits);r.append(meta);
+ if(where==='pending'&&entry.origin==='manual'){const origin=document.createElement('span');origin.className='origin';origin.textContent='Agregada';r.append(origin);}
+ const actions=document.createElement('div');actions.className='row-actions';const like=button('Me gusta '+song.title,state.likes.includes(entry.track)?'♥':'♡','like',entry.id);like.setAttribute('aria-pressed',String(state.likes.includes(entry.track)));actions.append(like);actions.append(button('No me gusta '+song.title,'⊖','dislike',entry.id,'icon dislike'));r.append(actions);
+ const duration=document.createElement('span');duration.className='duration';duration.textContent=song.duration;r.append(duration);
+ if(where==='rec'){const choices=document.createElement('div');choices.className='rec-actions';choices.append(button('Reproducir siguiente '+song.title,'Siguiente','enqueueNext',entry.id,''));choices.append(button('Agregar al final '+song.title,'Al final','enqueueEnd',entry.id,''));r.append(choices);}
+ r.addEventListener('contextmenu',event=>{event.preventDefault();openMenu(entry.id,r,event.clientX,event.clientY);});
+ r.addEventListener('keydown',event=>{if(event.key==='ContextMenu'||(event.shiftKey&&event.key==='F10')){event.preventDefault();openMenu(entry.id,r);}if(event.altKey&&(event.key==='ArrowUp'||event.key==='ArrowDown')&&where==='pending'){event.preventDefault();const i=state.pending.findIndex(x=>x.id===entry.id);const before=event.key==='ArrowUp'?state.pending[i-1]?.id:state.pending[i+2]?.id;if(event.key==='ArrowDown'||i>0)dispatch('move',{id:entry.id,before});root.querySelector('[data-entry="'+entry.id+'"] button')?.focus();}});
+ return r;
+}
+function render(focusHint) {
+ const focused=document.activeElement;const identity=focused?.dataset?.entry,action=focused?.dataset?.action;
+ get('scenario').value=state.scenario;get('context').textContent=state.scenario==='radio'?'Radio de Lumen Park':'Playlist · Soft Geometry';
+ if(state.current)get('now').replaceChildren(row(state.current,'current'));else{const empty=document.createElement('div');empty.className='empty';empty.textContent='No hay una canción en reproducción.';get('now').replaceChildren(empty);}
+ get('play').disabled=!state.current;
+ get('pending-count').textContent=state.pending.length+' '+(state.pending.length===1?'canción':'canciones');
+ for(const [id,entries,where,empty] of [['pending',state.pending,'pending','No hay canciones agregadas.'],['recommendations',state.recs,'rec','No hay más recomendaciones en esta demostración.'],['history',state.history.slice().reverse(),'history','Todavía no hay canciones anteriores.']]){const parent=get(id);parent.replaceChildren(...entries.map(x=>row(x,where)));if(!entries.length){const e=document.createElement('div');e.className='empty';e.textContent=empty;parent.append(e);}}
+ get('history-count').textContent='Anteriores · '+state.history.length;
+ get('previous').disabled=!state.history.length;get('next').disabled=!state.pending.length&&!state.recs.length&&!state.repeat;
+ get('play').textContent=state.paused?'▶':'Ⅱ';get('play').setAttribute('aria-label',state.paused?'Reproducir':'Pausar');
+ get('shuffle').setAttribute('aria-pressed',String(state.shuffle));get('repeat').setAttribute('aria-pressed',String(state.repeat));get('status').textContent=state.message;
+ get('recommendations-note').textContent=state.repeat?'Desactivá repetir para continuar con las recomendaciones.':'Se reproducen cuando termine tu cola.';
+ const wanted=focusHint||{identity,action};
+ if(wanted.identity&&wanted.action){
+  const targetID=focusTransfer?.from===wanted.identity?focusTransfer.to:wanted.identity;
+  let target=root.querySelector('.row button[data-entry="'+targetID+'"][data-action="'+wanted.action+'"]')||root.querySelector('.row button[data-entry="'+targetID+'"][data-action="play"]');
+  if(!target&&wanted.group){const rows=get(wanted.group)?.querySelectorAll('.row');target=rows?.[Math.min(wanted.index,rows.length-1)]?.querySelector('button');}
+  (target||get('next')).focus();
+ }
+ focusTransfer=null;
+}
+function closeMenu(restore=true){get('menu').hidden=true;if(restore&&menuAnchor?.isConnected)menuAnchor.querySelector('button')?.focus();menuAnchor=null;}
+function openMenu(id,anchor,x,y) {
+ menuAnchor=anchor;const menu=get('menu');menu.replaceChildren();
+ const options=[['Reproducir ahora','play'],['Reproducir siguiente','enqueueNext'],['Agregar al final de la cola','enqueueEnd']];
+ if(state.pending.some(e=>e.id===id))options.push(['Mover al comienzo','moveToNext'],['Mover al final','moveToEnd']);
+ if(state.current?.id===id||state.pending.some(e=>e.id===id)||state.recs.some(e=>e.id===id))options.push(['Quitar','remove']);
+ options.push(['Me gusta','like'],['No me gusta','dislike'],['Iniciar radio','startRadio'],['Agregar a la biblioteca','library'],['Agregar a playlist…','playlist'],['Compartir…','share']);for(const [label,action] of options)menu.append(button(label,label,action,id,''));
+ menu.hidden=false;const product=root.querySelector('.product').getBoundingClientRect();const target=anchor.getBoundingClientRect();const left=(x??target.left)-product.left,top=(y??target.bottom)-product.top;menu.style.left=Math.max(8,Math.min(left,product.width-menu.offsetWidth-8))+'px';menu.style.top=Math.max(8,Math.min(top,product.height-menu.offsetHeight-8))+'px';menu.querySelector('button')?.focus();
+}
+root.addEventListener('click',event=>{
+ const b=event.target.closest('button');if(!b){if(!event.target.closest('#menu'))closeMenu();return;}
+ if(b.dataset.action){if(['artist','album','library','playlist','share','startRadio'].includes(b.dataset.action)){const entry=find(b.dataset.entry);if(entry){const song=catalog[entry.track];const labels={library:'Agregar a biblioteca',playlist:'Elegir playlist',share:'Compartir canción',startRadio:'Iniciar otra sesión de radio'};state.message='Destino simulado · '+(song[b.dataset.action]||labels[b.dataset.action]+' · '+song.title);closeMenu();get('status').textContent=state.message;}return;}dispatch(b.dataset.action,b.dataset.entry);return;}
+ const actions={previous:'previous',play:'pause',next:'next',shuffle:'shuffle',repeat:'repeat',eof:'eof'};if(actions[b.id])dispatch(actions[b.id]);
+});
+root.addEventListener('keydown',event=>{if(event.key==='Escape')closeMenu();});
+get('scenario').addEventListener('change',event=>dispatch('scenario',event.target.value));
+root.addEventListener('dragstart',event=>{const r=event.target.closest('.row');if(!r?.draggable)return;draggingID=r.dataset.entry;event.dataTransfer.setData('text/plain',draggingID);event.dataTransfer.effectAllowed='move';});
+get('pending').addEventListener('dragover',event=>{if(draggingID){event.preventDefault();get('pending').classList.add('over');}});
+get('pending').addEventListener('dragleave',()=>get('pending').classList.remove('over'));
+get('pending').addEventListener('drop',event=>{event.preventDefault();get('pending').classList.remove('over');const id=event.dataTransfer.getData('text/plain')||draggingID;const before=event.target.closest('.row')?.dataset.entry;if(id&&id!==before)dispatch('drop',{id,before});draggingID=null;});
+root.addEventListener('dragend',()=>{draggingID=null;get('pending').classList.remove('over');});
+initialize('playlist');render();
+})();
+</script>
+</body></html>

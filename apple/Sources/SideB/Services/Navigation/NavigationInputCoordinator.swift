@@ -194,6 +194,7 @@ final class WindowNavigationCoordinator: NSObject {
         }
         guard event.type == .scrollWheel else { return event }
         let hasVolumeSurface = volumePlayer?.volumeScroll.isCapsuleOpen == true ||
+            volumePlayer?.isPlaybackSidebarPresented == true ||
             (isFullscreenPresented && volumePlayer?.currentTrack != nil)
         let volumeZone = hasVolumeSurface ? window.contentView.flatMap { root in
             WindowGestureRegions.volumeZone(at: root.convert(event.locationInWindow, from: nil), in: root)
@@ -272,11 +273,11 @@ final class WindowNavigationCoordinator: NSObject {
         lastVolumeApplication = timestamp
     }
 
-    /// Home explicitly reserves its horizontal viewports. Everywhere else keeps
-    /// window-wide history; fullscreen dismissal uses separate panel routing.
+    /// Horizontal viewports reserve their contact on every page. The rest of
+    /// the window keeps history; fullscreen dismissal uses separate panel routing.
     func scrollContext(at point: NSPoint, in root: NSView, enabled: Bool) -> WindowGestureStateMachine.Context {
         let available = enabled && canHandleGestures && presentation?.fullscreenIsBusy == false
-        let homeContentOwnsGesture = !isFullscreenPresented && router?.currentPage == .home &&
+        let contentOwnsGesture = !isFullscreenPresented &&
             HorizontalNavigationGestureRouting.contentOwnsGesture(at: point, in: root)
         let routing = isFullscreenPresented
             ? WindowGestureRegions.routing(at: point, in: root, includeNativeFallback: false) : nil
@@ -284,7 +285,7 @@ final class WindowNavigationCoordinator: NSObject {
             WindowGestureRegions.volumeZone(at: point, in: root) == .fullscreen
         return .init(
             mode: isFullscreenPresented ? .fullscreen : .history,
-            allowsHorizontalNavigation: available && !isFullscreenPresented && !homeContentOwnsGesture &&
+            allowsHorizontalNavigation: available && !isFullscreenPresented && !contentOwnsGesture &&
                 WindowGestureRegions.allowsHistory(at: point, in: root),
             allowsFullscreenDismissal: available && isFullscreenPresented && !volumeReplacesDismissal && routing?.allowsFullscreenDismissal == true,
             verticalContentOwnsGesture: routing?.ownsVertical ?? false,

@@ -1,20 +1,24 @@
 <script lang="ts">
   import { t, language, count, resolveMessage, type AppMessage  } from '$lib/i18n';
-  import { onMount, tick } from 'svelte';
+  import { onMount, tick, untrack } from 'svelte';
   import TrackArtwork from '$lib/components/common/TrackArtwork.svelte';
   import TrackActivity from '$lib/components/common/TrackActivity.svelte';
   import { visibleTrackRange, trackSegments } from '$lib/components/common/trackList';
   import type { PlaybackStateDto, QueueEntryDto } from '$lib/types';
   import ArtistCredits from '$lib/components/ArtistCredits.svelte';
   import FeaturedTrackTitle from '$lib/components/FeaturedTrackTitle.svelte';
+  import { promotedEntryId, queueDropDestination, queueIndexAtSlot, queueRowAt, queueRowCount, queueSections, queueSlotForEntry } from './queueProjection';
 
   interface Props {
     playback: PlaybackStateDto;
+    focusQueueEntryId?: string | null;
+    onQueueFocusHandled?: (entryId: string) => void;
     onSelectQueue: (index: number) => void;
     onTogglePlayback?: () => void;
     onOpenArtist?: (id: string, title: string) => void;
     onOpenAlbum?: (id: string) => void;
-    onMoveQueue: (entryId: string, beforeEntryId: string | null) => void | Promise<void>;
+    onMoveQueue: (entryId: string, beforeEntryId: string | null) => void | PlaybackStateDto | Promise<void | PlaybackStateDto>;
+    onRevealQueueWindow?: (startIndex: number, generation: number) => void | Promise<void>;
     onQueueContextMenu?: (event: MouseEvent, entry: QueueEntryDto) => void;
     onRetryRadio?: () => void;
     onRetrySource?: () => void;
@@ -24,10 +28,12 @@
     likesLoading?: boolean;
     onToggleLike?: (entry: QueueEntryDto) => void;
     onDislike?: (entry: QueueEntryDto) => void;
+    onRecommendationAction?: (entryId: string, placement: 'next' | 'end' | 'now' | 'remove', generation: number) => void | PlaybackStateDto | Promise<void | PlaybackStateDto>;
   }
-  let { playback, onSelectQueue, onTogglePlayback, onOpenArtist, onOpenAlbum, onMoveQueue, onQueueContextMenu, onRetryRadio, onRetrySource, loggedIn = false,
-    likedIds = new Set<string>(), pendingIds = new Set<string>(), likesLoading = false, onToggleLike, onDislike }: Props = $props();
+  let { playback, focusQueueEntryId = null, onQueueFocusHandled, onSelectQueue, onTogglePlayback, onOpenArtist, onOpenAlbum, onMoveQueue, onRevealQueueWindow, onQueueContextMenu, onRetryRadio, onRetrySource, loggedIn = false,
+    likedIds = new Set<string>(), pendingIds = new Set<string>(), likesLoading = false, onToggleLike, onDislike, onRecommendationAction }: Props = $props();
   let draggingId = $state<string | null>(null);
+  let draggingRecommendation = $state(false);
   let dropId = $state<string | null>(null);
   let dropAfter = $state(false);
   let movePending = $state(false);
@@ -35,28 +41,114 @@
   let announcement = $state<AppMessage | null>(null);
   let queueList = $state<HTMLDivElement>();
   let awake = $state(false);
-  let scrollTop = $state(0);
+  let followingCurrent = true;
+  let lastCurrentId: string | null = null;
+  let lastIdentityIds: Set<string> | null = null;
+  let lastAuthGeneration: number | undefined;
+  let viewportAnchor: { id: string; offset: number } | null = null;
+  let scrollTop = $state(untrack(() => Math.max(0, (playback.queue.currentIndex == null ? 0 : playback.queue.items[playback.queue.currentIndex]?.queueIndex ?? playback.queue.currentIndex) - 1) * 48));
   let viewportHeight = $state(480);
   let focusedEntryId = $state<string | null>(null);
+  let revealInFlight: number | null = null;
+  let revealRequested: number | null = null;
   const rowPitch = 48;
-  const visibleEntries = $derived.by(() => {
-    const items = playback.queue.items;
-    const range = visibleTrackRange(items.length, scrollTop, viewportHeight, rowPitch);
-    const pinned = [focusedEntryId, draggingId].map(id => id ? items.findIndex(entry => entry.entryId === id) : -1);
-    return trackSegments(items.length, range, pinned).flatMap(([start, end]) =>
-      items.slice(start, end).map((entry, offset) => ({ entry, index: start + offset })));
+  const currentQueueIndex = $derived(playback.queue.currentIndex == null ? -1
+    : playback.queue.items[playback.queue.currentIndex]?.queueIndex ?? playback.queue.currentIndex);
+  const totalQueueCount = $derived(playback.queue.totalCount ?? Math.max(playback.queue.items.length,
+    ...playback.queue.items.map((entry, index) => (entry.queueIndex ?? index) + 1)));
+  const firstPendingQueueIndex = $derived(currentQueueIndex >= 0 ? currentQueueIndex + 1
+    : Math.max(0, totalQueueCount - (playback.queue.pendingCount ?? totalQueueCount)));
+  const sections = $derived(queueSections(playback.queue));
+  const projectedRowCount = $derived(queueRowCount(sections));
+  const visibleRows = $derived.by(() => {
+    const range = visibleTrackRange(projectedRowCount, scrollTop, viewportHeight, rowPitch);
+    const pinned = [focusedEntryId, draggingId].map(id => id ? queueSlotForEntry(sections, id) ?? -1 : -1);
+    return trackSegments(projectedRowCount, range, pinned).flatMap(([start, end]) =>
+      Array.from({ length: end - start }, (_, offset) => queueRowAt(sections, start + offset)).filter(Boolean));
+  });
+  function rememberAnchor() {
+    const slot = Math.max(0, Math.floor(scrollTop / rowPitch));
+    for (let i = slot; i < Math.min(projectedRowCount, slot + 8); i++) {
+      const row = queueRowAt(sections, i);
+      if (row?.kind === 'track') { viewportAnchor = { id: row.entry.entryId, offset: i * rowPitch - scrollTop }; return; }
+    }
+  }
+  function stopFollowing() { followingCurrent = false; }
+  $effect(() => {
+    const list = queueList;
+    const currentId = playback.queue.currentIndex == null ? null : playback.queue.items[playback.queue.currentIndex]?.entryId ?? null;
+    const authGeneration = playback.authGeneration;
+    const identityIds = new Set(playback.queue.items.map(entry => entry.entryId));
+    const projection = sections;
+    if (!list) return;
+    untrack(() => {
+      const newSession = lastIdentityIds === null || lastAuthGeneration !== authGeneration
+        || identityIds.size > 0 && ![...identityIds].some(id => lastIdentityIds?.has(id));
+      // Playback generation changes on every advance; occurrence IDs identify queue continuity.
+      if (newSession) { followingCurrent = true; viewportAnchor = null; }
+      const changed = lastCurrentId !== currentId;
+      lastCurrentId = currentId; lastIdentityIds = identityIds; lastAuthGeneration = authGeneration;
+      let target: number | null = null;
+      if ((newSession || followingCurrent && changed) && currentId) {
+        const slot = queueSlotForEntry(projection, currentId);
+        if (slot !== null) target = Math.max(0, slot - 2) * rowPitch;
+      } else if (viewportAnchor && !focusQueueEntryId) {
+        const slot = queueSlotForEntry(projection, viewportAnchor.id);
+        if (slot !== null) target = slot * rowPitch - viewportAnchor.offset;
+      }
+      if (target !== null) { list.scrollTop = Math.max(0, target); scrollTop = list.scrollTop; }
+    });
+  });
+  function requestVisibleQueueWindow() {
+    if (!onRevealQueueWindow || revealInFlight !== null) return;
+    const [start, end] = visibleTrackRange(projectedRowCount, scrollTop, viewportHeight, rowPitch);
+    for (let slot = start; slot < end; slot++) {
+      const index = queueIndexAtSlot(sections, slot);
+      if (index === null) continue;
+      const loaded = playback.queue.items.some((entry, localIndex) => (entry.queueIndex ?? localIndex) === index);
+      if (loaded || index === revealRequested) continue;
+      revealRequested = index;
+      revealInFlight = index;
+      void Promise.resolve(onRevealQueueWindow(index, playback.generation)).catch(error => {
+        moveError = error instanceof Error ? error.message : $t('windows.ui.couldnTCompleteTheUpdateOperation');
+      }).finally(() => { if (revealInFlight === index) revealInFlight = null; });
+      return;
+    }
+  }
+  $effect(() => {
+    const entryId = focusQueueEntryId;
+    if (!entryId || !playback.queue.items.some(item => item.entryId === entryId) || !queueList) return;
+    const slot = queueSlotForEntry(sections, entryId);
+    if (slot === null) return;
+    const rowTop = slot * rowPitch;
+    if (rowTop < queueList.scrollTop) queueList.scrollTop = rowTop;
+    else if (rowTop + rowPitch > queueList.scrollTop + queueList.clientHeight) queueList.scrollTop = rowTop + rowPitch - queueList.clientHeight;
+    scrollTop = queueList.scrollTop;
+    void tick().then(() => {
+      const row = Array.from(queueList?.querySelectorAll<HTMLElement>('[data-entry-id]') ?? []).find(node => node.dataset.entryId === entryId);
+      row?.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus();
+      onQueueFocusHandled?.(entryId);
+    });
+  });
+  $effect(() => {
+    playback.queue; projectedRowCount; scrollTop; viewportHeight;
+    requestVisibleQueueWindow();
   });
   function observeViewport(node: HTMLDivElement) {
     let frame = 0;
-    const sync = () => { scrollTop = node.scrollTop; viewportHeight = node.clientHeight; };
+    const sync = () => { scrollTop = node.scrollTop; viewportHeight = node.clientHeight; rememberAnchor(); requestVisibleQueueWindow(); };
     const schedule = () => { if (!frame) frame = requestAnimationFrame(() => { frame = 0; sync(); }); };
     const observer = new ResizeObserver(schedule);
     observer.observe(node);
     node.addEventListener('scroll', schedule, { passive: true });
+    node.addEventListener('wheel', stopFollowing, { passive: true });
+    node.addEventListener('pointerdown', stopFollowing);
+    node.addEventListener('keydown', stopFollowing);
     // Keyboard events originate from native buttons; the group itself is not focusable.
     node.addEventListener('keydown', handleTab);
+    node.scrollTop = scrollTop;
     sync();
-    return { destroy() { observer.disconnect(); node.removeEventListener('scroll', schedule); node.removeEventListener('keydown', handleTab); if (frame) cancelAnimationFrame(frame); } };
+    return { destroy() { observer.disconnect(); node.removeEventListener('scroll', schedule); node.removeEventListener('wheel', stopFollowing); node.removeEventListener('pointerdown', stopFollowing); node.removeEventListener('keydown', stopFollowing); node.removeEventListener('keydown', handleTab); if (frame) cancelAnimationFrame(frame); } };
   }
   function entryIdOf(target: EventTarget | null) {
     return target instanceof Element ? target.closest<HTMLElement>('[data-entry-id]')?.dataset.entryId ?? null : null;
@@ -68,18 +160,21 @@
     const controls = Array.from(row.querySelectorAll<HTMLButtonElement>('button:not(:disabled)'));
     const atBoundary = event.target === (event.shiftKey ? controls[0] : controls.at(-1));
     if (!atBoundary) return;
-    const index = playback.queue.items.findIndex(entry => entry.entryId === row.dataset.entryId);
-    const nextIndex = index + (event.shiftKey ? -1 : 1);
-    const nextEntry = playback.queue.items[nextIndex];
-    if (!nextEntry) return;
+    const slot = queueSlotForEntry(sections, row.dataset.entryId ?? '');
+    if (slot === null) return;
+    let nextSlot = slot + (event.shiftKey ? -1 : 1);
+    let nextRow = queueRowAt(sections, nextSlot);
+    while (nextRow?.kind === 'header') { nextSlot += event.shiftKey ? -1 : 1; nextRow = queueRowAt(sections, nextSlot); }
+    if (!nextRow || nextRow.kind !== 'track') return;
+    const nextEntryId = nextRow.entry.entryId;
     event.preventDefault();
-    const rowTop = nextIndex * rowPitch;
+    const rowTop = nextSlot * rowPitch;
     if (rowTop < queueList.scrollTop) queueList.scrollTop = rowTop;
     else if (rowTop + rowPitch > queueList.scrollTop + queueList.clientHeight) queueList.scrollTop = rowTop + rowPitch - queueList.clientHeight;
     scrollTop = queueList.scrollTop;
     await tick();
-    const nextRow = Array.from(queueList.querySelectorAll<HTMLElement>('[data-entry-id]')).find(node => node.dataset.entryId === nextEntry.entryId);
-    const nextControls = Array.from(nextRow?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') ?? []);
+    const targetTrack = Array.from(queueList.querySelectorAll<HTMLElement>('[data-entry-id]')).find(node => node.dataset.entryId === nextEntryId);
+    const nextControls = Array.from(targetTrack?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') ?? []);
     (event.shiftKey ? nextControls.at(-1) : nextControls[0])?.focus();
   }
   onMount(() => {
@@ -98,6 +193,8 @@
   function activateEntry(entry: QueueEntryDto) {
     if (draggingId) return;
     // Resolve the occurrence at activation time, including after an authoritative reorder.
+    const proposal = playback.queue.recommendations?.some(item => item.entryId === entry.entryId);
+    if (proposal) { void applyRecommendationAction(entry.entryId, 'now'); return; }
     const index = playback.queue.items.findIndex(item => item.entryId === entry.entryId);
     if (index < 0) return;
     if (index === playback.queue.currentIndex && onTogglePlayback) {
@@ -105,6 +202,35 @@
     } else {
       onSelectQueue(index);
     }
+  }
+  async function applyRecommendationAction(entryId: string, placement: 'next' | 'end' | 'now' | 'remove', beforeEntryId?: string | null) {
+    if (!onRecommendationAction) return;
+    try {
+      stopFollowing();
+      const oldIds = new Set(playback.queue.items.map(item => item.entryId));
+      let result = await onRecommendationAction(entryId, placement, playback.generation);
+      if (placement === 'remove') return;
+      const addedId = result ? promotedEntryId(oldIds, result.queue) : null;
+      if (beforeEntryId !== undefined && addedId) {
+        const moved = await onMoveQueue(addedId, beforeEntryId);
+        if (moved && typeof moved === 'object' && 'queue' in moved) result = moved;
+      }
+      if (!result || !addedId || !queueList) return;
+      const slot = queueSlotForEntry(queueSections(result.queue), addedId);
+      if (slot === null) return;
+      const rowTop = slot * rowPitch;
+      if (rowTop < queueList.scrollTop) queueList.scrollTop = rowTop;
+      else if (rowTop + rowPitch > queueList.scrollTop + queueList.clientHeight) queueList.scrollTop = rowTop + rowPitch - queueList.clientHeight;
+      scrollTop = queueList.scrollTop;
+      await tick();
+      const promotedRow = Array.from(queueList.querySelectorAll<HTMLElement>('[data-entry-id]')).find(node => node.dataset.entryId === addedId);
+      promotedRow?.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus();
+    } catch (error) {
+      moveError = error instanceof Error ? error.message : $t('windows.ui.couldnTCompleteTheUpdateOperation');
+    }
+  }
+  function sectionLabel(kind: string) {
+    return $t(kind === 'recommendations' ? 'windows.queue.recommendations' : 'windows.queue.now');
   }
   function openArtist(entry: QueueEntryDto, id: string) {
     const title = entry.artistRuns?.find(run => run.id === id)?.text || entry.artists;
@@ -123,9 +249,13 @@
     const total = Math.floor(seconds);
     return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
   }
-  function resetDrag() { draggingId = null; dropId = null; dropAfter = false; }
+  function resetDrag() { draggingId = null; draggingRecommendation = false; dropId = null; dropAfter = false; }
   $effect(() => {
-    if (draggingId && !playback.queue.items.some(entry => entry.entryId === draggingId)) resetDrag();
+    if (!draggingId) return;
+    const sourceExists = draggingRecommendation
+      ? playback.queue.recommendations?.some(entry => entry.entryId === draggingId)
+      : playback.queue.items.some(entry => entry.entryId === draggingId);
+    if (!sourceExists) resetDrag();
   });
   function handleContextMenu(event: MouseEvent, entry: QueueEntryDto) {
     if (!onQueueContextMenu) return;
@@ -142,9 +272,12 @@
   }
   function startDrag(event: DragEvent, entry: QueueEntryDto) {
     if (movePending || !event.dataTransfer) { event.preventDefault(); return; }
+    const isRecommendation = playback.queue.recommendations?.some(item => item.entryId === entry.entryId) ?? false;
+    const queueIndex = entry.queueIndex ?? playback.queue.items.findIndex(item => item.entryId === entry.entryId);
     draggingId = entry.entryId;
+    draggingRecommendation = isRecommendation;
     moveError = null;
-    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.effectAllowed = isRecommendation || queueIndex >= firstPendingQueueIndex ? 'move' : 'copyMove';
     event.dataTransfer.setData('application/x-sideb-queue-entry', entry.entryId);
     event.dataTransfer.setData('text/plain', entry.title);
     const row = (event.currentTarget as HTMLElement).closest('.queue-row');
@@ -152,12 +285,18 @@
   }
   function overRow(event: DragEvent, entry: QueueEntryDto) {
     if (!draggingId || movePending) return;
+    const targetIndex = entry.queueIndex ?? playback.queue.items.findIndex(item => item.entryId === entry.entryId);
+    const sourceIndex = draggingRecommendation ? currentQueueIndex + 1
+      : playback.queue.items.find(item => item.entryId === draggingId)?.queueIndex
+        ?? playback.queue.items.findIndex(item => item.entryId === draggingId);
+    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+    const after = event.clientY >= rect.top + rect.height / 2;
+    if (targetIndex < firstPendingQueueIndex && !(targetIndex === currentQueueIndex && after)) return;
     event.preventDefault();
     event.stopPropagation();
-    if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
-    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = !draggingRecommendation && sourceIndex < firstPendingQueueIndex ? 'copy' : 'move';
     dropId = entry.entryId;
-    dropAfter = event.clientY >= rect.top + rect.height / 2;
+    dropAfter = after;
     // Only the queue list scrolls; artwork and playback controls remain fixed.
     if (!queueList) return;
     const listRect = queueList.getBoundingClientRect();
@@ -167,13 +306,32 @@
   async function move(entryId: string, beforeEntryId: string | null) {
     const index = playback.queue.items.findIndex(entry => entry.entryId === entryId);
     if (index < 0 || movePending) return;
-    if (entryId === beforeEntryId || (playback.queue.items[index + 1]?.entryId ?? null) === beforeEntryId) return;
+    const sourceIndex = playback.queue.items[index].queueIndex ?? index;
+    const destinationIndex = beforeEntryId === null ? null : playback.queue.items.find(item => item.entryId === beforeEntryId)?.queueIndex
+      ?? playback.queue.items.findIndex(item => item.entryId === beforeEntryId);
+    if (destinationIndex !== null && destinationIndex < firstPendingQueueIndex) return;
+    if (sourceIndex >= firstPendingQueueIndex && (entryId === beforeEntryId || destinationIndex === sourceIndex + 1)) return;
     movePending = true;
     moveError = null;
     const title = playback.queue.items[index].title;
+    const oldIds = new Set(playback.queue.items.map(item => item.entryId));
+    stopFollowing();
     try {
-      await onMoveQueue(entryId, beforeEntryId);
-      announcement = { key: 'windows.queue.moved', args: [title] };
+      const result = await onMoveQueue(entryId, beforeEntryId);
+      const placedId = result ? promotedEntryId(oldIds, result.queue) ?? entryId : entryId;
+      if (result && queueList) {
+        const slot = queueSlotForEntry(queueSections(result.queue), placedId);
+        if (slot !== null) {
+          const top = slot * rowPitch;
+          if (top < queueList.scrollTop) queueList.scrollTop = top;
+          else if (top + rowPitch > queueList.scrollTop + queueList.clientHeight) queueList.scrollTop = top + rowPitch - queueList.clientHeight;
+          scrollTop = queueList.scrollTop;
+          await tick();
+          const row = Array.from(queueList.querySelectorAll<HTMLElement>('[data-entry-id]')).find(node => node.dataset.entryId === placedId);
+          row?.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus();
+        }
+      }
+      announcement = { key: sourceIndex < firstPendingQueueIndex ? 'windows.queue.requeued' : 'windows.queue.moved', args: [title] };
     } catch (error) {
       moveError = error instanceof Error ? error.message : $t('windows.ui.couldnTMoveTheSongTryAgain');
     } finally { movePending = false; }
@@ -183,25 +341,44 @@
     event.preventDefault();
     event.stopPropagation();
     const source = draggingId;
+    if (draggingRecommendation) {
+      const targetIndex = entry.queueIndex ?? playback.queue.items.findIndex(item => item.entryId === entry.entryId);
+      const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+      const after = event.clientY >= rect.top + rect.height / 2;
+      if (targetIndex < firstPendingQueueIndex && !(targetIndex === currentQueueIndex && after)) { resetDrag(); return; }
+      const beforeEntryId = queueDropDestination(playback.queue.items, entry.entryId, after, totalQueueCount);
+      resetDrag();
+      if (beforeEntryId === undefined) return;
+      void applyRecommendationAction(source, 'end', beforeEntryId);
+      return;
+    }
     const targetIndex = playback.queue.items.findIndex(item => item.entryId === entry.entryId);
-    if (targetIndex < 0) { resetDrag(); return; }
+    const targetGlobalIndex = entry.queueIndex ?? targetIndex;
     const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
     const after = event.clientY >= rect.top + rect.height / 2;
-    const before = after ? playback.queue.items[targetIndex + 1]?.entryId ?? null : entry.entryId;
+    if (targetIndex < 0 || targetGlobalIndex < firstPendingQueueIndex && !(targetGlobalIndex === currentQueueIndex && after)) { resetDrag(); return; }
+    const before = queueDropDestination(playback.queue.items, entry.entryId, after, totalQueueCount);
     resetDrag();
+    if (before === undefined) return;
     void move(source, before);
   }
   function overList(event: DragEvent) {
-    if (!draggingId || (event.target !== event.currentTarget && !(event.target instanceof Element && event.target.classList.contains('queue-canvas')))) return;
+    if (!draggingId || (event.target !== event.currentTarget && !(event.target instanceof Element && (event.target.classList.contains('queue-canvas') || event.target.closest('[data-queue-section="recommendations"]'))))) return;
     event.preventDefault();
     dropId = null;
     dropAfter = true;
-    if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+    const source = playback.queue.items.find((entry, index) => entry.entryId === draggingId && (entry.queueIndex ?? index) < firstPendingQueueIndex);
+    if (event.dataTransfer) event.dataTransfer.dropEffect = source ? 'copy' : 'move';
   }
   function dropAtEnd(event: DragEvent) {
-    if (!draggingId || (event.target !== event.currentTarget && !(event.target instanceof Element && event.target.classList.contains('queue-canvas')))) return;
+    if (!draggingId || (event.target !== event.currentTarget && !(event.target instanceof Element && (event.target.classList.contains('queue-canvas') || event.target.closest('[data-queue-section="recommendations"]'))))) return;
     event.preventDefault();
     const source = draggingId;
+    if (draggingRecommendation) {
+      resetDrag();
+      void applyRecommendationAction(source, 'end', null);
+      return;
+    }
     resetDrag();
     void move(source, null);
   }
@@ -212,9 +389,22 @@
     event.stopPropagation();
     const index = playback.queue.items.findIndex(item => item.entryId === entry.entryId);
     if (index < 0) return;
-    if (event.key === 'ArrowUp' && index > 0) void move(entry.entryId, playback.queue.items[index - 1].entryId);
-    else if (event.key === 'ArrowDown' && index < playback.queue.items.length - 1) {
-      void move(entry.entryId, playback.queue.items[index + 2]?.entryId ?? null);
+    const globalIndex = entry.queueIndex ?? index;
+    if (globalIndex < firstPendingQueueIndex) {
+      if (event.key === 'ArrowDown') {
+        const next = playback.queue.items.find(item => (item.queueIndex ?? playback.queue.items.indexOf(item)) === firstPendingQueueIndex);
+        if (next) void move(entry.entryId, next.entryId);
+        else if (firstPendingQueueIndex >= totalQueueCount) void move(entry.entryId, null);
+      }
+      return;
+    }
+    if (event.key === 'ArrowUp' && index > 0) {
+      const previous = playback.queue.items[index - 1];
+      if ((previous.queueIndex ?? index - 1) === globalIndex - 1 && (previous.queueIndex ?? index - 1) > currentQueueIndex) void move(entry.entryId, previous.entryId);
+    } else if (event.key === 'ArrowDown' && globalIndex < totalQueueCount - 1) {
+      const before = playback.queue.items.find(item => (item.queueIndex ?? playback.queue.items.indexOf(item)) === globalIndex + 2);
+      if (before) void move(entry.entryId, before.entryId);
+      else if (globalIndex + 1 === totalQueueCount - 1) void move(entry.entryId, null);
     }
   }
 </script>
@@ -222,7 +412,7 @@
 <svelte:window onkeydown={(event) => { if (event.key === 'Escape') resetDrag(); }} />
 
 <div class="queue-content" data-queue-dragging={draggingId !== null}>
-  {#if playback.queue.items.length || playback.sourceLoad?.loading || playback.sourceLoad?.error || playback.sourceLoad?.hasMore || playback.queue.radio?.loading || playback.queue.radio?.error || moveError}
+  {#if playback.queue.items.length || playback.queue.recommendations?.length || playback.sourceLoad?.loading || playback.sourceLoad?.error || playback.sourceLoad?.hasMore || playback.queue.radio?.loading || playback.queue.radio?.error || moveError}
   <header class="queue-heading">
     {#if playback.queue.items.length}
     <div class="queue-context">
@@ -232,7 +422,7 @@
         {:else if playback.queue.source?.kind === 'playlist'}<path d="M3 5h10M3 10h10M3 15h6M17 5v13" /><ellipse cx="14" cy="18" rx="3" ry="2" />
         {:else}<path d="M8 6h12M8 12h12M8 18h12" /><path d="M3 6h.01M3 12h.01M3 18h.01" stroke-width="3" />{/if}
       </svg>
-      <span class="context-title">{queueTitle}</span><span class="separator" aria-hidden="true">•</span><span class="count">{count('common.songCount', playback.queue.items.length, $language)}</span>
+      <span class="context-title">{queueTitle}</span><span class="separator" aria-hidden="true">•</span><span class="count">{count('common.songCount', totalQueueCount, $language)}</span>
       {#if playback.sourceLoad?.loading || playback.queue.radio?.loading}<span class="context-loading">
         {#if playback.sourceLoad?.loading}<span class="radio-state" role="status"><span class="spinner" aria-hidden="true"></span>{$t('detail.collection.preparingSongs')}</span>{/if}
         {#if playback.queue.radio?.loading}<span class="radio-state" role="status"><span class="spinner" aria-hidden="true"></span>{$t('windows.ui.preparingRadio')}</span>{/if}
@@ -245,19 +435,28 @@
     {#if !playback.sourceLoad?.loading && playback.sourceLoad?.error}<div class="radio-error" role="alert"><span>{resolveMessage(playback.sourceLoad.error, $language)}</span>{#if playback.sourceLoad.canRetry && onRetrySource}<button type="button" onclick={onRetrySource}>{$t('common.retry')}</button>{/if}</div>{/if}
     {#if playback.sourceLoad?.hasMore}<span class="radio-state">{$t('windows.queue.partial', [playback.sourceLoad.loadedCount])}</span>{/if}
     {#if !playback.queue.radio?.loading && playback.queue.radio?.error}<div class="radio-error" role="alert"><span>{resolveMessage(playback.queue.radio.error, $language)}</span>{#if playback.queue.radio.canRetry && onRetryRadio}<button type="button" onclick={onRetryRadio}>{$t('sidebar.retry')}</button>{/if}</div>{/if}
+    {#if playback.isRepeat && playback.queue.recommendations?.length}<div class="radio-state" role="status">{$t('windows.queue.repeatStopsRadio')}</div>{/if}
     {#if moveError}<div class="radio-error" role="alert">{resolveMessage(moveError, $language)}</div>{/if}
   </header>
   {/if}
   <span class="sr-only" aria-live="polite">{resolveMessage(announcement, $language)}</span>
   <span id="queue-reorder-help" class="sr-only">{$t('windows.ui.dragToMoveTheSongOrUseTheUpAndDownArrowsWithThisButtonFocused')}</span>
-  {#if playback.queue.items.length}
-    <div class="queue-list" class:drop-end={draggingId && dropId === null && dropAfter} bind:this={queueList} use:observeViewport onfocusin={(event) => focusedEntryId = entryIdOf(event.target)} onfocusout={(event) => focusedEntryId = entryIdOf(event.relatedTarget)} role="group" aria-label={$t('windows.ui.queuedTracks')} ondragover={overList} ondrop={dropAtEnd} ondragleave={(event) => { if (!queueList?.contains(event.relatedTarget as Node | null)) { dropId = null; dropAfter = false; } }}>
-      <div class="queue-canvas" style={`height:${playback.queue.items.length * rowPitch}px`}>
-      {#each visibleEntries as { entry, index } (entry.entryId)}
-        {@const current = index === playback.queue.currentIndex}
-        <div class="queue-row track-row" data-entry-id={entry.entryId} style={`top:${index * rowPitch}px`} role="group" aria-label={$t('common.moreOptionsFor', [entry.title])} class:current={index === playback.queue.currentIndex} class:dragging={draggingId === entry.entryId} class:drop-before={draggingId && dropId === entry.entryId && !dropAfter} class:drop-after={draggingId && dropId === entry.entryId && dropAfter} oncontextmenu={(event) => handleContextMenu(event, entry)} ondragover={(event) => overRow(event, entry)} ondrop={(event) => dropOnRow(event, entry)}>
+  {#if projectedRowCount}
+    <div class="queue-list" class:drop-end={draggingId && dropId === null && dropAfter} bind:this={queueList} use:observeViewport onfocusin={(event) => { stopFollowing(); focusedEntryId = entryIdOf(event.target); }} onfocusout={(event) => focusedEntryId = entryIdOf(event.relatedTarget)} role="group" aria-label={$t('windows.ui.queuedTracks')} ondragover={overList} ondrop={dropAtEnd} ondragleave={(event) => { if (!queueList?.contains(event.relatedTarget as Node | null)) { dropId = null; dropAfter = false; } }}>
+      <div class="queue-canvas" style={`height:${projectedRowCount * rowPitch}px`}>
+      {#each visibleRows as row (row?.slot)}
+        {#if row?.kind === 'header'}
+          <div class="queue-section-heading" data-queue-section={row.section} style={`top:${row.slot * rowPitch}px`} role="heading" aria-level="2">
+            {sectionLabel(row.section)}
+          </div>
+        {:else if row?.kind === 'track'}
+        {@const entry = row.entry}
+        {@const index = row.queueLocalIndex}
+        {@const proposal = row.section === 'recommendations'}
+        {@const current = index !== null && index === playback.queue.currentIndex}
+        <div class="queue-row track-row" data-entry-id={entry.entryId} style={`top:${row.slot * rowPitch}px`} role="group" aria-label={$t('common.moreOptionsFor', [entry.title])} class:current class:proposal class:previous={row.section === 'previous'} class:dragging={draggingId === entry.entryId} class:drop-before={draggingId && dropId === entry.entryId && !dropAfter} class:drop-after={draggingId && dropId === entry.entryId && dropAfter} draggable={!movePending} ondragstart={(event) => { if (event.target === event.currentTarget) startDrag(event, entry); }} ondragend={resetDrag} oncontextmenu={(event) => handleContextMenu(event, entry)} ondragover={(event) => overRow(event, entry)} ondrop={(event) => dropOnRow(event, entry)}>
           <button type="button" class="queue-select" aria-current={current ? 'true' : undefined} aria-label={`${current && playback.isPlaying ? $t('player.pause') : $t('player.play')} ${entry.title}`} disabled={current && playback.isLoading} onkeydown={(event) => contextMenuFromKeyboard(event, entry)} onclick={() => activateEntry(entry)}></button>
-          <span class="queue-index" aria-hidden="true"><TrackActivity active={current} playing={playback.isPlaying} number={index + 1} {awake} presentation="queue" /></span>
+          <span class="queue-index" aria-hidden="true">{#if index !== null}<TrackActivity active={current} playing={playback.isPlaying} number={index + 1} {awake} presentation="queue" />{:else}<span>•</span>{/if}</span>
           <span class="queue-art"><TrackArtwork title={entry.title} thumbnail={entry.thumbnail} active={current} playing={playback.isPlaying} pending={current && playback.isLoading} size={36} showPlayOverlay={false} onPlay={() => activateEntry(entry)} /></span>
           <span class="queue-meta"><span class="queue-title"><FeaturedTrackTitle track={entry} onOpenArtist={onOpenArtist ? (id) => openArtist(entry,id) : undefined} onPlay={()=>activateEntry(entry)} /></span><ArtistCredits track={entry} artistRuns={entry.artistRuns} artists={entry.artists} artistId={entry.artistId} album={entry.album} albumId={entry.albumId} onOpenArtist={onOpenArtist ? (id) => openArtist(entry, id) : undefined} {onOpenAlbum} /></span>
           <span class="queue-actions">
@@ -274,12 +473,17 @@
             </button>
           {/if}
           </span>
-          <span class="queue-timing"><span class="queue-duration">{formatDuration(entry.duration)}</span>
-          <button type="button" class="reorder-handle" aria-label={$t('windows.queue.move', [entry.title])} aria-describedby="queue-reorder-help" title={$t('windows.ui.dragToReorderOnKeyboard')} disabled={movePending} draggable={!movePending} ondragstart={(event) => startDrag(event, entry)} ondragend={resetDrag} onkeydown={(event) => reorderWithKeyboard(event, entry)} onclick={(event) => event.stopPropagation()}>
+          <span class="queue-timing" class:has-trailing-action={proposal && !!onRecommendationAction || index !== null}><span class="queue-duration">{formatDuration(entry.duration)}</span>
+          {#if proposal && onRecommendationAction}
+            <button type="button" class="proposal-action" aria-label={$t('windows.queue.addEnd', [entry.title])} title={$t('windows.queue.addEnd', [entry.title])} onclick={(event) => { event.stopPropagation(); void applyRecommendationAction(entry.entryId, 'end'); }}>＋</button>
+          {/if}
+
+          {#if !proposal && index !== null}<button type="button" class="reorder-handle" aria-label={$t('windows.queue.move', [entry.title])} aria-describedby="queue-reorder-help" title={$t('windows.ui.dragToReorderOnKeyboard')} disabled={movePending} draggable={!movePending} ondragstart={(event) => startDrag(event, entry)} ondragend={resetDrag} onkeydown={(event) => reorderWithKeyboard(event, entry)} onclick={(event) => event.stopPropagation()}>
             <svg viewBox="0 0 16 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M1 3h14M1 7h14M1 11h14" /></svg>
-          </button>
+          </button>{/if}
           </span>
         </div>
+        {/if}
       {/each}
       </div>
     </div>
@@ -303,9 +507,10 @@
   .radio-error button { flex: none; padding: 3px 8px; border: 1px solid rgb(255 255 255 / 15%); border-radius: 999px; color: #fff; background: rgb(255 255 255 / 8%); font: inherit; cursor: pointer; }
   .spinner { width: 12px; height: 12px; border: 2px solid rgb(255 255 255 / 24%); border-top-color: #d06c70; border-radius: 50%; animation: spin .8s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
-  .queue-list { min-width: 0; min-height: 0; flex: 1; overflow-y: auto; overscroll-behavior: contain; scrollbar-color: rgb(255 255 255 / 28%) transparent; scrollbar-width: thin; }
+  .queue-list { min-width: 0; min-height: 0; flex: 1; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; scrollbar-color: rgb(255 255 255 / 28%) transparent; scrollbar-width: thin; }
   .queue-canvas { position: relative; min-height: 100%; }
-  .queue-row { position: absolute; left: 0; right: 0; display: grid; grid-template-columns: 24px 46px minmax(0, 1fr) 64px 36px; box-sizing: border-box; min-width: 0; height: 46px; align-items: center; margin: 0; padding: 0 18px 0 16px; border-radius: 6px; }
+  .queue-section-heading { position: absolute; left: 0; right: 0; display: flex; align-items: center; box-sizing: border-box; height: 46px; padding: 0 18px; color: rgb(255 255 255 / 58%); font-size: 12px; font-weight: 600; }
+  .queue-row { position: absolute; left: 0; right: 0; display: grid; grid-template-columns: 24px 46px minmax(0, 1fr) 86px 36px; box-sizing: border-box; min-width: 0; height: 46px; align-items: center; margin: 0; padding: 0 18px 0 16px; border-radius: 6px; }
   .queue-select::before { position: absolute; inset: 1px 10px; border: .5px solid transparent; border-radius: 6px; content: ''; pointer-events: none; }
   .queue-row:hover .queue-select::before { background: rgb(255 255 255 / 4.5%); }
   .queue-row.current .queue-select::before { border-color: rgb(255 255 255 / 9%); background: rgb(255 255 255 / 6.5%); }
@@ -321,16 +526,21 @@
   .queue-art { position: relative; z-index: 1; display: block; width: 36px; height: 36px; margin-left: 10px; }
   .queue-meta { position: relative; z-index: 1; display: flex; min-width: 0; margin: 0 12px; flex-direction: column; gap: 3px; pointer-events: none; }
   .queue-title { display: block; min-width: 0; overflow: hidden; color: rgb(255 255 255 / 92%); font-size: 13px; font-weight: 500; line-height: 16px; text-overflow: ellipsis; white-space: nowrap; }
+  .previous .queue-title { color: rgb(255 255 255 / 60%); }
+  .previous .queue-art { opacity: .6; }
   .current .queue-title { font-weight: 650; }
   .queue-meta :global(.artist-credits) { color: rgb(255 255 255 / 60%); font-size: 11.5px; line-height: 14px; }
   .queue-meta :global(.credit-link),.queue-meta :global(.featured-link),.queue-meta :global(.title-text) { pointer-events: auto; }
   .queue-duration { width: max-content; min-width: 28px; color: rgb(255 255 255 / 45%); font-size: 11.5px; font-variant-numeric: tabular-nums; text-align: center; white-space: nowrap; pointer-events: none; }
   .queue-timing { position: relative; z-index: 1; display: grid; grid-template-columns: minmax(0, 1fr); place-items: center; width: 28px; height: 30px; margin-left: 8px; pointer-events: none; }
-  .queue-actions { position: relative; z-index: 1; display: grid; grid-template-columns: repeat(2, 28px); gap: 8px; align-items: center; }
+  .queue-actions { position: relative; z-index: 1; display: flex; justify-content: flex-end; gap: 2px; align-items: center; }
+  .proposal-action { position: absolute; inset: 0; z-index: 1; display: grid; place-items: center; width: 28px; height: 30px; padding: 0; border: 0; border-radius: 6px; color: rgb(255 255 255 / 65%); background: transparent; font-size: 16px; cursor: pointer; opacity: 0; pointer-events: none; }
+  .queue-row:hover .proposal-action, .queue-row:focus-within .proposal-action { opacity: 1; pointer-events: auto; }
+  .proposal-action:hover { color: #fff; background: rgb(255 255 255 / 10%); }
   .dislike-action { grid-column: 1; }
   .like-action { grid-column: 2; }
   .reorder-handle { position: absolute; inset: 0; z-index: 1; display: grid; place-items: center; width: 28px; height: 30px; padding: 0; border: 0; border-radius: 6px; color: rgb(255 255 255 / 45%); background: transparent; cursor: grab; opacity: 0; pointer-events: none; }
-  .queue-row:hover .queue-duration, .queue-row:focus-within .queue-duration { visibility: hidden; }
+  .queue-row:hover .has-trailing-action .queue-duration, .queue-row:focus-within .has-trailing-action .queue-duration { visibility: hidden; }
   .queue-row:hover .reorder-handle, .queue-row:focus-within .reorder-handle { opacity: 1; pointer-events: auto; }
   .reorder-handle svg { width: 16px; height: 14px; }
   .reorder-handle:hover { color: #fff; }

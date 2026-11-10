@@ -153,52 +153,37 @@ private func featuredSections(_ records: [(String, [HomeItemRecord])]) -> [HomeS
 @Test func featuredLayoutMatchesPanelsAndBoundsArtworkAcrossWindowWidths() {
     for width: CGFloat in [640, 899, 900, 1100, 1600, 2500] {
         let layout = HomeFeaturedLayout(width: width, hasSongs: true, hasAlbums: true)
-        #expect(layout.tile <= 160)
-        #expect(3 * layout.tile + 16 <= layout.songWidth)
-        #expect(layout.albumCardHeight >= 140)
-        if layout.wide {
-            #expect(layout.totalHeight == layout.songPanelHeight)
-            #expect(layout.songPanelHeight == layout.albumPanelHeight)
-            #expect(layout.songWidth + layout.albumWidth + 24 == width - 56)
-        } else {
-            #expect(layout.totalHeight == layout.songPanelHeight + layout.albumPanelHeight + 16)
-        }
-        let single = HomeFeaturedLayout(width: width, hasSongs: true, hasAlbums: false)
-        #expect(single.songWidth == 3 * single.tile + 16)
-        #expect(single.totalHeight == single.songPanelHeight)
+        #expect(layout.tile == HomeFeaturedLayout.songTileWidth)
+        #expect(layout.albumColumnWidth == HomeFeaturedLayout.albumCardWidth)
+        #expect(layout.totalHeight == HomeFeaturedLayout(width: 640, hasSongs: true, hasAlbums: true).totalHeight, "Row height must not change while resizing")
+        #expect(layout.songWidth == width - 56)
+        #expect(layout.albumCardHeight == layout.albumColumnWidth + HomeFeaturedLayout.albumTextHeight)
+        #expect(layout.totalHeight == layout.songPanelHeight + layout.albumPanelHeight + 30 + HomeFeaturedLayout.bottomGap)
+        #expect(layout.songPanelHeight == CGFloat(448))
+        #expect(layout.albumPanelHeight == 46 + layout.albumCardHeight)
     }
     #expect(HomeFeaturedLayout.height(width: 1000, hasSongs: false, hasAlbums: false) == 0)
 }
 
 @Test func featuredPartialRecommendationsDoNotReserveEmptyGridRows() {
-    let full = HomeFeaturedLayout(width: 700, hasSongs: true, hasAlbums: true)
-    let partial = HomeFeaturedLayout(width: 700, hasSongs: true, hasAlbums: true, songCount: 2, albumCount: 1)
-    #expect(partial.songGridHeight == partial.tile)
-    #expect(partial.albumContentHeight == partial.albumCardHeight)
-    #expect(partial.totalHeight < full.totalHeight)
-    let wide = HomeFeaturedLayout(width: 1100, hasSongs: true, hasAlbums: true)
-    #expect(wide.albumCardHeight * 2 + HomeFeaturedLayout.albumGap == wide.songGridHeight)
-    #expect(wide.songPanelHeight - wide.songGridHeight == wide.albumPanelHeight - wide.albumContentHeight)
-}
-
-@Test func featuredWheelInputPagesOncePerGestureAndPassesVerticalMotion() {
-    var input = HomeFeaturedWheelInput()
-    #expect(input.consume(x: 5, y: 30, timestamp: 1, momentum: false) == nil)
-    #expect(input.consume(x: -25, y: 1, timestamp: 1.1, momentum: false) == nil)
-    #expect(input.consume(x: -25, y: 1, timestamp: 1.2, momentum: false) == 1)
-    #expect(input.consume(x: -100, y: 1, timestamp: 1.3, momentum: false) == nil)
-    #expect(input.consume(x: -100, y: 1, timestamp: 1.4, momentum: true) == nil)
-    input.reset()
-    #expect(input.consume(x: 50, y: 0, timestamp: 1.5, momentum: false) == -1)
-}
-
-@Test func featuredExpandsAlbumsAcrossAvailableSpaceWithoutGrowingSpeedDialColumn() {
-    for (width, expectedColumns) in [(1100.0, 1), (1512.0, 2), (1920.0, 3)] {
-        let layout = HomeFeaturedLayout(width: width, hasSongs: true, hasAlbums: true, songCount: 27, albumCount: 6)
-        #expect(layout.albumColumns == expectedColumns)
-        #expect(layout.albumsPerPage == expectedColumns * 2)
-        #expect(layout.songWidth == 3 * layout.tile + 16)
-        #expect(layout.albumColumnWidth >= HomeFeaturedLayout.minimumAlbumColumnWidth)
-        #expect(layout.albumColumnWidth - layout.albumCardHeight - 16 >= 200)
+    for count in 1...27 {
+        let layout = HomeFeaturedLayout(width: 700, hasSongs: true, hasAlbums: true, songCount: count, albumCount: 1)
+        let rows = CGFloat(min(3, count))
+        #expect(layout.songGridHeight == rows * 126 + (rows - 1) * 12)
+        #expect(layout.albumContentHeight == layout.albumCardHeight)
     }
+}
+
+@Test func featuredVisibleMetadataRangeFollowsOffsetAndExcludesGaps() {
+    let ids = (0..<36).map(String.init)
+    #expect(HomeFeaturedRailViewport.visibleIDs(ids: ids, itemWidth: 180, rows: 1,
+        spacing: 14, offset: 0, width: 400) == ["0", "1", "2"])
+    #expect(HomeFeaturedRailViewport.visibleIDs(ids: ids, itemWidth: 180, rows: 1,
+        spacing: 14, offset: 1940, width: 400) == ["10", "11", "12"])
+    #expect(HomeFeaturedRailViewport.visibleIDs(ids: ids, itemWidth: 180, rows: 1,
+        spacing: 14, offset: 181, width: 12).isEmpty)
+    #expect(HomeFeaturedRailViewport.visibleIDs(ids: ids, itemWidth: 180, rows: 3,
+        spacing: 12, offset: 192, width: 180) == ["3", "4", "5"])
+    #expect(HomeFeaturedRailViewport.visibleIDs(ids: ids, itemWidth: 180, rows: 1,
+        spacing: 14, offset: 0, width: 0).isEmpty)
 }

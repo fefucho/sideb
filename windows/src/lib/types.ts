@@ -175,6 +175,7 @@ export interface PlaybackStateDto {
 export interface QueueEntryDto extends ContentMetadata {
   isUpload?: boolean;
   entryId: string;
+  queueIndex?: number;
   sourceOccurrenceId?: string | null;
   videoId: string;
   title: string;
@@ -189,6 +190,9 @@ export interface QueueEntryDto extends ContentMetadata {
 
 export interface QueueStateDto {
   items: QueueEntryDto[];
+  recommendations?: QueueEntryDto[];
+  totalCount?: number;
+  pendingCount?: number;
   currentIndex: number | null;
   source: { kind: string; id: string | null; title: string | null } | null;
   revision: number;

@@ -80,7 +80,7 @@ final class WindowGestureShellRoutingTests: XCTestCase {
         XCTAssertNil(host.window)
     }
 
-    func testHistoryNavigatesOverRealSwiftUIHorizontalAndVerticalScrollViews() {
+    func testHorizontalSwiftUIScrollKeepsContactAndVerticalScrollAllowsHistory() {
         func page() -> some View {
             VStack(spacing: 0) {
                 ScrollView(.horizontal, showsIndicators: false) {
@@ -113,8 +113,26 @@ final class WindowGestureShellRoutingTests: XCTestCase {
         coordinator.setup(router: router, presentation: presentation, isFullscreenPresented: false,
             canHandleGestures: true, reduceMotion: true, onDismissFullscreen: {})
         for point in [NSPoint(x: 500, y: 20), NSPoint(x: 500, y: 200)] {
-            assertHistoryRoundTrip(at: point, in: host, coordinator: coordinator,
-                router: router, presentation: presentation)
+            if point.y > 50 {
+                assertHistoryRoundTrip(at: point, in: host, coordinator: coordinator,
+                    router: router, presentation: presentation)
+            } else {
+                XCTAssertFalse(coordinator.scrollContext(at: point, in: host, enabled: true).allowsHorizontalNavigation)
+                for direction: CGFloat in [1, -1] {
+                    for event in [WindowGestureStateMachine.Event(phase: .mayBegin),
+                                  .init(deltaX: direction * 300, phase: .changed), .init(phase: .ended),
+                                  .init(deltaX: direction * 500, momentumPhase: .changed),
+                                  .init(momentumPhase: .ended)] {
+                        let output = coordinator.handleScrollInput(event, enabled: true) {
+                            coordinator.scrollContext(at: point, in: host, enabled: true)
+                        }
+                        XCTAssertEqual(output.disposition, .passThrough)
+                        XCTAssertNil(output.commit)
+                    }
+                    XCTAssertNil(presentation.horizontal)
+                    XCTAssertEqual(router.currentPage, .library)
+                }
+            }
             let verticalInput = coordinator.handleScrollInput(.init(deltaY: 120, phase: .began), enabled: true) {
                 coordinator.scrollContext(at: point, in: host, enabled: true)
             }

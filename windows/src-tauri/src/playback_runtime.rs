@@ -20,7 +20,20 @@ pub(crate) struct PlaybackRuntime {
     pub source: Option<ProgressiveSource>,
     pub pending_next: Option<(u64, u64)>,
     pub disliked: std::collections::HashSet<String>,
-    last_saved: Mutex<Option<(u64, u64, u64, bool, bool, u64, u64, bool, Option<(usize, bool)>)>>,
+    pub excluded_recommendations: std::collections::HashSet<String>,
+    last_saved: Mutex<
+        Option<(
+            u64,
+            u64,
+            u64,
+            bool,
+            bool,
+            u64,
+            u64,
+            bool,
+            Option<(usize, bool)>,
+        )>,
+    >,
 }
 #[derive(Clone)]
 pub(crate) struct ProgressiveSource {
@@ -99,7 +112,10 @@ fn identity(auth: &AuthStatusDto) -> Option<String> {
 }
 fn filename(identity: &str) -> String {
     use sha2::{Digest, Sha256};
-    format!("queue-{:x}.json", Sha256::digest(identity.as_bytes()))
+    format!(
+        "queue-recommendations-experiment-{:x}.json",
+        Sha256::digest(identity.as_bytes())
+    )
 }
 fn atomic_write(path: &std::path::Path, data: &[u8]) -> std::io::Result<()> {
     use std::io::Write;
@@ -474,6 +490,7 @@ mod tests {
     }
     #[test]
     fn identity_prefers_channel_and_keeps_guest_separate() {
+        assert!(filename("account:A").starts_with("queue-recommendations-experiment-"));
         let mut auth = AuthStatusDto::guest();
         assert_eq!(identity(&auth).as_deref(), Some("guest"));
         auth.state = "ready".into();

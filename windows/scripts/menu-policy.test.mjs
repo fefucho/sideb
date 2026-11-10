@@ -43,3 +43,14 @@ test('remove playlist song requires ownership and exact occurrence ID; current d
   assert.ok(!actions(menuItems({ kind: 'song', song: { ...song, setVideoId: null } }, { playlistOwned: true, playlistId: 'PL' }, facts)).includes('remove-playlist'));
   assert.ok(!actions(menuItems({ kind: 'song', song }, { view: 'album_detail', currentId: 'album' }, facts)).includes('open-album'));
 });
+
+test('queue recommendation menu exposes recommendation placements, not committed queue removal', () => {
+  const items = menuItems({ kind: 'song', song, queueRecommendationId: 'proposal-1', queueRecommendationGeneration: 5 }, {}, facts);
+  const list = actions(items);
+  assert.ok(list.includes('play'));
+  assert.ok(list.includes('enqueue-next'));
+  assert.ok(list.includes('enqueue-end'));
+  assert.ok(list.includes('remove-queue'));
+  assert.equal(items.find(item => item.action?.type === 'remove-queue').label, 'Dismiss suggestion');
+  assert.equal(items.find(item => item.action?.type === 'enqueue-end').label, 'Add suggestion to end');
+});
