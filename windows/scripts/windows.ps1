@@ -11,10 +11,10 @@ param(
 $ErrorActionPreference = 'Stop'
 $script:WindowsDir = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $script:RepoRoot = (Resolve-Path (Join-Path $WindowsDir '..')).Path
-$script:MpvVersion = 'mpv-dev-x86_64-20260928-git-e470f8986e'
+$script:MpvVersion = 'mpv-dev-x86_64-20261111-git-bcde6b93cc'
 $script:MpvAsset = "$($script:MpvVersion).7z"
-$script:MpvUrl = "https://github.com/shinchiro/mpv-winbuild-cmake/releases/download/20260928/$($script:MpvAsset)"
-$script:MpvSha256 = '81795d759e01016f1550fd71651a1a5d59ab5c28ef31c0b6793224e9cff39459'
+$script:MpvUrl = "https://github.com/shinchiro/mpv-winbuild-cmake/releases/download/20261111/$($script:MpvAsset)"
+$script:MpvSha256 = '273c079b11ea5575822f972756f4c9a71149a5c10130353abeb8586738938452'
 $script:VulkanVersion = '1.4.363.0'
 $script:VulkanAsset = "VulkanRT-X64-$($script:VulkanVersion)-Components"
 $script:VulkanUrl = "https://sdk.lunarg.com/sdk/download/$($script:VulkanVersion)/windows/$($script:VulkanAsset).zip"

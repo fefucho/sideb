@@ -150,7 +150,9 @@ import SideBCore
                     } else {
                         #expect(frame.minY >= 57 && frame.maxY <= upperLimit)
                     }
-                    #expect(frame.minX >= -1 && frame.maxX <= 381)
+                    let scrollerSlotWidth: CGFloat = scroll.scrollerStyle == .legacy
+                        ? NSScroller.scrollerWidth(for: .regular, scrollerStyle: .legacy) : 0
+                    #expect(frame.minX >= -1 && frame.maxX <= 381 + scrollerSlotWidth)
                 }
                 if view is NativePanelSegmentHost { #expect(frame.minY >= 0 && frame.maxY <= 58) }
                 view.subviews.forEach(inspect)

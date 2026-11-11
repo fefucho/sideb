@@ -194,7 +194,9 @@ struct LyricsScrollCoordinatorTests {
             let scrollView = try #require(Self.firstScrollView(in: host))
             let docView = try #require(scrollView.documentView)
             let initialDocHeight = docView.frame.height
-            #expect(abs(scrollView.frame.width - width) <= 1.0)
+            let scrollerSlotWidth: CGFloat = scrollView.scrollerStyle == .legacy
+                ? NSScroller.scrollerWidth(for: .regular, scrollerStyle: .legacy) : 0
+            #expect(abs(scrollView.frame.width - width) <= max(1.0, scrollerSlotWidth + 1.0))
             #expect(abs(docView.frame.width - width) <= 1.0)
 
             // Verify document height remains invariant across scroll positions (no LazyVStack mid-flight height jump)
