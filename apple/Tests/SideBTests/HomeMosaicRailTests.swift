@@ -331,6 +331,7 @@ final class HomeMosaicRailTests: XCTestCase {
 
     func testReduceMotionDisablesCoverZoom() {
         let cell = songCell(.small)
+        cell.reducesMotion = { false }
         XCTAssertEqual(cell.featuredArtworkScaleForTesting, 1)
         cell.setHovered(true)
         XCTAssertEqual(cell.featuredArtworkScaleForTesting, 1.04, accuracy: 0.0001)
