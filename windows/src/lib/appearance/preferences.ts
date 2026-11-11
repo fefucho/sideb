@@ -2,14 +2,17 @@ import { writable } from 'svelte/store';
 
 export type HomeBackground = 'artwork' | 'solid';
 export type SidebarLayout = 'list' | 'grid';
-export interface AppearancePreferences { version: 1; homeBackground: HomeBackground; sidebarLayout: SidebarLayout; animatedArtwork: boolean }
+export type AlbumCardStyle = 'white' | 'tinted';
+export type SidebarStyle = 'solid' | 'floating';
+export type SidebarCollapseMode = 'icons' | 'hidden';
+export interface AppearancePreferences { version: 1; homeBackground: HomeBackground; sidebarLayout: SidebarLayout; animatedArtwork: boolean; albumCardStyle: AlbumCardStyle; sidebarStyle: SidebarStyle; sidebarCollapseMode: SidebarCollapseMode; sidebarCollapsed: boolean }
 export const appearanceKey = 'sideb.appearance.v1';
-export const appearanceDefaults = (): AppearancePreferences => ({ version: 1, homeBackground: 'artwork', sidebarLayout: 'list', animatedArtwork: true });
+export const appearanceDefaults = (): AppearancePreferences => ({ version: 1, homeBackground: 'artwork', sidebarLayout: 'list', animatedArtwork: true, albumCardStyle: 'tinted', sidebarStyle: 'solid', sidebarCollapseMode: 'icons', sidebarCollapsed: false });
 
 export function decodeAppearance(value: unknown): AppearancePreferences {
   if (!value || typeof value !== 'object' || (value as { version?: unknown }).version !== 1) return appearanceDefaults();
   const raw = value as Record<string, unknown>;
-  return { version: 1, homeBackground: raw.homeBackground === 'solid' ? 'solid' : 'artwork', sidebarLayout: raw.sidebarLayout === 'grid' ? 'grid' : 'list', animatedArtwork: raw.animatedArtwork !== false };
+  return { version: 1, homeBackground: raw.homeBackground === 'solid' ? 'solid' : 'artwork', sidebarLayout: raw.sidebarLayout === 'grid' ? 'grid' : 'list', animatedArtwork: raw.animatedArtwork !== false, albumCardStyle: raw.albumCardStyle === 'white' ? 'white' : 'tinted', sidebarStyle: raw.sidebarStyle === 'floating' ? 'floating' : 'solid', sidebarCollapseMode: raw.sidebarCollapseMode === 'hidden' ? 'hidden' : 'icons', sidebarCollapsed: raw.sidebarCollapsed === true };
 }
 
 type PreferenceStorage = Pick<Storage, 'getItem' | 'setItem'>;
@@ -32,6 +35,11 @@ export function createAppearancePreferences(storage = browserStorage()) {
     setHomeBackground: (homeBackground: HomeBackground) => update({ homeBackground }),
     setSidebarLayout: (sidebarLayout: SidebarLayout) => update({ sidebarLayout }),
     setAnimatedArtwork: (animatedArtwork: boolean) => update({ animatedArtwork }),
+    setAlbumCardStyle: (albumCardStyle: AlbumCardStyle) => update({ albumCardStyle }),
+    setSidebarStyle: (sidebarStyle: SidebarStyle) => update({ sidebarStyle }),
+    setSidebarCollapseMode: (sidebarCollapseMode: SidebarCollapseMode) => update({ sidebarCollapseMode }),
+    setSidebarCollapsed: (sidebarCollapsed: boolean) => update({ sidebarCollapsed }),
+    toggleSidebarCollapsed: () => update({ sidebarCollapsed: !current.sidebarCollapsed }),
     toggleSidebarLayout: () => update({ sidebarLayout: current.sidebarLayout === 'list' ? 'grid' : 'list' }),
   };
 }

@@ -42,6 +42,8 @@
     const resize = new ResizeObserver(() => schedule());
     const measure = () => {
       frame = 0;
+      // A frame or a late read can land after the host was unbound while its section is being removed.
+      if (!host) return;
       const element = host.querySelector<HTMLElement>('[data-horizontal-scroll]');
       if (scroll !== element) {
         detach(); scroll = element; desired = null;

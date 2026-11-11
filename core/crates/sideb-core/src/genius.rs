@@ -571,7 +571,7 @@ impl GeniusEngine {
             gate.last_start = Some(Instant::now());
             let request_started = Instant::now();
             self.metrics.requests.fetch_add(1, Ordering::Relaxed);
-            let response = crate::http::client()
+            let response = crate::http::genius_client()
                 .get(url)
                 .header(reqwest::header::ACCEPT, accept)
                 .header(

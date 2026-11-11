@@ -129,6 +129,7 @@ impl WebViewTokenSource {
         let window = build_on_main(&self.app, move |app| {
             let mut builder =
                 WebviewWindowBuilder::new(app, window_label, WebviewUrl::External(url))
+                    .additional_browser_args(crate::session::WEBVIEW_BROWSER_ARGS)
                     .title("Side B")
                     .inner_size(1100.0, 800.0)
                     .visible(false)
@@ -269,6 +270,7 @@ pub async fn open_login(
 
     let window = build_on_main(app, move |app| {
         let window = WebviewWindowBuilder::new(app, LOGIN_LABEL, WebviewUrl::External(url))
+            .additional_browser_args(crate::session::WEBVIEW_BROWSER_ARGS)
             .title(title)
             .inner_size(540.0, 680.0)
             .min_inner_size(480.0, 600.0)

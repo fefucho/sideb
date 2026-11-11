@@ -11,5 +11,5 @@
 {/if}
 
 <style>
-  .home-solid { position: fixed; inset: 0 0 0 var(--sidebar-width); background: #211e21; z-index: 0; pointer-events: none; }
+  .home-solid { position: fixed; inset: 0 0 0 calc(var(--sidebar-width) - var(--sidebar-bleed, 0px)); background: #211e21; z-index: 0; pointer-events: none; }
 </style>

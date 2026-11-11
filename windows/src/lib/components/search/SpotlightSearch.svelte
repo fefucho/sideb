@@ -14,14 +14,17 @@
     onDismiss: () => void;
     onSelectCard: (card: BrowseCardDto) => void;
     onPlaySong: (song: SongDto) => void;
+    /** Hangs the field and results under the top navigation capsules instead of centering a modal. */
+    anchored?: boolean;
   }
-  let {onRemoveSuggestion,preview,backendReady,onQueryChange,onCommit,onDismiss,onSelectCard,onPlaySong}:Props=$props();
-  let input: HTMLInputElement;
-  let dialog: HTMLDivElement;
+  let {anchored=false,onRemoveSuggestion,preview,backendReady,onQueryChange,onCommit,onDismiss,onSelectCard,onPlaySong}:Props=$props();
+  let input = $state<HTMLInputElement>();
+  let dialog = $state<HTMLDivElement>();
   let restoreFocus: HTMLElement | null = null;
   let wasOpen = $state(false);
   let composing=false;
   const hasQuery = $derived(Boolean(preview.query.trim()));
+  const showPanel = $derived(hasQuery || preview.isLoading || Boolean(preview.error) || Boolean(preview.entries?.length));
 
   onMount(() => {
     restoreFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -67,12 +70,36 @@
     wasOpen = false;
     onDismiss();
   }
+  function outsidePointer(event: PointerEvent) {
+    if (!anchored || !wasOpen || !(event.target instanceof Node) || dialog?.contains(event.target)) return;
+    dismiss();
+  }
   function selectCard(card: BrowseCardDto) { dismissForNavigation(); onSelectCard(card); }
   function playSong(song: SongDto) { dismissForNavigation(); onPlaySong(song); }
 </script>
 
-<svelte:window onkeydown={handleKeydown} />
+<svelte:window onkeydown={handleKeydown} onpointerdown={outsidePointer} />
 
+{#if anchored}
+<div class="anchored" bind:this={dialog} role="dialog" aria-modal="false" aria-label="Búsqueda rápida">
+  <form class="capsule" onsubmit={(event) => { event.preventDefault(); commit(); }}>
+    <svg class="search-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7.5"/><path d="m16.5 16.5 4 4"/></svg>
+    <input oncompositionstart={()=>composing=true} oncompositionend={()=>composing=false} bind:this={input} value={preview.query} oninput={(event) => onQueryChange(event.currentTarget.value)} disabled={!backendReady} placeholder={$t('search.spotlight.placeholder')} aria-label="Buscar canciones, álbumes, artistas y playlists" autocomplete="off" />
+    {#if preview.isLoading}<span class="spinner" aria-label="Buscando"></span>{:else if preview.query}<button type="button" class="clear" aria-label="Limpiar búsqueda" onclick={() => { onQueryChange(''); input?.focus(); }}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 7 10 10M17 7 7 17"/></svg></button>{/if}
+  </form>
+  {#if showPanel}
+  <div class="panel" class:has-query={hasQuery}>
+    <div class="results-scroll" aria-live="polite">
+      <QuickResults preview={preview} variant="spotlight" {onRemoveSuggestion} onSelectCard={selectCard} onPlaySong={playSong} onQuery={query=>{dismissForNavigation();onCommit(query);}} />{#if preview.error}<button type="button" class="retry-preview" onclick={()=>onQueryChange(preview.query)}>{$t('common.retry')}</button>{/if}
+    </div>
+    {#if hasQuery}<div class="divider footer-divider"></div><button type="button" class="commit" disabled={!backendReady} onclick={commit}>
+      <span class="return-key"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M13 3v4H4m0 0 3-3M4 7l3 3"/></svg></span>
+      <span class="all-results">Ver todos los resultados para <strong>«{preview.query.trim()}»</strong></span><span class="enter-hint">Enter</span>
+    </button>{/if}
+  </div>
+  {/if}
+</div>
+{:else}
 <div class="scrim" aria-hidden="true" onclick={dismiss}></div>
 <div class="positioner">
   <div class="spotlight" class:has-query={hasQuery} style:height="520px" bind:this={dialog} role="dialog" aria-modal="true" aria-label="Búsqueda rápida" tabindex="-1">
@@ -92,6 +119,7 @@
     </button>{/if}
   </div>
 </div>
+{/if}
 
 <style>
  .retry-preview{margin:0 16px 12px;padding:6px 12px;border:0;border-radius:6px;background:var(--sideb-accent,#a33d45);color:white;cursor:pointer}
@@ -122,8 +150,16 @@
   .all-results { flex:1; min-width:0; overflow:hidden; color:rgb(255 255 255 / 60%); font-size:12.5px; text-overflow:ellipsis; white-space:nowrap; }
   .all-results strong { color:rgb(255 255 255 / 94%); font-weight:600; }
   .enter-hint { color:rgb(255 255 255 / 38%); font-size:10px; }
+  /* Anchored: same glass family as the top navigation capsules; it starts where the search button sits (inset + 42 reopen + 10 gap). */
+  .anchored { display:contents; }
+  .capsule { position:fixed; z-index:220; top:var(--topnav-top, 28px); left:calc(var(--topnav-inset, 28px) + 52px); box-sizing:border-box; display:flex; align-items:center; gap:10px; width:298px; height:42px; padding:0 14px; border:1px solid var(--sideb-acrylic-border, rgb(255 255 255 / 20%)); border-radius:21px; color:#fff; background:var(--sideb-acrylic-surface, rgb(43 43 49 / 62%)); backdrop-filter:var(--sideb-acrylic-blur); -webkit-backdrop-filter:var(--sideb-acrylic-blur); box-shadow:0 0 0 1px rgb(0 0 0 / 14%), 0 4px 14px rgb(0 0 0 / 22%); }
+  .capsule input { font-size:14px; }
+  .panel { position:fixed; z-index:220; top:calc(var(--topnav-top, 28px) + 50px); left:calc(var(--topnav-inset, 28px) + 52px); box-sizing:border-box; display:flex; flex-direction:column; width:min(560px, calc(100vw - var(--topnav-inset, 28px) - 70px)); max-height:min(540px, calc(100dvh - 170px)); min-height:0; overflow:hidden; border:1px solid var(--sideb-acrylic-border, rgb(255 255 255 / 20%)); border-radius:18px; color:#fff; background:#25252a; box-shadow:0 14px 42px rgb(0 0 0 / 40%); animation:fade-in 140ms ease both; }
+  @supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) { .panel { background:rgb(37 37 42 / 92%); backdrop-filter:var(--sideb-acrylic-blur, blur(20px) saturate(1.4)); -webkit-backdrop-filter:var(--sideb-acrylic-blur, blur(20px) saturate(1.4)); } }
+  @media (prefers-reduced-transparency: reduce) { .capsule { background:var(--sideb-acrylic-fallback, #353538); backdrop-filter:none; -webkit-backdrop-filter:none; } .panel { background:#25252a; backdrop-filter:none; -webkit-backdrop-filter:none; } }
+  @media (forced-colors: active) { .capsule, .panel { background:Canvas; color:CanvasText; border-color:CanvasText; box-shadow:none; backdrop-filter:none; } }
   @keyframes spin { to { transform:rotate(360deg); } }
   @keyframes spotlight-in { from { opacity:0; transform:scale(.96); } to { opacity:1; transform:scale(1); } }
   @keyframes fade-in { from { opacity:0; } to { opacity:1; } }
-  @media (prefers-reduced-motion: reduce) { .scrim,.spotlight { animation:none; } }
+  @media (prefers-reduced-motion: reduce) { .scrim,.spotlight,.panel { animation:none; } }
 </style>

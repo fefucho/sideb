@@ -39,7 +39,7 @@ export function projectHome(sections: HomeSectionDto[], chip: string | null, set
       : preference.source === 'libraryPlaylists' ? playlists.map(homeItem) : preference.source === 'recentAlbums' ? recent
       : providerSections.filter(section => sourceForTitle(section.title) === preference.source).flatMap(section => section.items.map(item => item.record));
     for (const item of candidates) {
-      if (item.kind !== (kind === 'albums' ? 'album' : 'playlist') || !canonicalId(item.kind,item.id) || exposed.has(itemKey(item)) || collections.length >= ([2,4,6].includes(capacity)?capacity:2) * 6) continue;
+      if (item.kind !== (kind === 'albums' ? 'album' : 'playlist') || !canonicalId(item.kind,item.id) || exposed.has(itemKey(item)) || collections.length >= Math.min(8,Math.max(2,capacity)) * 6) continue;
       exposed.add(itemKey(item)); collections.push(item);
     }
   }
@@ -50,6 +50,13 @@ export function projectHome(sections: HomeSectionDto[], chip: string | null, set
   const uniqueArt = (items:HomeItemDto[]) => [...new Set(items.map(item=>item.thumbnail).filter((url):url is string=>Boolean(url)))];
   const artwork = [...new Set([...uniqueArt(collections).slice(0,2),...uniqueArt(songs).slice(0,2),...uniqueArt([...collections,...songs])])].slice(0,4);
   return { categories, songs, collections, shelves, artwork };
+}
+/** Cantidad y ancho de las tarjetas de colección; width incluye los márgenes de 28px a cada lado. */
+export function collectionRowLayout(width:number) {
+  const useful=Math.max(0,width-56), gap=24, size=(count:number)=>(useful-gap*(count-1))/count;
+  let count=Math.min(5,Math.max(2,Math.floor((useful+gap)/224)));
+  while(size(count)>320)count++;
+  return {count,cardWidth:size(count)};
 }
 export function visibleSignature(projection: ReturnType<typeof projectHome>) {
   return JSON.stringify([projection.songs, projection.collections, projection.shelves.map(s => [s.id, s.title, s.items])]);

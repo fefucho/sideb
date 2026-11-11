@@ -89,9 +89,9 @@ try{
  await send('Page.enable');await send('Runtime.enable');await send('Emulation.setDeviceMetricsOverride',{width:960,height:680,deviceScaleFactor:1,mobile:false});
  await send('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'reduce'}]});
  await send('Page.navigate',{url:server.resolvedUrls.local[0]});
- for(let i=0;i<100;i++){if(await evaluate('!!document.querySelector(".home .featured")'))break;await new Promise(r=>setTimeout(r,100));}
- if(!await evaluate('!!document.querySelector(".home .featured")')){await screenshot('debug-start');console.log(await evaluate('({text:document.body.innerText,calls:globalThis.fixture?.calls,html:document.body.innerHTML.slice(0,4000)})'));}
- assert.equal(await evaluate('!!document.querySelector(".home .featured")'),true,errors.join('\n'));
+ for(let i=0;i<100;i++){if(await evaluate('!!document.querySelector(".home .collection-row")'))break;await new Promise(r=>setTimeout(r,100));}
+ if(!await evaluate('!!document.querySelector(".home .collection-row")')){await screenshot('debug-start');console.log(await evaluate('({text:document.body.innerText,calls:globalThis.fixture?.calls,html:document.body.innerHTML.slice(0,4000)})'));}
+ assert.equal(await evaluate('!!document.querySelector(".home .collection-row")'),true,errors.join('\n'));
  await evaluate('document.fonts.ready');assert.equal(await evaluate(`document.fonts.check('16px Inter')`),true,'bundled Inter must be loaded');await settle();await screenshot('home');console.log('production shell mounted');
  await evaluate(`window.homeNode=document.querySelector('[data-retained-page="feed"]');homeNode.scrollTop=600;homeNode.dispatchEvent(new Event('scroll'));`);await settle();
  // Open a real modal using real keyboard handling, without calling any private App functions.

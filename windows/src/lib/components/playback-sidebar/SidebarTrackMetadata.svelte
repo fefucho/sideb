@@ -4,6 +4,8 @@
    * links) and credits (artist/album links, content rating), then dislike · like · "+" · menu. It reads no clock
    * and loads no image, so the same instance can sit under the cover or above the progress bar in Letras/Cola.
    *
+   * Title and credits move (marquee via the shared `titleMotion` action) only when they overflow.
+   *
    * Props (W3 composes this file; every action is optional and its button appears only when supplied, so the
    * macOS layout — heart + menu — is obtained by omitting `onDislike`/`onAddToQueue`):
    * - `session`, `playback`: the usual FullscreenNowPlaying contract (`playback.currentTrack`, `.error`, `.isLoading`).
@@ -19,6 +21,7 @@
   import ArtistCredits from '$lib/components/ArtistCredits.svelte';
   import FeaturedTrackTitle from '$lib/components/FeaturedTrackTitle.svelte';
   import MoreIcon from '$lib/components/common/MoreIcon.svelte';
+  import DislikeIcon from '$lib/components/common/DislikeIcon.svelte';
 
   interface Props {
     session: number;
@@ -43,7 +46,7 @@
 <div class="metadata" role="group" aria-label={$t('windows.ui.currentSong')} oncontextmenu={event => { if (onOpenMenu && track) { event.preventDefault(); onOpenMenu(event); } }}>
   <div class="text">
     <h2 class="title" title={track?.title ?? $t('player.noPlayback')}>
-      {#if track}<FeaturedTrackTitle {track} {onOpenArtist} prefetch />{:else}{$t('player.noPlayback')}{/if}
+      {#if track}<FeaturedTrackTitle {track} {onOpenArtist} prefetch scrollTitle />{:else}{$t('player.noPlayback')}{/if}
     </h2>
     {#if playback.error}
       <button type="button" class="retry" onclick={onRetryPlayback} disabled={!onRetryPlayback} aria-label={$t('player.retryPlayback')} title={resolveMessage(playback.error, $language)}>
@@ -53,7 +56,7 @@
     {:else if track}
       <div class="credits">
         <ArtistCredits {track} artistRuns={track.artistRuns} artists={track.artists} artistId={track.artistId} {onOpenArtist}
-          album={track.album} albumId={track.albumId} {onOpenAlbum} />
+          album={track.album} albumId={track.albumId} {onOpenAlbum} scroll />
       </div>
     {/if}
   </div>
@@ -63,7 +66,7 @@
     {#if onDislike}
       <button type="button" class="action" disabled={!loggedIn || !track || busy} onkeydown={menuKey} onclick={onDislike}
         aria-label={$t('windows.queue.dislike', [track?.title ?? ''])} title={!loggedIn ? $t('windows.ui.signInToUseLike') : $t('windows.ui.dislikeAndRemoveFromQueue')}>
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 14V3M17 14l-4.4 6.2a1.7 1.7 0 0 1-3.1-1.1V16H5a2 2 0 0 1-2-2.4l1.3-6.5A3 3 0 0 1 7.2 4.5H17" /></svg>
+        <DislikeIcon />
       </button>
     {/if}
     {#if onToggleLike}
@@ -101,6 +104,7 @@
   .actions { display:flex; flex:none; align-items:center; gap:0; height:44px; }
   .action { display:grid; place-items:center; box-sizing:border-box; width:36px; height:44px; padding:0; border:0; border-radius:8px; background:transparent; color:rgb(255 255 255 / 70%); cursor:pointer; }
   .action svg { display:block; width:22px; height:22px; }
+  .action :global(.dislike-icon) { width:20px; height:20px; }
   .action.more { width:28px; } .action.more :global(svg) { width:16px; height:16px; }
   .action:hover:not(:disabled), .action:focus-visible { color:#fff; background:rgb(255 255 255 / 10%); }
   .action.like.liked { color:#d06c70; }

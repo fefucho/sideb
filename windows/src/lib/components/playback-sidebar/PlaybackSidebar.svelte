@@ -159,7 +159,8 @@
   .playback-sidebar {
     position: fixed;
     z-index: 70;
-    top: calc(var(--titlebar-height, 32px) + 6px);
+    /* Only the native window buttons sit above the panel, also when the top navigation makes the strip taller. */
+    top: calc(var(--playback-top, var(--titlebar-height, 32px)) + 6px);
     right: 6px;
     bottom: 6px;
     box-sizing: border-box;
@@ -188,7 +189,8 @@
   .pill { flex: 1; padding: 6px 0; border: 0; border-radius: 999px; color: inherit; background: transparent; font: inherit; font-size: 12px; font-weight: 500; cursor: pointer; }
   .pill.selected { background: rgb(255 255 255 / 15%); }
   .lyrics-host, .queue-host { display: flex; flex: 1; min-width: 0; min-height: 0; }
-  .queue-host { padding-inline: 12px; }
+  /* The body is not a flex container: without its height the queue grows to its full length and is clipped instead of scrolling. */
+  .queue-host { box-sizing: border-box; height: 100%; padding-inline: 12px; }
   .footer { position: relative; z-index: 2; flex: none; min-height: 0; overflow: hidden; }
   .lead { flex: none; margin-bottom: 16px; }
 

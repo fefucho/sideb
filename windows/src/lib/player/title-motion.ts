@@ -1,11 +1,13 @@
-/** One interactive title, moved by the compositor. No playback or per-frame state. */
-export interface TitleMotionOptions { enabled: boolean; key: string; paused?: boolean }
+/** One interactive title or credit line, moved by the compositor. No playback or per-frame state.
+ * `selector` picks the moving child of the viewport (default: the featured-title text, `.title-parts`). */
+export interface TitleMotionOptions { enabled: boolean; key: string; paused?: boolean; selector?: string }
 export function titleMotion(viewport: HTMLElement, initial: TitleMotionOptions) {
-  const content = viewport.querySelector<HTMLElement>('.title-parts')!;
+  const found = viewport.querySelector<HTMLElement>(initial.selector ?? '.title-parts');
   // Older embedded engines and non-layout renderers retain the static accessible title.
-  if (typeof ResizeObserver === 'undefined' || typeof IntersectionObserver === 'undefined' || !content.animate) {
+  if (!found || typeof ResizeObserver === 'undefined' || typeof IntersectionObserver === 'undefined' || !found.animate) {
     return { update(_options: TitleMotionOptions) {}, destroy() {} };
   }
+  const content: HTMLElement = found;
   let options = initial, animation: Animation | undefined, geometry = '', destroyed = false;
   let hovered = false, focused = false, visible = true, foreground = document.hasFocus();
   let distance = 0, travel = 0;

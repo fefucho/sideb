@@ -58,7 +58,9 @@ test('fullscreen collapses to its origin and the lateral panel is not a covered 
 });
 
 test('content reserve is applied to the page column only when the panel fits', () => {
-  assert.match(page, /contentReserve\(\{ windowWidth: viewportWidth, leftReserve: sidebarCollapsed \? 60 : 253, presented: sidebarOpen \}\)/);
+  // The left reserve is the real width of the navigation column in each mode (expanded 253, icons 60, hidden 0, floating +12).
+  assert.match(page, /navLeftReserve = \$derived\(navPresentation\.sidebar === 'hidden' \? 0 : \(navPresentation\.sidebar === 'icons' \? 60 : 253\) \+ \(\$appearance\.sidebarStyle === 'floating' \? 12 : 0\)\)/);
+  assert.match(page, /contentReserve\(\{ windowWidth: viewportWidth, leftReserve: navLeftReserve, presented: sidebarOpen \}\)/);
   assert.match(page, /style:margin-right=\{playbackReserve \? `\$\{playbackReserve\}px` : undefined\}/);
   assert.match(page, /<svelte:window bind:innerWidth=\{viewportWidth\} \/>/);
 });
@@ -71,4 +73,20 @@ test('sidebar footer reuses the bar actions and offers no AirPlay surface', () =
   assert.match(sidebar, /<SidebarRecommendations /);
   assert.match(sidebar, /<SidebarUpcomingQueue /);
   assert.match(sidebar, /<SidebarLyricsPreview /);
+});
+
+test('the recommendations sheet paints over the hero metadata and the page scrollbar no longer leaves a strip beside the panel', async () => {
+  const artwork = await read('lib/components/playback-sidebar/SidebarArtwork.svelte');
+  // FIX-318: metadata is fixed *behind* the rising feed (macOS FIX-282). A z-index on it lifted the title and the
+  // like/dislike buttons above the sheet, on top of its rows; the feed is a later sibling, so DOM order must decide.
+  const metadataRule = /\n\s*\.metadata \{([^}]*)\}/.exec(artwork)?.[1] ?? '';
+  assert.ok(metadataRule, 'the .metadata rule exists');
+  assert.doesNotMatch(metadataRule, /z-index/, 'metadata must not out-stack the feed sheet');
+  assert.match(artwork, /inert=\{metadataCovered\}/, 'a covered metadata block stops receiving focus and clicks');
+  assert.match(artwork, /\.metadata\.covered \{ pointer-events:none; \}/);
+  assert.ok(sidebar.indexOf('<SidebarArtwork ') < sidebar.indexOf('<SidebarRecommendations '), 'the feed follows the hero in the DOM');
+  // FIX-319: with the reserve active, the content column's classic scrollbar would reintroduce a ~15 px gutter.
+  assert.match(page, /class:playback-reserved=\{playbackReserve > 0\}/);
+  assert.match(page, /\.content-column\.playback-reserved \{ scrollbar-width: none; \}/);
+  assert.match(page, /\.content-column\.playback-reserved::-webkit-scrollbar \{ display: none;/);
 });

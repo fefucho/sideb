@@ -46,7 +46,7 @@ window.lab={
  {#if mounted}
   <PlaybackSidebar session={1} {playback} panel={presentation.sidebarPanel} onSelectPanel={p=>presentation=selectSidebarPanel(presentation,p)} {lyricsMode} onLyricsMode={m=>lyricsMode=m} progress={progress.current} {reduced} {width}
    interactive={sidebarOpen} onClose={()=>window.lab.toggle()} onExpand={()=>window.lab.fullscreen(true)} controls={sidebarControls} lyricsState={emptyLyricsState()} onSelectQueue={()=>calls.push('select-queue')} metadataProps={{loggedIn:true,onToggleLike:()=>{},onOpenMenu:()=>{}}} recommendationsProps={{snapshot:emptyRecommendationsSnapshot(),onRequestLoad:()=>{},onRefresh:()=>{},onPlaySong:()=>{},onTogglePlayback:()=>{},onAddToQueue:()=>{}}}>
-   {#snippet queueBody()}<div class="host">queue host</div>{/snippet}
+   {#snippet queueBody()}<div class="queue-fake"><div class="queue-fake-list"><div style="height:4000px">queue host</div></div></div>{/snippet}
    {#snippet lyricsBody(mode)}<div class="host">lyrics host {mode}</div>{/snippet}
   </PlaybackSidebar>
  {/if}
@@ -54,7 +54,7 @@ window.lab={
 {#snippet sidebarControls(lead,tail,spacing)}
  <PlayerBar variant="sidebar" sidebarLead={lead} sidebarTail={tail} sidebarSpacing={spacing} {playback} fullscreenOpen={false} loggedIn onTogglePlayback={()=>calls.push('play-sidebar')} onRetryPlayback={()=>{}} onPrevious={()=>calls.push('prev-sidebar')} onNext={()=>calls.push('next-sidebar')} onSeek={()=>{}} onVolumeChange={v=>calls.push(['volume',v])} onSetShuffle={async()=>{}} onSetRepeat={async()=>{}} onToggleFullscreen={()=>{}} onOpenMenu={()=>{}}/>
 {/snippet}
-<style>:global(body){margin:0;background:#19191c;color:white;font-family:var(--sideb-font-family,Inter,sans-serif);overflow:hidden}.frame{position:fixed;inset:0}.titlebar{position:fixed;z-index:200;top:0;left:253px;right:0;height:32px}.controls{position:absolute;right:0;top:0;width:138px;height:32px}.content{position:absolute;top:32px;left:253px;right:0;bottom:0}.host{flex:1}</style>`);
+<style>/* Same layout contract as QueuePanel: a flex column whose list is the scroller. */.queue-fake{display:flex;flex:1;flex-direction:column;width:100%;min-width:0;min-height:0;overflow:hidden}.queue-fake-list{flex:1;min-height:0;overflow-y:auto}:global(body){margin:0;background:#19191c;color:white;font-family:var(--sideb-font-family,Inter,sans-serif);overflow:hidden}.frame{position:fixed;inset:0}.titlebar{position:fixed;z-index:200;top:0;left:253px;right:0;height:32px}.controls{position:absolute;right:0;top:0;width:138px;height:32px}.content{position:absolute;top:32px;left:253px;right:0;bottom:0}.host{flex:1}</style>`);
 await writeFile(path.join(cache, 'main.js'), "import {mount} from 'svelte';import Fixture from './Fixture.svelte';mount(Fixture,{target:document.getElementById('app')});");
 await writeFile(path.join(cache, 'index.html'), '<div id="app"></div><script type="module" src="/main.js"></script>');
 const server = await createServer({ configFile: false, root: cache, publicDir: path.join(root, 'static'), plugins: [svelte()], resolve: { alias: { $lib: path.join(root, 'src/lib') } }, server: { host: '127.0.0.1', port: 0, watch: null, fs: { allow: [root] } }, logLevel: 'error' });
@@ -141,6 +141,8 @@ try {
       assert.ok(controls.left >= controls.p.l + 19 && controls.right <= controls.p.r - 19, `${vw}x${vh}@${w}: transport inside 20px padding ${JSON.stringify(controls)}`);
       assert.deepEqual(controls.playSize, [78, 78]);
       assert.ok(controls.progTop < controls.playTop && controls.playBottom <= controls.volBottom, 'progress, transport and volume stack top to bottom');
+      // The free height of the footer goes under the transport (lyrics sample / queue), never between the metadata and the progress.
+      if (s.panel === 'artwork') near(controls.progTop - footer.y, 12 + 10, `${vw}x${vh}@${w}: progress stays glued to the top of the footer`, 1.5);
       assert.ok(controls.volBottom <= controls.p.b && controls.volRight <= controls.p.r - 19 && controls.volLeft >= controls.p.l + 19, 'volume row inside the panel');
       assert.ok(controls.hdrOverflow <= 0 && controls.segOverflow <= 0 && controls.docOverflow <= 0 && controls.panelOverflow <= 0, `${vw}x${vh}@${w}: no horizontal overflow ${JSON.stringify(controls)}`);
       assert.ok(panel.height - header.height - footer.height >= 0 || s.panel === 'artwork', 'body keeps its height');
@@ -199,6 +201,9 @@ try {
 
   // 7. Fullscreen origin and return.
   await evaluate("lab.toggle('queue')"); await settle();
+  // The queue body is bounded by the panel: a long queue scrolls inside it instead of being clipped.
+  const queue = await evaluate("(()=>{const l=document.querySelector('.queue-fake-list'),b=document.getElementById('playback-sidebar-body');if(!l)return null;l.scrollTop=300;return {client:l.clientHeight,scroll:l.scrollHeight,top:l.scrollTop,body:b.clientHeight}})()");
+  assert.ok(queue && queue.client > 0 && queue.client <= queue.body && queue.scroll > queue.client && queue.top === 300, 'the queue list scrolls inside the panel body: ' + JSON.stringify(queue));
   await evaluate('lab.fullscreen(true)'); await sleep(50);
   s = await state(); assert.equal(s.mode, 'fullscreen'); assert.equal(await evaluate("!!document.getElementById('playback-sidebar')"), false, 'single host: the panel is gone while fullscreen is open');
   assert.equal((await interactivity()).dockInert, false);

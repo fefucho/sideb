@@ -9,7 +9,7 @@ const module = async (file, replacements={}) => {let source=compile(await readFi
 const settingsUrl=await module('home/settings'), presentationUrl=await module('home/presentation'),playerUrl=await module('player/controller');
 const { defaults, decodeSettings, categoryKey, orderCategories, accountSettingsKey, missingHomeSources }=await import(settingsUrl);
 const songMetadataUrl=await module('home/songMetadata');
-const { projectHome, visibleSignature }=await import(await module('home/featured',{'./settings':settingsUrl,'./presentation':presentationUrl,'./songMetadata':songMetadataUrl}));
+const { projectHome, collectionRowLayout, visibleSignature }=await import(await module('home/featured',{'./settings':settingsUrl,'./presentation':presentationUrl,'./songMetadata':songMetadataUrl}));
 const { sourceActive, occurrenceActive, mediaRequestCurrent, mediaKey }=await import(await module('player/media',{'../home/settings':settingsUrl,'./controller':playerUrl}));
 const { prepareCollectionPlayback, emptyPlaybackData }=await import(playerUrl);
 const { HomeController }=await import(await module('home/controller',{'./presentation':presentationUrl}));
@@ -17,7 +17,7 @@ const metadataUrl=await module('home/collectionMetadata');
 const { metadataFor, durationSeconds, providerDuration }=await import(metadataUrl);
 const { FeaturedMetadataController }=await import(await module('home/metadata',{'./collectionMetadata':metadataUrl}));
 const { samplePalette, choosePalette, hueDistance, ambientColor, neutral, collectionAmbientFrame }=await import(await module('home/ambient'));
-const { featuredSelectionKey }=await import(await module('home/pages'));
+const { alignCollectionAnchor, featuredSelectionKey }=await import(await module('home/pages'));
 const item=(id,kind='album')=>({id,kind,title:id,subtitle:null,thumbnail:null,duration:null,artists:null,artistId:null,albumId:null,album:null,artistRuns:[],explicit:false});
 const section=(title,items)=>({title,items,format:'largeCards',moreBrowseId:null,moreParams:null});
 const albumPage=(count)=>[section('Albums for you',Array.from({length:count},(_,i)=>item(`album-${i}`)))];
@@ -45,8 +45,9 @@ test('disabled named families cannot return through Other Home; all disabled is 
  assert.deepEqual(projectHome([...albumPage(20),section('Unknown',[item('unknown')])],null,s,'albums',2).collections.map(i=>i.id),['unknown']);
  s.albumSources=s.albumSources.map(row=>({...row,enabled:false}));assert.equal(projectHome(albumPage(20),null,s,'albums',2).collections.length,0);
 });
-test('12/24/36 distinct exposed collections; narrowing returns displaced items to shelves',()=>{
- for(const capacity of [2,4,6]){const p=projectHome(albumPage(40),null,defaults(),'albums',capacity);assert.equal(p.collections.length,6*capacity);assert.equal(p.shelves[0].items.length,40-6*capacity);}
+test('six rows of capacity distinct exposed collections (2..8); narrowing returns displaced items to shelves',()=>{
+ for(const capacity of [2,3,4,5,6,8]){const p=projectHome(albumPage(60),null,defaults(),'albums',capacity);assert.equal(p.collections.length,6*capacity);assert.equal(p.shelves[0].items.length,60-6*capacity);}
+ for(const [capacity,expected] of [[0,2],[1,2],[9,8],[20,8]])assert.equal(projectHome(albumPage(80),null,defaults(),'albums',capacity).collections.length,6*expected);
 });
 test('hiding a category does not remove its featured candidates or Speed Dial',()=>{
  const s=defaults();s.hiddenCategoryKeys=['recommended-albums','quick-picks'];
@@ -150,6 +151,13 @@ test('metadata shares requests for the same visible page and evicts details beyo
  controller.visible([item('a')]);assert.equal(requests.length,10);controller.visible([]);requests[9].d.resolve({artist:'hidden',artistId:null,items:[]});await settle();assert.deepEqual(output,{});
 });
 
+test('a wider metadata limit serves every requested card of the collection row',async()=>{
+ let output,calls=0;const controller=new FeaturedMetadataController(async()=>{calls++;return {artist:'A',artistId:null,items:[]};},data=>output=data,9);
+ const row=Array.from({length:12},(_,i)=>item('row-'+i));controller.visible(row);for(let i=0;i<12;i++)await settle();
+ assert.equal(calls,9);assert.deepEqual(Object.keys(output),row.slice(0,9).map(entry=>'album|'+entry.id));
+ controller.visible(row.slice(0,9));for(let i=0;i<4;i++)await settle();assert.equal(calls,9,'visible details stay cached');
+});
+
 // Expected behavior follows the named Apple tests, not a second copy of the TypeScript implementation.
 test('Mac featured priorities: songs keep Listen Again/Forgotten/Library before generic and videos stay in shelves',()=>{
  const rows=[section('Generic',[item('generic','song'),item('shared','playlist')]),section('From your library',[item('library','song')]),section('Forgotten favorites',[item('forgotten','song')]),section('Listen again',[item('recent','song')]),section('Quick picks',[item('pick','song'),item('shared','song'),item('clip','video')])];
@@ -175,7 +183,16 @@ test('Mac ambient thumbnails use two distinct collection covers before two disti
  const rows=[section('Albums for you',[{...item('a'),thumbnail:'a'},{...item('b'),thumbnail:'a'},{...item('c'),thumbnail:'b'}]),section('Quick picks',[{...item('s','song'),thumbnail:'s'},{...item('t','song'),thumbnail:'s'},{...item('u','song'),thumbnail:'t'}])];
  assert.deepEqual(projectHome(rows,null,defaults(),'albums',2).artwork,['a','b','s','t']);
 });
-test('category changes do not reset the featured rails; session, chip, kind and sources do',()=>{
+test('collectionRowLayout fits whole cards between the 28px insets with 24px gaps',()=>{
+ const near=(actual,expected)=>assert.ok(Math.abs(actual-expected)<.01,`${actual} != ${expected}`);
+ for(const [width,count,card] of [[1360,5,241.6],[1056,4,232],[900,3,265.333],[1680,5,305.6],[2560,8,292]]){const layout=collectionRowLayout(width);assert.equal(layout.count,count,`count at ${width}`);near(layout.cardWidth,card);near(layout.count*layout.cardWidth+(layout.count-1)*24,width-56);}
+ for(const width of [0,56,300,500,600])assert.equal(collectionRowLayout(width).count,2,`narrow ${width}`);
+ for(let width=300;width<=4000;width+=7){const {count,cardWidth}=collectionRowLayout(width);assert.ok(count>=2&&Number.isInteger(count));assert.ok(count===2||cardWidth<=320.0001);}
+});
+test('Mac pages keep exact anchor through narrowing/widening and category changes do not reset featured pages',()=>{
+ const ids=['a','b','c','d','e','f'];let anchor=alignCollectionAnchor(2,ids,ids);
+ assert.equal(Math.floor(anchor/4),0);anchor=alignCollectionAnchor(anchor,ids,ids);assert.equal(Math.floor(anchor/2),1);
+ assert.equal(alignCollectionAnchor(2,ids,['new',...ids]),3);assert.equal(alignCollectionAnchor(2,ids,['a']),0);
  const base=defaults(),changed={...base,categoryOrderMode:'youtube',hiddenCategoryKeys:['quick-picks']};
  assert.equal(featuredSelectionKey('a',null,'albums',base),featuredSelectionKey('a',null,'albums',changed));
  assert.notEqual(featuredSelectionKey('a',null,'albums',base),featuredSelectionKey('b',null,'albums',base));

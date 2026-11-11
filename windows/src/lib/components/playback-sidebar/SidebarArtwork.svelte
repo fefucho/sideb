@@ -27,6 +27,7 @@
   import { artworkCandidates, cardArtworkCandidates, nextArtworkUrl } from '$lib/images/artwork';
   import { heroScroll, sidebarArtworkGeometry, sidebarArtworkPresentation, sidebarMotionSuspended, type VideoSize } from '$lib/player/sidebarLayout';
   import { SidebarPaletteController, neutralSidebarPalette, rgbCss, sidebarTopSurface, type SidebarPalette } from '$lib/player/sidebarPalette';
+  import { sidebarFeedTop } from '$lib/player/sidebarRecommendations';
 
   interface Props {
     session: number;
@@ -52,6 +53,9 @@
   const presentation = $derived(sidebarArtworkPresentation(readySize, reducedMotion));
   const geometry = $derived(sidebarArtworkGeometry(width, height, presentation.tall));
   const scroll = $derived(heroScroll(scrollOffset, height));
+  // The recommendations sheet rises over this hero (macOS: metadata fixed *behind* the feed, FIX-282). Once its top edge
+  // passes the metadata's bottom the block is hidden by the sheet, so it must not keep receiving clicks or focus.
+  const metadataCovered = $derived(sidebarFeedTop(height, scrollOffset) < geometry.metadataTop + 68);
   const suspended = $derived(sidebarMotionSuspended({ panelActive: active, scroll, reducedMotion }));
 
   // Poster candidates follow the fullscreen policy (original → max quality → 544 px → provider URL).
@@ -120,7 +124,7 @@
   </div>
 
   {#if metadata}
-    <div class="metadata" style:left="{(geometry.width - geometry.metadataWidth) / 2}px" style:top="{geometry.metadataTop}px" style:width="{geometry.metadataWidth}px">
+    <div class="metadata" class:covered={metadataCovered} inert={metadataCovered} style:left="{(geometry.width - geometry.metadataWidth) / 2}px" style:top="{geometry.metadataTop}px" style:width="{geometry.metadataWidth}px">
       {@render metadata()}
     </div>
   {/if}
@@ -139,7 +143,10 @@
   .video { overflow:hidden; border-radius:12px; opacity:0; }
   .video.tall { border-radius:0; }
   .video.shown { opacity:1; }
-  .metadata { position:absolute; height:68px; z-index:1; pointer-events:auto; }
+  /* No z-index: the feed is a later sibling and must paint over the metadata (a z-index here lifted the title and the
+     like/dislike buttons above the rising sheet, on top of its rows). */
+  .metadata { position:absolute; height:68px; pointer-events:auto; }
+  .metadata.covered { pointer-events:none; }
   @media (prefers-reduced-motion:reduce) { .poster { transition:none; } }
   @media (forced-colors:active) { .backdrop { display:none; } }
 </style>

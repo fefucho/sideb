@@ -58,7 +58,7 @@ const openCategory=async(target,id)=>click(target.querySelector(`button.item[dat
 const ready={state:'ready',name:'Demo',handle:'@demo',email:null,thumbnail:null,message:null};
 const card=(kind,id,title)=>({kind,id,title,subtitle:'Original metadata',thumbnail:null,duration:null});
 function host(){const node=document.createElement('div');document.body.append(node);return node;}
-function reset(){appearance.setHomeBackground('artwork');if(get(appearance).sidebarLayout==='grid')appearance.toggleSidebarLayout();setLanguage('en');}
+function reset(){appearance.setHomeBackground('artwork');appearance.setAlbumCardStyle('tinted');appearance.setSidebarStyle('solid');appearance.setSidebarCollapseMode('icons');appearance.setSidebarCollapsed(false);if(get(appearance).sidebarLayout==='grid')appearance.toggleSidebarLayout();setLanguage('en');}
 function props(calls,extra={}) {return {activeDestination:'playlist',selectedCollectionId:'saved',auth:ready,collapsed:false,
   playlists:[card('playlist','saved','Original playlist')],albums:[card('album','saved','Original album')],
   onHome:()=>calls.push('home'),onLibrary:()=>calls.push('library'),onExplore:()=>calls.push('explore'),onSearch:()=>calls.push('search'),
@@ -68,17 +68,87 @@ function props(calls,extra={}) {return {activeDestination:'playlist',selectedCol
 test('appearance survives recreation, rejects malformed/future values and works when storage is blocked',()=>{
   const values=new Map(),storage={getItem:key=>values.get(key)??null,setItem:(key,value)=>values.set(key,value)};
   let store=createAppearancePreferences(storage);
-  assert.deepEqual(get(store),{version:1,homeBackground:'artwork',sidebarLayout:'list',animatedArtwork:true});
+  assert.deepEqual(get(store),{version:1,homeBackground:'artwork',sidebarLayout:'list',animatedArtwork:true,albumCardStyle:'tinted',sidebarStyle:'solid',sidebarCollapseMode:'icons',sidebarCollapsed:false});
   store.setAnimatedArtwork(false);store=createAppearancePreferences(storage);assert.equal(get(store).animatedArtwork,false);
   store.setAnimatedArtwork(true);
   store.setHomeBackground('solid');store.toggleSidebarLayout();store=createAppearancePreferences(storage);
-  assert.deepEqual(get(store),{version:1,homeBackground:'solid',sidebarLayout:'grid',animatedArtwork:true});
-  assert.deepEqual(Object.keys(JSON.parse(values.get(appearanceKey))).sort(),['version','homeBackground','sidebarLayout','animatedArtwork'].sort());
+  assert.deepEqual(get(store),{version:1,homeBackground:'solid',sidebarLayout:'grid',animatedArtwork:true,albumCardStyle:'tinted',sidebarStyle:'solid',sidebarCollapseMode:'icons',sidebarCollapsed:false});
+  assert.deepEqual(Object.keys(JSON.parse(values.get(appearanceKey))).sort(),['version','homeBackground','sidebarLayout','animatedArtwork','albumCardStyle','sidebarStyle','sidebarCollapseMode','sidebarCollapsed'].sort());
   for(const value of ['broken',JSON.stringify({version:2,homeBackground:'solid'}),JSON.stringify({version:1,homeBackground:'unknown',sidebarLayout:'unknown'})]){
-    values.set(appearanceKey,value);assert.deepEqual(get(createAppearancePreferences(storage)),{version:1,homeBackground:'artwork',sidebarLayout:'list',animatedArtwork:true});
+    values.set(appearanceKey,value);assert.deepEqual(get(createAppearancePreferences(storage)),{version:1,homeBackground:'artwork',sidebarLayout:'list',animatedArtwork:true,albumCardStyle:'tinted',sidebarStyle:'solid',sidebarCollapseMode:'icons',sidebarCollapsed:false});
   }
   store=createAppearancePreferences({getItem(){throw Error('blocked');},setItem(){throw Error('blocked');}});
   store.setHomeBackground('solid');store.toggleSidebarLayout();assert.equal(get(store).homeBackground,'solid');assert.equal(get(store).sidebarLayout,'grid');
+});
+
+test('album card style defaults to tinted, persists white and tolerates old or unknown saved values',()=>{
+  const values=new Map(),storage={getItem:key=>values.get(key)??null,setItem:(key,value)=>values.set(key,value)};
+  let store=createAppearancePreferences(storage);
+  assert.equal(get(store).albumCardStyle,'tinted');
+  store.setAlbumCardStyle('white');assert.equal(get(store).albumCardStyle,'white');
+  assert.equal(JSON.parse(values.get(appearanceKey)).albumCardStyle,'white');
+  store=createAppearancePreferences(storage);assert.equal(get(store).albumCardStyle,'white');
+  store.setAlbumCardStyle('tinted');assert.equal(get(createAppearancePreferences(storage)).albumCardStyle,'tinted');
+  for(const albumCardStyle of ['unknown',null,42,'White'])values.set(appearanceKey,JSON.stringify({version:1,albumCardStyle}))&&assert.equal(get(createAppearancePreferences(storage)).albumCardStyle,'tinted');
+  values.set(appearanceKey,JSON.stringify({version:1,homeBackground:'solid',sidebarLayout:'grid',animatedArtwork:false}));
+  assert.deepEqual(get(createAppearancePreferences(storage)),{version:1,homeBackground:'solid',sidebarLayout:'grid',animatedArtwork:false,albumCardStyle:'tinted',sidebarStyle:'solid',sidebarCollapseMode:'icons',sidebarCollapsed:false});
+});
+
+test('album card style picker reflects the stored value and updates the store',async()=>{
+  reset();const settingsHost=host();let changed=0;
+  const settingsProps={settings:defaults(),kind:'albums',categories:[],libraryError:null,onChange:()=>changed++,onKind:()=>changed++,onRetryLibrary:()=>changed++,onClose(){}};
+  let settings=mount(HomeSettings,{target:settingsHost,props:settingsProps});await settle();
+  try {
+    await openCategory(settingsHost,'appearance');
+    const picker=settingsHost.querySelector('#album-card-style-picker');
+    assert.ok(picker);assert.equal(picker.value,'tinted');assert.ok(picker.getAttribute('aria-describedby'));
+    assert.deepEqual([...picker.querySelectorAll('option')].map(option=>option.value),['tinted','white']);
+    picker.value='white';picker.dispatchEvent(new dom.Event('change',{bubbles:true}));await settle();
+    assert.equal(get(appearance).albumCardStyle,'white');assert.equal(get(createAppearancePreferences(dom.localStorage)).albumCardStyle,'white');
+    await unmount(settings);settings=mount(HomeSettings,{target:settingsHost,props:settingsProps});await settle();await openCategory(settingsHost,'appearance');
+    assert.equal(settingsHost.querySelector('#album-card-style-picker').value,'white');
+    const again=settingsHost.querySelector('#album-card-style-picker');again.value='tinted';again.dispatchEvent(new dom.Event('change',{bubbles:true}));await settle();
+    assert.equal(get(appearance).albumCardStyle,'tinted');assert.equal(changed,0);
+  } finally {await unmount(settings);settingsHost.remove();reset();}
+});
+
+test('sidebar style defaults to solid, persists floating and tolerates old or unknown saved values keeping other fields',()=>{
+  const values=new Map(),storage={getItem:key=>values.get(key)??null,setItem:(key,value)=>values.set(key,value)};
+  let store=createAppearancePreferences(storage);
+  assert.equal(get(store).sidebarStyle,'solid');
+  store.setSidebarStyle('floating');assert.equal(get(store).sidebarStyle,'floating');
+  assert.equal(JSON.parse(values.get(appearanceKey)).sidebarStyle,'floating');
+  assert.equal(get(createAppearancePreferences(storage)).sidebarStyle,'floating');
+  store.setSidebarStyle('solid');assert.equal(get(createAppearancePreferences(storage)).sidebarStyle,'solid');
+  for(const sidebarStyle of ['unknown',null,42,'Floating'])values.set(appearanceKey,JSON.stringify({version:1,sidebarStyle}))&&assert.equal(get(createAppearancePreferences(storage)).sidebarStyle,'solid');
+  values.set(appearanceKey,JSON.stringify({version:1,homeBackground:'solid',sidebarLayout:'grid',animatedArtwork:false,albumCardStyle:'white'}));
+  assert.deepEqual(get(createAppearancePreferences(storage)),{version:1,homeBackground:'solid',sidebarLayout:'grid',animatedArtwork:false,albumCardStyle:'white',sidebarStyle:'solid',sidebarCollapseMode:'icons',sidebarCollapsed:false});
+  values.set(appearanceKey,JSON.stringify({version:1,homeBackground:'solid',sidebarLayout:'grid',animatedArtwork:false,albumCardStyle:'white',sidebarStyle:'floating'}));
+  assert.deepEqual(get(createAppearancePreferences(storage)),{version:1,homeBackground:'solid',sidebarLayout:'grid',animatedArtwork:false,albumCardStyle:'white',sidebarStyle:'floating',sidebarCollapseMode:'icons',sidebarCollapsed:false});
+});
+
+test('sidebar style picker updates the store and the mounted sidebar reflects the mode',async()=>{
+  reset();const settingsHost=host(),sidebarHost=host(),calls=[];let changed=0;
+  const settingsProps={settings:defaults(),kind:'albums',categories:[],libraryError:null,onChange:()=>changed++,onKind:()=>changed++,onRetryLibrary:()=>changed++,onClose(){}};
+  const sidebar=mount(Sidebar,{target:sidebarHost,props:props(calls)});
+  let settings=mount(HomeSettings,{target:settingsHost,props:settingsProps});await settle();
+  try {
+    await openCategory(settingsHost,'appearance');
+    const picker=settingsHost.querySelector('#sidebar-style-picker');
+    assert.ok(picker);assert.equal(picker.value,'solid');assert.ok(picker.getAttribute('aria-describedby'));
+    assert.deepEqual([...picker.querySelectorAll('option')].map(option=>option.value),['solid','floating']);
+    assert.equal(sidebarHost.querySelector('aside').classList.contains('floating'),false);
+    picker.value='floating';picker.dispatchEvent(new dom.Event('change',{bubbles:true}));await settle();
+    assert.equal(get(appearance).sidebarStyle,'floating');assert.equal(get(createAppearancePreferences(dom.localStorage)).sidebarStyle,'floating');
+    assert.equal(sidebarHost.querySelector('aside').classList.contains('floating'),true);
+    // Same controls and handlers in both modes.
+    for(const button of sidebarHost.querySelectorAll('.primary-section button,.collection-section button'))await click(button);
+    assert.deepEqual(calls,['home','library','explore','search','likes','history']);
+    await unmount(settings);settings=mount(HomeSettings,{target:settingsHost,props:settingsProps});await settle();await openCategory(settingsHost,'appearance');
+    assert.equal(settingsHost.querySelector('#sidebar-style-picker').value,'floating');
+    const again=settingsHost.querySelector('#sidebar-style-picker');again.value='solid';again.dispatchEvent(new dom.Event('change',{bubbles:true}));await settle();
+    assert.equal(sidebarHost.querySelector('aside').classList.contains('floating'),false);assert.equal(changed,0);
+  } finally {await unmount(settings);await unmount(sidebar);settingsHost.remove();sidebarHost.remove();reset();}
 });
 
 test('direct list/grid toggle retains row identity, focus, selection and collection tab without navigation',async()=>{

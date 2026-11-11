@@ -27,3 +27,28 @@ pub fn client() -> &'static reqwest::Client {
         reqwest::Client::builder().build().unwrap_or_default()
     })
 }
+
+/// Client for genius.com.
+///
+/// `reqwest` has both TLS backends enabled in this workspace (other crates pull in `default-tls`),
+/// so `Client::builder()` picks the platform's native stack. On Windows that is Schannel, and Genius
+/// answers its ClientHello with HTTP 403 while accepting rustls. Only the Windows shell (the
+/// optional `windows-bridge` feature) pins rustls here; everywhere else this is `client()`, so the
+/// Apple build keeps its native stack. Deliberately scoped to Genius: rustls does not read the
+/// Windows certificate store, so moving the other consumers could break HTTPS-inspecting setups.
+pub fn genius_client() -> &'static reqwest::Client {
+    #[cfg(feature = "windows-bridge")]
+    {
+        static GENIUS: OnceLock<reqwest::Client> = OnceLock::new();
+        GENIUS.get_or_init(|| {
+            reqwest::Client::builder()
+                .use_rustls_tls()
+                .build()
+                .unwrap_or_else(|_| client().clone())
+        })
+    }
+    #[cfg(not(feature = "windows-bridge"))]
+    {
+        client()
+    }
+}

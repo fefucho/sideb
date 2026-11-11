@@ -3,6 +3,7 @@ import {test} from 'node:test';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import path from 'node:path';
+import fs from 'node:fs';
 import {mountedSvelteEnvironment} from './helpers/mount-svelte.mjs';
 if(!process.execArgv.includes('--conditions=browser')) {
  test('mounted metadata, up next and settings of the side player',()=>{const {NODE_TEST_CONTEXT,...env}=process.env;const result=spawnSync(process.execPath,['--conditions=browser','--test',fileURLToPath(import.meta.url)],{encoding:'utf8',env});assert.equal(result.status,0,result.stdout+result.stderr);});
@@ -26,6 +27,10 @@ if(!process.execArgv.includes('--conditions=browser')) {
   assert.equal(document.querySelector('.like').getAttribute('aria-pressed'),'true');
   for(const b of buttons)b.click();flushSync();assert.deepEqual(calls,['dislike','like','queue','menu']);
   [...document.querySelectorAll('.credit-link')].find(b=>b.textContent==='The Album').click();assert.ok(calls.includes('album:MPRE1'));
+  assert.ok(document.querySelector('.title .scroll-title .title-parts'),'title uses the shared marquee viewport');
+  assert.ok(document.querySelector('.credits .credit-viewport > .credit-content .album-name'),'artist • album line moves inside a clipped viewport and keeps its links');
+  const barDislike=/<button class="dislike-toggle"[\s\S]*?<path d="([^"]+)"/.exec(fs.readFileSync(path.join(root,'src/lib/components/player/PlayerBar.svelte'),'utf8'))[1];
+  assert.equal(document.querySelector('.actions .dislike-icon path').getAttribute('d'),barDislike,'dislike glyph is the bottom bar one');
   await unmount(app);
   const mac=mount(Metadata,{target:document.body,props:{session:1,playback:playback(),loggedIn:false,onToggleLike:handlers.onToggleLike,onOpenMenu:handlers.onOpenMenu}});flushSync();await settle();
   assert.equal(document.querySelectorAll('.actions button').length,2,'omitting callbacks gives the macOS heart + menu layout');

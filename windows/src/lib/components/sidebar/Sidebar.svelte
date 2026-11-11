@@ -9,6 +9,7 @@
   import { fallbackArtworkUrl } from '$lib/images/artwork';
   import { canonicalId } from '$lib/home/settings';
   import SidebarIcon from "./SidebarIcon.svelte";
+  import AccountPopover from '../shell/AccountPopover.svelte';
   import type { AuthStatusDto } from "$lib/types";
   import type { BrowseCardDto, PlaylistDetailDto } from "$lib/types";
   import { createMenuHandlers } from "$lib/menu/hooks";
@@ -43,6 +44,8 @@
     onOpenPlaylist?: (id: string) => void;
     onOpenAlbum?: (id: string) => void;
     onCheckUpdates?: () => void;
+    /** True while the column is not on screen (hidden collapse mode): closes transient UI. */
+    hidden?: boolean;
   };
 
   let {
@@ -69,49 +72,22 @@
     onOpenPlaylist,
     onOpenAlbum,
     onCheckUpdates,
+    hidden = false,
   }: Props = $props();
 
   let libraryTab = $state<LibraryTab>("playlists");
   let accountOpen = $state(false);
-  let profileButton: HTMLButtonElement;
-  let accountPopover = $state<HTMLDivElement>();
-  let popoverPosition = $state({ left: 12, top: 12 });
+  let profileButton = $state<HTMLButtonElement>();
   const currentItems = $derived(libraryTab === "playlists" ? playlists : albums);
   const likesMenu = createMenu(
     () => likedPlaylistTarget(auth.state === 'ready', $t('sidebar.liked'), playlists, likesDetail),
     () => ({ view: activeDestination === 'likes' ? 'playlist_detail' : activeDestination, currentId: activeDestination === 'likes' ? 'LM' : selectedCollectionId, playbackScope: 'source' }),
   );
 
-  function positionAccountPopover() {
-    const anchor = profileButton?.getBoundingClientRect();
-    const popover = accountPopover;
-    if (!anchor || !popover) return;
-
-    const margin = 12;
-    const viewportWidth = document.documentElement.clientWidth;
-    const viewportHeight = document.documentElement.clientHeight;
-    const width = popover.getBoundingClientRect().width;
-    const height = popover.getBoundingClientRect().height;
-    const left = Math.max(margin, Math.min(anchor.left, viewportWidth - width - margin));
-    const above = anchor.top - height - 8;
-    const below = anchor.bottom + 8;
-    const top = above >= margin ? above : Math.min(below, viewportHeight - height - margin);
-    popoverPosition = { left, top: Math.max(margin, top) };
-  }
-
   async function toggleAccount() {
-    if (auth.state === "ready") {
-      accountOpen = !accountOpen;
-      if (accountOpen) {
-        await tick();
-        positionAccountPopover();
-        accountPopover?.querySelector<HTMLButtonElement>("button")?.focus();
-      }
-    } else if (auth.state === "authorizing") {
-      onCancelLogin();
-    } else {
-      onLogin();
-    }
+    if (auth.state === "ready") accountOpen = !accountOpen;
+    else if (auth.state === "authorizing") onCancelLogin();
+    else onLogin();
   }
 
   function closeAccount(restoreFocus = false) {
@@ -120,37 +96,12 @@
     if (restoreFocus) void tick().then(() => profileButton?.focus());
   }
 
-  function handleWindowKeydown(event: KeyboardEvent) {
-    if (event.key === "Escape" && accountOpen) {
-      event.preventDefault();
-      closeAccount(true);
-    }
-  }
-
-  function handleWindowResize() {
-    if (accountOpen) positionAccountPopover();
-  }
-
-  function handleWindowClick(event: MouseEvent) {
-    if (accountOpen && event.target instanceof Node && !event.target.parentElement?.closest(".profile-wrap")) {
-      closeAccount();
-    }
-  }
-
   $effect(() => {
-    if (auth.state !== "ready") accountOpen = false;
-  });
-
-  $effect(() => {
-    const open = accountOpen;
-    collapsed;
-    if (open) void tick().then(positionAccountPopover);
+    if (auth.state !== "ready" || hidden) accountOpen = false;
   });
 </script>
 
-<svelte:window onkeydown={handleWindowKeydown} onclick={handleWindowClick} onresize={handleWindowResize} />
-
-<aside class:collapsed aria-label={$t('windows.ui.sideBSidebar')}>
+<aside class:collapsed class:floating={$appearance.sidebarStyle==='floating'} aria-label={$t('windows.ui.sideBSidebar')}>
   <div class="sidebar-drag-region" data-tauri-drag-region aria-hidden="true"></div>
   <div class="sidebar-toolbar" role="group" aria-label={$t('windows.ui.sidebarAndNavigationControls')}>
     <button type="button" class="toolbar-button" aria-label={collapsed ? $t('windows.ui.expandSidebar') : $t('windows.ui.collapseSidebar')} title={collapsed ? $t('windows.ui.expandSidebar') : $t('windows.ui.collapseSidebar')} aria-pressed={!collapsed} onclick={onToggleSidebar}>
@@ -238,17 +189,7 @@
     {#if auth.message}<small class="auth-error" role="alert">{resolveMessage(auth.message, $language)}</small>{/if}
     {#if auth.state !== 'ready' && onCheckUpdates}<button class="guest-update" type="button" title={$t('menu.check_updates')} aria-label={$t('menu.check_updates')} onclick={onCheckUpdates}>{collapsed ? '↻' : $t('menu.check_updates')}</button>{/if}
     {#if auth.state === "ready" && accountOpen}
-      <div bind:this={accountPopover} id="account-popover" class="account-popover" style:left={`${popoverPosition.left}px`} style:top={`${popoverPosition.top}px`} role="dialog" aria-label={$t('menu.account')} aria-modal="false">
-        <div class="popover-account">
-          {#if auth.thumbnail}<img class="popover-avatar" src={auth.thumbnail} alt="" />{:else}<span class="popover-avatar fallback">●</span>{/if}
-          <span><strong>{auth.name ?? $t('windows.ui.yourAccount')}</strong><small>{auth.email || auth.handle || $t('account.active_session')}</small></span>
-        </div>
-        <div class="account-active">✓ {$t('account.active_session')}</div>
-        {#if onCheckUpdates}
-          <button class="update-check-btn" type="button" onclick={() => { accountOpen = false; onCheckUpdates(); }}>{$t('menu.check_updates')}</button>
-        {/if}
-        <button class="signout" type="button" onclick={() => { accountOpen = false; onLogout(); }}>{$t('account.sign_out')}</button>
-      </div>
+      <AccountPopover {auth} anchor={profileButton} layoutKey={collapsed} onClose={closeAccount} {onLogout} {onCheckUpdates} />
     {/if}
   </div>
 </aside>
@@ -262,6 +203,16 @@
     box-shadow: inset -1px 0 0 rgb(255 255 255 / 8%);
     font: 13px/1.3 var(--sideb-font-family);
   }
+  /* The glass lives on ::before: backdrop-filter on the <aside> itself would make it the containing block of the position:fixed account popover. */
+  aside.floating {
+    --sidebar-surface: color-mix(in srgb, var(--sideb-sidebar, #24242a) 72%, transparent);
+    width: calc(var(--sidebar-width, 265px) - 12px); min-width: calc(var(--sidebar-width, 265px) - 12px); height: auto; align-self: stretch;
+    margin: 6px; border-radius: 10px; background: transparent; isolation: isolate; z-index: 101; /* isolation traps the popover's z-index here, so the panel must sit above the content column and the player dock */ box-shadow: 0 0 0 1px rgb(255 255 255 / 10%), 0 4px 12px rgb(0 0 0 / 18%);
+  }
+  aside.floating::before { content: ''; position: absolute; inset: 0; z-index: -1; border-radius: inherit; background: var(--sidebar-surface); backdrop-filter: var(--sideb-acrylic-blur); -webkit-backdrop-filter: var(--sideb-acrylic-blur); pointer-events: none; }
+  aside.floating.collapsed { width: calc(var(--sidebar-width, 72px) - 12px); min-width: calc(var(--sidebar-width, 72px) - 12px); }
+  @media (prefers-reduced-transparency: reduce) { aside.floating { --sidebar-surface: var(--sideb-sidebar, #24242a); } aside.floating::before { backdrop-filter: none; -webkit-backdrop-filter: none; } }
+  @media (forced-colors: active) { aside.floating { background: Canvas; color: CanvasText; border: 1px solid CanvasText; box-shadow: none; } aside.floating::before { display: none; } }
   .sidebar-drag-region { position:absolute; inset:0 0 auto; height:var(--titlebar-height,32px); }
   .sidebar-toolbar { position:relative; display:flex; flex:none; align-items:center; padding:10px; pointer-events:none; }
   .toolbar-button { display:grid; flex:none; place-items:center; width:40px; height:40px; padding:0; border:0; border-radius:8px; background:transparent; color:inherit; cursor:pointer; pointer-events:auto; }
@@ -346,20 +297,6 @@
   }
 
   .auth-error { color: #ef9a9e !important; }
-
-  .account-popover { position: fixed; z-index: 220; box-sizing: border-box; width: min(260px, calc(100vw - 24px)); max-height: calc(100vh - 24px); overflow-y: auto; padding: 13px; border: 1px solid rgb(255 255 255 / 13%); border-radius: 12px; background: #303036; box-shadow: 0 12px 30px rgb(0 0 0 / 45%); }
-  .popover-account { display: flex; align-items: center; gap: 10px; padding: 2px 2px 11px; }
-  .popover-account > span:last-child { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
-  .popover-account strong, .popover-account small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .popover-account strong { font-size: 13px; }
-  .popover-account small, .account-active { color: rgb(255 255 255 / 75%); font-size: 11px; }
-  .popover-avatar { width: 42px; height: 42px; border-radius: 50%; object-fit: cover; }
-  .popover-avatar.fallback { display: grid; place-items: center; background: rgb(255 255 255 / 12%); }
-  .account-active { padding: 10px 2px; border-top: 1px solid rgb(255 255 255 / 10%); border-bottom: 1px solid rgb(255 255 255 / 10%); }
-  .update-check-btn { width: 100%; margin-top: 8px; padding: 8px 10px; border: 0; border-radius: 7px; background: rgb(255 255 255 / 5%); color: inherit; font-size: 12px; text-align: left; cursor: pointer; transition: background 0.15s ease; }
-  .update-check-btn:hover { background: rgb(255 255 255 / 12%); }
-  .signout { width: 100%; margin-top: 6px; padding: 8px 10px; border: 0; border-radius: 7px; background: rgb(255 255 255 / 5%); color: inherit; text-align: left; cursor: pointer; }
-  .signout:hover { background: rgb(220 70 80 / 18%); color: #ff9ba1; }
 
   .profile-copy strong {
     font-size: 13px;

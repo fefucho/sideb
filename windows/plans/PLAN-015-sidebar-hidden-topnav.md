@@ -1,7 +1,8 @@
 # PLAN-015 — Sidebar totalmente oculta y navegación superior en Windows
 
 - Fecha: 2026-10-21 (America/Montevideo).
-- Estado: **planificado, sin implementación**. El usuario pide preparar el plan mientras se compila Inter; esta build no incorpora la función de navegación.
+- Estado: **implementado en fuentes el 2026-11-10 ([FIX-325](../../FIXES.md#fix-325)); validación nativa pendiente**, sin build. Se ejecutó como decisión D4 / etapa 2b de [PLAN-025](PLAN-025-windows-visual-redesign.md). Resultado y casos pendientes en la sección 8. Estado anterior: planificado el 2026-10-21 mientras se compilaba Inter.
+- Ajuste 2026-11-11 (FIX-326): tras la primera prueba del usuario en la build combinada, la barra pasa a buscador a la izquierda, destinos centrados y cuenta + historial a la derecha, con franja de 78 px y 28 px de margen arriba y a la izquierda y todo a la izquierda del reproductor lateral cuando está abierto.
 - Objetivo: ofrecer, en Settings → Apariencia, ocultamiento completo al contraer la sidebar y presentar la topnav vigente de macOS, conservando navegación, búsqueda, cuenta y controles nativos de Windows.
 - Alcance: `windows/src/`, pruebas Windows y registros FIXES/PARIDAD. Apple se consulta como origen, sin editar. Sin cambios de core, contratos Rust de audio, credenciales, proveedor de búsqueda, cola o recomendaciones. Sin release/push por este plan.
 - Referencias: [PAR-007](../../PARIDAD.md), [PAR-036](../../PARIDAD.md), FIX-193/224/225/240; [plan común de sidebar](../../plans/PLAN-010-sidebar-delivery.md), [apariencia e Inter](PLAN-014-homecoming-inter.md). La exclusión histórica de TopNav Windows se reabre **sólo** para este modo opcional por el pedido actual; las demás exclusiones no se dan por autorizadas.
@@ -89,15 +90,15 @@ Fullscreen del reproductor oculta destinos/búsqueda como Mac. Barra de título,
 ## 5. Secuencia de implementación
 
 - [x] Definir alcance y contrato mediante inspección de fuentes; escribir este plan, sin implementar TopNav.
-- [ ] Capturar referencia Mac vigente con geometría equivalente y revisión de restricciones nativas; no usar capturas de variantes históricas retiradas.
-- [ ] Añadir store/defaults/selector; probar recreación, migración aditiva y tabla de estados sin tocar todavía navegación.
-- [ ] Resolver acceso de reabrir/cuenta/Settings/acciones de Biblioteca y ownership del foco antes de permitir cero ancho.
-- [ ] Implementar host de tres cápsulas con callbacks reales, sin búsquedas aún; comprobar selección, Atrás/Adelante y reserva de ventana.
-- [ ] Integrar búsqueda expandible y contenidos/recientes compartidos; un solo propietario de query/presentación, cancelar respuestas obsoletas.
-- [ ] Integrar shell: columna0/60/253, fondos, titlebar, modales, dock y fullscreen. Conservar estado de sidebar y reproducción al cambiar layout.
-- [ ] Afinar geometría con Inter/ES/EN y preferencias de accesibilidad; validar UI y recorridos completos.
-- [ ] Ejecutar check/tests/build frontend y verify nativo; corregir fallos de contrato, no omitir tests para hacer compilar.
-- [ ] Registrar fix y evidencia en FIXES, actualizar **PAR-007** por el alcance nuevo, PAR-036 si afecta a la sidebar y este plan. No marcar aceptación física por lectura de código/build.
+- [ ] Capturar referencia Mac vigente con geometría equivalente y revisión de restricciones nativas; no usar capturas de variantes históricas retiradas. (No hecho: las medidas salieron del código Swift.)
+- [x] Añadir store/defaults/selector; probar recreación, migración aditiva y tabla de estados.
+- [x] Resolver acceso de reabrir/cuenta/acciones de Biblioteca y ownership del foco antes de permitir cero ancho. Settings sigue en el engranaje de Inicio.
+- [x] Implementar host de tres cápsulas con callbacks reales; selección, Atrás/Adelante y reserva de ventana.
+- [x] Integrar búsqueda expandible con contenido compartido y un solo propietario (`spotlightOpen`/`searchPreview`). Respuestas obsoletas: reutiliza el controller, sin prueba nueva.
+- [x] Integrar shell: columna 0/60/253 (+12 flotante), fondos, titlebar, dock. Fullscreen en modo oculto sólo por tests de derivación.
+- [ ] Afinar geometría con Inter/ES/EN y preferencias de accesibilidad; validar UI y recorridos completos. (Parcial: fixture Edge a 960×640 y 1440×900; faltan escalas, 1100×720, accesibilidad.)
+- [ ] Ejecutar check/tests/build frontend y verify nativo. (Frontend hecho: check 0/0, 514 pruebas, build. `verify` nativo sin ejecutar.)
+- [x] Registrar fix y evidencia en FIXES, actualizar **PAR-007** y PAR-036 y este plan. Sin aceptación física.
 - [ ] Generar build numerada con la skill oficial sólo al implementar y probar; comparar `BUILD.json`/fuentes/hashes y entregar ruta exacta. Git/release requieren pedido específico.
 
 ## 6. Matriz de aceptación
@@ -121,3 +122,17 @@ Comprobaciones de código: `pnpm check`, `pnpm test`, `pnpm build` dentro de `wi
 - No reabrir ports de fondos fullscreen u otros rediseños ajenos por estar cerca del shell.
 - Los cambios de topnav son UI Windows; si aparece un defecto compartido distinto, documentarlo y leer el AGENTS del ámbito antes de editarlo.
 - Mantener este plan actualizado con decisiones y pruebas reales. Un intento fallido/investigación queda pendiente, no como fix resuelto.
+
+## 8. Ejecución del 2026-11-10 (FIX-325)
+
+Implementado por un subagente Sonnet 5.5 con encargo escrito; revisado e integrado junto con FIX-324. Decisiones que este plan dejaba abiertas:
+
+- **Geometría canónica:** franja de 54 px (6 + 42 + 6) con las cápsulas alineadas a la izquierda desde x = 12: reabrir, búsqueda 42, destinos 246, historial 76. Botón de cuenta a la derecha, antes de los 138 px de botones de ventana, que conservan 32 px de alto.
+- **Búsqueda:** el mismo `SpotlightSearch` con presentación `anchored` (cápsula de 298 px, resultados debajo, sin scrim). Cierre conservador: si cambia la presentación con la búsqueda abierta, se cierra.
+- **Cuenta y accesos:** `AccountPopover.svelte` compartido por sidebar y barra superior; en la barra suma Me gusta, Historial y Crear playlist. Colecciones por Biblioteca. Settings no se movió.
+- **Sidebar oculta:** instancia montada con `display:none` + `inert`.
+- **Fullscreen del reproductor:** destinos y búsqueda ocultos; queda un botón compacto de reabrir y la franja vuelve a 32 px.
+
+Evidencia: `pnpm check` 458 archivos 0/0, `pnpm test` 514 aprobadas, `pnpm build`; `top-navigation.test.mjs` con 10 casos; capturas en `windows/.cache/plan024-d4/`.
+
+Matriz de la sección 6 **sin cubrir**: fullscreen en modo oculto (visual), escalas 125/150 %, 1100×720, maximizada y F11, Narrator/alto contraste/reducir transparencia, logout y cambio de cuenta en modo oculto, toggles rápidos, respuestas tardías en la búsqueda anclada, Escape con menú de cuenta y búsqueda a la vez, reapertura desde rutas distintas de Inicio, artista y playlist, y todo WebView2 nativo. Conocido: la scrollbar del contenido queda bajo los botones de ventana (anterior a este cambio).

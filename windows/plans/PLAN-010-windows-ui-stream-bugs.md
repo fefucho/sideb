@@ -176,3 +176,10 @@ El plan queda implementado parcialmente validado, con los pendientes anteriores 
 - Resultado: `builds/windows/build-0016/sideb-windows.exe`, conservado con `libmpv-2.dll`, `vulkan-1.dll` y `VulkanRT-License.txt`. Los cuatro hashes coinciden con el manifest; EXE SHA256 `7e7e8def3a92c866d261c690c97c9d0f95199b7ee6f3f2f6f5d107bf03745f7c`, PE x64 y recurso de versión1.2.5 comprobados. Builds anteriores intactas.
 - Pruebas:792aprobadas (399frontend,97InnerTube,91core,93bridge,5player,107Tauri),14live Rust ignoradas; check0errores/0avisos,build frontend y nativo correctos. Avisos conocidos de dead_code,LNK4098 y chunk grande sin errores.
 - Límites: no se abrió el ejecutable ni se probó cuenta/audio/apariencia física. Falta aceptación manual de volumen, colecciones/buscador, acciones de cuenta y pista exacta/control. Apple/core sin cambios, sin QA Mac nueva ni cierre de paridad física. Esta build local no cambia la release publicada ni implica instalación/publicación/push de documentación.
+
+
+## Continuación del fallo de audio — 2026-10-29
+
+[PLAN-024](PLAN-024-too-good-playback.md)/[FIX-313](../../FIXES.md#fix-313) completa el callback de FIX-219: QuickJS forzaba strict al cargar player.js y anulaba el this de su IIFE. La prueba pública falla antes y pasa después. Too Good `ZBz12OQJT_Q`, identificada en la cola, y la pista de control anterior `5LFB3qdmZBM` resuelven ahora WEB_REMIX/itag141; cada GET parcial entrega4096bytes de audio. No se sustituye la grabación ni se cambia core.
+
+Build0026 Release compiled/fuentes estables/cuatro hashes revalidados;1090pruebas aprobadas/0fallos/22live ignoradas y dos probes en vivo adicionales aprobadas. FIX-314 corrige el watcher de la fixture visual que bloqueó build0025, cuyo diagnóstico se conserva. Ejecutable: `builds/windows/build-0026/sideb-windows.exe`. Falta escucha y recorrido real en la app; el nuevo resultado HTTP no resuelve por sí solo todos los pendientes visuales ni acredita audio audible o Mac.

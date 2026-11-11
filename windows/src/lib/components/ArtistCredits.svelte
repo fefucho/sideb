@@ -4,6 +4,7 @@
   import FeaturedArtistLink from './FeaturedArtistLink.svelte';
   import type { FeaturedTrack } from '$lib/featured/artists';
   import type { HomeArtistRunDto } from '$lib/types';
+  import { titleMotion, type TitleMotionOptions } from '$lib/player/title-motion';
 
   interface Props {
     track?: FeaturedTrack;
@@ -17,6 +18,8 @@
     onOpenAlbum?: (id: string) => void;
     wrap?: boolean;
     showContentRating?: boolean;
+    /** Opt-in marquee for an overflowing artist • album line (shared `titleMotion` action; links stay interactive). */
+    scroll?: boolean;
   }
 
   let {
@@ -31,6 +34,7 @@
     onOpenAlbum,
     wrap = false,
     showContentRating = true,
+    scroll = false,
   }: Props = $props();
 
   const runs = $derived(
@@ -45,17 +49,19 @@
         : []
   );
   const albumText = $derived(album?.trim() ?? '');
+  let interactionPaused = $state(false);
+  function motion(node: HTMLElement, options: TitleMotionOptions) { return titleMotion(node, options); }
 </script>
 
 {#if runs.length || albumText || (showContentRating && contentRating(content ?? track) !== 'unknown')}
-  <span class="artist-credits" class:wrap>
+  <span class="artist-credits" class:wrap class:scroll>
     {#if showContentRating}<ExplicitBadge item={content ?? track} />{/if}
-    {#if runs.length || albumText}<span class="credit-content">
+    {#snippet creditParts()}
     {#if runs.length}<span class="artist-group">
       {#each runs as run, index (`${run.text}:${run.id ?? ''}:${index}`)}
-        {#if index > 0}<span class="artist-separator" aria-hidden="true">, </span>{/if}
+        {#if index > 0}<span class="artist-separator" aria-hidden="true">{', '}</span>{/if}
         {#if track && onOpenArtist}
-          <FeaturedArtistLink {track} name={run.text} id={run.id} {onOpenArtist} />
+          <FeaturedArtistLink {track} name={run.text} id={run.id} {onOpenArtist} portal={scroll} onInteractionChange={scroll ? (value) => interactionPaused = value : undefined} />
         {:else if run.id && onOpenArtist}
           <button class="credit-link artist-name" type="button" title={run.text} onclick={() => onOpenArtist?.(run.id!)}>{run.text}</button>
         {:else}
@@ -71,7 +77,12 @@
         <span class="album-name" title={albumText}>{albumText}</span>
       {/if}
     {/if}
-    </span>{/if}
+    {/snippet}
+    {#if runs.length || albumText}
+      {#if scroll}
+        <span class="credit-viewport" use:motion={{ enabled: true, selector: '.credit-content', key: JSON.stringify([runs, albumText]), paused: interactionPaused }}><span class="credit-content">{@render creditParts()}</span></span>
+      {:else}<span class="credit-content">{@render creditParts()}</span>{/if}
+    {/if}
   </span>
 {/if}
 
@@ -90,6 +101,17 @@
   .artist-name { font-weight: var(--credit-artist-weight, inherit); }
   .album-name { font-size: var(--credit-album-size, inherit); font-weight: var(--credit-album-weight, inherit); color: var(--credit-album-color, inherit); }
   .album-separator { font-size: var(--credit-separator-size, 1.05em); font-weight: var(--credit-separator-weight, 650); color: var(--credit-separator-color, currentColor); }
+  /* Marquee mode: only the artist • album text moves; the rating badge stays put. Reduce Motion restores ellipsis. */
+  .credit-viewport { display:block; flex:0 1 auto; min-width:0; overflow:clip; }
+  .scroll .credit-content { display:flex; flex:none; width:max-content; max-width:none; overflow:visible; }
+  .scroll .artist-group { overflow:visible; }
+  .scroll .artist-name, .scroll .album-name { flex:none; max-width:none; overflow:visible; text-overflow:clip; }
+  @media (prefers-reduced-motion: reduce) {
+    .credit-viewport { overflow:hidden; }
+    .scroll .credit-content { display:flex; width:auto; max-width:100%; overflow:hidden; }
+    .scroll .artist-group { overflow:hidden; }
+    .scroll .artist-name, .scroll .album-name { flex:0 1 auto; max-width:100%; overflow:hidden; text-overflow:ellipsis; }
+  }
   .credit-link:hover { color: #fff; }
   .credit-link:focus-visible { outline: 2px solid var(--sideb-highlight, #d06c70); outline-offset: 2px; border-radius: 2px; }
 </style>

@@ -29,11 +29,32 @@
           onChange={value => appearance.setSidebarLayout(value === 'grid' ? 'grid' : 'list')} />
       {/snippet}
     </SettingsRow>
+    <SettingsRow title={$t('windows.settings.sidebarStyle')} subtitle={$t('windows.settings.sidebarStyle.hint')}>
+      {#snippet children({ labelId, hintId })}
+        <SettingsSelect id="sidebar-style-picker" labelledby={labelId} describedby={hintId} value={$appearance.sidebarStyle}
+          options={[{ value: 'solid', label: $t('windows.settings.sidebarStyle.solid') }, { value: 'floating', label: $t('windows.settings.sidebarStyle.floating') }]}
+          onChange={value => appearance.setSidebarStyle(value === 'floating' ? 'floating' : 'solid')} />
+      {/snippet}
+    </SettingsRow>
+    <SettingsRow title={$t('windows.settings.sidebarCollapse')} subtitle={$t('windows.settings.sidebarCollapse.hint')}>
+      {#snippet children({ labelId, hintId })}
+        <SettingsSelect id="sidebar-collapse-picker" labelledby={labelId} describedby={hintId} value={$appearance.sidebarCollapseMode}
+          options={[{ value: 'icons', label: $t('windows.settings.sidebarCollapse.icons') }, { value: 'hidden', label: $t('windows.settings.sidebarCollapse.hidden') }]}
+          onChange={value => appearance.setSidebarCollapseMode(value === 'hidden' ? 'hidden' : 'icons')} />
+      {/snippet}
+    </SettingsRow>
     <SettingsRow title={$t('settings.homeBackground')} subtitle={$t('settings.homeBackground.hint')}>
       {#snippet children({ labelId, hintId })}
         <SettingsSelect id="home-background-picker" labelledby={labelId} describedby={hintId} value={$appearance.homeBackground}
           options={[{ value: 'artwork', label: $t('settings.homeBackground.ambient') }, { value: 'solid', label: $t('settings.homeBackground.solid') }]}
           onChange={value => appearance.setHomeBackground(value === 'solid' ? 'solid' : 'artwork')} />
+      {/snippet}
+    </SettingsRow>
+    <SettingsRow title={$t('windows.settings.albumCardStyle')} subtitle={$t('windows.settings.albumCardStyle.hint')}>
+      {#snippet children({ labelId, hintId })}
+        <SettingsSelect id="album-card-style-picker" labelledby={labelId} describedby={hintId} value={$appearance.albumCardStyle}
+          options={[{ value: 'tinted', label: $t('windows.settings.albumCardStyle.tinted') }, { value: 'white', label: $t('windows.settings.albumCardStyle.white') }]}
+          onChange={value => appearance.setAlbumCardStyle(value === 'white' ? 'white' : 'tinted')} />
       {/snippet}
     </SettingsRow>
   </SettingsGroup>

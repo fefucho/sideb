@@ -573,7 +573,9 @@
 
   /* Lateral panel footer (PLAN-023 W3). Same state and actions as the bar, vertical geometry. */
   .sidebar-controls { box-sizing: border-box; display: flex; flex-direction: column; width: 100%; height: 100%; min-height: 0; padding: 12px 20px; color: #f5f5f6; }
-  .sidebar-controls .side-top { flex: 1 1 10px; min-height: 0; }
+  /* Fixed 10 px above the progress: the free height of the footer belongs to the content below the transport
+     (lyrics sample / queue, or `.side-flex` when there is none), never to a gap between the metadata and the progress. */
+  .sidebar-controls .side-top { flex: 0 0 10px; min-height: 0; }
   .side-progress { display: flex; flex: none; flex-direction: column; gap: 6px; }
   .side-progress .seek { height: 4px; }
   .side-times { display: flex; justify-content: space-between; }

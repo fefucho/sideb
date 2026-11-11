@@ -39,6 +39,9 @@
   import PlaylistDeleteDialog from '$lib/components/detail/PlaylistDeleteDialog.svelte';
   import UpdateModal from '$lib/components/update/UpdateModal.svelte';
   import { UpdaterController } from '$lib/updater/controller';
+  import { appearance } from '$lib/appearance/preferences';
+  import TopNavigation from '$lib/components/shell/TopNavigation.svelte';
+  import { deriveNavigationPresentation } from '$lib/navigation/presentation';
   import { SETTINGS_HOST_CONTEXT, type SettingsHost } from '$lib/components/settings/settingsCategories';
   import { CatalogController, emptyCatalogData, type CatalogData } from "$lib/catalog/controller";
   import { defaults, decodeSettings as decodeHomeSettings, accountSettingsKey, missingHomeSources, type CollectionKind, type HomeSettings } from "$lib/home/settings";
@@ -66,7 +69,7 @@
   import PlaybackSidebar from '$lib/components/playback-sidebar/PlaybackSidebar.svelte';
   import { Tween } from 'svelte/motion';
   import { initialPresentation, setFullscreen, toggleSidebar as toggleSidebarState, closeSidebar, selectSidebarPanel, fullscreenPanelFor,
-    contentReserve, dampedEase, syncProgress, type SidebarPanel } from '$lib/player/playbackPresentation';
+    contentReserve, sidebarReserve, dampedEase, syncProgress, type SidebarPanel } from '$lib/player/playbackPresentation';
 import { promotedEntryId } from "$lib/components/fullscreen/queueProjection";
   import { invoke } from "@tauri-apps/api/core";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
@@ -86,7 +89,8 @@ import { promotedEntryId } from "$lib/components/fullscreen/queueProjection";
 
   let primaryNav = $state<PrimaryNav>("home");
   let activeView = $state<ActiveView>("feed");
-  let sidebarCollapsed = $state(false);
+  /** Collapsed state is persisted with the appearance preferences, its single source of truth. */
+  const sidebarCollapsed = $derived($appearance.sidebarCollapsed);
   let searchScrollElement = $state<HTMLElement>();
   const retainedDestination = $derived(['feed', 'explore', 'library', 'search_results'].includes(activeView));
   // One authoritative presentation (bar | sidebar | fullscreen); every surface below derives from it.
@@ -108,7 +112,12 @@ import { promotedEntryId } from "$lib/components/fullscreen/queueProjection";
     return () => media.removeEventListener('change', sync);
   });
   const sidebarMounted = $derived(presentation.mode === 'sidebar' || (presentation.mode === 'bar' && presentationProgress.current > 0.001));
-  const playbackReserve = $derived(contentReserve({ windowWidth: viewportWidth, leftReserve: sidebarCollapsed ? 60 : 253, presented: sidebarOpen }));
+  const navPresentation = $derived(deriveNavigationPresentation({ collapseMode: $appearance.sidebarCollapseMode, collapsed: sidebarCollapsed, fullscreen: isFullscreenOpen }));
+  /** Real width taken on the left: hidden 0, floating adds its 6 px insets (265/72), otherwise 253/60. */
+  const navLeftReserve = $derived(navPresentation.sidebar === 'hidden' ? 0 : (navPresentation.sidebar === 'icons' ? 60 : 253) + ($appearance.sidebarStyle === 'floating' ? 12 : 0));
+  const playbackReserve = $derived(contentReserve({ windowWidth: viewportWidth, leftReserve: navLeftReserve, presented: sidebarOpen }));
+  /** Right edge of the top navigation: left of the playback sidebar when it is open (also when it overlays a narrow window), else left of the 138px window buttons. */
+  const topnavRight = $derived(sidebarOpen ? Math.max(playbackReserve, sidebarReserve()) + 28 : 154);
   let playbackDock = $state<ReturnType<typeof PlaybackDock>>();
   let gestureProgress=$state(idleGesture());
   let gestureInput:ReturnType<typeof installNavigationGestures>|null=null;
@@ -128,7 +137,8 @@ import { promotedEntryId } from "$lib/components/fullscreen/queueProjection";
   let preferencesReady = $state(false);
   let preferenceError = $state<string | null>(null);
   let featuredMetadata = $state<Record<string, import('$lib/home/metadata').FeaturedMetadata>>({});
-  const homeMetadata = new FeaturedMetadataController((command, args) => invoke(command, args), data => featuredMetadata = data);
+  // The collection row asks for the details of all its cards at once; projectHome caps it at 8 × 6.
+  const homeMetadata = new FeaturedMetadataController((command, args) => invoke(command, args), data => featuredMetadata = data, 48);
   let mediaPending = $state<string | null>(null);
   let mediaPendingRevision = $state(0);
   let mediaPendingGeneration = $state(0);
@@ -149,6 +159,19 @@ import { promotedEntryId } from "$lib/components/fullscreen/queueProjection";
   let previewData = $state(emptySearchPreviewData());
   let draftQuery = $state('');
   let spotlightOpen = $state(false);
+  /** Presentation chosen when the search opened: anchored under the top navigation or centered. */
+  let spotlightAnchored = $state(false);
+  /** Same expression the sidebar always received; the top navigation selects only home/explore/library from it. */
+  const activeDestination = $derived(activeView === 'playlist_detail' ? lastPlaylistId === 'LM' ? 'likes' : 'playlist' : activeView === 'library' ? 'library' : activeView === 'history' ? 'history' : activeView === 'artist_detail' ? 'artist' : activeView === 'album_detail' || activeView === 'catalog' ? 'album' : primaryNav);
+  $effect(() => { if (spotlightOpen && navPresentation.showTopNav !== spotlightAnchored) dismissSearchPreview(); });
+  /** Focus moves to the reopen control before the column leaves the tab order, and back to the sidebar toggle on reopen. */
+  async function toggleNavSidebar() {
+    const collapsing = !sidebarCollapsed;
+    appearance.setSidebarCollapsed(collapsing);
+    await tick();
+    const target = collapsing && $appearance.sidebarCollapseMode === 'hidden' ? '[data-topnav-reopen]' : !collapsing ? '.sidebar-host .toolbar-button' : null;
+    if (target) document.querySelector<HTMLElement>(target)?.focus();
+  }
   const searchPreview = new SearchPreviewController((command, args) => invoke(command, args), data => { previewData = data; });
 
   let catalogData = $state(emptyCatalogData());
@@ -524,6 +547,7 @@ import { promotedEntryId } from "$lib/components/fullscreen/queueProjection";
     search.setMode(mode);
   }
   function openSearchSpotlight() {
+    spotlightAnchored = navPresentation.showTopNav;
     draftQuery = '';
     searchPreview.reset();
     spotlightOpen = true;
@@ -1070,17 +1094,21 @@ import { promotedEntryId } from "$lib/components/fullscreen/queueProjection";
   {@render playerControls('sidebar', lead, tail, spacing)}
 {/snippet}
 
-<div class="app-frame" class:sidebar-collapsed={sidebarCollapsed} class:fullscreen-open={isFullscreenOpen} class:playback-sidebar-open={sidebarOpen} style:--playback-reserve={`${playbackReserve}px`}>
+<div class="app-frame" class:sidebar-floating={$appearance.sidebarStyle==='floating'} class:sidebar-collapsed={navPresentation.sidebar==='icons'} class:sidebar-hidden={navPresentation.sidebar==='hidden'} class:topnav-visible={navPresentation.showTopNav} class:fullscreen-open={isFullscreenOpen} class:playback-sidebar-open={sidebarOpen} style:--playback-reserve={`${playbackReserve}px`} style:--topnav-right={`${topnavRight}px`}>
   {#if activeView==='feed'}<HomeBackground artwork={homeArtwork} session={homeSession} active={!isFullscreenOpen&&!spotlightOpen} />{:else if activeView==='album_detail'||activeView==='playlist_detail'}<HomeAmbient artwork={[(activeView==='album_detail'?selectedAlbum?.thumbnail:accountData.playlist?.thumbnail)??''].filter(Boolean)} session={homeSession} active={!isFullscreenOpen&&!spotlightOpen} visible={!isFullscreenOpen} collection />{/if}
-  <TitleBar onBack={goBackFromDetail} onForward={goForward} {canBack} {canForward} modalOpen={spotlightOpen} />
+  <TitleBar onBack={goBackFromDetail} onForward={goForward} {canBack} {canForward} modalOpen={spotlightOpen && !spotlightAnchored} showHistory={!navPresentation.showTopNav} reserveLeading={navPresentation.showReopen && !navPresentation.showTopNav} />
+  {#if navPresentation.showReopen}<TopNavigation compact={!navPresentation.showTopNav} inert={spotlightOpen && !spotlightAnchored} searchOpen={spotlightOpen && spotlightAnchored} {activeDestination} {canBack} {canForward} auth={authStatus}
+    onReopen={toggleNavSidebar} onHome={() => handleSwitchNav("home")} onExplore={() => handleSwitchNav("explore")} onLibrary={() => openAccountNav('library')} onSearch={openSearchSpotlight} onBack={goBackFromDetail} onForward={goForward}
+    onLogin={handleLogin} onCancelLogin={handleCancelLogin} onLogout={handleLogout} onCheckUpdates={() => void updater.checkForUpdates(true)} onLikes={() => openAccountNav('likes')} onHistory={() => openAccountNav('history')} onCreatePlaylist={() => openNewPlaylist()} />{/if}
   {#if gestureProgress.phase==='tracking'||gestureProgress.phase==='armed'}<div class="gesture-progress" role="status">{gestureProgress.action==='dismiss-fullscreen'?$t('windows.ui.closePlayer'):gestureProgress.action==='back'?'‹ '+$t('navigation.back'):$t('navigation.forward')+' ›'}<progress max="1" value={gestureProgress.progress}></progress></div>{/if}
-  <div class="sidebar-host" inert={spotlightOpen}>
+  <div class="sidebar-host" class:off-screen={navPresentation.sidebar==='hidden'} inert={spotlightOpen || navPresentation.sidebar==='hidden'}>
   <Sidebar
-    activeDestination={activeView === 'playlist_detail' ? lastPlaylistId === 'LM' ? 'likes' : 'playlist' : activeView === 'library' ? 'library' : activeView === 'history' ? 'history' : activeView === 'artist_detail' ? 'artist' : activeView === 'album_detail' || activeView === 'catalog' ? 'album' : primaryNav}
+    {activeDestination}
+    hidden={navPresentation.sidebar==='hidden'}
     onHome={() => handleSwitchNav("home")}
     onSearch={() => handleSwitchNav("search")} onExplore={()=>handleSwitchNav("explore")} onRetryLibrary={()=>void account.initialize()}
     collapsed={sidebarCollapsed}
-    onToggleSidebar={() => sidebarCollapsed = !sidebarCollapsed}
+    onToggleSidebar={toggleNavSidebar}
     onCreatePlaylist={() => openNewPlaylist()}
     auth={authStatus}
     onLogin={handleLogin}
@@ -1096,7 +1124,7 @@ import { promotedEntryId } from "$lib/components/fullscreen/queueProjection";
     onCheckUpdates={() => void updater.checkForUpdates(true)}
   />
   </div>
-  <div class="content-column" class:retained-content={retainedDestination} style:margin-right={playbackReserve ? `${playbackReserve}px` : undefined}>
+  <div class="content-column" class:retained-content={retainedDestination} class:playback-reserved={playbackReserve > 0} style:margin-right={playbackReserve ? `${playbackReserve}px` : undefined}>
 <main class="shell" class:home-shell={activeView !== "search_results"} class:search-shell={activeView === 'search_results'} class:explore-shell={activeView === 'explore'} class:retained-shell={retainedDestination} class:player-covered={isFullscreenOpen} inert={isFullscreenOpen || spotlightOpen}>
 
   {#if (backendStatus && !backendStatus.ready) || statusError}
@@ -1334,7 +1362,7 @@ import { promotedEntryId } from "$lib/components/fullscreen/queueProjection";
     onSave={details => saveCreatedPlaylist(details, creationRevision)} onClose={() => closeNewPlaylist(creationRevision)} />{/if}
   {#if menuNotice}<div class="menu-notice" role="status">{resolveMessage(menuNotice,$language)}<button type="button" aria-label={$t('windows.ui.dismissNotice')} onclick={() => menuNotice = null}>×</button></div>{/if}
   {#if spotlightOpen}
-    <SpotlightSearch onRemoveSuggestion={token=>void searchPreview.remove(token)} preview={previewData} backendReady={backendStatus?.ready ?? false}
+    <SpotlightSearch anchored={spotlightAnchored} onRemoveSuggestion={token=>void searchPreview.remove(token)} preview={previewData} backendReady={backendStatus?.ready ?? false}
       onQueryChange={handleDraftChange} onCommit={(query) => executeSearch(query)} onDismiss={dismissSearchPreview}
       onSelectCard={selectSearchCard} onPlaySong={playSearchPreviewSong} />
   {/if}
@@ -1382,6 +1410,13 @@ import { promotedEntryId } from "$lib/components/fullscreen/queueProjection";
   }
 
   .app-frame.sidebar-collapsed { --sidebar-width: 60px; }
+  /* Floating glass: the 6px inset on each side is reserved inside --sidebar-width so the panel keeps its 253/60px interior; the ambient bleeds under it. */
+  .app-frame.sidebar-floating { --sidebar-width: 265px; --sidebar-bleed: 265px; }
+  .app-frame.sidebar-floating.sidebar-collapsed { --sidebar-width: 72px; --sidebar-bleed: 72px; }
+  /* Hidden collapse mode: no column at all, also with the floating style; the capsules grow the strip to 28 + 42 + 8 and sit on the 28px content inset. */
+  .app-frame.sidebar-hidden, .app-frame.sidebar-floating.sidebar-hidden { --sidebar-width: 0px; --sidebar-bleed: 0px; }
+  .app-frame.topnav-visible { --titlebar-height: 78px; --topnav-top: 28px; --topnav-inset: 28px; --playback-top: 32px; }
+  .sidebar-host.off-screen { display: none; }
   .app-frame.fullscreen-open .content-column { overflow: hidden; }
   .sidebar-host { display: contents; }
   .fullscreen-host { display: contents; }
@@ -1397,6 +1432,12 @@ import { promotedEntryId } from "$lib/components/fullscreen/queueProjection";
     overflow-anchor: none;
   }
 
+
+  /* With the side player open the page's classic scrollbar (~15 px of layout in WebView2) sat between the rails and the
+     panel, leaving a flat strip where Inicio's cards stopped short of it. macOS scrolls with overlay indicators and its
+     rails reach the panel (FIX-284), so the bar is hidden while the column is reserved; wheel, touch and keys still scroll. */
+  .content-column.playback-reserved { scrollbar-width: none; }
+  .content-column.playback-reserved::-webkit-scrollbar { display: none; width: 0; height: 0; }
 
   .content-column.retained-content { overflow:hidden; }
   .shell.retained-shell { height:100%; min-height:0; }

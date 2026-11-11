@@ -1,7 +1,7 @@
 //! Isolated, synchronous cipher callback. QuickJS values stay on one worker thread.
 //! No WebView, BotGuard context, module loader, Rust functions or host IO are exposed.
 
-use rquickjs::{Coerced, Context, FromJs, Runtime, Value};
+use rquickjs::{context::EvalOptions, Coerced, Context, FromJs, Runtime, Value};
 use sideb_core::{CipherJsRuntime, SideBCore, SideBError};
 use std::sync::{mpsc, Arc};
 use std::time::{Duration, Instant};
@@ -109,7 +109,12 @@ fn load_context(script: &str, budget: Duration) -> Option<Context> {
     let context = Context::full(&runtime).ok()?;
     let loaded = context.with(|ctx| {
         ctx.eval::<(), _>(BROWSER_SHIMS)?;
-        ctx.eval::<(), _>(script)?;
+        // rquickjs forces strict mode by default. The browser's classic-script
+        // semantics are required here: player.js obtains window from `this`
+        // inside its unbound IIFE. Preserve explicit "use strict" in the source.
+        let mut options = EvalOptions::default();
+        options.strict = false;
+        ctx.eval_with_options::<(), _>(script, options)?;
         ctx.eval::<String, _>("typeof window._cipherSigFunc")
     });
     match loaded.as_deref() {
@@ -172,6 +177,138 @@ mod tests {
         window._cipherSigFunc = function(s) { return s.split('').reverse().join(''); };
         window._nTransformFunc = function(n) { return 'n:' + n.slice(1); };
     "#;
+
+    #[test]
+    fn cipher_preserves_browser_classic_script_this_and_explicit_strict_mode() {
+        let runtime = WindowsCipherJsRuntime::new().unwrap();
+        let player = r#"
+            (function(g) {
+                var window = this;
+                if (!window || window.document !== document) throw new Error('no browser context');
+                function signature(s) { return s.split('').reverse().join(''); }
+                window._cipherSigFunc = signature;
+                window._nTransformFunc = function(n) { return 'n:' + n; };
+                window.explicitStrict = (function() { 'use strict'; return this === undefined; })();
+            })(_yt_player);
+        "#;
+        assert!(runtime.load(player.into()));
+        assert_eq!(
+            runtime
+                .evaluate("window._cipherSigFunc('abc')".into())
+                .as_deref(),
+            Some("cba")
+        );
+        assert_eq!(
+            runtime
+                .evaluate("window._nTransformFunc('abc')".into())
+                .as_deref(),
+            Some("n:abc")
+        );
+        assert_eq!(
+            runtime
+                .evaluate("String(window.explicitStrict)".into())
+                .as_deref(),
+            Some("true")
+        );
+    }
+
+    #[tokio::test]
+    #[ignore = "downloads current public YouTube player and cipher registry"]
+    async fn live_public_player_cipher() {
+        let path = std::env::temp_dir().join(format!("sideb-public-cipher-{}", std::process::id()));
+        std::fs::create_dir_all(&path).unwrap();
+        let config = Arc::new(sideb_core::cipher::PlayerConfigStore::new(&path));
+        config.force_refresh().await;
+        let cipher = sideb_core::cipher::CipherDeobfuscator::new(&path, config);
+        cipher.set_runtime(Arc::new(WindowsCipherJsRuntime::new().unwrap()));
+        assert!(
+            cipher.signature_timestamp().await.is_some(),
+            "missing signature timestamp"
+        );
+        let input = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefghijklmnopqrstuvwxyz";
+        let signed = cipher
+            .deobfuscate_stream_url(
+                &format!(
+                    "s={input}&sp=sig&url=https%3A%2F%2Fx.googlevideo.com%2Fv%3Fn%3Dabcdefghijk"
+                ),
+                "public-fixture",
+            )
+            .await;
+        assert!(
+            signed.is_some(),
+            "current public player cannot sign with Windows runtime"
+        );
+        let signed = signed.unwrap();
+        assert_ne!(
+            cipher.transform_n_param_in_url(&signed).await,
+            signed,
+            "n transform unavailable"
+        );
+    }
+
+    #[cfg(windows)]
+    #[tokio::test]
+    #[ignore = "requires explicit session directory and live provider requests; no audible playback"]
+    async fn live_session_stream_probe() {
+        let session_dir = std::env::var_os("SIDEB_LIVE_SESSION_DIR")
+            .expect("set SIDEB_LIVE_SESSION_DIR only for an authorized account probe");
+        let cookie = crate::session_store::load(std::path::Path::new(&session_dir))
+            .expect("native session vault unavailable")
+            .expect("no saved session");
+        let path = std::env::temp_dir().join(format!("sideb-stream-probe-{}", std::process::id()));
+        std::fs::create_dir_all(&path).unwrap();
+        let core = create_core(path.to_string_lossy().into_owned()).unwrap();
+        core.set_cookie_memory(Some(cookie));
+        for id in ["ZBz12OQJT_Q", "5LFB3qdmZBM"] {
+            let info = core
+                .resolve_stream(id.into(), false)
+                .await
+                .unwrap_or_else(|error| {
+                    panic!(
+                        "{id}: resolution category={}",
+                        resolution_failure_category(&error)
+                    )
+                });
+            let client = reqwest::Client::builder()
+                .timeout(Duration::from_secs(20))
+                .build()
+                .unwrap();
+            let mut request = client.get(&info.stream_url).header("Range", "bytes=0-4095");
+            for (name, value) in &info.headers {
+                request = request.header(name, value);
+            }
+            let mut response = request
+                .send()
+                .await
+                .unwrap_or_else(|_| panic!("{id}: stream request failed"));
+            assert!(
+                response.status().is_success(),
+                "{id}: HTTP {}",
+                response.status()
+            );
+            let content_type = response
+                .headers()
+                .get("content-type")
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or("");
+            assert!(
+                content_type.starts_with("audio/") || content_type.starts_with("video/"),
+                "{id}: non-media response"
+            );
+            let bytes = response
+                .chunk()
+                .await
+                .unwrap_or_else(|_| panic!("{id}: stream read failed"))
+                .expect("empty stream");
+            assert!(!bytes.is_empty(), "{id}: empty media body");
+            eprintln!(
+                "[StreamProbe] id={id} client={} itag={} media_bytes={}",
+                info.stream_client,
+                info.itag,
+                bytes.len()
+            );
+        }
+    }
 
     #[test]
     fn cipher_loads_and_evaluates_signature_n_and_escaped_input() {

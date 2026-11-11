@@ -18,7 +18,8 @@
         "minWidth": 960,
         "minHeight": 640,
         "decorations": false,
-        "dragDropEnabled": false
+        "dragDropEnabled": false,
+        "additionalBrowserArgs": "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection,DeviceBoundSessions --autoplay-policy=no-user-gesture-required"
       }
     ],
     "security": {

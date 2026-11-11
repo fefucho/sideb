@@ -1,4 +1,4 @@
-// Real Svelte Home in Chromium: measured geometry of the featured rails. Synthetic data, no account, no audio.
+// Real Svelte Home in Chromium: measured geometry of the Speed Dial mosaic and the collection row. Synthetic data, no account, no audio.
 // Windows: Edge by default. Elsewhere: SIDEB_BROWSER=/path/to/chrome. Only proves layout, never FPS or WebView2.
 import assert from 'node:assert/strict';
 import {writeFile,mkdir} from 'node:fs/promises';
@@ -48,81 +48,59 @@ try{
  await send('Page.navigate',{url:server.resolvedUrls.local[0]});
  for(let i=0;i<300;i++){if(await evaluate('!!window.lab'))break;await settle(100)}
  assert.ok(await evaluate('!!window.lab'),errors.join('\n'));await evaluate('document.fonts.ready');await settle(500);
- const measure=()=>evaluate(`(()=>{
+const measure=()=>evaluate(`(()=>{
    const box=e=>{const r=e.getBoundingClientRect();return {x:r.x,y:r.y,w:r.width,h:r.height,r:r.right,b:r.bottom}};
-   const rail=name=>[...document.querySelectorAll('[data-featured-rail]')].find(e=>e.dataset.featuredRail===name);
-   const songs=rail('Acceso rápido')??rail('Speed Dial'),albums=rail('Álbumes')??rail('Albums');
-   const tiles=[...songs.querySelectorAll('.media-card.tile')].map(box),cards=[...albums.querySelectorAll('.collection-card')];
-   const first=cards[0],art=first.querySelector('.artwork'),h3=first.querySelector('h3'),credits=first.querySelector('.credits'),summary=first.querySelector('.summary');
-   const heads=[...document.querySelectorAll('.panel-head')].map(box);
-   const featured=document.querySelector('[data-featured]'),home=document.querySelector('.home');
+   const track=document.querySelector('.mosaic .track'),row=document.querySelector('.collection-row'),home=document.querySelector('.home');
+   const cards=[...row.querySelectorAll('.item')],first=cards[0].querySelector('article.media-card.panel');
    const host=e=>e.closest('.horizontal-navigation');
    return {viewport:innerWidth,
-     songRail:box(songs),albumRail:box(albums),tiles:tiles.slice(0,12),tileSizes:[...new Set(tiles.map(t=>t.w+'x'+t.h))],
-     tileTitle:getComputedStyle(songs.querySelector('.media-card.tile h3')).fontSize,tileRadius:getComputedStyle(songs.querySelector('.media-card.tile .artwork')).borderRadius,
-     cardSizes:[...new Set(cards.map(c=>{const b=box(c);return b.w+'x'+b.h}))],cardCount:cards.length,
-     art:box(art),artRadius:getComputedStyle(art).borderRadius,
-     text:{title:box(h3),credits:box(credits),summary:box(summary),card:box(first),h3Lines:Math.round(box(h3).h/16),titleOverflow:h3.scrollWidth>h3.clientWidth+1||getComputedStyle(h3).webkitLineClamp==='1'},
-     lastTextBottom:box(summary).b,cardBottom:box(first).b,
-     heads,featured:box(featured),trailing:getComputedStyle(home).getPropertyValue('--featured-trailing').trim(),
-     albumPadRight:getComputedStyle(albums).paddingRight,albumPadLeft:getComputedStyle(albums).paddingLeft,
-     songsHost:{leading:host(songs).classList.contains('leading'),trailing:host(songs).classList.contains('trailing'),prevHidden:host(songs).querySelector('[data-horizontal-arrow=previous]').classList.contains('hidden'),nextHidden:host(songs).querySelector('[data-horizontal-arrow=next]').classList.contains('hidden')},
-     albumsHost:{leading:host(albums).classList.contains('leading'),trailing:host(albums).classList.contains('trailing'),fadeLeft:getComputedStyle(host(albums).querySelector('.fade.left')).opacity,fadeRight:getComputedStyle(host(albums).querySelector('.fade.right')).opacity},
-     pageOverflow:document.documentElement.scrollWidth>innerWidth,albumScroll:albums.scrollLeft,songScroll:songs.scrollLeft,albumMax:albums.scrollWidth-albums.clientWidth,
+     track:box(track),row:box(row),cardWidths:[...new Set(cards.map(c=>Math.round(box(c).w*10)/10))],cardCount:cards.length,firstCard:box(first),
+     cells:[...track.querySelectorAll('article.media-card.mosaic')].length,
+     heads:[...document.querySelectorAll('.collections .panel-head,.mosaic h2')].map(box),viewAll:!!document.querySelector('.collections .panel-head button'),
+     trailing:getComputedStyle(home).getPropertyValue('--featured-trailing').trim(),
+     rowPad:[getComputedStyle(row).paddingLeft,getComputedStyle(row).paddingRight],trackPad:[getComputedStyle(track).paddingLeft,getComputedStyle(track).paddingRight],
+     rowHost:{leading:host(row).classList.contains('leading'),trailing:host(row).classList.contains('trailing')},
+     pageOverflow:document.documentElement.scrollWidth>innerWidth,rowScroll:row.scrollLeft,trackScroll:track.scrollLeft,
      visible:window.lab.visible};
  })()`);
  const evidence=[];
  for(const width of [700,1000,1600]){
    await send('Emulation.setDeviceMetricsOverride',{width,height:900,deviceScaleFactor:1,mobile:false});await settle();
    const m=await measure();evidence.push({width,...m});
-   // Fixed card sizes at every width.
-   assert.deepEqual(m.tileSizes,['190x126'],width+': Speed Dial tiles');assert.deepEqual(m.cardSizes,['176x240'],width+': collection cards');
-   assert.equal(m.songRail.h,3*126+2*12+8,width+': three rows of 126 with 12 gaps (+8 focus room)');
-   assert.equal(m.albumRail.h,240+8,width+': 176 artwork + 64 text');
-   // Tiles: 3 rows, column-major, 12 gaps.
-   const t=m.tiles;assert.equal(t[1].y-t[0].y,138,'row pitch');assert.equal(t[3].x-t[0].x,202,'column pitch');assert.equal(t[0].x,28,'leading inset');
-   // Artwork is a square of the card width with radius 10; text fits inside the 64px block.
-   assert.equal(m.art.w,176);assert.equal(m.art.h,176);assert.equal(m.artRadius,'10px');assert.equal(m.tileRadius,'10px');
-   assert.ok(m.lastTextBottom<=m.cardBottom,width+': text overflows the card by '+(m.lastTextBottom-m.cardBottom));
-   assert.equal(m.text.h3Lines,1,'a long title is clamped to one line');
-   assert.ok(m.text.title.h<=16.5&&m.text.credits.h<=15.5&&m.text.summary.h<=14.5,JSON.stringify(m.text));
-   // Headings 38px tall, rails 8px below; blocks 30 apart; 20 before the next section.
-   assert.deepEqual(m.heads.map(h=>h.h),[38,38]);
-   // The first rail starts 4px above its box (focus room), so heading bottom + 8 = box top + 4.
-   assert.equal(m.songRail.y+4,m.heads[0].b+8);assert.equal(m.albumRail.y+4,m.heads[1].b+8);
-   assert.equal(m.heads[1].y-(m.songRail.b-4),30,'30 between the blocks');
+   // The mosaic is a 488px band; the row is whole cards of equal width between the 28px insets (24px gaps).
+   assert.equal(m.track.h,488,width+': mosaic band');assert.ok(m.cells>0,width+': mosaic cells');
+   assert.equal(m.cardWidths.length,1,width+': one card width '+m.cardWidths.join());assert.ok(m.cardWidths[0]>=200&&m.cardWidths[0]<=320.1,width+': card width '+m.cardWidths[0]);
+   assert.ok(m.firstCard.h>m.firstCard.w,width+': tall panel card');
+   assert.equal(m.rowPad[0],'28px');assert.equal(m.trackPad[0],'28px');assert.equal(m.rowPad[1],'28px');assert.equal(m.trackPad[1],'28px');
+   assert.equal(m.viewAll,true,width+': Ver todo stays in the collections header');
    assert.equal(m.pageOverflow,false);
-   // Arrows and fades only where there is content out of view.
-   assert.deepEqual([m.albumsHost.leading,m.albumsHost.trailing],[false,true]);assert.equal(m.albumsHost.fadeLeft,'0');assert.equal(m.albumsHost.fadeRight,'1');
-   assert.equal(m.songsHost.prevHidden,true);
-   assert.ok(m.visible.length>=1&&m.visible.length<=Math.ceil(width/190)+1,width+': visible metadata '+m.visible.join());
+   assert.deepEqual([m.rowHost.leading,m.rowHost.trailing],[false,true]);
+   assert.ok(m.visible.length>=1,width+': visible metadata '+m.visible.join());
    await writeFile(path.join(cache,`home-${width}.png`),Buffer.from((await send('Page.captureScreenshot',{format:'png'})).data,'base64'));
-   await evaluate('document.querySelector(".content-column").scrollTop=330');await settle(100);
-   await writeFile(path.join(cache,`home-${width}-albums.png`),Buffer.from((await send('Page.captureScreenshot',{format:'png'})).data,'base64'));
-   await evaluate('document.querySelector(".content-column").scrollTop=0');await settle(100);
  }
- // Paging by arrow moves whole columns and shows the leading arrow/fade.
+ // Paging by arrow moves the row and shows the leading arrow/fade.
  await send('Emulation.setDeviceMetricsOverride',{width:1000,height:900,deviceScaleFactor:1,mobile:false});await settle();
- const point=await evaluate(`(()=>{const a=document.querySelector('[data-featured-rail="Álbumes"]').closest('.horizontal-navigation').querySelector('[data-horizontal-arrow=next]');a.scrollIntoView({block:'center'});const r=a.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()`);
+ const point=await evaluate(`(()=>{const a=document.querySelector('.collection-row').closest('.horizontal-navigation').querySelector('[data-horizontal-arrow=next]');a.scrollIntoView({block:'center'});const r=a.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()`);
  await send('Input.dispatchMouseEvent',{type:'mousePressed',x:point.x,y:point.y,button:'left',clickCount:1});await send('Input.dispatchMouseEvent',{type:'mouseReleased',x:point.x,y:point.y,button:'left',clickCount:1});await settle(700);
- const paged=await measure();assert.ok(paged.albumScroll>0&&paged.albumScroll%190===0,'one arrow click moves whole 190px columns, got '+paged.albumScroll);
- assert.equal(paged.albumsHost.leading,true);assert.equal(paged.albumsHost.fadeLeft,'1');
- assert.ok(paged.cardCount<=Math.ceil(1000/190)+3,'recycled, not all 36 mounted: '+paged.cardCount);assert.ok(paged.visible.every(v=>Number(v.split('-')[1])>=Math.floor(paged.albumScroll/190)-1));
- // A vertical wheel over a rail scrolls the page, not the rail.
+ const paged=await measure();assert.ok(paged.rowScroll>0,'one arrow click moves the row, got '+paged.rowScroll);
+ assert.equal(paged.rowHost.leading,true);
+ // A vertical wheel over the row scrolls the page, not the row.
  const before=await evaluate('document.querySelector(".content-column").scrollTop');
- await send('Input.dispatchMouseEvent',{type:'mouseWheel',x:300,y:await evaluate(`(()=>{const r=document.querySelector('[data-featured-rail="Álbumes"]').getBoundingClientRect();return r.y+r.height/2})()`),deltaX:0,deltaY:120});await settle(500);
- const afterWheel=await evaluate('({page:document.querySelector(".content-column").scrollTop,rail:document.querySelector("[data-featured-rail=\\"Álbumes\\"]").scrollLeft})');
- assert.ok(afterWheel.page>before,'vertical wheel reaches the page');assert.equal(afterWheel.rail,paged.albumScroll,'and leaves the rail alone');
- // The playback sidebar removes the right inset of the featured block; closing it brings the 28px back.
+ await send('Input.dispatchMouseEvent',{type:'mouseWheel',x:300,y:await evaluate(`(()=>{const r=document.querySelector('.collection-row').getBoundingClientRect();return r.y+r.height/2})()`),deltaX:0,deltaY:120});await settle(500);
+ const afterWheel=await evaluate('({page:document.querySelector(".content-column").scrollTop,row:document.querySelector(".collection-row").scrollLeft})');
+ assert.ok(afterWheel.page>before,'vertical wheel reaches the page');assert.equal(afterWheel.row,paged.rowScroll,'and leaves the row alone');
+ // The playback sidebar removes the right inset of the mosaic and the row; closing it brings the 28px back.
  await evaluate('document.querySelector(".content-column").scrollTop=0');
  await evaluate('lab.sidebar(true)');await settle();
- const open=await measure();assert.equal(open.albumPadRight,'0px');assert.equal(open.albumPadLeft,'28px');
+ const open=await measure();assert.equal(open.rowPad[1],'0px');assert.equal(open.trackPad[1],'0px');assert.equal(open.rowPad[0],'28px');
  await evaluate('lab.sidebar(false)');await settle();
- assert.equal((await measure()).albumPadRight,'28px');
- // Covered Home keeps its offset when it comes back (display:none resets scrollers).
+ const closed=await measure();assert.equal(closed.rowPad[1],'28px');assert.equal(closed.trackPad[1],'28px');
+ // Covered Home keeps its anchor when it comes back (display:none resets scrollers).
  await evaluate('document.querySelector(".home").style.display="none"');await evaluate('lab.active(false)');await settle();
  await evaluate('document.querySelector(".home").style.display="";lab.active(true)');await settle(600);
- assert.equal((await measure()).albumScroll,paged.albumScroll,'offset restored after the page was hidden');
+ // The row keeps the anchor card, not the pixel offset: it comes back aligned to the card it was on.
+ const restored=await measure(),stride=closed.cardWidths[0]+24;
+ assert.ok(closed.rowScroll>0&&Math.round(restored.rowScroll/stride)===Math.round(closed.rowScroll/stride),`anchor card restored after the page was hidden: ${closed.rowScroll} -> ${restored.rowScroll} (stride ${stride})`);
  await writeFile(path.join(cache,'results.json'),JSON.stringify({synthetic:true,host:process.platform,evidence},null,2));
  assert.deepEqual(errors,[]);console.log(JSON.stringify({ok:true,widths:evidence.map(e=>e.width),errors}));
 }finally{ws?.close();browser.kill();await server.close()}

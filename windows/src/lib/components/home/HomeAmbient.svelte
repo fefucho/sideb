@@ -93,12 +93,15 @@
   });
 </script>
 <div use:position={active} class="ambient" class:awake={awake&&active} class:collection class:inactive={collection&&!visible} class:ready={Boolean(mask)} style:top={ambientTop===null?undefined:`${ambientTop}px`} style:height={ambientHeight===null?undefined:`${ambientHeight}px`} style:visibility={collection&&!geometryReady?'hidden':undefined} style={`--left:rgb(${palette[0].join(' ')});--right:rgb(${palette[1].join(' ')});--mask:url('${mask}');--a:translate(${swing(42,11)}cqw,${cosine(52.5,11)}cqh);--b:translate(${swing(50,11,2)}cqw,${cosine(62.5,11,1.6)}cqh);--c:translate(${swing(36,15,4)}cqw,${cosine(45,15,3.2)}cqh);--cloud-a:translate(${swing(45,11)}cqw,${cosine(56,6)}cqh) rotate(${swing(70,3.5)}deg);--cloud-b:translate(${cosine(65,14,1)}cqw,${swing(78,8,2)}cqh) rotate(${cosine(88,4.5)}deg) scaleX(-1)`} aria-hidden="true">
-  <div class="light a"></div><div class="light b"></div><div class="light c"></div><div class="smoke first"></div><div class="smoke second"></div><div class="shade"></div>
+  <div class="stage"><div class="light a"></div><div class="light b"></div><div class="light c"></div><div class="smoke first"></div><div class="smoke second"></div></div><div class="shade"></div>
 </div>
 <style>
   @property --left { syntax:'<color>'; inherits:true; initial-value:rgb(60 84 122); }
   @property --right { syntax:'<color>'; inherits:true; initial-value:rgb(102 77 132); }
-  .ambient { position:fixed; inset:0 0 0 var(--sidebar-width); container-type:size; --extent:max(100cqw,100cqh); pointer-events:none; z-index:-1; overflow:hidden; background:#111318; transition:--left 1s,--right 1s; }
+  .ambient { position:fixed; inset:0 0 0 calc(var(--sidebar-width) - var(--sidebar-bleed,0px)); pointer-events:none; z-index:-1; overflow:hidden; background:#111318; transition:--left 1s,--right 1s; }
+  /* The stage keeps the content-area box (the light positions are measured on it); with a floating sidebar the ambient reaches the window edge behind the glass. */
+  .stage { position:absolute; inset:0 0 0 var(--sidebar-bleed,0px); container-type:size; --extent:max(100cqw,100cqh); }
+  .collection .stage { left:0; }
   .collection { inset:0; height:540px; background:transparent; mask-image:linear-gradient(#000 60%,transparent); }
   .collection.inactive { visibility:hidden; }
   .collection .a {opacity:.58;} .collection .b {opacity:.50;} .collection .first {opacity:.86;} .collection .second {opacity:.8;}

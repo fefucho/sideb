@@ -703,7 +703,8 @@ fn retry_init_core(
 
             if let Some(core) = core_lock.clone() {
                 tauri::async_runtime::spawn(session::restore(app.clone(), core.clone()));
-                tauri::async_runtime::spawn(session::watch_rotations(app.clone(), core));
+                tauri::async_runtime::spawn(session::watch_rotations(app.clone(), core.clone()));
+                tauri::async_runtime::spawn(session::watch_health(app.clone(), core));
             }
 
             Ok(BackendStatusDto {
@@ -939,7 +940,8 @@ pub fn run() {
             playback_runtime::sync_account(app.handle(), &AuthStatusDto::guest());
             if let Some(core) = core_to_restore {
                 tauri::async_runtime::spawn(session::restore(app.handle().clone(), core.clone()));
-                tauri::async_runtime::spawn(session::watch_rotations(app.handle().clone(), core));
+                tauri::async_runtime::spawn(session::watch_rotations(app.handle().clone(), core.clone()));
+                tauri::async_runtime::spawn(session::watch_health(app.handle().clone(), core));
             }
             Ok(())
         })

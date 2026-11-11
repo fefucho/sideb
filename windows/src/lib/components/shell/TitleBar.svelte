@@ -4,8 +4,9 @@
   import type { Window as TauriWindow } from '@tauri-apps/api/window';
   import type { UnlistenFn } from '@tauri-apps/api/event';
 
-  let { onBack, onForward, canBack = false, canForward = false, modalOpen = false }:
-    { onBack?: () => void; onForward?: () => void; canBack?: boolean; canForward?: boolean; modalOpen?: boolean } = $props();
+  /** showHistory=false while the top navigation owns Back/Forward; reserveLeading keeps room for its compact reopen control. */
+  let { onBack, onForward, canBack = false, canForward = false, modalOpen = false, showHistory = true, reserveLeading = false }:
+    { onBack?: () => void; onForward?: () => void; canBack?: boolean; canForward?: boolean; modalOpen?: boolean; showHistory?: boolean; reserveLeading?: boolean } = $props();
 
   let nativeWindow: TauriWindow | null = null;
   let isMaximized = $state(false);
@@ -63,10 +64,10 @@
     if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); toggleFromDragRegion(); }
   }}></div>
 
-  <nav class="history-controls" inert={modalOpen} aria-label={$t('windows.ui.sidebarAndNavigationControls')}>
+  {#if showHistory}<nav class="history-controls" class:reserve-leading={reserveLeading} inert={modalOpen} aria-label={$t('windows.ui.sidebarAndNavigationControls')}>
     <button type="button" class="history-button" aria-label={$t('navigation.back')} title={$t('navigation.back')} disabled={!canBack} onclick={onBack}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg></button>
     <button type="button" class="history-button" aria-label={$t('navigation.forward')} title={$t('navigation.forward')} disabled={!canForward} onclick={onForward}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></button>
-  </nav>
+  </nav>{/if}
   <div class="window-controls" aria-label={$t('windows.ui.windowControls')}>
     <button type="button" class="window-button" aria-label={$t('windows.ui.minimize')} title={$t('windows.ui.minimize')} onclick={() => runWindowAction(current => current.minimize())}>
       <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h10" /></svg>
@@ -106,6 +107,9 @@
   .history-button:disabled { opacity:.3; cursor:default; }
   .history-button svg { width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
   .window-controls { width: 138px; flex: 0 0 138px; justify-content: stretch; }
+  /* Native buttons keep their 32px height even when the strip grows to 78px for the top navigation. */
+  .window-controls { height: min(100%, 32px); align-self: flex-start; }
+  .history-controls.reserve-leading { margin-left: 40px; }
   .window-button {
     display: inline-flex;
     align-items: center;
