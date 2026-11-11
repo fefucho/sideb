@@ -7,6 +7,8 @@ final class HomeEqualizerOverlayView: NSView {
     private var barLayers: [CALayer] = []
     private var isAnimating = false
     private var isCompact = false
+    /// Estilo «en línea» del mosaico: tres barras junto al título, sin velo. `nil` = sobre la portada.
+    private var inlineStyle: HomeMosaicCellStyle?
     private var wantsPlaying = false
     private var isPaused = false
     private var indicatorSuppressed = false
@@ -82,12 +84,28 @@ final class HomeEqualizerOverlayView: NSView {
         refreshPlaybackPresentation()
     }
 
+    /// Ecualizador en línea (mosaico): tres barras blancas en el renglón del título, sin velo y sin
+    /// esquinas recortadas. Con `nil` vuelve al aspecto sobre la portada.
+    func updateInline(_ style: HomeMosaicCellStyle?) {
+        guard style != inlineStyle else { return }
+        let wasInline = inlineStyle != nil
+        inlineStyle = style
+        scrimLayer.isHidden = style != nil
+        if (style != nil) != wasInline { setupBars(compact: isCompact) }
+        layoutBars()
+        if isAnimating { applyAnimations() } else if wantsPlaying { setStaticBars(dimmed: isPaused) }
+    }
+
+    var isInlineForTesting: Bool { inlineStyle != nil }
+    var barCountForTesting: Int { barLayers.count }
+    var barOpacitiesForTesting: [Float] { barLayers.map(\.opacity) }
+
     private func setupBars(compact: Bool) {
         barLayers.forEach { $0.removeFromSuperlayer() }
         barLayers.removeAll()
 
-        let count = compact ? 4 : 5
-        let barColor = NSColor.white.withAlphaComponent(0.82).cgColor
+        let count = inlineStyle != nil ? 3 : (compact ? 4 : 5)
+        let barColor = (inlineStyle != nil ? NSColor.white : NSColor.white.withAlphaComponent(0.82)).cgColor
 
         for _ in 0..<count {
             let bar = CALayer()
@@ -109,6 +127,21 @@ final class HomeEqualizerOverlayView: NSView {
 
     private func layoutBars() {
         guard !barLayers.isEmpty, bounds.width > 0, bounds.height > 0 else { return }
+
+        if let inlineStyle {
+            // Barras pegadas a la izquierda, con su base en el borde inferior del renglón.
+            // Manda la vista: `layer.isGeometryFlipped` no refleja el volteo que AppKit aplica en un ancestro.
+            let flipped = isFlipped
+            let anchorY: CGFloat = flipped ? 1 : 0
+            for (index, bar) in barLayers.enumerated() {
+                let x = CGFloat(index) * (inlineStyle.barWidth + inlineStyle.barGap)
+                bar.anchorPoint = CGPoint(x: 0.5, y: anchorY)
+                bar.bounds = CGRect(x: 0, y: 0, width: inlineStyle.barWidth, height: inlineStyle.barHeight)
+                bar.position = CGPoint(x: x + inlineStyle.barWidth / 2, y: anchorY * bounds.height)
+                bar.cornerRadius = inlineStyle.barWidth / 2
+            }
+            return
+        }
 
         let count = CGFloat(barLayers.count)
         let barWidth: CGFloat = isCompact ? 2.5 : 3.5
@@ -177,7 +210,7 @@ final class HomeEqualizerOverlayView: NSView {
 
         for (index, bar) in barLayers.enumerated() {
             bar.removeAllAnimations()
-            bar.opacity = 0.82
+            bar.opacity = inlineStyle != nil ? 1 : 0.82
             bar.transform = CATransform3DIdentity
             let profile = profiles[index % profiles.count]
 
@@ -277,7 +310,7 @@ final class HomeEqualizerOverlayView: NSView {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         for (index, bar) in barLayers.enumerated() {
-            bar.opacity = dimmed ? 0.40 : 0.82
+            if inlineStyle != nil { bar.opacity = dimmed ? 0.5 : 1 } else { bar.opacity = dimmed ? 0.40 : 0.82 }
             bar.transform = CATransform3DMakeScale(1, heights[index % heights.count], 1)
         }
         CATransaction.commit()

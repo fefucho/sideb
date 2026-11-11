@@ -150,7 +150,7 @@ private actor MetadataRequestRecorder {
 
 private actor BoundedMetadataFetch {
     private var pending: [(String, CheckedContinuation<AlbumDetailRecord, Never>)] = []
-    private var startedIDs: [String] = []
+    private(set) var startedIDs: [String] = []
     private var startedWaiters: [(Int, CheckedContinuation<Void, Never>)] = []
     private(set) var activeCount = 0
     private(set) var maximumActiveCount = 0
@@ -223,4 +223,41 @@ private actor PendingMetadataResponse {
     await oldLoad.value
     await newLoad.value
     #expect(model.details.keys.sorted() == newItems.map(\.id).sorted())
+}
+
+@Test @MainActor func homeAlbumMetadataDefaultLimitStillCutsAtSix() async {
+    let model = HomeAlbumMetadataModel()
+    let requested = MetadataRequestRecorder()
+    let items = (0..<10).map { metadataItem("album-\($0)") }
+    await model.load(items: items, sessionKey: "a") { id in
+        await requested.record(id)
+        return metadataAlbum(id, durations: ["1:00"])
+    }
+    #expect(await requested.ids.sorted() == items.prefix(6).map(\.id).sorted())
+    #expect(model.details.count == 6)
+}
+
+@Test @MainActor func homeAlbumMetadataWithLimit48FetchesAllInOrderWithTwoInFlightAndKeepsThem() async {
+    let model = HomeAlbumMetadataModel(limit: 48)
+    let probe = BoundedMetadataFetch()
+    let items = (0..<40).map { metadataItem("album-\($0)") }
+    let load = Task {
+        await model.load(items: items, sessionKey: "a") { id in await probe.fetch(id) }
+    }
+    await probe.waitForStartedCount(2)
+    for expectedCount in 3...40 {
+        await probe.finishOne()
+        await probe.waitForStartedCount(expectedCount)
+        #expect(await probe.maximumActiveCount == 2)
+    }
+    await probe.finishOne()
+    await probe.finishOne()
+    await load.value
+    let startedIDs = await probe.startedIDs
+    let maxActive = await probe.maximumActiveCount
+    #expect(startedIDs == items.map(\.id))
+    #expect(maxActive == 2)
+    #expect(model.details.count == 40)
+    #expect(model.details["album-0"] != nil)
+    #expect(model.details["album-39"] != nil)
 }

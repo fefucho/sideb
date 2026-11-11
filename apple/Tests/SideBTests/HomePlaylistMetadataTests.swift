@@ -253,3 +253,38 @@ private actor PlaylistMetadataProbe {
         continuation.resume(returning: playlistMetadataDetail(id))
     }
 }
+
+@Test @MainActor func homePlaylistMetadataDefaultLimitStillCutsAtSix() async {
+    let model = HomePlaylistMetadataModel()
+    let recorder = PlaylistMetadataRecorder()
+    let items = (0..<10).map { playlistMetadataItem("playlist-\($0)") }
+    await model.load(items: items, sessionKey: "a") { id in
+        await recorder.record(id)
+        return playlistMetadataDetail(id)
+    }
+    #expect(await recorder.ids.sorted() == items.prefix(6).map(\.id).sorted())
+    #expect(model.details.count == 6)
+}
+
+@Test @MainActor func homePlaylistMetadataWithLimit48FetchesAllInOrderWithTwoInFlightAndKeepsThem() async {
+    let model = HomePlaylistMetadataModel(limit: 48)
+    let probe = PlaylistMetadataProbe()
+    let items = (0..<40).map { playlistMetadataItem("playlist-\($0)") }
+    let load = Task {
+        await model.load(items: items, sessionKey: "a") { id in await probe.fetch(id) }
+    }
+    await probe.waitForStartedCount(2)
+    for expectedCount in 3...40 {
+        await probe.finishOne()
+        await probe.waitForStartedCount(expectedCount)
+        #expect(await probe.maximumActiveCount == 2)
+    }
+    await probe.finishOne()
+    await probe.finishOne()
+    await load.value
+    #expect(await probe.startedIDs == items.map(\.id))
+    #expect(await probe.maximumActiveCount == 2)
+    #expect(model.details.count == 40)
+    #expect(model.details["playlist-0"] != nil)
+    #expect(model.details["playlist-39"] != nil)
+}

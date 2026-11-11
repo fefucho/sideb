@@ -1435,6 +1435,14 @@ History: %@</string>
 	<string>Search suggestions</string>
 	<key>search.title</key>
 	<string>Search</string>
+	<key>settings.albumCardStyle</key>
+	<string>Album cards</string>
+	<key>settings.albumCardStyle.hint</key>
+	<string>Choose how the text panel of Home's featured cards looks.</string>
+	<key>settings.albumCardStyle.tinted</key>
+	<string>Tinted white</string>
+	<key>settings.albumCardStyle.white</key>
+	<string>White</string>
 	<key>settings.albums</key>
 	<string>Albums</string>
 	<key>settings.animatedArtwork</key>

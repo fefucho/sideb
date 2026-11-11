@@ -430,7 +430,11 @@ public final class QueueManager {
         var anchor = currentOccurrenceID ?? (at > 0 ? occurrenceIDs[at - 1] : nil)
         let ids = entries.map { _ in UUID().uuidString }
         for (offset, occurrence) in ids.enumerated() {
-            placements[occurrence] = anchor.map(QueuePlacement.after) ?? .end
+            if isRadioContext {
+                assignNextSourceRank(for: occurrence)
+            } else {
+                placements[occurrence] = anchor.map(QueuePlacement.after) ?? .end
+            }
             if advanceThrough && offset < entries.count - 1 { radioCommittedIDs.insert(occurrence) }
             anchor = occurrence
         }
@@ -487,7 +491,12 @@ public final class QueueManager {
         beginMutation(); defer { endMutation() }
         let id = UUID().uuidString; queue.append(item.track); occurrenceIDs.append(id)
         radioCommittedIDs.insert(id)
-        placements[id] = anchor.map(QueuePlacement.after) ?? .end
+        if isRadioContext {
+            assignNextSourceRank(for: id)
+            visibleCount = queue.count
+        } else {
+            placements[id] = anchor.map(QueuePlacement.after) ?? .end
+        }
         currentIndex = queue.count - 1
         if visibleCount < currentIndex + 1 { recentlyInsertedOccurrenceIDs.append(id) }
         recentVideoIDs.append(item.track.videoId); if recentVideoIDs.count > 30 { recentVideoIDs.removeFirst(recentVideoIDs.count - 30) }
@@ -619,6 +628,24 @@ public final class QueueManager {
 
     // MARK: - Ordering implementation
 
+    private var isRadioContext: Bool {
+        if case .radio? = context {
+            return true
+        }
+        return false
+    }
+
+    private func assignNextSourceRank(for occurrenceID: String) {
+        if sourceRanks[occurrenceID] != nil {
+            placements.removeValue(forKey: occurrenceID)
+            return
+        }
+        let rank = max(nextSourceRank, (sourceRanks.values.max() ?? -1) + 1)
+        sourceRanks[occurrenceID] = rank
+        nextSourceRank = rank + 1
+        placements.removeValue(forKey: occurrenceID)
+    }
+
     private func initialVisibleCount(for index: Int) -> Int {
         guard case .playlist(_, _)? = context else { return queue.count }
         return min(queue.count, max(0, index).saturatingAdd(Self.playlistBatchSize))
@@ -670,6 +697,17 @@ public final class QueueManager {
 
     private func shufflePendingSource(seed: UInt64) {
         guard queue.indices.contains(currentIndex) else { return }
+        if isRadioContext {
+            guard queue.count > 1 else { return }
+            if currentIndex > 0 {
+                let activeTrack = queue.remove(at: currentIndex)
+                let activeID = occurrenceIDs.remove(at: currentIndex)
+                queue.insert(activeTrack, at: 0)
+                occurrenceIDs.insert(activeID, at: 0)
+                currentIndex = 0
+                visibleCount = queue.count
+            }
+        }
         var rng = ShuffleRandom(seed: seed)
         shuffleSuffix(after: currentIndex, using: &rng)
     }
@@ -681,6 +719,9 @@ public final class QueueManager {
         var order = positions.map { ($0, queue[$0], occurrenceIDs[$0]) }
         for i in stride(from: order.count - 1, through: 1, by: -1) {
             order.swapAt(i, rng.index(upperBound: i + 1))
+        }
+        if isRadioContext && order.map(\.2) == positions.map({ occurrenceIDs[$0] }) {
+            order.swapAt(0, order.count - 1)
         }
         for (slot, item) in zip(positions, order) {
             queue[slot] = item.1; occurrenceIDs[slot] = item.2

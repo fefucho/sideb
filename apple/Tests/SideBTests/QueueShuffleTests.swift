@@ -302,3 +302,49 @@ private func playlistQueue(_ songs: [SongItemRecord], startingAt index: Int = 0)
     #expect(manager.currentIndex == 2)
     #expect(manager.currentOccurrenceID == active)
 }
+
+@MainActor
+@Test func testRadioShuffleIncludesAlreadyPlayedTracksAndRestoresOriginalOrder() {
+    let songs = (1...5).map { index in
+        SongItemRecord(videoId: "r\(index)", title: "Radio \(index)", artists: "Artist",
+                       album: nil, duration: nil, thumbnail: nil, artistId: nil,
+                       albumId: nil, setVideoId: nil, isVideo: false, isUpload: false,
+                       library: nil)
+    }
+    let manager = QueueManager()
+    manager.replaceQueue(with: songs,
+                         context: .radio(seedVideoId: "r1", title: "Radio", seedName: "Seed"))
+    #expect(manager.queue.map(\.videoId) == ["r1"])
+    #expect(manager.recommendationEntries.map { $0.track.videoId } == ["r2", "r3", "r4", "r5"])
+
+    // Advance 3 times so r1, r2, r3, r4 are in the main queue, and step back to r3 (index 2).
+    #expect(manager.nextTrack(isManualSkip: true)?.videoId == "r2")
+    #expect(manager.nextTrack(isManualSkip: true)?.videoId == "r3")
+    #expect(manager.nextTrack(isManualSkip: true)?.videoId == "r4")
+    #expect(manager.previousTrack()?.videoId == "r3")
+    #expect(manager.currentIndex == 2)
+    #expect(manager.queue.map(\.videoId) == ["r1", "r2", "r3", "r4"])
+    #expect(manager.recommendationEntries.map { $0.track.videoId } == ["r5"])
+    let activeID = manager.currentOccurrenceID
+
+    // Enable shuffle: active track (r3) moves to index 0, and r1, r2, r4 (including already-played tracks) are shuffled after it.
+    manager.setShuffle(true, seed: 42)
+    #expect(manager.isShuffle == true)
+    #expect(manager.currentIndex == 0)
+    #expect(manager.currentTrack?.videoId == "r3")
+    #expect(manager.currentOccurrenceID == activeID)
+    #expect(manager.queue.count == 4)
+    #expect(manager.tracks.count == 4)
+    #expect(Set(manager.queue.map(\.videoId)) == Set(["r1", "r2", "r3", "r4"]))
+    #expect(Array(manager.queue.dropFirst().map(\.videoId)) != ["r1", "r2", "r4"])
+    #expect(manager.recommendationEntries.map { $0.track.videoId } == ["r5"])
+
+    // Disable shuffle: restores original order ["r1", "r2", "r3", "r4"] and currentIndex == 2.
+    manager.setShuffle(false)
+    #expect(manager.isShuffle == false)
+    #expect(manager.queue.map(\.videoId) == ["r1", "r2", "r3", "r4"])
+    #expect(manager.currentIndex == 2)
+    #expect(manager.currentTrack?.videoId == "r3")
+    #expect(manager.currentOccurrenceID == activeID)
+    #expect(manager.recommendationEntries.map { $0.track.videoId } == ["r5"])
+}

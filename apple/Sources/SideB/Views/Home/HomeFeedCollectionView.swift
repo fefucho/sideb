@@ -573,7 +573,7 @@ final class HomeNativeCollectionView: NSCollectionView {
         // Current shelves and catalogs use Flow, which does not own orthogonal
         // scrollers. Preserve handling for compositional, custom and transition
         // layouts, including transitions whose endpoints use different layouts.
-        return !(layout is NSCollectionViewFlowLayout)
+        return !(layout is NSCollectionViewFlowLayout || layout is HomeMosaicCollectionLayout)
     }
 
     override func didAddSubview(_ subview: NSView) {
@@ -652,6 +652,21 @@ final class HomeNativeCollectionView: NSCollectionView {
             return
         }
         super.keyDown(with: event)
+    }
+
+    override func setFrameSize(_ newSize: NSSize) {
+        if let mosaic = collectionViewLayout as? HomeMosaicCollectionLayout {
+            let contentSize = mosaic.collectionViewContentSize
+            let clipSize = enclosingScrollView?.contentView.bounds.size ?? .zero
+            super.setFrameSize(
+                NSSize(
+                    width: max(newSize.width, max(clipSize.width, contentSize.width)),
+                    height: max(newSize.height, max(clipSize.height, contentSize.height))
+                )
+            )
+        } else {
+            super.setFrameSize(newSize)
+        }
     }
 }
 
@@ -821,26 +836,89 @@ private final class HomeCardTitleLabel: NativeTrackActionField {
 final class HomeItemView: NSView {
     // Dos líneas de título y detalle, más las separaciones. Compartido con el layout del estante.
     var featuredSong = false
-    var featuredCollection = false
+    /// Tarjeta grande de colección: portada cuadrada y panel de texto claro debajo.
+    var featuredCollection = false {
+        didSet {
+            guard oldValue != featuredCollection else { return }
+            renderedAppearance = nil
+            needsLayout = true
+        }
+    }
+    /// Acabado del panel de la tarjeta de colección; cambiarlo repinta el texto y el lavado sin reiniciar.
+    var albumCardStyle: HomeAlbumCardStyle = .tinted {
+        didSet {
+            guard oldValue != albumCardStyle, featuredCollection else { return }
+            applyCollectionStyle()
+            refreshWash()
+        }
+    }
     private let featuredGradient = CAGradientLayer()
     private let featuredArtwork = CALayer()
     private let featuredFooter = CALayer()
-    private static let featuredTints = NSCache<NSString, NSColor>()
-    private var featuredTint: NSColor?
-    private var tintTask: Task<Void, Never>?
-    func applyFeaturedLayout(song: Bool, summary: String = "") {
+    private let titleFadeMask = CAGradientLayer()
+    /// Tamaño de la celda en el mosaico (sólo aplica al modo `featuredSong`).
+    var mosaicSize: HomeMosaicSize = .small {
+        didSet {
+            guard oldValue != mosaicSize else { return }
+            appliedTitleKey = nil
+            renderedAppearance = nil
+            needsLayout = true
+            refreshAppearance()
+        }
+    }
+    /// Sesión con la que se pide el color de la carátula del degradado (la del carril).
+    var coverSession: String?
+    /// Caché de colores por carátula; se inyecta en pruebas.
+    var coverColorStore: HomeCoverColorStore = .shared
+    /// Preferencia del sistema «Reducir movimiento»; se inyecta en pruebas.
+    var reducesMotion: () -> Bool = { NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
+    /// Preferencia del sistema «Reducir transparencia»; se inyecta en pruebas.
+    var reducesTransparency: () -> Bool = { NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency }
+    /// Caché de lavados de portada por carátula; se inyecta en pruebas.
+    var coverWashStore: HomeCoverWashStore = .shared
+    private var colorTask: Task<Void, Never>?
+    private var washTask: Task<Void, Never>?
+    private var coverBitmap: CGImage?
+    // Pieza de la tarjeta de colección: se crean al primer uso, no por cada celda del feed.
+    private lazy var collectionPanel = HomeCollectionPanelView()
+    private lazy var coverDim = CALayer()
+    private var playGlass: HomeGlassCircleView?
+    private var moreGlass: HomeGlassCircleView?
+    private var collectionChromeInstalled = false
+    private var collectionLifted = false
+    private var collectionArtistWidth: CGFloat = 0
+    private var isMoreHovered = false
+    private var scrimCover: HomeAmbientRGB?
+    private var appliedTitleKey: String?
+    private var mosaicPlayVisible = false
+    private var playSymbolRaised = false
+    private var artworkZoomed = false
+    private(set) var featuredScrimCoverForTesting: HomeAmbientRGB?
+    func applyFeaturedLayout(song: Bool, summary: String = "", mosaicSize size: HomeMosaicSize? = nil) {
         featuredSong = song
         featuredCollection = !song
+        if let size { mosaicSize = size }
         subtitle.stringValue = summary
         if !song && subtitle.superview == nil { addSubview(subtitle) }
         subtitle.isHidden = song
+        if !song { applyCollectionStyle() }
         needsLayout = true
     }
     static let largeCardTextHeight: CGFloat = 94
-    /// One fixed request size for featured artwork. Deriving it from the live card width gave
-    /// every intermediate resize width its own URL and cache entry, so covers reloaded.
+    /// Two fixed request sizes for featured artwork, never derived from the live width: deriving it gave every
+    /// intermediate resize width its own URL and cache entry, so covers reloaded. The small mosaic cell (144 pt)
+    /// asks for 480 px; the wide and large mosaic cells (296 pt) and the collection cards (up to 320 pt) ask for
+    /// 640 px, which is what they need at 2x.
     static let featuredArtworkPixels = 480
     static let featuredArtworkTarget = CGSize(width: 240, height: 240)
+    static let featuredLargeArtworkPixels = 640
+    static let featuredLargeArtworkTarget = CGSize(width: 320, height: 320)
+
+    /// Resolución pedida de una carátula: `nil` si la celda no es destacada.
+    static func featuredArtworkRequest(song: Bool, collection: Bool, size: HomeMosaicSize) -> (pixels: Int, target: CGSize)? {
+        if collection || (song && size != .small) { return (featuredLargeArtworkPixels, featuredLargeArtworkTarget) }
+        return song ? (featuredArtworkPixels, featuredArtworkTarget) : nil
+    }
     private static let largeTitleFont = NSFont.systemFont(ofSize: 14, weight: .semibold)
     private static let largeMetadataFont = NSFont.systemFont(ofSize: 12, weight: .regular)
     private static let compactArtistMeasureFont = NSFont.systemFont(ofSize: 11.5, weight: .semibold)
@@ -856,6 +934,11 @@ final class HomeItemView: NSView {
         let reduceMotion: Bool
         let focusWithinCard: Bool
         let loading: Bool
+        let mosaicSize: HomeMosaicSize?
+        let collection: Bool
+        let moreHovered: Bool
+        let artistFocused: Bool
+        let reduceTransparency: Bool
     }
 
     var showsDirectPlayControl = true {
@@ -1052,6 +1135,12 @@ final class HomeItemView: NSView {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         cardButton.frame = bounds
+        if featuredCollection {
+            layoutCollectionCard()
+            CATransaction.commit()
+            return
+        }
+        leaveCollectionChrome()
         if style == .compactSong {
             layer?.cornerRadius = 14
             cover.frame = NSRect(x: 6, y: 6, width: 44, height: 44)
@@ -1140,62 +1229,25 @@ final class HomeItemView: NSView {
             more.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.45).cgColor
             more.layer?.cornerRadius = 14
         }
-        if featuredSong || featuredCollection {
-            // Songs are full-bleed cards with a legibility gradient. Albums and playlists
-            // follow Apple Music: bare rounded artwork with text underneath, no frame.
-            layer?.masksToBounds = featuredSong
-            layer?.cornerRadius = featuredSong ? 10 : 0
-            layer?.borderWidth = 0
-            layer?.borderColor = NSColor.clear.cgColor
-            let artHeight = featuredSong ? bounds.height : bounds.width
-            cover.frame = NSRect(x: 0, y: 0, width: bounds.width, height: artHeight)
-            // CALayer aspect-fill has no intrinsic size and clips at the artwork contract.
-            cover.imageScaling = .scaleAxesIndependently
-            equalizerOverlay.frame = cover.frame
-            if featuredArtwork.superlayer == nil { cover.layer?.insertSublayer(featuredArtwork, at: 0) }
-            featuredArtwork.frame = cover.bounds
-            featuredArtwork.masksToBounds = true
-            featuredFooter.isHidden = true
-            if featuredGradient.superlayer == nil { cover.layer?.addSublayer(featuredGradient) }
-            featuredGradient.frame = cover.bounds
-            featuredGradient.colors = [NSColor.clear.cgColor, NSColor.black.withAlphaComponent(0.78).cgColor]
-            featuredGradient.locations = [0.55, 1]
-            featuredGradient.startPoint = CGPoint(x: 0.5, y: 0)
-            featuredGradient.endPoint = CGPoint(x: 0.5, y: 1)
-            featuredGradient.isHidden = !featuredSong
-            title.font = .systemFont(ofSize: featuredSong ? 12 : 13, weight: .semibold)
-            title.textColor = featuredSong ? .white : .labelColor
-            title.maximumNumberOfLines = 1
-            title.frame = NSRect(x: featuredSong ? 8 : 0, y: featuredSong ? bounds.height - 39 : artHeight + 10,
-                                 width: bounds.width - (featuredSong ? 16 : 0), height: 16)
-            artist.font = .systemFont(ofSize: featuredSong ? 10 : 12)
-            artist.contentTintColor = featuredSong ? .white : .secondaryLabelColor
-            artist.frame = NSRect(x: featuredSong ? 8 : 0, y: featuredSong ? bounds.height - 22 : artHeight + 28,
-                                  width: bounds.width - (featuredSong ? 16 : 0), height: 15)
-            largeArtistLabel.frame = artist.frame
-            largeArtistLabel.font = .systemFont(ofSize: featuredSong ? 10 : 12)
-            largeArtistLabel.textColor = featuredSong ? NSColor.white.withAlphaComponent(0.76) : .secondaryLabelColor
-            largeArtistLabel.isHidden = artist.isHidden
-            typeLabel.isHidden = true
-            subtitle.frame = NSRect(x: 0, y: artHeight + 45, width: bounds.width, height: 14)
-            subtitle.maximumNumberOfLines = 1
-            subtitle.font = .systemFont(ofSize: 11)
-            subtitle.textColor = .tertiaryLabelColor
-            bullet.isHidden = true
-            explicitBadge.isHidden = true
-            album.isHidden = true
-            more.frame = NSRect(x: bounds.width - 32, y: 4, width: 28, height: 28)
-            playButton.frame = NSRect(x: bounds.width - 40, y: artHeight - 40, width: 32, height: 32)
-            playSymbol.frame = playButton.frame.insetBy(dx: 9, dy: 9)
+        // El círculo de Play del mosaico es blanco opaco: su icono va encima; en el resto, debajo del vidrio oscuro.
+        if featuredSong != playSymbolRaised {
+            playSymbolRaised = featuredSong
+            addSubview(playSymbol, positioned: featuredSong ? .above : .below, relativeTo: playButton)
         }
-        cover.layer?.cornerRadius = style == .compactSong
-            ? AppTheme.artworkThumbnailRadius
-            : (featuredCollection ? 10 : (representedKind == "artist" ? bounds.width / 2 : AppTheme.artworkCardRadius))
-        if featuredCollection {
-            // A hairline keeps pale covers from dissolving into the page, like Apple Music.
-            cover.layer?.borderWidth = 0.5
-            cover.layer?.borderColor = NSColor.white.withAlphaComponent(0.10).cgColor
-        } else { cover.layer?.borderWidth = 0 }
+        if featuredSong {
+            layoutMosaicSong()
+        } else {
+            equalizerOverlay.updateInline(nil)
+            if title.layer?.mask != nil { title.layer?.mask = nil }
+        }
+        // La tarjeta de colección ya fijó su portada (sólo las esquinas de arriba): no se pisa acá.
+        if !featuredCollection {
+            cover.layer?.cornerRadius = style == .compactSong
+                ? AppTheme.artworkThumbnailRadius
+                : (featuredSong ? 10 : (representedKind == "artist" ? bounds.width / 2 : AppTheme.artworkCardRadius))
+            cover.layer?.maskedCorners = [.layerMinXMinYCorner, .layerMaxXMinYCorner, .layerMinXMaxYCorner, .layerMaxXMaxYCorner]
+        }
+        cover.layer?.borderWidth = 0
         loadingIndicator?.frame = playSymbol.frame.insetBy(dx: -1, dy: -1)
         if !songArtistLinks.isHidden {
             songArtistLinks.frame = artist.frame
@@ -1203,6 +1255,521 @@ final class HomeItemView: NSView {
         }
         CATransaction.commit()
     }
+
+    // MARK: Celda de canción del mosaico
+
+    private static let mosaicEase = CAMediaTimingFunction(controlPoints: 0.2, 0.8, 0.2, 1)
+    private static let mosaicPlayIcon = NSColor(srgbRed: 17.0 / 255, green: 17.0 / 255, blue: 17.0 / 255, alpha: 1)
+
+    var mosaicStyle: HomeMosaicCellStyle { .make(mosaicSize) }
+
+    private func setArtworkGeometry(in rect: CGRect? = nil) {
+        // Con transform activo no se usa `frame`: bounds + position mantienen el zoom centrado.
+        let rect = rect ?? cover.bounds
+        featuredArtwork.bounds = CGRect(origin: .zero, size: rect.size)
+        featuredArtwork.position = CGPoint(x: rect.midX, y: rect.midY)
+    }
+
+    /// Texto sobre la portada, degradado, Play, ecualizador y fundido del título (Windows: `.mosaic`).
+    private func layoutMosaicSong() {
+        let metrics = mosaicStyle
+        layer?.masksToBounds = true
+        layer?.cornerRadius = 10
+        layer?.borderWidth = 0
+        layer?.borderColor = NSColor.clear.cgColor
+        cover.frame = bounds
+        cover.imageScaling = .scaleAxesIndependently
+        installFeaturedLayers()
+        setArtworkGeometry()
+        featuredArtwork.masksToBounds = true
+        featuredFooter.isHidden = true
+        layoutScrim(metrics)
+
+        let width = bounds.width, height = bounds.height
+        let reserve = mosaicPlayVisible ? metrics.playReserve : 0
+        let textRight = max(metrics.inset, width - metrics.inset - reserve)
+        let artistY = height - metrics.bottom - metrics.artistLineHeight
+        let titleY = artistY - metrics.titleLineHeight
+        let shift = isCurrent ? metrics.barsShift : 0
+        applyMosaicTitleStyle(metrics)
+        title.frame = NSRect(x: metrics.inset + shift, y: titleY,
+                             width: max(0, textRight - metrics.inset - shift), height: metrics.titleLineHeight)
+        updateTitleFade()
+        let artistFont = NSFont.systemFont(ofSize: metrics.artistSize)
+        let artistTextWidth = ceil((rawArtistTitle as NSString).size(withAttributes: [.font: artistFont]).width) + 2
+        let maxArtistWidth = max(0, textRight - metrics.inset)
+        let artistHeight = metrics.artistLineHeight
+        let artistFrame = NSRect(x: metrics.inset, y: artistY, width: min(maxArtistWidth, artistTextWidth), height: artistHeight)
+        artist.frame = artistFrame
+        largeArtistLabel.frame = NSRect(x: metrics.inset, y: artistY, width: maxArtistWidth, height: artistHeight)
+        largeArtistLabel.font = .systemFont(ofSize: metrics.artistSize)
+        largeArtistLabel.maximumNumberOfLines = 1
+        largeArtistLabel.lineBreakMode = .byTruncatingTail
+        largeArtistLabel.textColor = isArtistHovered ? .white : NSColor.white.withAlphaComponent(0.72)
+        largeArtistLabel.wantsLayer = true
+        largeArtistLabel.shadow = Self.textShadow
+        largeArtistLabel.isHidden = artist.isHidden
+        artist.contentTintColor = .white
+        typeLabel.isHidden = true
+        subtitle.isHidden = true
+        bullet.isHidden = true
+        explicitBadge.isHidden = true
+        album.isHidden = true
+        equalizerOverlay.updateInline(metrics)
+        equalizerOverlay.setCornerRadius(0)
+        equalizerOverlay.frame = NSRect(x: metrics.inset, y: titleY + (metrics.titleLineHeight - metrics.barHeight) / 2,
+                                        width: metrics.barsWidth, height: metrics.barHeight)
+        more.frame = NSRect(x: width - 32, y: 4, width: 28, height: 28)
+        let side = metrics.playDiameter
+        playButton.frame = NSRect(x: width - metrics.playGap - side, y: height - metrics.playGap - side, width: side, height: side)
+        playButton.layer?.cornerRadius = side / 2
+        let symbol = (side * 0.43).rounded()
+        playSymbol.frame = NSRect(x: playButton.frame.midX - symbol / 2, y: playButton.frame.midY - symbol / 2, width: symbol, height: symbol)
+    }
+
+    private static let textShadow: NSShadow = {
+        let shadow = NSShadow()
+        shadow.shadowOffset = NSSize(width: 0, height: -1)
+        shadow.shadowBlurRadius = 2
+        shadow.shadowColor = NSColor.black.withAlphaComponent(0.35)
+        return shadow
+    }()
+
+    private func applyMosaicTitleStyle(_ metrics: HomeMosaicCellStyle) {
+        let key = "\(title.stringValue)|\(mosaicSize)"
+        guard appliedTitleKey != key else { return }
+        appliedTitleKey = key
+        // Sin puntos suspensivos: el título largo se recorta y se desvanece (máscara).
+        title.lineBreakMode = .byClipping
+        title.maximumNumberOfLines = 1
+        title.wantsLayer = true
+        title.shadow = Self.textShadow
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.lineBreakMode = .byClipping
+        title.attributedStringValue = NSAttributedString(string: title.stringValue, attributes: [
+            .font: NSFont.systemFont(ofSize: metrics.titleSize, weight: metrics.titleWeight),
+            .foregroundColor: NSColor.white, .kern: metrics.titleTracking, .paragraphStyle: paragraph])
+    }
+
+    /// Los últimos 18 pt del ancho del título se desvanecen en lugar de cortarse con puntos suspensivos.
+    private func updateTitleFade() {
+        title.wantsLayer = true
+        guard let layer = title.layer else { return }
+        let width = max(1, title.bounds.width)
+        titleFadeMask.colors = [NSColor.black.cgColor, NSColor.black.cgColor, NSColor.clear.cgColor]
+        titleFadeMask.startPoint = CGPoint(x: 0, y: 0.5)
+        titleFadeMask.endPoint = CGPoint(x: 1, y: 0.5)
+        titleFadeMask.locations = [0, NSNumber(value: Double(max(0, width - 18) / width)), 1]
+        titleFadeMask.frame = title.bounds
+        if layer.mask !== titleFadeMask { layer.mask = titleFadeMask }
+    }
+
+    private func installFeaturedLayers() {
+        if featuredArtwork.superlayer == nil { cover.layer?.insertSublayer(featuredArtwork, at: 0) }
+        if featuredGradient.superlayer == nil {
+            cover.layer?.addSublayer(featuredGradient)
+            paintScrimColors()
+        }
+        featuredGradient.isHidden = !featuredSong
+    }
+
+    /// Degradado inferior: 72 % del alto (52 % en la grande) con las cinco paradas de `HomeCoverScrim`.
+    private func layoutScrim(_ metrics: HomeMosaicCellStyle) {
+        let height = cover.bounds.height * metrics.gradientFraction
+        // Las subcapas de una vista volteada miden hacia abajo. `layer.isGeometryFlipped` no lo
+        // refleja (AppKit voltea en un ancestro), así que manda la vista: con él el velo quedaba arriba.
+        let flipped = cover.isFlipped
+        featuredGradient.frame = CGRect(x: 0, y: flipped ? cover.bounds.height - height : 0, width: cover.bounds.width, height: height)
+        // Parada 0 abajo y 1 arriba, sea cual sea la orientación de la capa.
+        featuredGradient.startPoint = CGPoint(x: 0.5, y: flipped ? 1 : 0)
+        featuredGradient.endPoint = CGPoint(x: 0.5, y: flipped ? 0 : 1)
+        featuredGradient.locations = HomeCoverScrim.stops.map { NSNumber(value: $0.location) }
+    }
+
+    private func paintScrimColors() {
+        let base = HomeCoverScrim.color(cover: scrimCover)
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        featuredGradient.colors = HomeCoverScrim.stops.map { base.nsColor.withAlphaComponent($0.alpha).cgColor }
+        CATransaction.commit()
+    }
+
+    /// Fija el color de carátula del degradado (`nil` = color de reserva).
+    private func applyScrim(cover rgb: HomeAmbientRGB?) {
+        scrimCover = rgb
+        featuredScrimCoverForTesting = rgb
+        guard featuredSong else { return }
+        installFeaturedLayers()
+        paintScrimColors()
+    }
+
+    /// Pinta de inmediato el color en caché (sin parpadeo al reciclar) o el de reserva.
+    private func paintCachedCoverColor(for record: HomeItemRecord) {
+        guard featuredSong else { return }
+        if let url = record.thumbnail, let session = coverSession, let hit = coverColorStore.cached(url: url, session: session) {
+            applyScrim(cover: hit)
+        } else { applyScrim(cover: nil) }
+    }
+
+    /// Color de la carátula a partir de la imagen ya decodificada, sin pedirla otra vez a la red.
+    private func requestCoverColor(image: CGImage?) {
+        guard featuredSong, let image, let url = representedRecord?.thumbnail, let session = coverSession else { return }
+        if let hit = coverColorStore.cached(url: url, session: session) { applyScrim(cover: hit); return }
+        colorTask?.cancel()
+        let expected = generation
+        let store = coverColorStore
+        colorTask = Task { @MainActor [weak self] in
+            let color = await store.color(url: url, session: session, image: { image })
+            guard !Task.isCancelled, let self, self.generation == expected else { return }
+            self.applyScrim(cover: color)
+        }
+    }
+
+    /// Zoom de la portada al 104 % dentro de su marco: 250 ms; sin transición con Reduce Motion.
+    private func setArtworkZoom(_ zoomed: Bool) {
+        guard artworkZoomed != zoomed || featuredArtwork.transform.m11 != (zoomed ? 1.04 : 1) else { return }
+        artworkZoomed = zoomed
+        let scale: CGFloat = zoomed ? 1.04 : 1
+        CATransaction.begin()
+        if reducesMotion() { CATransaction.setDisableActions(true) }
+        else {
+            CATransaction.setAnimationDuration(0.25)
+            CATransaction.setAnimationTimingFunction(Self.mosaicEase)
+        }
+        featuredArtwork.transform = CATransform3DMakeScale(scale, scale, 1)
+        CATransaction.commit()
+    }
+
+    var featuredArtworkScaleForTesting: CGFloat { featuredArtwork.transform.m11 }
+    var featuredTitleFrameForTesting: NSRect { title.frame }
+    var featuredArtistFrameForTesting: NSRect { largeArtistLabel.frame }
+    var featuredPlayFrameForTesting: NSRect { playButton.frame }
+    var featuredPlayVisibleForTesting: Bool { !playButton.isHidden }
+    var featuredTitleFontForTesting: NSFont? { title.attributedStringValue.length > 0 ? title.attributedStringValue.attribute(.font, at: 0, effectiveRange: nil) as? NSFont : title.font }
+    var featuredArtistFontForTesting: NSFont? { largeArtistLabel.font }
+    var featuredEqualizerFrameForTesting: NSRect { equalizerOverlay.frame }
+    var featuredGradientFrameForTesting: CGRect { featuredGradient.frame }
+    var featuredGradientAlphasForTesting: [CGFloat] {
+        (featuredGradient.colors as? [CGColor] ?? []).map { $0.alpha }
+    }
+    var featuredTitleMaskedForTesting: Bool { title.layer?.mask != nil }
+
+    // MARK: Tarjeta de colección
+
+    private static let hoverEase = CAMediaTimingFunction(controlPoints: 0.2, 0.8, 0.2, 1)
+
+    private var collectionPalette: HomeCollectionCardPalette { .make(albumCardStyle) }
+
+    /// Pone las piezas propias de la tarjeta de colección (panel, atenuación de portada, sombra) la primera vez.
+    private func installCollectionChrome() {
+        guard !collectionChromeInstalled else { return }
+        collectionChromeInstalled = true
+        addSubview(collectionPanel, positioned: .below, relativeTo: title)
+        coverDim.backgroundColor = NSColor.black.cgColor
+        coverDim.opacity = 0
+        cover.layer?.addSublayer(coverDim)
+        layer?.shadowColor = NSColor.black.cgColor
+        layer?.shadowOffset = .zero
+        applyCollectionStyle()
+    }
+
+    /// La celda vuelve a un modo distinto de colección: sin panel, sombra ni elevación.
+    private func leaveCollectionChrome() {
+        guard collectionChromeInstalled else { return }
+        collectionChromeInstalled = false
+        resetCollectionChrome()
+        collectionPanel.removeFromSuperview()
+        coverDim.removeFromSuperlayer()
+        layer?.shadowOpacity = 0
+        layer?.shadowPath = nil
+    }
+
+    /// Estado de reposo, sin transiciones: se usa al reciclar la celda.
+    private func resetCollectionChrome() {
+        collectionLifted = false
+        coverDim.removeAllAnimations()
+        coverDim.opacity = 0
+        if let layer {
+            layer.removeAllAnimations()
+            layer.transform = CATransform3DIdentity
+            layer.zPosition = 0
+        }
+        playGlass?.removeFromSuperview(); playGlass = nil
+        moreGlass?.removeFromSuperview(); moreGlass = nil
+        isMoreHovered = false
+        collectionPanel.setWash(nil)
+    }
+
+    /// Fuentes, colores y textos del panel según el acabado. Se llama al cambiar de registro, de acabado o de modo;
+    /// `layout()` sólo coloca marcos.
+    private func applyCollectionStyle() {
+        guard featuredCollection else { return }
+        installCollectionChrome()
+        let palette = collectionPalette
+        collectionPanel.apply(palette: palette)
+        let record = representedRecord
+        let badge = HomeCollectionBadge.text(kind: record?.kind ?? "", subtitle: record?.subtitle)
+        let tail = NSMutableParagraphStyle()
+        tail.lineBreakMode = .byTruncatingTail
+        typeLabel.attributedStringValue = NSAttributedString(string: badge, attributes: [
+            .font: NSFont.systemFont(ofSize: 10, weight: .bold), .kern: 1.2, .foregroundColor: palette.muted, .paragraphStyle: tail])
+        typeLabel.maximumNumberOfLines = 1
+        typeLabel.lineBreakMode = .byTruncatingTail
+        title.font = .systemFont(ofSize: 17, weight: .bold)
+        title.textColor = palette.title
+        title.maximumNumberOfLines = 1
+        title.lineBreakMode = .byTruncatingTail
+        largeArtistLabel.maximumNumberOfLines = 1
+        largeArtistLabel.lineBreakMode = .byTruncatingTail
+        largeArtistLabel.cell?.wraps = false
+        subtitle.font = .systemFont(ofSize: 12)
+        subtitle.textColor = palette.muted
+        subtitle.maximumNumberOfLines = 2
+        subtitle.lineBreakMode = .byTruncatingTail
+        subtitle.cell?.wraps = true
+        refreshArtistAppearance()
+        needsLayout = true
+    }
+
+    private static let collectionArtistFont = NSFont.systemFont(ofSize: 14, weight: .medium)
+
+    /// Artista o creador: color del acabado; con puntero o foco, negro y subrayado como un enlace.
+    private func applyCollectionArtistAppearance() {
+        guard featuredCollection, !artist.isHidden else { return }
+        let palette = collectionPalette
+        let emphasized = artist.isEnabled && (isArtistHovered || window?.firstResponder === artist)
+        artist.title = ""
+        artist.isTransparent = true
+        let tail = NSMutableParagraphStyle()
+        tail.lineBreakMode = .byTruncatingTail
+        largeArtistLabel.attributedStringValue = NSAttributedString(string: rawArtistTitle, attributes: [
+            .font: Self.collectionArtistFont, .foregroundColor: emphasized ? palette.artistHover : palette.artist,
+            .underlineStyle: emphasized ? NSUnderlineStyle.single.rawValue : 0, .paragraphStyle: tail])
+        collectionArtistWidth = ceil((rawArtistTitle as NSString).size(withAttributes: [.font: Self.collectionArtistFont]).width) + 2
+        needsLayout = true
+    }
+
+    /// Sólo marcos y capas: sin medir texto ni crear fuentes, porque se ejecuta en cada cuadro de un resize.
+    private func layoutCollectionCard() {
+        installCollectionChrome()
+        typealias Metrics = HomeCollectionCardMetrics
+        let width = max(0, bounds.width)
+        let side = Metrics.paddingSide
+        let textWidth = max(0, width - 2 * side)
+        layer?.cornerRadius = 0
+        layer?.masksToBounds = false
+        layer?.borderWidth = 0
+        layer?.borderColor = NSColor.clear.cgColor
+
+        // Portada cuadrada arriba. Su marco (y el del velo de reproducción) se alarga un radio por debajo
+        // del panel, que va encima y lo tapa: con las cuatro esquinas redondeadas sólo se ven las de arriba
+        // y la unión con el panel queda recta, sin depender de `maskedCorners`.
+        let artSquare = CGRect(x: 0, y: 0, width: width, height: width)
+        cover.frame = NSRect(x: 0, y: 0, width: width, height: width + Metrics.cornerRadius)
+        cover.imageScaling = .scaleAxesIndependently
+        cover.layer?.cornerRadius = Metrics.cornerRadius
+        cover.layer?.borderWidth = 0
+        if featuredArtwork.superlayer == nil { cover.layer?.insertSublayer(featuredArtwork, at: 0) }
+        setArtworkGeometry(in: artSquare)
+        featuredArtwork.masksToBounds = true
+        featuredFooter.isHidden = true
+        featuredGradient.isHidden = true
+        coverDim.frame = artSquare
+        equalizerOverlay.frame = cover.frame
+        equalizerOverlay.setCornerRadius(Metrics.cornerRadius)
+        equalizerOverlay.updateStyle(compact: false)
+        equalizerOverlay.updateInline(nil)
+        if title.layer?.mask != nil { title.layer?.mask = nil }
+
+        // Panel claro: 12 + 14 + 2 + 22 + 19 + 6 + 32 + 14 = 121.
+        collectionPanel.frame = NSRect(x: 0, y: width, width: width, height: Metrics.panelHeight)
+        var y = width + Metrics.paddingTop
+        typeLabel.frame = NSRect(x: side, y: y, width: textWidth, height: Metrics.badgeHeight)
+        y += Metrics.badgeHeight + Metrics.badgeBottom
+        title.frame = NSRect(x: side, y: y, width: textWidth, height: Metrics.titleHeight)
+        y += Metrics.titleHeight
+        largeArtistLabel.frame = NSRect(x: side, y: y, width: textWidth, height: Metrics.artistHeight)
+        // El enlace ocupa sólo el texto, no toda la fila.
+        artist.frame = NSRect(x: side, y: y, width: min(textWidth, collectionArtistWidth), height: Metrics.artistHeight)
+        largeArtistLabel.isHidden = artist.isHidden
+        y += Metrics.artistHeight + Metrics.summaryGap
+        subtitle.frame = NSRect(x: side, y: y, width: textWidth, height: Metrics.summaryHeight)
+        bullet.isHidden = true
+        explicitBadge.isHidden = true
+        album.isHidden = true
+
+        // Play (abajo a la izquierda) y menú (abajo a la derecha): 38 pt a 12 pt de los bordes de la portada.
+        let diameter = Metrics.controlDiameter, inset = Metrics.controlInset
+        playButton.frame = NSRect(x: inset, y: width - inset - diameter, width: diameter, height: diameter)
+        playButton.layer?.cornerRadius = diameter / 2
+        let icon = Metrics.controlIcon
+        playSymbol.frame = NSRect(x: playButton.frame.midX - icon / 2, y: playButton.frame.midY - icon / 2, width: icon, height: icon)
+        more.frame = NSRect(x: width - inset - diameter, y: width - inset - diameter, width: diameter, height: diameter)
+        more.layer?.backgroundColor = NSColor.clear.cgColor
+        playGlass?.frame = playButton.frame
+        moreGlass?.frame = more.frame
+        loadingIndicator?.frame = playSymbol.frame.insetBy(dx: -1, dy: -1)
+
+        applyShadowModel(collectionLifted ? Metrics.liftedShadow : Metrics.restShadow)
+    }
+
+    private func shadowPath(_ shadow: HomeCollectionCardMetrics.Shadow) -> CGPath {
+        var rect = bounds.insetBy(dx: shadow.inset, dy: shadow.inset)
+        // El eje Y de las capas de una vista volteada crece hacia abajo.
+        rect.origin.y += isFlipped ? shadow.offset : -shadow.offset
+        let radius = max(0, min(HomeCollectionCardMetrics.cornerRadius, min(rect.width, rect.height) / 2))
+        return CGPath(roundedRect: rect, cornerWidth: radius, cornerHeight: radius, transform: nil)
+    }
+
+    private func applyShadowModel(_ shadow: HomeCollectionCardMetrics.Shadow) {
+        guard let layer else { return }
+        layer.shadowColor = NSColor.black.cgColor
+        layer.shadowOffset = .zero
+        layer.shadowOpacity = shadow.opacity
+        layer.shadowRadius = shadow.radius
+        layer.shadowPath = shadowPath(shadow)
+    }
+
+    private func liftTransform(_ lifted: Bool) -> CATransform3D {
+        // Hacia arriba: negativo cuando el contenedor tiene el eje Y hacia abajo.
+        let up: CGFloat = (superview?.isFlipped ?? false) ? -1 : 1
+        return lifted ? CATransform3DMakeTranslation(0, up * HomeCollectionCardMetrics.lift, 0) : CATransform3DIdentity
+    }
+
+    /// Hover o foco: sube 4 pt (transformación, no marco) en 180 ms, queda sobre las vecinas, la sombra pasa a
+    /// `0 20 34 −18` al 80 % y la portada se atenúa con negro al 30 % en 150 ms. Con Reduce Motion, al instante.
+    private func setCollectionLifted(_ lifted: Bool) {
+        guard collectionChromeInstalled, let layer, lifted != collectionLifted else { return }
+        collectionLifted = lifted
+        typealias Metrics = HomeCollectionCardMetrics
+        layer.zPosition = lifted ? (hovered ? 2 : 1) : 0
+        let shadow = lifted ? Metrics.liftedShadow : Metrics.restShadow
+        let animated = !reducesMotion() && window != nil
+        let fromTransform = layer.presentation()?.transform ?? layer.transform
+        let fromPath = layer.presentation()?.shadowPath ?? layer.shadowPath
+        let fromRadius = layer.presentation()?.shadowRadius ?? layer.shadowRadius
+        let fromOpacity = layer.presentation()?.shadowOpacity ?? layer.shadowOpacity
+        let fromDim = coverDim.presentation()?.opacity ?? coverDim.opacity
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        layer.transform = liftTransform(lifted)
+        applyShadowModel(shadow)
+        coverDim.opacity = lifted ? Metrics.dimOpacity : 0
+        CATransaction.commit()
+        guard animated else {
+            layer.removeAllAnimations()
+            coverDim.removeAllAnimations()
+            return
+        }
+        func animation(_ keyPath: String, from: Any?, to: Any?, duration: CFTimeInterval) -> CABasicAnimation {
+            let value = CABasicAnimation(keyPath: keyPath)
+            value.fromValue = from
+            value.toValue = to
+            value.duration = duration
+            value.timingFunction = Self.hoverEase
+            return value
+        }
+        layer.add(animation("transform", from: NSValue(caTransform3D: fromTransform), to: NSValue(caTransform3D: layer.transform), duration: Metrics.hoverDuration), forKey: "lift")
+        layer.add(animation("shadowPath", from: fromPath, to: layer.shadowPath, duration: Metrics.hoverDuration), forKey: "shadowPath")
+        layer.add(animation("shadowRadius", from: fromRadius, to: layer.shadowRadius, duration: Metrics.hoverDuration), forKey: "shadowRadius")
+        layer.add(animation("shadowOpacity", from: fromOpacity, to: layer.shadowOpacity, duration: Metrics.hoverDuration), forKey: "shadowOpacity")
+        coverDim.add(animation("opacity", from: fromDim, to: coverDim.opacity, duration: Metrics.dimDuration), forKey: "dim")
+    }
+
+    /// Círculos de vidrio de Play y menú, sólo para la tarjeta que los muestra.
+    private func syncGlassControls() {
+        guard featuredCollection else { return }
+        let solid = reducesTransparency()
+        func sync(_ glass: inout HomeGlassCircleView?, visible: Bool, highlighted: Bool, frame: NSRect) {
+            guard visible else { glass?.isHidden = true; return }
+            if let current = glass, current.isSolid != solid { current.removeFromSuperview(); glass = nil }
+            if glass == nil {
+                let created = HomeGlassCircleView(solid: solid)
+                created.setAccessibilityElement(false)
+                created.frame = frame
+                addSubview(created, positioned: .below, relativeTo: playSymbol)
+                glass = created
+            }
+            glass?.isHidden = false
+            glass?.highlighted = highlighted
+        }
+        sync(&playGlass, visible: !playButton.isHidden, highlighted: isPlayButtonHovered, frame: playButton.frame)
+        sync(&moreGlass, visible: !more.isHidden, highlighted: isMoreHovered, frame: more.frame)
+        needsLayout = true
+    }
+
+    /// Lavado de la portada para el acabado teñido: una vez por carátula, fuera del hilo principal.
+    /// Se descarta si la celda se recicló a otro registro (generación) o el carril se desmontó (`prepareForReuse`).
+    private func refreshWash() {
+        guard featuredCollection else { return }
+        washTask?.cancel()
+        washTask = nil
+        guard collectionPalette.washed, let url = representedRecord?.thumbnail, let session = coverSession else {
+            collectionPanel.setWash(nil)
+            return
+        }
+        if let hit = coverWashStore.cached(url: url, session: session) {
+            collectionPanel.setWash(hit)
+            return
+        }
+        collectionPanel.setWash(nil)
+        guard let image = coverBitmap else { return }
+        let expected = generation
+        let store = coverWashStore
+        washTask = Task { @MainActor [weak self] in
+            let wash = await store.wash(url: url, session: session, image: { image })
+            guard !Task.isCancelled, let self, self.generation == expected, self.collectionPalette.washed else { return }
+            self.collectionPanel.setWash(wash)
+        }
+    }
+
+    var collectionWashForTesting: CGImage? { collectionPanel.washImage }
+    var collectionPanelFrameForTesting: NSRect { collectionPanel.frame }
+    var collectionBadgeFrameForTesting: NSRect { typeLabel.frame }
+    var collectionBadgeTextForTesting: String { typeLabel.stringValue }
+    var collectionTitleFrameForTesting: NSRect { title.frame }
+    var collectionArtistLabelFrameForTesting: NSRect { largeArtistLabel.frame }
+    var collectionArtistLinkFrameForTesting: NSRect { artist.frame }
+    var collectionSummaryFrameForTesting: NSRect { subtitle.frame }
+    var collectionCoverFrameForTesting: NSRect { cover.frame }
+    var collectionTextColorsForTesting: (badge: NSColor?, title: NSColor?, artist: NSColor?, summary: NSColor?) {
+        func color(_ field: NSTextField) -> NSColor? {
+            field.attributedStringValue.length > 0
+                ? field.attributedStringValue.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor : field.textColor
+        }
+        return (color(typeLabel), title.textColor, color(largeArtistLabel), subtitle.textColor)
+    }
+    var collectionPanelColorForTesting: NSColor? { collectionPanel.surfaceColor.flatMap { NSColor(cgColor: $0) } }
+    var collectionPanelSurfaceFrameForTesting: CGRect { collectionPanel.surfaceFrame }
+    var collectionLiftForTesting: CGFloat { layer?.transform.m42 ?? 0 }
+    var collectionIsLiftedForTesting: Bool { collectionLifted }
+    var collectionZPositionForTesting: CGFloat { layer?.zPosition ?? 0 }
+    var collectionShadowForTesting: (opacity: Float, radius: CGFloat, box: CGRect) {
+        (layer?.shadowOpacity ?? 0, layer?.shadowRadius ?? 0, layer?.shadowPath?.boundingBoxOfPath ?? .null)
+    }
+    var collectionDimOpacityForTesting: Float { coverDim.opacity }
+    var collectionGlassForTesting: (play: HomeGlassCircleView?, more: HomeGlassCircleView?) { (playGlass, moreGlass) }
+    var collectionPlayControlFrameForTesting: NSRect { playButton.frame }
+    var collectionMoreControlFrameForTesting: NSRect { more.frame }
+    var collectionArtworkFrameForTesting: CGRect { featuredArtwork.frame }
+    /// Orden de las subvistas: en el mosaico el icono va sobre el círculo blanco; en el resto, bajo el vidrio.
+    var playSymbolIsAboveCircleForTesting: Bool {
+        guard let symbol = subviews.firstIndex(of: playSymbol), let button = subviews.firstIndex(of: playButton) else { return false }
+        return symbol > button
+    }
+    var typeLabelForTesting: NSAttributedString { typeLabel.attributedStringValue }
+    var collectionArtistFontForTesting: NSFont? {
+        largeArtistLabel.attributedStringValue.length > 0
+            ? largeArtistLabel.attributedStringValue.attribute(.font, at: 0, effectiveRange: nil) as? NSFont : largeArtistLabel.font
+    }
+    var collectionSummaryFontForTesting: NSFont? { subtitle.font }
+    var largeArtistLabelHiddenForTesting: Bool { largeArtistLabel.isHidden }
+    var collectionArtistUnderlinedForTesting: Bool {
+        guard largeArtistLabel.attributedStringValue.length > 0 else { return false }
+        return (largeArtistLabel.attributedStringValue.attribute(.underlineStyle, at: 0, effectiveRange: nil) as? Int ?? 0) != 0
+    }
+    var coverDimDurationForTesting: CFTimeInterval { coverDim.animation(forKey: "dim")?.duration ?? 0 }
+    var collectionCardAnimationKeysForTesting: [String] { (layer?.animationKeys() ?? []) + (coverDim.animationKeys() ?? []) }
 
     static func parseSubtitleComponents(_ rawSubtitle: String?) -> [String] {
         guard let raw = rawSubtitle, !raw.isEmpty else { return [] }
@@ -1347,7 +1914,8 @@ final class HomeItemView: NSView {
         album.setAccessibilityLabel(hasAlbumDestination ? L10n.text("home.album.view", args: [rawAlbumTitle]) : L10n.text("home.album.label", args: [rawAlbumTitle]))
 
         let creatorHasLink = record.kind == "playlist" && record.artistRuns.contains { $0.id?.isEmpty == false }
-        let artistCanShow = !artistName.isEmpty && record.kind != "artist" && (record.kind != "playlist" || creatorHasLink)
+        // La tarjeta de colección muestra siempre el creador (con enlace sólo si hay ID), como Windows.
+        let artistCanShow = !artistName.isEmpty && record.kind != "artist" && (featuredCollection || record.kind != "playlist" || creatorHasLink)
         subtitle.stringValue = record.kind == "playlist" && !creatorHasLink ? (record.subtitle ?? "") : ""
         let showsAlbum = style == .compactSong && record.kind == "song" && !rawAlbumTitle.isEmpty
         let showsSubtitle = style == .largeCard && !subtitle.stringValue.isEmpty
@@ -1372,15 +1940,18 @@ final class HomeItemView: NSView {
         )
         refreshAppearance()
         needsLayout = true
+        paintCachedCoverColor(for: record)
 
+        let featuredRequest = Self.featuredArtworkRequest(song: featuredSong, collection: featuredCollection, size: mosaicSize)
+        refreshWash()
         guard let url = ImageURLHelper.optimizedThumbnailURL(
-            from: record.thumbnail, targetPixelSize: featuredSong || featuredCollection ? Self.featuredArtworkPixels : (style == .compactSong ? 112 : 320)
+            from: record.thumbnail, targetPixelSize: featuredRequest?.pixels ?? (style == .compactSong ? 112 : 320)
         ) else {
             cover.image = NSImage(systemSymbolName: record.kind == "artist" ? "person.crop.circle" : "music.note", accessibilityDescription: nil)
             cover.contentTintColor = .secondaryLabelColor
             return
         }
-        let target = featuredSong || featuredCollection ? Self.featuredArtworkTarget : (style == .compactSong ? CGSize(width: 48, height: 48) : CGSize(width: 156, height: 156))
+        let target = featuredRequest?.target ?? (style == .compactSong ? CGSize(width: 48, height: 48) : CGSize(width: 156, height: 156))
         if let cached = ImageCache.shared.imageFromMemoryCache(for: url, targetSize: target) {
             setArtwork(cached)
             return
@@ -1404,6 +1975,8 @@ final class HomeItemView: NSView {
             featuredArtworkSizeForTesting = bitmap.map { CGSize(width: $0.width, height: $0.height) }
             featuredArtwork.contentsGravity = .resizeAspectFill
             cover.layer?.masksToBounds = true
+            requestCoverColor(image: bitmap)
+            if featuredCollection { coverBitmap = bitmap; refreshWash() }
         } else { cover.image = image }
     }
 
@@ -1443,7 +2016,8 @@ final class HomeItemView: NSView {
             measuredLargeCardWidth = -1
             refreshArtistAppearance()
         }
-        typeLabel.stringValue = Self.displayType(for: record)
+        // La tarjeta de colección muestra su etiqueta propia (`applyCollectionStyle`); aquí sólo el texto accesible.
+        if !featuredCollection { typeLabel.stringValue = Self.displayType(for: record) }
         let hasArtistDestination = (record.artistId ?? record.artistRuns.first(where: { $0.id?.isEmpty == false })?.id)?.isEmpty == false
         let hasAlbumDestination = record.albumId?.isEmpty == false
         artist.setAccessibilityLabel(rawArtistTitle.isEmpty ? "" : L10n.text(hasArtistDestination ? "home.artist.view" : "home.artist.label", args: [rawArtistTitle]))
@@ -1468,11 +2042,16 @@ final class HomeItemView: NSView {
         guard !artist.isHidden else { return }
         let text = rawArtistTitle.isEmpty ? artist.title : rawArtistTitle
         guard !text.isEmpty else { return }
+        if featuredCollection { applyCollectionArtistAppearance(); return }
         let isHovered = isArtistHovered
         if style == .largeCard {
             artist.title = ""
             artist.isTransparent = true
-            largeArtistLabel.textColor = isHovered ? .labelColor : .secondaryLabelColor
+            if featuredSong {
+                largeArtistLabel.textColor = isHovered ? .white : NSColor.white.withAlphaComponent(0.72)
+            } else {
+                largeArtistLabel.textColor = isHovered ? .labelColor : .secondaryLabelColor
+            }
             return
         }
         artist.isTransparent = false
@@ -1526,7 +2105,8 @@ final class HomeItemView: NSView {
         isCurrent = isSongMatch || isAlbumMatch || isPlaylistMatch
         playing = isCurrent && isPlaying
 
-        let metadata = [typeLabel.stringValue, explicitBadge.isHidden ? nil : ContentRatingMetadata.label(explicitBadge.rating),
+        let typeName = representedRecord.map(Self.displayType(for:)) ?? typeLabel.stringValue
+        let metadata = [typeName, explicitBadge.isHidden ? nil : ContentRatingMetadata.label(explicitBadge.rating),
                         rawArtistTitle.isEmpty ? nil : rawArtistTitle,
                         rawAlbumTitle.isEmpty ? nil : rawAlbumTitle]
             .compactMap { $0 }
@@ -1547,9 +2127,21 @@ final class HomeItemView: NSView {
         setLoading(false)
         imageTask?.cancel()
         imageTask = nil
-        tintTask?.cancel()
-        tintTask = nil
-        featuredTint = nil
+        colorTask?.cancel()
+        colorTask = nil
+        washTask?.cancel()
+        washTask = nil
+        coverBitmap = nil
+        if collectionChromeInstalled { resetCollectionChrome() }
+        scrimCover = nil
+        featuredScrimCoverForTesting = nil
+        if featuredGradient.superlayer != nil { paintScrimColors() }
+        appliedTitleKey = nil
+        mosaicPlayVisible = false
+        artworkZoomed = false
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        featuredArtwork.transform = CATransform3DIdentity
+        CATransaction.commit()
         generation &+= 1
         equalizerOverlay.stopAnimating()
         isCurrent = false
@@ -1577,6 +2169,7 @@ final class HomeItemView: NSView {
         album.isEnabled = true
         explicitBadge.rating = .unknown
         isPlayButtonHovered = false
+        isMoreHovered = false
         renderedAppearance = nil
         onCard = nil
         onCover = nil
@@ -1589,8 +2182,9 @@ final class HomeItemView: NSView {
     func setHovered(_ value: Bool, localPoint: NSPoint? = nil) {
         if hovered != value { hovered = value }
         if !value {
-            if isPlayButtonHovered {
+            if isPlayButtonHovered || isMoreHovered {
                 isPlayButtonHovered = false
+                isMoreHovered = false
                 refreshAppearance()
             }
             if isArtistHovered {
@@ -1629,7 +2223,8 @@ final class HomeItemView: NSView {
             indicator.style = .spinning
             indicator.controlSize = .small
             indicator.isDisplayedWhenStopped = false
-            indicator.appearance = NSAppearance(named: .darkAqua)
+            // Trazo oscuro sobre el círculo blanco del mosaico; claro sobre el vidrio del resto.
+            indicator.appearance = NSAppearance(named: featuredSong ? .aqua : .darkAqua)
             indicator.setAccessibilityLabel(L10n.text("home.loading_named", args: [title.stringValue]))
             indicator.frame = playSymbol.frame.insetBy(dx: -1, dy: -1)
             addSubview(indicator)
@@ -1643,8 +2238,10 @@ final class HomeItemView: NSView {
 
     func updateHoverLocation(_ point: NSPoint) {
         let overPlayButton = !playButton.isHidden && playButton.frame.contains(point)
-        if isPlayButtonHovered != overPlayButton {
+        let overMore = featuredCollection && !more.isHidden && more.frame.contains(point)
+        if isPlayButtonHovered != overPlayButton || isMoreHovered != overMore {
             isPlayButtonHovered = overPlayButton
+            isMoreHovered = overMore
             refreshAppearance()
         }
         if artist.isEnabled && !artist.isHidden {
@@ -1728,12 +2325,18 @@ final class HomeItemView: NSView {
         let next = Appearance(hovered: hovered, selected: isSelectedInFeed,
                               playing: playing, isCurrent: isCurrent, compactSong: style == .compactSong,
                               playButtonHovered: isPlayButtonHovered, feedVisible: feedVisible,
-                              reduceMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion,
-                              focusWithinCard: focusWithinCard, loading: loading)
+                              reduceMotion: reducesMotion(),
+                              focusWithinCard: focusWithinCard, loading: loading,
+                              mosaicSize: featuredSong ? mosaicSize : nil,
+                              collection: featuredCollection, moreHovered: isMoreHovered,
+                              artistFocused: featuredCollection && window?.firstResponder === artist,
+                              reduceTransparency: featuredCollection && reducesTransparency())
         guard renderedAppearance != next else { return }
         renderedAppearance = next
         let isHighlighted = hovered || isSelectedInFeed || focusWithinCard || loading
-        equalizerOverlay.setIndicatorSuppressed(isCurrent && isHighlighted)
+        // En el mosaico el ecualizador va en línea y no se oculta con hover; la grande muestra siempre Play.
+        let showsPlay = isHighlighted || (featuredSong && mosaicSize == .large)
+        equalizerOverlay.setIndicatorSuppressed(!featuredSong && isCurrent && isHighlighted)
         if style == .compactSong {
             playButton.layer?.backgroundColor = NSColor.clear.cgColor
             playButton.layer?.cornerRadius = AppTheme.artworkThumbnailRadius
@@ -1742,9 +2345,12 @@ final class HomeItemView: NSView {
         } else {
             playButton.wantsLayer = true
             let isCollection = representedKind == "album" || representedKind == "playlist"
-            let fill = isCollection && isPlayButtonHovered
-                ? AppTheme.nsAccent.withAlphaComponent(0.98)
-                : NSColor.black.withAlphaComponent(0.62)
+            // En la tarjeta de colección el círculo es el vidrio de detrás; el botón es sólo el área de clic.
+            let fill = featuredSong
+                ? NSColor.white
+                : (featuredCollection ? NSColor.clear : isCollection && isPlayButtonHovered
+                    ? AppTheme.nsAccent.withAlphaComponent(0.98)
+                    : NSColor.black.withAlphaComponent(0.62))
             playButton.layer?.backgroundColor = fill.cgColor
             layer?.backgroundColor = NSColor.clear.cgColor
             layer?.borderColor = NSColor.clear.cgColor
@@ -1752,7 +2358,7 @@ final class HomeItemView: NSView {
 
         if playing {
             equalizerOverlay.startAnimating()
-            if isHighlighted {
+            if showsPlay {
                 playSymbol.isHidden = false
                 playSymbol.image = pauseImage
             } else {
@@ -1760,7 +2366,7 @@ final class HomeItemView: NSView {
             }
         } else if isCurrent {
             equalizerOverlay.pauseAnimation()
-            if isHighlighted {
+            if showsPlay {
                 playSymbol.isHidden = false
                 playSymbol.image = playImage
             } else {
@@ -1768,18 +2374,31 @@ final class HomeItemView: NSView {
             }
         } else {
             equalizerOverlay.stopAnimating()
-            playSymbol.isHidden = !isHighlighted
+            playSymbol.isHidden = !showsPlay
             playSymbol.image = playImage
         }
-        playButton.isHidden = !isHighlighted || !showsDirectPlayControl
+        playButton.isHidden = !showsPlay || !showsDirectPlayControl
         playButton.isEnabled = !loading && showsDirectPlayControl
         if loading || !showsDirectPlayControl { playSymbol.isHidden = true }
-        playSymbol.contentTintColor = .white
-        equalizerOverlay.setMotionEnabled(!NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
+        playSymbol.contentTintColor = featuredSong ? Self.mosaicPlayIcon : .white
+        loadingIndicator?.appearance = NSAppearance(named: featuredSong ? .aqua : .darkAqua)
+        equalizerOverlay.setMotionEnabled(!reducesMotion())
         equalizerOverlay.setFeedVisible(feedVisible)
+        if featuredSong {
+            setArtworkZoom((hovered || focusWithinCard) && !reducesMotion())
+            let playVisible = !playButton.isHidden
+            if mosaicPlayVisible != playVisible { mosaicPlayVisible = playVisible }
+            needsLayout = true
+        }
 
         more.contentTintColor = NSColor.white.withAlphaComponent(isHighlighted ? 1.0 : 0.82)
         more.isHidden = !isHighlighted
+        if featuredCollection {
+            installCollectionChrome()
+            setCollectionLifted(hovered || focusWithinCard)
+            syncGlassControls()
+            applyCollectionArtistAppearance()
+        }
     }
 
     @objc private func playButtonPressed() { onDirectPlay?() }

@@ -29,7 +29,7 @@ struct ArtistDetailView: View {
                     }
                 } else if let artist = viewModel.artist {
                     ArtistProfileViewport(
-                        artist: artist,
+                        artist: ArtistProfileViewport.resolvedArtist(artist),
                         isObscured: playerViewModel.isFullscreenPresented,
                         header: AnyView(ArtistProfileHostedContent {
                             AnyView(VStack(alignment: .leading, spacing: 32) {

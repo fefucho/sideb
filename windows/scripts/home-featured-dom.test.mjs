@@ -49,94 +49,100 @@ if(!process.execArgv.includes('--conditions=browser')) {
 
   test('Speed Dial is a recycled mosaic and the albums a panel row sized by collectionRowLayout; the row reports its capacity',async()=>{
     viewport=800;const f=await mountHome();
-    const {songs,collections}=rails(f.host);
-    assert.ok(songs&&collections,'mosaic and collection row exist');
-    assert.equal(f.host.querySelector('[data-featured-rail]'),null,'Home no longer mounts FeaturedRail');
-    // 800px: (800-56+24)/224 = 3 cards of 232px; capacity 3 -> 18 collections.
-    assert.deepEqual(f.calls.capacity.slice(-1),[3]);
-    assert.equal(collections.querySelectorAll('.item article.media-card.panel').length,18);
-    assert.ok(collections.querySelector('.item').getAttribute('style').includes('232px'));
-    assert.ok(f.host.querySelectorAll('.mosaic article.media-card.mosaic').length>0,'some mosaic cells are mounted');
-    assert.ok(f.host.querySelectorAll('.mosaic article.media-card.mosaic').length<30,'the mosaic recycles by viewport');
-    await f.dispose();
+    try {
+      const {songs,collections}=rails(f.host);
+      assert.ok(songs&&collections,'mosaic and collection row exist');
+      assert.equal(f.host.querySelector('[data-featured-rail]'),null,'Home no longer mounts FeaturedRail');
+      // 800px: (800-56+24)/244 = 3 cards of 220px; capacity 3 -> 18 collections.
+      assert.deepEqual(f.calls.capacity.slice(-1),[3]);
+      assert.equal(collections.querySelectorAll('.item article.media-card.panel').length,18);
+      assert.ok(collections.querySelector('.item').getAttribute('style').includes('220px'));
+      assert.ok(f.host.querySelectorAll('.mosaic article.media-card.mosaic').length>0,'some mosaic cells are mounted');
+      assert.ok(f.host.querySelectorAll('.mosaic article.media-card.mosaic').length<30,'the mosaic recycles by viewport');
+    } finally { await f.dispose(); }
   });
 
-  test('resizing changes capacity and card width; metadata asks for the whole row with the visible cards first',async()=>{
+  test('resizing changes capacity while keeping fixed 220px card width; metadata asks for the whole row with the visible cards first',async()=>{
     viewport=800;const f=await mountHome();
-    const widths=()=>[...new Set([...f.host.querySelectorAll('.collection-row .item')].map(card=>card.style.width))];
-    assert.deepEqual(widths(),['232px']);
-    assert.equal(f.calls.visible.at(-1).length,18,'all 18 collections are requested');
-    assert.deepEqual(f.calls.visible.at(-1).slice(0,3),['album-0','album-1','album-2'],'cards inside the 28px insets go first');
-    await resize(1600);
-    assert.deepEqual(f.calls.capacity.slice(-1),[5]);
-    assert.equal(f.host.querySelectorAll('.collection-row .item').length,30);
-    assert.deepEqual(widths(),['289.6px']);
-    await f.dispose();
+    try {
+      const widths=()=>[...new Set([...f.host.querySelectorAll('.collection-row .item')].map(card=>card.style.width))];
+      assert.deepEqual(widths(),['220px']);
+      assert.equal(f.calls.visible.at(-1).length,18,'all 18 collections are requested');
+      assert.deepEqual(f.calls.visible.at(-1).slice(0,3),['album-0','album-1','album-2'],'cards inside the 28px insets go first');
+      await resize(1600);
+      assert.deepEqual(f.calls.capacity.slice(-1),[6]);
+      assert.equal(f.host.querySelectorAll('.collection-row .item').length,36);
+      assert.deepEqual(widths(),['220px']);
+    } finally { await f.dispose(); }
   });
 
   test('scrolling the row moves the visible metadata ids; arrows exist only where content is out of view',async()=>{
     viewport=800;const f=await mountHome();
-    const {collections}=rails(f.host);
-    const host=collections.closest('.horizontal-navigation');
-    assert.ok(!host.classList.contains('leading'),'nothing before the first card');assert.ok(host.classList.contains('trailing'));
-    assert.equal(host.querySelector('[data-horizontal-arrow=previous]').classList.contains('hidden'),true);
-    collections.scrollLeft=3000;collections.dispatchEvent(new Event('scroll'));await settle();
-    assert.ok(host.classList.contains('leading'));
-    const ids=f.calls.visible.at(-1);assert.equal(ids.length,18);assert.equal(ids[0],'album-11',JSON.stringify(ids));
-    await f.dispose();
+    try {
+      const {collections}=rails(f.host);
+      const host=collections.closest('.horizontal-navigation');
+      assert.ok(!host.classList.contains('leading'),'nothing before the first card');assert.ok(host.classList.contains('trailing'));
+      assert.equal(host.querySelector('[data-horizontal-arrow=previous]').classList.contains('hidden'),true);
+      collections.scrollLeft=3000;collections.dispatchEvent(new Event('scroll'));await settle();
+      assert.ok(host.classList.contains('leading'));
+      const ids=f.calls.visible.at(-1);assert.equal(ids.length,18);assert.equal(ids[0],'album-12',JSON.stringify(ids));
+    } finally { await f.dispose(); }
   });
 
   test('View all lists every featured collection with the card actions, reports its own viewport and returns focus',async()=>{
     viewport=800;const f=await mountHome();
-    const open=[...f.host.querySelectorAll('button')].find(b=>b.textContent.includes('Ver todo'));
-    assert.ok(open,'the collections header has «Ver todo»');open.focus();open.click();await settle();
-    const dialog=document.querySelector('[role=dialog][data-featured-sheet]');assert.ok(dialog);
-    assert.equal(dialog.querySelector('h2').textContent,'Álbumes');
-    assert.equal(dialog.querySelectorAll('.collection-card').length,18);
-    assert.equal(dialog.querySelectorAll('.collection-card')[0].style.width,'180px');assert.equal(dialog.querySelectorAll('.collection-card')[0].style.height,'244px');
-    // 800px grid: four 180px columns; a 520px viewport shows two rows (the third starts at 520px).
-    assert.deepEqual(f.calls.visible.at(-1),Array.from({length:8},(_,i)=>`album-${i}`),'sheet metadata follows its own viewport');
-    dialog.querySelector('button.primary,.primary').click();await settle();
-    assert.deepEqual(f.calls.album,['album-0']);assert.equal(document.querySelector('[data-featured-sheet]'),null,'opening a card closes the sheet');
-    open.click();await settle();document.dispatchEvent(new dom.KeyboardEvent('keydown',{key:'Escape',bubbles:true}));await settle();
-    assert.equal(document.querySelector('[data-featured-sheet]'),null);assert.equal(document.activeElement,open);
-    await f.dispose();
+    try {
+      const open=[...f.host.querySelectorAll('button')].find(b=>b.textContent.includes('Ver todo'));
+      assert.ok(open,'the collections header has «Ver todo»');open.focus();open.click();await settle();
+      const dialog=document.querySelector('[role=dialog][data-featured-sheet]');assert.ok(dialog);
+      assert.equal(dialog.querySelector('h2').textContent,'Álbumes');
+      assert.equal(dialog.querySelectorAll('.collection-card').length,18);
+      assert.equal(dialog.querySelectorAll('.collection-card')[0].style.width,'180px');assert.equal(dialog.querySelectorAll('.collection-card')[0].style.height,'244px');
+      // 800px grid: four 180px columns; a 520px viewport shows two rows (the third starts at 520px).
+      assert.deepEqual(f.calls.visible.at(-1),Array.from({length:8},(_,i)=>`album-${i}`),'sheet metadata follows its own viewport');
+      dialog.querySelector('button.primary,.primary').click();await settle();
+      assert.deepEqual(f.calls.album,['album-0']);assert.equal(document.querySelector('[data-featured-sheet]'),null,'opening a card closes the sheet');
+      open.click();await settle();document.dispatchEvent(new dom.KeyboardEvent('keydown',{key:'Escape',bubbles:true}));await settle();
+      assert.equal(document.querySelector('[data-featured-sheet]'),null);assert.equal(document.activeElement,open);
+    } finally { await f.dispose(); }
   });
 
   // A wrapper keeps the props reactive, as +page.svelte does.
   const Harness=(await import(await moduleFor(path.join(root,'src/lib/components/home/HomeHarness.svelte'),`<script>import Home from './HomeView.svelte';let {base}=$props();let session=$state('s1'),interactive=$state(true),sidebar=$state(false);globalThis.__home={session:v=>session=v,interactive:v=>interactive=v,sidebar:v=>sidebar=v};</script><Home {...base} {session} {interactive} sidebarOpen={sidebar}/>`))).default;
   test('the sidebar flag only toggles the trailing inset; the account switch closes the sheet and each selection keeps its own anchor',async()=>{
     viewport=800;const f=await mountHome({},Harness);
-    const home=()=>f.host.querySelector('.home');
-    assert.ok(!home().classList.contains('sidebar-open'));
-    globalThis.__home.sidebar(true);await settle();assert.ok(home().classList.contains('sidebar-open'));
-    globalThis.__home.sidebar(false);await settle();assert.ok(!home().classList.contains('sidebar-open'));
-    const collections=()=>rails(f.host).collections;
-    collections().scrollLeft=1792;collections().dispatchEvent(new Event('scroll'));await settle();
-    // Another account: its row starts at the beginning and the open sheet is gone.
-    [...f.host.querySelectorAll('button')].find(b=>b.textContent.includes('Ver todo')).click();await settle();
-    assert.ok(document.querySelector('[data-featured-sheet]'));
-    globalThis.__home.session('s2');await settle();
-    assert.equal(document.querySelector('[data-featured-sheet]'),null,'a different account closes the sheet');
-    assert.equal(collections().scrollLeft,0);
-    // Back to the first selection: the retained offset returns.
-    globalThis.__home.session('s1');await settle();
-    assert.equal(collections().scrollLeft,1792);
-    await f.dispose();
+    try {
+      const home=()=>f.host.querySelector('.home');
+      assert.ok(!home().classList.contains('sidebar-open'));
+      globalThis.__home.sidebar(true);await settle();assert.ok(home().classList.contains('sidebar-open'));
+      globalThis.__home.sidebar(false);await settle();assert.ok(!home().classList.contains('sidebar-open'));
+      const collections=()=>rails(f.host).collections;
+      collections().scrollLeft=1708;collections().dispatchEvent(new Event('scroll'));await settle();
+      // Another account: its row starts at the beginning and the open sheet is gone.
+      [...f.host.querySelectorAll('button')].find(b=>b.textContent.includes('Ver todo')).click();await settle();
+      assert.ok(document.querySelector('[data-featured-sheet]'));
+      globalThis.__home.session('s2');await settle();
+      assert.equal(document.querySelector('[data-featured-sheet]'),null,'a different account closes the sheet');
+      assert.equal(collections().scrollLeft,0);
+      // Back to the first selection: the retained offset returns.
+      globalThis.__home.session('s1');await settle();
+      assert.equal(collections().scrollLeft,1708);
+    } finally { await f.dispose(); }
   });
 
   test('a covered Home reports no metadata, closes the sheet and returns its row to the retained anchor',async()=>{
     viewport=800;const f=await mountHome({},Harness);
-    const collections=()=>rails(f.host).collections;
-    collections().scrollLeft=768;collections().dispatchEvent(new Event('scroll'));await settle();
-    [...f.host.querySelectorAll('button')].find(b=>b.textContent.includes('Ver todo')).click();await settle();
-    globalThis.__home.interactive(false);await settle();
-    assert.deepEqual(f.calls.visible.at(-1),[],'nothing is requested while fullscreen covers Home');
-    assert.equal(document.querySelector('[data-featured-sheet]'),null);
-    // display:none (retained page) resets scrollers; the row must put it back on reveal.
-    collections().scrollLeft=0;
-    globalThis.__home.interactive(true);await settle();
-    assert.equal(collections().scrollLeft,768);
-    await f.dispose();
+    try {
+      const collections=()=>rails(f.host).collections;
+      collections().scrollLeft=732;collections().dispatchEvent(new Event('scroll'));await settle();
+      [...f.host.querySelectorAll('button')].find(b=>b.textContent.includes('Ver todo')).click();await settle();
+      globalThis.__home.interactive(false);await settle();
+      assert.deepEqual(f.calls.visible.at(-1),[],'nothing is requested while fullscreen covers Home');
+      assert.equal(document.querySelector('[data-featured-sheet]'),null);
+      // display:none (retained page) resets scrollers; the row must put it back on reveal.
+      collections().scrollLeft=0;
+      globalThis.__home.interactive(true);await settle();
+      assert.equal(collections().scrollLeft,732);
+    } finally { await f.dispose(); }
   });
 }

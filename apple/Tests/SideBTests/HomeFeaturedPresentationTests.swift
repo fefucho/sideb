@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Testing
 import SideBCore
@@ -150,40 +151,90 @@ private func featuredSections(_ records: [(String, [HomeItemRecord])]) -> [HomeS
     #expect(result.ambientThumbnails == ["cover-playlist", "cover-song"])
 }
 
-@Test func featuredLayoutMatchesPanelsAndBoundsArtworkAcrossWindowWidths() {
+@Test func featuredLayoutMatchesPanelsAndCollectionCardsFollowTheWidth() {
+    var heights = Set<CGFloat>()
     for width: CGFloat in [640, 899, 900, 1100, 1600, 2500] {
         let layout = HomeFeaturedLayout(width: width, hasSongs: true, hasAlbums: true)
-        #expect(layout.tile == HomeFeaturedLayout.songTileWidth)
-        #expect(layout.albumColumnWidth == HomeFeaturedLayout.albumCardWidth)
-        #expect(layout.totalHeight == HomeFeaturedLayout(width: 640, hasSongs: true, hasAlbums: true).totalHeight, "Row height must not change while resizing")
+        let row = HomeCollectionRowLayout(width: width)
+        #expect(layout.albumColumnWidth == row.cardWidth)
+        #expect(layout.albumColumnWidth == HomeCollectionRowLayout.fixedCardWidth)
         #expect(layout.songWidth == width - 56)
-        #expect(layout.albumCardHeight == layout.albumColumnWidth + HomeFeaturedLayout.albumTextHeight)
-        #expect(layout.totalHeight == layout.songPanelHeight + layout.albumPanelHeight + 30 + HomeFeaturedLayout.bottomGap)
-        #expect(layout.songPanelHeight == CGFloat(448))
-        #expect(layout.albumPanelHeight == 46 + layout.albumCardHeight)
+        // Tarjeta = ancho + 121 de panel; el carril añade 8 pt de aire arriba y 48 abajo.
+        #expect(layout.albumCardHeight == row.cardWidth + 121)
+        #expect(layout.albumContentHeight == layout.albumCardHeight + 8 + 48)
+        #expect(layout.songGridHeight == 448)
+        #expect(layout.songPanelHeight == CGFloat(46 + 448))
+        // Encabezado y carril van pegados: los 8 pt de aire superior son la separación de siempre.
+        #expect(layout.albumPanelHeight == 38 + layout.albumContentHeight)
+        #expect(layout.totalHeight == layout.songPanelHeight + layout.albumPanelHeight + 30)
+        heights.insert(layout.totalHeight)
     }
+    #expect(heights.count == 1, "La altura de la fila de colecciones con ancho fijo es constante")
     #expect(HomeFeaturedLayout.height(width: 1000, hasSongs: false, hasAlbums: false) == 0)
 }
 
-@Test func featuredPartialRecommendationsDoNotReserveEmptyGridRows() {
+@Test func featuredLayoutLeavesFortyEightPointsBelowTheCardAndHonoursTheSidebarInset() {
+    for width: CGFloat in [700, 1100, 1800] {
+        let layout = HomeFeaturedLayout(width: width, hasSongs: false, hasAlbums: true)
+        // Del borde inferior de la tarjeta al final del bloque (= la sección siguiente del feed): 48 pt.
+        let cardBottom = HomeFeaturedLayout.headerHeight + 8 + layout.albumCardHeight
+        #expect(layout.totalHeight - cardBottom == 48)
+        let open = HomeFeaturedLayout(width: width, hasSongs: false, hasAlbums: true, trailingInset: 0)
+        #expect(open.albumColumnWidth == HomeCollectionRowLayout(width: width, trailingInset: 0).cardWidth)
+    }
+}
+
+@Test func featuredMosaicKeepsThreeRowsEvenWithFewSongs() {
+    // El mosaico mide 448 aunque haya menos de tres canciones (Windows: `.space { height: 448px }`).
     for count in 1...27 {
         let layout = HomeFeaturedLayout(width: 700, hasSongs: true, hasAlbums: true, songCount: count, albumCount: 1)
-        let rows = CGFloat(min(3, count))
-        #expect(layout.songGridHeight == rows * 126 + (rows - 1) * 12)
-        #expect(layout.albumContentHeight == layout.albumCardHeight)
+        #expect(layout.songGridHeight == HomeMosaicMetrics.totalHeight)
+        #expect(layout.songGridHeight == 448)
+        #expect(layout.albumContentHeight == layout.albumCardHeight + 8 + 48)
     }
+    #expect(HomeFeaturedLayout(width: 700, hasSongs: false, hasAlbums: true).songGridHeight == 0)
 }
 
 @Test func featuredVisibleMetadataRangeFollowsOffsetAndExcludesGaps() {
     let ids = (0..<36).map(String.init)
-    #expect(HomeFeaturedRailViewport.visibleIDs(ids: ids, itemWidth: 180, rows: 1,
-        spacing: 14, offset: 0, width: 400) == ["0", "1", "2"])
-    #expect(HomeFeaturedRailViewport.visibleIDs(ids: ids, itemWidth: 180, rows: 1,
-        spacing: 14, offset: 1940, width: 400) == ["10", "11", "12"])
-    #expect(HomeFeaturedRailViewport.visibleIDs(ids: ids, itemWidth: 180, rows: 1,
-        spacing: 14, offset: 181, width: 12).isEmpty)
-    #expect(HomeFeaturedRailViewport.visibleIDs(ids: ids, itemWidth: 180, rows: 3,
-        spacing: 12, offset: 192, width: 180) == ["3", "4", "5"])
-    #expect(HomeFeaturedRailViewport.visibleIDs(ids: ids, itemWidth: 180, rows: 1,
-        spacing: 14, offset: 0, width: 0).isEmpty)
+    func visible(offset: CGFloat, width: CGFloat = 900, leading: CGFloat = 28, trailing: CGFloat = 28) -> [String] {
+        HomeCollectionRowViewport.visibleIDs(ids: ids, cardWidth: 200, spacing: 24, offset: offset, width: width,
+                                             leadingInset: leading, trailingInset: trailing)
+    }
+    // En reposo: tarjetas 0...3 caben en 900 - 56 de área útil (paso 224).
+    #expect(visible(offset: 0) == ["0", "1", "2", "3"])
+    // Con la fila desplazada una tarjeta entera, la 0 sale y entra la 4.
+    #expect(visible(offset: 224) == ["1", "2", "3", "4"])
+    // A mitad de camino se ven, parcialmente, `count + 1` tarjetas.
+    #expect(visible(offset: 112) == ["0", "1", "2", "3", "4"])
+    // Sin reproductor lateral la última tarjeta llega hasta el borde.
+    #expect(visible(offset: 0, trailing: 0).count >= 4)
+    #expect(visible(offset: 0, width: 0).isEmpty)
+}
+
+@Test func collectionRequestOrderPutsVisibleCardsFirstThenTheRestInRowOrder() {
+    let ids = ["a", "b", "c", "d", "e", "f"]
+    #expect(HomeCollectionRequestOrder.order(ids, visible: ["d", "e"], id: { $0 }) == ["d", "e", "a", "b", "c", "f"])
+    // Visibles en cualquier orden y con IDs ajenos: se respeta el orden de la fila.
+    #expect(HomeCollectionRequestOrder.order(ids, visible: ["e", "zzz", "d"], id: { $0 }) == ["d", "e", "a", "b", "c", "f"])
+    #expect(HomeCollectionRequestOrder.order(ids, visible: [], id: { $0 }) == ids)
+}
+
+@MainActor
+@Test func homeNativeCollectionViewPreservesMosaicContentWidthOnResize() {
+    let scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: 400, height: 400))
+    let collection = HomeNativeCollectionView(frame: NSRect(x: 0, y: 0, width: 400, height: 400))
+    let mosaicLayout = HomeMosaicCollectionLayout()
+    let mosaic = HomeMosaicLayout(cells: [], columns: 10)
+    mosaicLayout.update(mosaic: mosaic, leadingInset: 28, trailingInset: 28)
+    collection.collectionViewLayout = mosaicLayout
+    scroll.documentView = collection
+
+    let contentWidth = mosaicLayout.collectionViewContentSize.width
+    #expect(contentWidth > 400)
+
+    // NSClipView shrinks the document view width down to clip bounds (400) during autoresizing
+    collection.setFrameSize(NSSize(width: 400, height: 400))
+    #expect(collection.frame.width == contentWidth)
+    #expect(collection.frame.width >= contentWidth)
 }

@@ -12221,6 +12221,74 @@
         }
       }
     },
+    "settings.albumCardStyle": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tarjetas de álbumes"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Album cards"
+          }
+        }
+      }
+    },
+    "settings.albumCardStyle.hint": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Elegí cómo se ve el panel de texto de las tarjetas destacadas de Inicio."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choose how the text panel of Home's featured cards looks."
+          }
+        }
+      }
+    },
+    "settings.albumCardStyle.tinted": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Blanco teñido"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tinted white"
+          }
+        }
+      }
+    },
+    "settings.albumCardStyle.white": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Blanco"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "White"
+          }
+        }
+      }
+    },
     "settings.albums": {
       "extractionState": "manual",
       "localizations": {

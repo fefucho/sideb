@@ -102,9 +102,9 @@ final class HomeGestureRoutingTests: XCTestCase {
                 XCTAssertTrue(HorizontalNavigationGestureRouting.contentOwnsGesture(at: NSPoint(x: area.midX, y: area.midY), in: host))
                 let expectedHeights = [layout.songGridHeight, layout.albumContentHeight]
                 XCTAssertTrue(expectedHeights.contains { abs($0 - area.height) < 0.5 }, "\(width): \(area)")
-                for point in [NSPoint(x: area.midX, y: area.minY - 15),
-                              NSPoint(x: area.midX, y: area.maxY + 16),
-                              NSPoint(x: 14, y: area.midY)] {
+                // Tanto el mosaico como la fila de colecciones van a sangre (la fila con edgeClip de 5 pt).
+                let outside = [NSPoint(x: area.midX, y: area.minY - 15), NSPoint(x: area.midX, y: area.maxY + 16)]
+                for point in outside {
                     XCTAssertFalse(HorizontalNavigationGestureRouting.contentOwnsGesture(at: point, in: host), "\(width): \(point)")
                 }
             }

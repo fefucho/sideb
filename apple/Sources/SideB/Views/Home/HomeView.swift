@@ -173,7 +173,8 @@ struct HomeView: View {
                         else { actions.navigate(.album(browseId: item.id)) }
                     },
                     onArtist: { item in
-                        if let id = item.artistId, !id.isEmpty { actions.navigate(.artist(browseId: id)) }
+                        let id = item.artistId ?? item.artistRuns.first(where: { $0.id?.isEmpty == false })?.id
+                        if let id, !id.isEmpty { actions.navigate(.artist(browseId: id)) }
                     },
                     onPlayCollection: { item, shuffle in
                         playerViewModel.activateMediaCollection(id: item.id, kind: item.kind)

@@ -955,6 +955,39 @@ fn header_description(root: &Value, header: Option<&Value>) -> Option<String> {
         .find_map(|s| runs_text(s.get("description")))
 }
 
+const ARTIST_ALBUMS_BROWSE_PARAMS: &str = "ggMIegYIARoCAQI%3D";
+const ARTIST_SINGLES_BROWSE_PARAMS: &str = "ggMIegYIAhoCAQI%3D";
+
+fn fallback_artist_discography_endpoint(
+    channel_id: &str,
+    section_title: &str,
+    items: &[BrowseItem],
+) -> Option<(String, Option<String>)> {
+    let trimmed_id = channel_id.trim();
+    if !trimmed_id.starts_with("UC") || items.is_empty() {
+        return None;
+    }
+    if !items.iter().all(|item| item.kind == "album") {
+        return None;
+    }
+    let normalized = section_title.trim().to_lowercase();
+    let params = if matches!(
+        normalized.as_str(),
+        "albums" | "álbumes" | "albumes" | "אלבומים"
+    ) {
+        Some(ARTIST_ALBUMS_BROWSE_PARAMS)
+    } else if normalized.contains("single")
+        || normalized.contains("sencillo")
+        || normalized == "ep"
+        || normalized == "eps"
+    {
+        Some(ARTIST_SINGLES_BROWSE_PARAMS)
+    } else {
+        None
+    }?;
+    Some((format!("MPAD{trimmed_id}"), Some(params.to_string())))
+}
+
 /// Parse an artist (`UC…`) browse response. `browse_id` is used as the subscribe channelId
 /// fallback (the artist browseId is itself the channelId). context/08.
 pub fn parse_artist(root: &Value, browse_id: &str) -> ArtistPage {
@@ -1012,7 +1045,20 @@ pub fn parse_artist(root: &Value, browse_id: &str) -> ArtistPage {
                             .map(str::to_owned);
                 }
             } else if let Some(carousel) = node.get("musicCarouselShelfRenderer") {
-                if let Some(sec) = parse_artist_carousel(carousel) {
+                if let Some(mut sec) = parse_artist_carousel(carousel) {
+                    if sec.more_browse_id.is_none() {
+                        let target_id = if channel_id.starts_with("UC") {
+                            &channel_id
+                        } else {
+                            browse_id
+                        };
+                        if let Some((fallback_id, fallback_params)) =
+                            fallback_artist_discography_endpoint(target_id, &sec.title, &sec.items)
+                        {
+                            sec.more_browse_id = Some(fallback_id);
+                            sec.more_params = fallback_params;
+                        }
+                    }
                     sections.push(sec);
                 }
             }
@@ -1062,9 +1108,22 @@ fn parse_artist_carousel(node: &Value) -> Option<ArtistCarousel> {
     let more = header
         .and_then(|h| h.get("moreContentButton"))
         .and_then(|b| find_all(b, "browseEndpoint").into_iter().next());
-    let more_browse_id =
+    let mut more_browse_id =
         more.and_then(|e| e.get("browseId")).and_then(Value::as_str).map(str::to_owned);
-    let more_params = more.and_then(|e| e.get("params")).and_then(Value::as_str).map(str::to_owned);
+    let mut more_params = more.and_then(|e| e.get("params")).and_then(Value::as_str).map(str::to_owned);
+    if more_browse_id.is_none() {
+        if let Some(endpoint) = header
+            .and_then(|h| h.get("title"))
+            .and_then(|t| find_all(t, "browseEndpoint").into_iter().next())
+        {
+            if let Some(bid) = endpoint.get("browseId").and_then(Value::as_str) {
+                if bid.starts_with("MPAD") || bid.starts_with("VL") || bid.starts_with("FEmusic_") {
+                    more_browse_id = Some(bid.to_owned());
+                    more_params = endpoint.get("params").and_then(Value::as_str).map(str::to_owned);
+                }
+            }
+        }
+    }
     Some(ArtistCarousel { title, items, more_browse_id, more_params })
 }
 
@@ -2302,6 +2361,56 @@ mod tests {
         assert_eq!(a.sections[0].items[0].kind, "album");
         assert_eq!(a.sections[0].more_browse_id.as_deref(), Some("UCdrake"));
         assert_eq!(a.sections[0].more_params.as_deref(), Some("ALBUMS_PARAMS"));
+    }
+
+    #[test]
+    fn parse_artist_albums_fallback_discography_endpoint() {
+        let root = json!({
+            "header": { "musicImmersiveHeaderRenderer": {
+                "title": { "runs": [{ "text": "Artist Name" }] },
+                "subscriptionButton": { "subscribeButtonRenderer": {
+                    "channelId": "UC123",
+                    "subscribed": false
+                } }
+            } },
+            "contents": { "singleColumnBrowseResultsRenderer": { "tabs": [{ "tabRenderer": { "content": {
+                "sectionListRenderer": { "contents": [
+                    { "musicCarouselShelfRenderer": {
+                        "header": { "musicCarouselShelfBasicHeaderRenderer": {
+                            "title": { "runs": [{ "text": "Albums" }] }
+                        } },
+                        "contents": [
+                            { "musicTwoRowItemRenderer": {
+                                "title": { "runs": [{ "text": "Album 1" }] },
+                                "subtitle": { "runs": [{ "text": "Album • 2024" }] },
+                                "navigationEndpoint": { "browseEndpoint": { "browseId": "MPRE1" } }
+                            } }
+                        ]
+                    } },
+                    { "musicCarouselShelfRenderer": {
+                        "header": { "musicCarouselShelfBasicHeaderRenderer": {
+                            "title": { "runs": [{ "text": "Featured on" }] }
+                        } },
+                        "contents": [
+                            { "musicTwoRowItemRenderer": {
+                                "title": { "runs": [{ "text": "Playlist 1" }] },
+                                "subtitle": { "runs": [{ "text": "Playlist" }] },
+                                "navigationEndpoint": { "browseEndpoint": { "browseId": "VL1" } }
+                            } }
+                        ]
+                    } }
+                ] }
+            } } }] } }
+        });
+        let a = parse_artist(&root, "UC123");
+        assert_eq!(a.sections.len(), 2);
+        assert_eq!(a.sections[0].title, "Albums");
+        assert_eq!(a.sections[0].more_browse_id.as_deref(), Some("MPADUC123"));
+        assert_eq!(a.sections[0].more_params.as_deref(), Some("ggMIegYIARoCAQI%3D"));
+
+        assert_eq!(a.sections[1].title, "Featured on");
+        assert_eq!(a.sections[1].more_browse_id, None);
+        assert_eq!(a.sections[1].more_params, None);
     }
 
     #[test]

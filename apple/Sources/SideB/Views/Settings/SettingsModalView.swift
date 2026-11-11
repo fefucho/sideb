@@ -119,6 +119,9 @@ struct SettingsModalView: View {
     @AppStorage(HomeAppearance.solidBackgroundKey, store: HomeAppearance.preferences)
     private var useSolidHomeBackground = false
 
+    @AppStorage(HomeAppearance.albumCardStyleKey, store: HomeAppearance.preferences)
+    private var albumCardStyleRawValue = HomeAlbumCardStyle.tinted.rawValue
+
     @AppStorage(SidebarStyle.preferenceKey, store: HomeAppearance.preferences)
     private var sidebarStyleRawValue = SidebarStyle.collection.rawValue
 
@@ -463,6 +466,22 @@ struct SettingsModalView: View {
                     Picker(L10n.text("settings.homeBackground"), selection: $useSolidHomeBackground) {
                         Text(L10n.text("settings.homeBackground.ambient")).tag(false)
                         Text(L10n.text("settings.homeBackground.solid")).tag(true)
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.menu)
+                    .fixedSize()
+                }
+
+                SettingsRow(
+                    title: L10n.text("settings.albumCardStyle"),
+                    subtitle: L10n.text("settings.albumCardStyle.hint")
+                ) {
+                    Picker(L10n.text("settings.albumCardStyle"), selection: Binding(
+                        get: { HomeAlbumCardStyle(rawValue: albumCardStyleRawValue)?.rawValue ?? HomeAlbumCardStyle.tinted.rawValue },
+                        set: { albumCardStyleRawValue = $0 }
+                    )) {
+                        Text(L10n.text("settings.albumCardStyle.tinted")).tag(HomeAlbumCardStyle.tinted.rawValue)
+                        Text(L10n.text("settings.albumCardStyle.white")).tag(HomeAlbumCardStyle.white.rawValue)
                     }
                     .labelsHidden()
                     .pickerStyle(.menu)

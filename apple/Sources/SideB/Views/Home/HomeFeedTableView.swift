@@ -421,8 +421,9 @@ struct HomeFeedTableView: NSViewRepresentable {
                 self.parent.onNavigate(destination)
             }
         }
-        private func publishFeaturedWidth(_ width: CGFloat) {
-            guard publishedFeaturedWidth != width else { return }
+        /// Un ancho ≤ 0 (Inicio tapado u oculto) nunca se publica: el contenido conserva su última medida real.
+        func publishFeaturedWidth(_ width: CGFloat) {
+            guard width > 0, publishedFeaturedWidth != width else { return }
             publishedFeaturedWidth = width
             featuredViewport.width = width
         }

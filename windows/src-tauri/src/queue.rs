@@ -906,11 +906,55 @@ impl QueueStateDto {
         true
     }
 
+    fn is_radio_source(&self) -> bool {
+        matches!(
+            self.source.as_ref().map(|s| s.kind.as_str()),
+            Some("radio" | "search-radio")
+        )
+    }
+
+    fn assign_next_source_rank(&mut self, entry_id: String) {
+        if self.source_ranks.contains_key(&entry_id) {
+            self.explicit_placements.remove(&entry_id);
+            return;
+        }
+        let next_rank = self
+            .source_ranks
+            .values()
+            .copied()
+            .max()
+            .map_or(0, |m| m + 1)
+            .max(self.next_source_rank);
+        self.source_ranks.insert(entry_id.clone(), next_rank);
+        self.next_source_rank = next_rank + 1;
+        self.explicit_placements.remove(&entry_id);
+    }
+
     fn reorder_pending_source(&mut self, seed: u64) -> bool {
+        let is_radio = self.is_radio_source();
+        let mut moved_current = false;
+        if is_radio {
+            if self.items.len() <= 1 {
+                return false;
+            }
+            if let Some(current) = self.current_index {
+                if current > 0 && current < self.items.len() {
+                    let current_item = self.items.remove(current);
+                    self.items.insert(0, current_item);
+                    self.current_index = Some(0);
+                    self.visible_len = self.items.len();
+                    moved_current = true;
+                }
+            }
+        }
         let Some(current_index) = self.current_index else {
             return false;
         };
         let Some(suffix) = self.items.get_mut(current_index.saturating_add(1)..) else {
+            if moved_current {
+                self.revision += 1;
+                return true;
+            }
             return false;
         };
         let slots = suffix
@@ -923,6 +967,10 @@ impl QueueStateDto {
             })
             .collect::<Vec<_>>();
         if slots.len() < 2 {
+            if moved_current {
+                self.revision += 1;
+                return true;
+            }
             return false;
         }
         let mut entries = slots
@@ -940,6 +988,14 @@ impl QueueStateDto {
             state ^= state >> 7;
             state ^= state << 17;
             entries.swap(index, (state as usize) % (index + 1));
+        }
+        if is_radio
+            && entries
+                .iter()
+                .zip(slots.iter())
+                .all(|(entry, &slot)| entry.entry_id == suffix[slot].entry_id)
+        {
+            entries.swap(0, entries.len() - 1);
         }
         for (index, entry) in slots.into_iter().zip(entries) {
             suffix[index] = entry;
@@ -1335,6 +1391,9 @@ impl QueueStateDto {
     pub fn promote_next_recommendation(&mut self) -> Option<QueueEntryDto> {
         let entry_id = self.recommendations.first()?.entry_id.clone();
         let promoted = self.choose_recommendation(&entry_id, false)?;
+        if self.is_radio_source() {
+            self.assign_next_source_rank(promoted.entry_id.clone());
+        }
         self.radio_entries.insert(promoted.entry_id.clone());
         Some(promoted)
     }
@@ -1365,12 +1424,17 @@ impl QueueStateDto {
                 .map(|entry| entry.entry_id.clone())
         });
         let count = selected.len();
+        let is_radio = self.is_radio_source();
         for (offset, entry) in selected.iter_mut().enumerate() {
             entry.entry_id = new_unique_entry_id(&mut known);
-            self.explicit_placements.insert(
-                entry.entry_id.clone(),
-                anchor.map_or(QueuePlacement::End, QueuePlacement::After),
-            );
+            if is_radio {
+                self.assign_next_source_rank(entry.entry_id.clone());
+            } else {
+                self.explicit_placements.insert(
+                    entry.entry_id.clone(),
+                    anchor.map_or(QueuePlacement::End, QueuePlacement::After),
+                );
+            }
             if offset + 1 < count {
                 self.radio_entries.insert(entry.entry_id.clone());
             }
@@ -1418,14 +1482,18 @@ impl QueueStateDto {
         } else {
             self.items.last().map(|item| item.entry_id.clone())
         };
-        self.explicit_placements.insert(
-            entry.entry_id.clone(),
-            if at_next {
-                anchor.map_or(QueuePlacement::End, QueuePlacement::After)
-            } else {
-                QueuePlacement::End
-            },
-        );
+        if self.is_radio_source() {
+            self.assign_next_source_rank(entry.entry_id.clone());
+        } else {
+            self.explicit_placements.insert(
+                entry.entry_id.clone(),
+                if at_next {
+                    anchor.map_or(QueuePlacement::End, QueuePlacement::After)
+                } else {
+                    QueuePlacement::End
+                },
+            );
+        }
         self.items.insert(insert_at, entry.clone());
         self.visible_len = if at_next {
             self.visible_len.saturating_add(1).min(self.items.len())
@@ -3346,5 +3414,81 @@ mod tests {
         assert!(queue.items[0].artist_id.is_none());
         assert!(queue.items[0].album_id.is_none());
         assert!(queue.items[0].album.is_none());
+    }
+
+    #[test]
+    fn radio_shuffle_includes_already_played_tracks_and_restores_original_order() {
+        let mut queue = QueueStateDto::default();
+        let mut radio = source();
+        radio.kind = "radio".into();
+        queue.replace(
+            vec![item("r1"), item("r2"), item("r3"), item("r4"), item("r5")],
+            0,
+            radio,
+        );
+        assert_eq!(video_ids(&queue), ["r1"]);
+        assert_eq!(
+            queue
+                .recommendations
+                .iter()
+                .map(|entry| entry.video_id.as_str())
+                .collect::<Vec<_>>(),
+            ["r2", "r3", "r4", "r5"]
+        );
+
+        for expected in ["r2", "r3", "r4"] {
+            let promoted = queue.next_or_first(false).unwrap();
+            assert_eq!(promoted.video_id, expected);
+            queue.select_entry(&promoted.entry_id).unwrap();
+        }
+        assert_eq!(queue.previous(0.0).unwrap().video_id, "r3");
+        assert_eq!(queue.current_index, Some(2));
+        assert_eq!(video_ids(&queue), ["r1", "r2", "r3", "r4"]);
+        assert_eq!(
+            queue
+                .recommendations
+                .iter()
+                .map(|entry| entry.video_id.as_str())
+                .collect::<Vec<_>>(),
+            ["r5"]
+        );
+        let active_id = queue.current().unwrap().entry_id;
+
+        assert!(queue.shuffle_after_current_with_seed(42));
+        assert_eq!(queue.current_index, Some(0));
+        assert_eq!(queue.current().unwrap().video_id, "r3");
+        assert_eq!(queue.current().unwrap().entry_id, active_id);
+        assert_eq!(queue.items.len(), 4);
+        assert_eq!(
+            queue
+                .items
+                .iter()
+                .map(|entry| entry.video_id.as_str())
+                .collect::<HashSet<_>>(),
+            ["r1", "r2", "r3", "r4"].into_iter().collect::<HashSet<_>>()
+        );
+        assert_ne!(&video_ids(&queue)[1..], &["r1", "r2", "r4"]);
+        assert_eq!(
+            queue
+                .recommendations
+                .iter()
+                .map(|entry| entry.video_id.as_str())
+                .collect::<Vec<_>>(),
+            ["r5"]
+        );
+
+        assert!(queue.restore_original_order());
+        assert_eq!(video_ids(&queue), ["r1", "r2", "r3", "r4"]);
+        assert_eq!(queue.current_index, Some(2));
+        assert_eq!(queue.current().unwrap().video_id, "r3");
+        assert_eq!(queue.current().unwrap().entry_id, active_id);
+        assert_eq!(
+            queue
+                .recommendations
+                .iter()
+                .map(|entry| entry.video_id.as_str())
+                .collect::<Vec<_>>(),
+            ["r5"]
+        );
     }
 }

@@ -90,3 +90,12 @@ test('the recommendations sheet paints over the hero metadata and the page scrol
   assert.match(page, /\.content-column\.playback-reserved \{ scrollbar-width: none; \}/);
   assert.match(page, /\.content-column\.playback-reserved::-webkit-scrollbar \{ display: none;/);
 });
+
+test('titlebar does not cover the playback sidebar header when top navigation is active', async () => {
+  const titlebar = await read('lib/components/shell/TitleBar.svelte');
+  const titlebarRule = /\.titlebar\s*\{([^}]*)\}/.exec(titlebar)?.[1] ?? '';
+  assert.match(titlebarRule, /pointer-events:\s*none/, 'the 78px titlebar box itself must not swallow clicks below the 32px window controls');
+  assert.match(titlebar, /class:topnav-drag=\{!showHistory\}/);
+  assert.match(titlebar, /\.drag-region\s*\{\s*height:\s*min\(100%,\s*var\(--playback-top,\s*var\(--titlebar-height,\s*32px\)\)\);\s*align-self:\s*flex-start;/);
+  assert.match(titlebar, /\.drag-region\.topnav-drag::before\s*\{\s*content:\s*'';\s*position:\s*absolute;\s*inset:\s*0\s+var\(--topnav-right,\s*154px\)\s+0\s+0;/);
+});

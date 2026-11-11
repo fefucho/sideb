@@ -8,6 +8,13 @@ struct ArtistProfileHostedContent: View {
     var body: some View { content() }
 }
 
+public typealias ArtistDetail = ArtistDetailRecord
+public typealias BrowseSection = ArtistCarouselRecord
+
+extension ArtistDetailRecord {
+    public var id: String { channelId }
+}
+
 /// One vertical viewport; only mounted shelves create horizontal card hosts.
 struct ArtistProfileViewport: NSViewRepresentable {
     let artist: ArtistDetailRecord
@@ -16,6 +23,59 @@ struct ArtistProfileViewport: NSViewRepresentable {
     let makeCard: (BrowseCardRecord) -> AnyView
     let onMore: (ArtistCarouselRecord) -> Void
     let localizationRevision = L10n.revision
+
+    static let albumsBrowseParams = "ggMIegYIARoCAQI%3D"
+    static let singlesBrowseParams = "ggMIegYIAhoCAQI%3D"
+
+    static func resolvedSection(_ section: ArtistCarouselRecord, artistId: String) -> ArtistCarouselRecord {
+        guard section.moreBrowseId == nil || section.moreBrowseId?.isEmpty == true else { return section }
+        let trimmedId = artistId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmedId.hasPrefix("UC"), !section.items.isEmpty else { return section }
+        guard section.items.allSatisfy({ $0.kind.lowercased() == "album" }) else { return section }
+        let normalized = section.title.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let params: String?
+        if ["albums", "álbumes", "albumes", "אלבומים"].contains(normalized) {
+            params = albumsBrowseParams
+        } else if normalized.contains("single") || normalized.contains("sencillo") || normalized == "ep" || normalized == "eps" {
+            params = singlesBrowseParams
+        } else {
+            params = nil
+        }
+        guard let resolvedParams = params else { return section }
+        return ArtistCarouselRecord(
+            title: section.title,
+            items: section.items,
+            moreBrowseId: "MPAD\(trimmedId)",
+            moreParams: resolvedParams
+        )
+    }
+
+    static func resolvedSections(for detail: ArtistDetailRecord) -> [ArtistCarouselRecord] {
+        detail.sections.map { resolvedSection($0, artistId: detail.channelId) }
+    }
+
+    static func resolvedArtist(_ detail: ArtistDetailRecord) -> ArtistDetailRecord {
+        ArtistDetailRecord(
+            channelId: detail.channelId,
+            name: detail.name,
+            thumbnail: detail.thumbnail,
+            description: detail.description,
+            subscribers: detail.subscribers,
+            monthlyListeners: detail.monthlyListeners,
+            subscribed: detail.subscribed,
+            radioPlaylistId: detail.radioPlaylistId,
+            topSongs: detail.topSongs,
+            topSongsId: detail.topSongsId,
+            sections: resolvedSections(for: detail)
+        )
+    }
+
+    static func featuredAlbumsSection(from detail: ArtistDetailRecord) -> ArtistCarouselRecord? {
+        resolvedSections(for: detail).first { section in
+            let normalized = section.title.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            return ["albums", "álbumes", "albumes", "אלבומים"].contains(normalized)
+        }
+    }
 
     func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
     func sizeThatFits(_ proposal: ProposedViewSize, nsView: NSScrollView, context: Context) -> CGSize? {
@@ -61,7 +121,7 @@ struct ArtistProfileViewport: NSViewRepresentable {
         scroll.setAccessibilityHidden(isObscured)
         let reset = old.artist.channelId != artist.channelId
         let changed = old.artist != artist || old.localizationRevision != localizationRevision
-        let newSections = artist.sections.filter { !$0.items.isEmpty }
+        let newSections = ArtistProfileViewport.resolvedSections(for: artist).filter { !$0.items.isEmpty }
         if reset || coordinator.sections.map({ [$0.title, $0.moreBrowseId ?? "", $0.moreParams ?? ""] }) !=
             newSections.map({ [$0.title, $0.moreBrowseId ?? "", $0.moreParams ?? ""] }) {
             coordinator.offsets.removeAll()
@@ -97,7 +157,7 @@ struct ArtistProfileViewport: NSViewRepresentable {
         private(set) var configuredShelves = 0
         init(parent: ArtistProfileViewport) {
             self.parent = parent
-            sections = parent.artist.sections.filter { !$0.items.isEmpty }
+            sections = ArtistProfileViewport.resolvedSections(for: parent.artist).filter { !$0.items.isEmpty }
             sectionHeights = sections.map(ArtistProfileShelf.height)
         }
         func numberOfRows(in tableView: NSTableView) -> Int { sections.count + 2 }

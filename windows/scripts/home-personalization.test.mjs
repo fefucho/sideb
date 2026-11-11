@@ -9,7 +9,7 @@ const module = async (file, replacements={}) => {let source=compile(await readFi
 const settingsUrl=await module('home/settings'), presentationUrl=await module('home/presentation'),playerUrl=await module('player/controller');
 const { defaults, decodeSettings, categoryKey, orderCategories, accountSettingsKey, missingHomeSources }=await import(settingsUrl);
 const songMetadataUrl=await module('home/songMetadata');
-const { projectHome, collectionRowLayout, visibleSignature }=await import(await module('home/featured',{'./settings':settingsUrl,'./presentation':presentationUrl,'./songMetadata':songMetadataUrl}));
+const { projectHome, collectionRowLayout, homeCollectionRowMetrics, visibleSignature }=await import(await module('home/featured',{'./settings':settingsUrl,'./presentation':presentationUrl,'./songMetadata':songMetadataUrl}));
 const { sourceActive, occurrenceActive, mediaRequestCurrent, mediaKey }=await import(await module('player/media',{'../home/settings':settingsUrl,'./controller':playerUrl}));
 const { prepareCollectionPlayback, emptyPlaybackData }=await import(playerUrl);
 const { HomeController }=await import(await module('home/controller',{'./presentation':presentationUrl}));
@@ -183,11 +183,28 @@ test('Mac ambient thumbnails use two distinct collection covers before two disti
  const rows=[section('Albums for you',[{...item('a'),thumbnail:'a'},{...item('b'),thumbnail:'a'},{...item('c'),thumbnail:'b'}]),section('Quick picks',[{...item('s','song'),thumbnail:'s'},{...item('t','song'),thumbnail:'s'},{...item('u','song'),thumbnail:'t'}])];
  assert.deepEqual(projectHome(rows,null,defaults(),'albums',2).artwork,['a','b','s','t']);
 });
-test('collectionRowLayout fits whole cards between the 28px insets with 24px gaps',()=>{
- const near=(actual,expected)=>assert.ok(Math.abs(actual-expected)<.01,`${actual} != ${expected}`);
- for(const [width,count,card] of [[1360,5,241.6],[1056,4,232],[900,3,265.333],[1680,5,305.6],[2560,8,292]]){const layout=collectionRowLayout(width);assert.equal(layout.count,count,`count at ${width}`);near(layout.cardWidth,card);near(layout.count*layout.cardWidth+(layout.count-1)*24,width-56);}
- for(const width of [0,56,300,500,600])assert.equal(collectionRowLayout(width).count,2,`narrow ${width}`);
- for(let width=300;width<=4000;width+=7){const {count,cardWidth}=collectionRowLayout(width);assert.ok(count>=2&&Number.isInteger(count));assert.ok(count===2||cardWidth<=320.0001);}
+test('collectionRowLayout uses fixed 220px cards with 24px gaps and 2..8 columns',()=>{
+ for(const [width,count] of [[900,3],[1056,4],[1360,5],[1680,6],[2560,8]]){
+  const layout=collectionRowLayout(width);
+  assert.equal(layout.count,count,`count at ${width}`);
+  assert.equal(layout.cardWidth,220);
+  const metrics=homeCollectionRowMetrics(width);
+  assert.equal(metrics.visibleColumns,count);
+  assert.equal(metrics.cardWidth,220);
+  assert.equal(metrics.coverSize,220);
+  assert.equal(metrics.cardHeight,324);
+  assert.equal(metrics.gap,24);
+  assert.equal(metrics.stride,244);
+ }
+ for(const width of [0,56,300,500,600]){
+  assert.equal(collectionRowLayout(width).count,2,`narrow ${width}`);
+  assert.equal(collectionRowLayout(width).cardWidth,220);
+ }
+ for(let width=300;width<=4000;width+=7){
+  const {count,cardWidth}=collectionRowLayout(width);
+  assert.ok(count>=2&&count<=8&&Number.isInteger(count));
+  assert.equal(cardWidth,220);
+ }
 });
 test('Mac pages keep exact anchor through narrowing/widening and category changes do not reset featured pages',()=>{
  const ids=['a','b','c','d','e','f'];let anchor=alignCollectionAnchor(2,ids,ids);

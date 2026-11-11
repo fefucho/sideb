@@ -1435,6 +1435,14 @@ Historial: %@</string>
 	<string>Sugerencias de búsqueda</string>
 	<key>search.title</key>
 	<string>Buscar</string>
+	<key>settings.albumCardStyle</key>
+	<string>Tarjetas de álbumes</string>
+	<key>settings.albumCardStyle.hint</key>
+	<string>Elegí cómo se ve el panel de texto de las tarjetas destacadas de Inicio.</string>
+	<key>settings.albumCardStyle.tinted</key>
+	<string>Blanco teñido</string>
+	<key>settings.albumCardStyle.white</key>
+	<string>Blanco</string>
 	<key>settings.albums</key>
 	<string>Álbumes</string>
 	<key>settings.animatedArtwork</key>

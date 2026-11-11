@@ -1,5 +1,7 @@
 # Planes Apple
 
+- [PLAN-035: Inicio con mosaico y tarjetas grandes](PLAN-035-home-mosaic-collections.md) — FIX-328/PAR-054, port de FIX-320/321 de Windows: mosaico de Acceso rápido y tarjetas de colecciones con panel claro; 352 XCTest + 647 Swift Testing aprobadas, validación en la app pendiente.
+
 - [PLAN-033: Scroll del perfil de artista](PLAN-033-artist-profile-scroll.md) — FIX-281/PAR-049, reciclado de filas/tarjetas y propiedad horizontal;54focales aprobadas, suite global/QA física pendientes.
 
 - [PLAN-032: Videos en búsqueda](PLAN-032-search-video-preferences.md) — ajuste persistente Apple; FIX-280, PAR-048.

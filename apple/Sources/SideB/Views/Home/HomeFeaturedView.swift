@@ -5,24 +5,21 @@ import SideBCore
 struct HomeFeaturedLayout {
     static let horizontalInset: CGFloat = 28
     static let sectionGap: CGFloat = 30
-    static let stackGap: CGFloat = 30
     static let headerHeight: CGFloat = 38
     static let contentGap: CGFloat = 8
-    static let albumGap: CGFloat = 14
-    /// Cards keep one size at every window width, like Apple Music shelves: resizing only
-    /// reveals more or fewer cards. Scaling them with the width re-laid out every cell and
-    /// changed the row height on each frame.
-    static let songTileWidth: CGFloat = 190
+    /// Sólo la hoja «Ver todo»: conserva la tarjeta anterior, de ancho fijo y texto debajo.
     static let albumCardWidth: CGFloat = 176
     /// Artwork stays square; below it: title, creator and one detail line.
     static let albumTextHeight: CGFloat = 64
-    /// Air between the featured block and the next feed section.
+    /// Air between the songs mosaic and the next feed section when there are no collections
+    /// (con colecciones, el aire de la sombra bajo la tarjeta ya deja 48 pt).
     static let bottomGap: CGFloat = 20
     let songWidth: CGFloat
-    let albumWidth: CGFloat
+    /// Ancho de la tarjeta de colección: depende del ancho disponible (`HomeCollectionRowLayout`).
     let albumColumnWidth: CGFloat
-    let tile: CGFloat
+    /// Alto del mosaico de canciones: tres filas fijas (448), haya o no tres canciones.
     let songGridHeight: CGFloat
+    /// Alto del carril de colecciones: tarjeta (`ancho + 121`) más el aire de la sombra (8 arriba y 48 abajo).
     let albumContentHeight: CGFloat
     let songPanelHeight: CGFloat
     let albumPanelHeight: CGFloat
@@ -33,16 +30,16 @@ struct HomeFeaturedLayout {
          trailingInset: CGFloat = Self.horizontalInset) {
         let inner = max(0, width - Self.horizontalInset - max(0, trailingInset))
         songWidth = inner
-        albumWidth = inner
-        tile = Self.songTileWidth
-        albumColumnWidth = Self.albumCardWidth
-        let rows = hasSongs ? CGFloat(min(3, max(0, songCount))) : 0
-        songGridHeight = rows * 126 + max(0, rows - 1) * 12
-        albumCardHeight = albumColumnWidth + Self.albumTextHeight
-        albumContentHeight = hasAlbums ? albumCardHeight : 0
+        albumColumnWidth = HomeCollectionRowLayout(width: width, leadingInset: Self.horizontalInset,
+                                                   trailingInset: trailingInset).cardWidth
+        songGridHeight = hasSongs ? HomeMosaicMetrics.totalHeight : 0
+        albumCardHeight = HomeCollectionCardMetrics.cardHeight(cardWidth: albumColumnWidth)
+        albumContentHeight = hasAlbums ? HomeCollectionCardMetrics.railHeight(cardWidth: albumColumnWidth) : 0
         songPanelHeight = hasSongs ? 46 + songGridHeight : 0
-        albumPanelHeight = hasAlbums ? 46 + albumContentHeight : 0
-        totalHeight = songPanelHeight + albumPanelHeight + (hasSongs && hasAlbums ? 30 : 0) + (hasSongs || hasAlbums ? Self.bottomGap : 0)
+        // Encabezado y rail van pegados: los 8 pt de aire superior del rail reemplazan la separación de 8.
+        albumPanelHeight = hasAlbums ? Self.headerHeight + albumContentHeight : 0
+        totalHeight = songPanelHeight + albumPanelHeight + (hasSongs && hasAlbums ? Self.sectionGap : 0)
+            + (hasSongs && !hasAlbums ? Self.bottomGap : 0)
     }
 
     static func height(width: CGFloat, hasSongs: Bool, hasAlbums: Bool, songCount: Int = 9, albumCount: Int = 2,
@@ -71,41 +68,53 @@ struct HomeFeaturedView: View {
     var playbackContext: QueueContext? = nil
     var isPlaying: Bool = false
 
-    @State private var albumMetadataModel = HomeAlbumMetadataModel()
-    @State private var playlistMetadataModel = HomePlaylistMetadataModel()
-    @State private var visibleCollectionIDs: [String] = []
+    /// Se piden los detalles de toda la fila (hasta 36 colecciones): el caché cubre las 48 posibles.
+    private static let metadataLimit = 48
+    @State private var albumMetadataModel = HomeAlbumMetadataModel(limit: HomeFeaturedView.metadataLimit)
+    @State private var playlistMetadataModel = HomePlaylistMetadataModel(limit: HomeFeaturedView.metadataLimit)
+    @State private var visibleTracker = HomeVisibleCollectionTracker()
     @State private var showsAll = false
-    @State private var visibleSheetIDs: [String] = []
+    /// Acabado del panel de las tarjetas: cambiarlo en Configuración → Apariencia actualiza la fila sin reiniciar.
+    @AppStorage(HomeAppearance.albumCardStyleKey, store: HomeAppearance.preferences)
+    private var albumCardStyleRawValue = HomeAlbumCardStyle.tinted.rawValue
+    private var albumCardStyle: HomeAlbumCardStyle { HomeAlbumCardStyle(rawValue: albumCardStyleRawValue) ?? .tinted }
     private var layout: HomeFeaturedLayout {
         HomeFeaturedLayout(width: width, hasSongs: !songs.isEmpty, hasAlbums: !collections.isEmpty,
             songCount: songs.count, albumCount: collections.count, trailingInset: trailingInset)
     }
-    private var collectionIDs: [String] { collections.map(Self.identity) }
 
     var body: some View {
         let _ = L10n.revision
         VStack(alignment: .leading, spacing: HomeFeaturedLayout.sectionGap) {
             if !songs.isEmpty {
-                VStack(spacing: 8) {
-                    HStack { Text(L10n.text("app.home.speedDial")).font(.system(size: 22, weight: .bold)); Spacer() }.frame(height: 38)
-                    HomeFeaturedNativeRail(records: Array(songs.prefix(27)), rows: min(3, songs.count), itemWidth: layout.tile, itemHeight: 126,
-                        session: resetKey, playback: playbackContext, playing: isPlaying, onOpen: onSong, onPlay: onSong, menu: menuProvider)
-                        .frame(height: layout.songGridHeight)
+                // El encabezado conserva su margen; el mosaico va a sangre con los márgenes dentro de su contenido.
+                VStack(alignment: .leading, spacing: HomeFeaturedLayout.contentGap) {
+                    HStack { Text(L10n.text("app.home.speedDial")).font(.system(size: 22, weight: .bold)); Spacer() }
+                        .frame(height: HomeFeaturedLayout.headerHeight)
+                        .padding(.leading, HomeFeaturedLayout.horizontalInset)
+                        .padding(.trailing, max(0, trailingInset))
+                    HomeFeaturedNativeRail(records: Array(songs.prefix(27)), usesMosaic: true,
+                        leadingInset: HomeFeaturedLayout.horizontalInset, trailingInset: max(0, trailingInset),
+                        session: resetKey, playback: playbackContext, playing: isPlaying, onOpen: onSong, onPlay: onSong,
+                        onArtist: onArtist, menu: menuProvider)
+                        .frame(width: width, height: layout.songGridHeight)
                 }
-
             }
-            if !collections.isEmpty { collectionsPanel }
+            if !collections.isEmpty {
+                collectionsPanel
+            }
         }
-        .frame(maxWidth: .infinity, alignment: .topLeading)
-        .padding(.leading, HomeFeaturedLayout.horizontalInset)
-        .padding(.trailing, max(0, trailingInset))
         .frame(width: width, height: layout.totalHeight, alignment: .topLeading)
+        // Depende de la lista completa, la sesión, el tipo y el core: desplazar la fila no reinicia la carga.
         .task(id: metadataRequest) {
+            // Las visibles las publica el carril justo después de su primer layout; esperar esa primera publicación
+            // decide el orden (visibles primero, después el resto en el orden de la fila) sin carreras.
+            let visible = await visibleTracker.firstPublication()
+            let ordered = HomeCollectionRequestOrder.order(collections, visible: visible, id: Self.identity)
+            let session = metadataSessionKey ?? resetKey
             switch collectionKind {
-            case .albums:
-                await albumMetadataModel.load(items: visibleCollections, core: core, sessionKey: metadataSessionKey ?? resetKey)
-            case .playlists:
-                await playlistMetadataModel.load(items: visibleCollections, core: core, sessionKey: metadataSessionKey ?? resetKey)
+            case .albums: await albumMetadataModel.load(items: ordered, core: core, sessionKey: session)
+            case .playlists: await playlistMetadataModel.load(items: ordered, core: core, sessionKey: session)
             }
         }
         .sheet(isPresented: $showsAll) {
@@ -117,23 +126,23 @@ struct HomeFeaturedView: View {
                             collectionCard(item.record, width: 180, height: 180 + HomeFeaturedLayout.albumTextHeight)
                                 .id(item.id)
                         }
-                    }.scrollTargetLayout()
+                    }
                 }
-                .onScrollTargetVisibilityChange(idType: String.self, threshold: 0.01) { visibleSheetIDs = $0 }
             }.padding(24).frame(width: min(840, max(320, width - 48)), height: 500)
         }
-        .onChange(of: resetKey) { _, _ in showsAll = false; visibleSheetIDs = [] }
+        .onChange(of: resetKey) { _, _ in showsAll = false }
     }
 
     private var collectionsPanel: some View {
         // Read observable metadata while SwiftUI tracks this presentation, then pass
         // immutable values into AppKit callbacks.
         let metadata = Dictionary(collections.map { (Self.identity($0), collectionMetadata(for: $0)) }, uniquingKeysWith: { first, _ in first })
-        return VStack(spacing: HomeFeaturedLayout.contentGap) {
+        // Sin separación entre encabezado y carril: los 8 pt de aire superior del carril ocupan el lugar de la separación.
+        return VStack(spacing: 0) {
             HStack {
                 Text(collectionKind.title).font(.system(size: 22, weight: .bold))
                 Spacer()
-                Button { visibleSheetIDs = []; showsAll = true } label: {
+                Button { showsAll = true } label: {
                     HStack(spacing: 3) {
                         Text(L10n.text("detail.viewAll"))
                         Image(systemName: "chevron.right").font(.system(size: 10, weight: .bold))
@@ -142,8 +151,13 @@ struct HomeFeaturedView: View {
                     .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
-            }.frame(height: HomeFeaturedLayout.headerHeight)
-            HomeFeaturedNativeRail(records: collections, rows: 1, itemWidth: layout.albumColumnWidth, itemHeight: layout.albumCardHeight,
+            }
+            .frame(height: HomeFeaturedLayout.headerHeight)
+            // El encabezado conserva su margen; la fila va a sangre con los márgenes dentro de su contenido.
+            .padding(.leading, HomeFeaturedLayout.horizontalInset)
+            .padding(.trailing, max(0, trailingInset))
+            HomeFeaturedNativeRail(records: collections, leadingInset: HomeFeaturedLayout.horizontalInset,
+                trailingInset: max(0, trailingInset), albumCardStyle: albumCardStyle,
                 session: resetKey + collectionKind.rawValue, playback: playbackContext, playing: isPlaying, loadingID: loadingCollectionID,
                 revision: metadataRevision(metadata),
                 display: { record in
@@ -154,9 +168,10 @@ struct HomeFeaturedView: View {
                     result.artistId = value.creditID
                     return result
                 },
-                summary: { record in metadata[Self.identity(record)]!.firstLine },
+                summary: { record in metadata[Self.identity(record)]!.summary },
                 onOpen: openCollection, onPlay: { onPlayCollection($0, false) }, onArtist: onArtist, menu: menuProvider,
-                onVisible: { visibleCollectionIDs = $0 }).frame(height: layout.albumContentHeight)
+                onVisible: { visibleTracker.publish($0) })
+                .frame(width: width, height: layout.albumContentHeight)
         }
     }
 
@@ -165,34 +180,32 @@ struct HomeFeaturedView: View {
         for key in metadata.keys.sorted() {
             let value = metadata[key]!
             hasher.combine(key); hasher.combine(value.title); hasher.combine(value.credit)
-            hasher.combine(value.creditID); hasher.combine(value.firstLine)
+            hasher.combine(value.creditID); hasher.combine(value.firstLine); hasher.combine(value.summary)
         }
         return hasher.finalize()
     }
 
-    private struct MetadataRequest: Equatable {
+    struct MetadataRequest: Equatable {
         let session: String
         let collectionIDs: [String]
         let kind: HomeFeaturedCollectionKind
         let coreIdentity: ObjectIdentifier?
     }
     private var metadataRequest: MetadataRequest {
-        MetadataRequest(session: metadataSessionKey ?? resetKey, collectionIDs: visibleCollections.map(\.id), kind: collectionKind, coreIdentity: core.map(ObjectIdentifier.init))
-    }
-
-    private var visibleCollections: [HomeItemRecord] {
-        collections.filter { (showsAll ? visibleSheetIDs : visibleCollectionIDs).contains(Self.identity($0)) }
+        MetadataRequest(session: metadataSessionKey ?? resetKey, collectionIDs: collections.map(Self.identity),
+                        kind: collectionKind, coreIdentity: core.map(ObjectIdentifier.init))
     }
 
     private var collectionName: String { collectionKind == .albums ? L10n.text("metadata.album").lowercased() : L10n.text("metadata.playlist").lowercased() }
-    private var collectionBadge: String { collectionKind == .albums ? L10n.text("metadata.album").uppercased() : L10n.text("metadata.playlist.short").uppercased() }
 
     private struct CollectionMetadata {
         let title: String
         let credit: String?
         let creditID: String?
+        /// Una línea para la tarjeta de la hoja «Ver todo».
         let firstLine: String
-        let duration: String
+        /// «Álbum • 2016 • 17 canciones • 1 h 2 min»: el resumen completo de la tarjeta de la fila, como en Windows.
+        let summary: String
     }
 
     private func collectionMetadata(for record: HomeItemRecord) -> CollectionMetadata {
@@ -200,11 +213,13 @@ struct HomeFeaturedView: View {
         case .albums:
             let value = albumMetadataModel.display(for: record, sessionKey: metadataSessionKey ?? resetKey)
             return CollectionMetadata(title: value.title, credit: value.artist,
-                creditID: value.artistID, firstLine: value.cardSummary, duration: value.duration ?? "")
+                creditID: value.artistID,
+                firstLine: value.cardSummary, summary: value.summary)
         case .playlists:
             let value = playlistMetadataModel.display(for: record, sessionKey: metadataSessionKey ?? resetKey)
             return CollectionMetadata(title: value.title, credit: value.creator,
-                creditID: value.creatorID, firstLine: value.cardSummary, duration: value.duration ?? "")
+                creditID: value.creatorID,
+                firstLine: value.cardSummary, summary: value.summary)
         }
     }
 
@@ -284,20 +299,4 @@ struct HomeFeaturedView: View {
         var id: String { "\(record.kind):\(record.id)" }
     }
 
-}
-
-/// Intersect card bounds, excluding gaps, without mounting or fetching the catalogue.
-enum HomeFeaturedRailViewport {
-    static func visibleIDs(ids: [String], itemWidth: CGFloat, rows: Int, spacing: CGFloat,
-                           offset: CGFloat, width: CGFloat) -> [String] {
-        guard width > 0, itemWidth > 0, rows > 0 else { return [] }
-        let stride = itemWidth + spacing
-        let first = max(0, Int(floor(max(0, offset) / stride))) * rows
-        let end = min(ids.count, Int(ceil((max(0, offset) + width) / stride)) * rows)
-        guard first < end else { return [] }
-        return (first..<end).filter { index in
-            let x = CGFloat(index / rows) * stride
-            return x + itemWidth > offset && x < offset + width
-        }.map { ids[$0] }
-    }
 }

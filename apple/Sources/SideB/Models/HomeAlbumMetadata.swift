@@ -105,6 +105,11 @@ final class HomeAlbumMetadataModel {
     private var sessionKey: String?
     private var generation = 0
     @ObservationIgnored private let requestLimiter = HomeCollectionMetadataRequestLimiter()
+    @ObservationIgnored private let limit: Int
+
+    init(limit: Int = 6) {
+        self.limit = max(1, limit)
+    }
 
     func display(for item: HomeItemRecord, sessionKey requestedSessionKey: String? = nil) -> HomeAlbumMetadata {
         if let requestedSessionKey, requestedSessionKey != sessionKey {
@@ -131,7 +136,7 @@ final class HomeAlbumMetadataModel {
         generation += 1
         let requestGeneration = generation
         var seen = Set<String>()
-        let visibleIDs = items.prefix(6).filter { $0.kind == "album" }.map(\.id)
+        let visibleIDs = items.prefix(limit).filter { $0.kind == "album" }.map(\.id)
             .filter { !$0.isEmpty && seen.insert($0).inserted }
         for id in visibleIDs where cachedAlbums[id] != nil { touch(id) }
         let missing = visibleIDs.filter { cachedAlbums[$0] == nil }
@@ -181,7 +186,7 @@ final class HomeAlbumMetadataModel {
     private func touch(_ id: String) {
         lru.removeAll { $0 == id }
         lru.append(id)
-        while lru.count > 6 {
+        while lru.count > limit {
             let evicted = lru.removeFirst()
             cachedAlbums.removeValue(forKey: evicted)
             details.removeValue(forKey: evicted)

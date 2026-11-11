@@ -60,7 +60,7 @@
 </script>
 
 <header class="titlebar" class:modal-open={modalOpen} aria-label={$t('windows.ui.sideBTitleBar')}>
-  <div class="drag-region" inert={modalOpen} data-tauri-drag-region role="button" tabindex="0" aria-label={isMaximized ? $t('windows.ui.restoreWindow') : $t('windows.ui.maximizeWindow')} title={isMaximized ? $t('windows.ui.doubleClickToRestore') : $t('windows.ui.doubleClickToMaximize')} onkeydown={event => {
+  <div class="drag-region" class:topnav-drag={!showHistory} inert={modalOpen} data-tauri-drag-region role="button" tabindex="0" aria-label={isMaximized ? $t('windows.ui.restoreWindow') : $t('windows.ui.maximizeWindow')} title={isMaximized ? $t('windows.ui.doubleClickToRestore') : $t('windows.ui.doubleClickToMaximize')} onkeydown={event => {
     if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); toggleFromDragRegion(); }
   }}></div>
 
@@ -92,11 +92,14 @@
     display: flex;
     align-items: center;
     background: transparent;
+    pointer-events: none;
     user-select: none;
     -webkit-user-select: none;
   }
+  .drag-region, .history-controls, .window-controls { pointer-events: auto; }
   /* Only native window buttons remain above the search modal. */
   .titlebar.modal-open { z-index:221; pointer-events:none; }
+  .modal-open .drag-region, .modal-open .history-controls { pointer-events:none; }
   .modal-open .window-controls { pointer-events:auto; }
   .modal-open .history-controls { visibility:hidden; }
   .window-controls { display: flex; align-items: center; height: 100%; }
@@ -119,7 +122,9 @@
     background: transparent;
     cursor: pointer;
   }
-  .drag-region { height: 100%; flex: 1; cursor: default; }
+  /* Over the right playback sidebar only the 32px strip above it is draggable; the 78px topnav strip stops at --topnav-right. */
+  .drag-region { height: min(100%, var(--playback-top, var(--titlebar-height, 32px))); align-self: flex-start; flex: 1; cursor: default; }
+  .drag-region.topnav-drag::before { content: ''; position: absolute; inset: 0 var(--topnav-right, 154px) 0 0; }
   .drag-region:focus-visible { outline: 2px solid #d06c70; outline-offset: -3px; }
   .window-button { height: 100%; flex: 1; }
   .window-button:hover { background: rgb(255 255 255 / 10%); }

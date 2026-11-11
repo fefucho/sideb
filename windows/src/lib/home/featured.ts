@@ -51,12 +51,35 @@ export function projectHome(sections: HomeSectionDto[], chip: string | null, set
   const artwork = [...new Set([...uniqueArt(collections).slice(0,2),...uniqueArt(songs).slice(0,2),...uniqueArt([...collections,...songs])])].slice(0,4);
   return { categories, songs, collections, shelves, artwork };
 }
+export interface HomeCollectionRowMetrics {
+  visibleColumns: number;
+  cardWidth: number;
+  coverSize: number;
+  cardHeight: number;
+  gap: number;
+  stride: number;
+}
+
+export function homeCollectionRowMetrics(availableWidth: number, _contentHeight = 0): HomeCollectionRowMetrics {
+  const useful = Math.max(0, availableWidth - 56);
+  const gap = 24;
+  const cardWidth = 220;
+  const stride = cardWidth + gap;
+  const visibleColumns = Math.min(8, Math.max(2, Math.floor((useful + gap) / stride)));
+  return {
+    visibleColumns,
+    cardWidth,
+    coverSize: cardWidth,
+    cardHeight: cardWidth + 104,
+    gap,
+    stride,
+  };
+}
+
 /** Cantidad y ancho de las tarjetas de colección; width incluye los márgenes de 28px a cada lado. */
-export function collectionRowLayout(width:number) {
-  const useful=Math.max(0,width-56), gap=24, size=(count:number)=>(useful-gap*(count-1))/count;
-  let count=Math.min(5,Math.max(2,Math.floor((useful+gap)/224)));
-  while(size(count)>320)count++;
-  return {count,cardWidth:size(count)};
+export function collectionRowLayout(width: number) {
+  const metrics = homeCollectionRowMetrics(width);
+  return { count: metrics.visibleColumns, cardWidth: metrics.cardWidth };
 }
 export function visibleSignature(projection: ReturnType<typeof projectHome>) {
   return JSON.stringify([projection.songs, projection.collections, projection.shelves.map(s => [s.id, s.title, s.items])]);

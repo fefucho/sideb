@@ -94,9 +94,9 @@ final class HomeFeaturedNativeTests: XCTestCase {
         print("ImageCache fixture: 2 concurrent logical requests share 1 downsample; 0 network requests (local PNG)")
     }
     func testRailIgnoresUnrelatedScrollAndRestoresSuspendedCells() throws {
-        let view = HomeFeaturedRailView(frame: NSRect(x: 0, y: 0, width: 650, height: 402))
-        let model = HomeFeaturedNativeRail(records: (0..<27).map { record("\($0)") }, rows: 3,
-            itemWidth: 202, itemHeight: 126, session: "a", playback: nil, playing: false,
+        let view = HomeFeaturedRailView(frame: NSRect(x: 0, y: 0, width: 650, height: 448))
+        let model = HomeFeaturedNativeRail(records: (0..<27).map { record("\($0)") }, usesMosaic: true, leadingInset: 28, trailingInset: 28,
+            session: "a", playback: nil, playing: false,
             onOpen: { _ in }, onPlay: { _ in }, menu: { NSMenu(title: $0.id) })
         view.apply(model)
         view.layoutSubtreeIfNeeded()
@@ -143,17 +143,16 @@ final class HomeFeaturedNativeTests: XCTestCase {
             item.thumbnail = (candidate.flatMap { FileManager.default.fileExists(atPath: $0.path) ? $0 : nil } ?? fallback).absoluteString
             return item
         }
-        let root = NSView(frame: NSRect(x: 0, y: 0, width: 704, height: 770))
+        let root = NSView(frame: NSRect(x: 0, y: 0, width: 704, height: 860))
         root.wantsLayer = true
         root.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
-        let songs = HomeFeaturedRailView(frame: NSRect(x: 16, y: 352, width: 672, height: 402))
-        let albums = HomeFeaturedRailView(frame: NSRect(x: 16, y: 16, width: 672, height: 300))
+        let songs = HomeFeaturedRailView(frame: NSRect(x: 0, y: 400, width: 704, height: 448))
+        let albums = HomeFeaturedRailView(frame: NSRect(x: 0, y: 10, width: 704, height: HomeCollectionCardMetrics.railHeight(cardWidth: 200)))
         root.addSubview(songs); root.addSubview(albums)
-        songs.apply(HomeFeaturedNativeRail(records: records, rows: 3, itemWidth: 196, itemHeight: 126,
-            session: "render", playback: nil, playing: false, onOpen: { _ in }, onPlay: { _ in }, menu: nil))
-        let albumRecords = records.prefix(5).map { item in var copy = item; copy.kind = "album"; return copy }
-        albums.apply(HomeFeaturedNativeRail(records: albumRecords, rows: 1, itemWidth: 180, itemHeight: 300,
-            session: "render", playback: nil, playing: false, summary: { _ in "2016 · 17 canciones\n1 h 2 min" },
+        songs.apply(HomeFeaturedNativeRail(records: records, usesMosaic: true, leadingInset: 28, trailingInset: 28, session: "render", playback: nil, playing: false, onOpen: { _ in }, onPlay: { _ in }, menu: nil))
+        let albumRecords = records.prefix(5).map { item in var copy = item; copy.kind = "album"; copy.subtitle = "Álbum • \(item.artists ?? "") • 2016"; return copy }
+        albums.apply(HomeFeaturedNativeRail(records: albumRecords, leadingInset: 28, trailingInset: 28,
+            session: "render", playback: nil, playing: false, summary: { _ in "Álbum • 2016 • 17 canciones • 1 h 2 min" },
             onOpen: { _ in }, onPlay: { _ in }, menu: nil))
         root.layoutSubtreeIfNeeded()
         for _ in 0..<150 {
@@ -164,10 +163,10 @@ final class HomeFeaturedNativeTests: XCTestCase {
         let cells = (songs.collection.visibleItems() + albums.collection.visibleItems()).compactMap { $0 as? HomeCollectionItem }
         XCTAssertFalse(cells.isEmpty)
         XCTAssertTrue(cells.allSatisfy { $0.content.featuredArtworkSizeForTesting != nil })
-        // Allow the asynchronous palette work to settle before capturing the footer.
-        try await Task.sleep(for: .milliseconds(100))
+        // Allow the asynchronous palette and wash work to settle before capturing.
+        try await Task.sleep(for: .milliseconds(400))
         root.layoutSubtreeIfNeeded()
-        let output = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: 1408, pixelsHigh: 1540,
+        let output = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: 1408, pixelsHigh: 1720,
             bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
             colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)!
         output.size = root.bounds.size
@@ -177,8 +176,8 @@ final class HomeFeaturedNativeTests: XCTestCase {
     }
 
     func testNativeCollectionBoundsAndPlaybackDoesNotReload() {
-        let view = HomeFeaturedRailView(frame: NSRect(x: 0, y: 0, width: 650, height: 402))
-        var model = HomeFeaturedNativeRail(records: (0..<270).map { record("\($0)") }, rows: 3, itemWidth: 202, itemHeight: 126, session: "a", playback: nil, playing: false, onOpen: { _ in }, onPlay: { _ in }, menu: nil)
+        let view = HomeFeaturedRailView(frame: NSRect(x: 0, y: 0, width: 650, height: 448))
+        var model = HomeFeaturedNativeRail(records: (0..<270).map { record("\($0)") }, usesMosaic: true, leadingInset: 28, trailingInset: 28, session: "a", playback: nil, playing: false, onOpen: { _ in }, onPlay: { _ in }, menu: nil)
         view.apply(model)
         view.layoutSubtreeIfNeeded()
         view.collection.layoutSubtreeIfNeeded()

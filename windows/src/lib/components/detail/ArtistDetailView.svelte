@@ -56,7 +56,7 @@
   const visibleTopSongs = $derived(artist?.topSongs.slice(0, 5) ?? []);
   // Only the shelves near the viewport are mounted (VirtualStack); each one windows its own cards.
   // Horizontal offsets survive shelf recycling and reset when the section list changes.
-  const shelves = $derived(artistShelves(artist?.sections ?? []).map((section, index) => ({ section, key: artistShelfKey(section, index) })));
+  const shelves = $derived(artistShelves(artist?.sections ?? [], (artist as any)?.id ?? artist?.channelId).map((section, index) => ({ section, key: artistShelfKey(section, index) })));
   const shelfSignature = $derived(shelves.map(shelf => shelf.key).join('\u0000'));
   const shelfOffsets = new Map<string, number>();
   let offsetSignature = '';

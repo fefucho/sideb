@@ -14,5 +14,21 @@
   "settings.homeBackground.hint": {
     "es": "Elegí los colores de las portadas o un fondo oscuro uniforme.",
     "en": "Choose artwork colors or a uniform dark background."
+  },
+  "settings.albumCardStyle": {
+    "es": "Tarjetas de álbumes",
+    "en": "Album cards"
+  },
+  "settings.albumCardStyle.tinted": {
+    "es": "Blanco teñido",
+    "en": "Tinted white"
+  },
+  "settings.albumCardStyle.white": {
+    "es": "Blanco",
+    "en": "White"
+  },
+  "settings.albumCardStyle.hint": {
+    "es": "Elegí cómo se ve el panel de texto de las tarjetas destacadas de Inicio.",
+    "en": "Choose how the text panel of Home's featured cards looks."
   }
 }
