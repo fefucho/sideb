@@ -58,7 +58,7 @@ window.lab={
 await writeFile(path.join(cache, 'main.js'), "import {mount} from 'svelte';import Fixture from './Fixture.svelte';mount(Fixture,{target:document.getElementById('app')});");
 await writeFile(path.join(cache, 'index.html'), '<div id="app"></div><script type="module" src="/main.js"></script>');
 const mockFile = path.join(cache, 'tauri-mock.js');
-await writeFile(mockFile, 'export const invoke = async () => null; export const listen = async () => () => {}; export const getCurrentWindow = () => ({ isFullscreen: async () => false, setFullscreen: async () => {} });');
+await writeFile(mockFile, 'export const invoke = async cmd => cmd === "get_animated_artwork_runtime_state" ? ({ visible: true, minimized: false, cloaked: false, powerSaver: false, memoryPressure: false }) : null; export const listen = async () => () => {}; export const convertFileSrc = path => path; export const getCurrentWindow = () => ({ isFullscreen: async () => false, setFullscreen: async () => {} });');
 const server = await createServer({ configFile: false, root: cache, publicDir: path.join(root, 'static'), plugins: [svelte()], optimizeDeps: { entries: [path.join(cache, 'index.html')] }, resolve: { alias: { $lib: path.join(root, 'src/lib'), '@tauri-apps/api/core': mockFile, '@tauri-apps/api/event': mockFile, '@tauri-apps/api/window': mockFile } }, server: { host: '127.0.0.1', port: 0, watch: null, fs: { allow: [root] } }, logLevel: 'error' });
 await server.listen();
 const exe = process.env.SIDEB_BROWSER ?? 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
