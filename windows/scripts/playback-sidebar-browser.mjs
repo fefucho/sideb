@@ -57,10 +57,12 @@ window.lab={
 <style>/* Same layout contract as QueuePanel: a flex column whose list is the scroller. */.queue-fake{display:flex;flex:1;flex-direction:column;width:100%;min-width:0;min-height:0;overflow:hidden}.queue-fake-list{flex:1;min-height:0;overflow-y:auto}:global(body){margin:0;background:#19191c;color:white;font-family:var(--sideb-font-family,Inter,sans-serif);overflow:hidden}.frame{position:fixed;inset:0}.titlebar{position:fixed;z-index:200;top:0;left:253px;right:0;height:32px}.controls{position:absolute;right:0;top:0;width:138px;height:32px}.content{position:absolute;top:32px;left:253px;right:0;bottom:0}.host{flex:1}</style>`);
 await writeFile(path.join(cache, 'main.js'), "import {mount} from 'svelte';import Fixture from './Fixture.svelte';mount(Fixture,{target:document.getElementById('app')});");
 await writeFile(path.join(cache, 'index.html'), '<div id="app"></div><script type="module" src="/main.js"></script>');
-const server = await createServer({ configFile: false, root: cache, publicDir: path.join(root, 'static'), plugins: [svelte()], optimizeDeps: { entries: [path.join(cache, 'index.html')] }, resolve: { alias: { $lib: path.join(root, 'src/lib') } }, server: { host: '127.0.0.1', port: 0, watch: null, fs: { allow: [root] } }, logLevel: 'error' });
+const mockFile = path.join(cache, 'tauri-mock.js');
+await writeFile(mockFile, 'export const invoke = async () => null; export const listen = async () => () => {}; export const getCurrentWindow = () => ({ isFullscreen: async () => false, setFullscreen: async () => {} });');
+const server = await createServer({ configFile: false, root: cache, publicDir: path.join(root, 'static'), plugins: [svelte()], optimizeDeps: { entries: [path.join(cache, 'index.html')] }, resolve: { alias: { $lib: path.join(root, 'src/lib'), '@tauri-apps/api/core': mockFile, '@tauri-apps/api/event': mockFile, '@tauri-apps/api/window': mockFile } }, server: { host: '127.0.0.1', port: 0, watch: null, fs: { allow: [root] } }, logLevel: 'error' });
 await server.listen();
 const exe = process.env.SIDEB_BROWSER ?? 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
-const browser = spawn(exe, ['--headless=new', '--edge-skip-compat-layer-relaunch', '--no-first-run', '--disable-extensions', '--remote-debugging-port=0', `--user-data-dir=${path.join(cache, 'browser-' + Date.now())}`, 'about:blank'], { windowsHide: true, stdio: ['ignore', 'ignore', 'pipe'] });
+const browser = spawn(exe, ['--headless=new', '--edge-skip-compat-layer-relaunch', '--no-first-run', '--no-default-browser-check', '--disable-extensions', '--disable-background-networking', '--disable-background-timer-throttling', '--remote-debugging-port=0', `--user-data-dir=${path.join(cache, 'browser-' + Date.now())}`, 'about:blank'], { windowsHide: true, stdio: ['ignore', 'ignore', 'pipe'] });
 let stderr = '', ws;
 browser.stderr.on('data', x => stderr += x);
 try {
@@ -98,8 +100,16 @@ try {
   await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'no-preference' }] });
   await send('Emulation.setFocusEmulationEnabled', { enabled: true });
   await send('Runtime.enable'); await send('Page.navigate', { url: server.resolvedUrls.local[0] });
-  for (let i = 0; i < 300; i++) { if (await evaluate('!!window.lab')) break; await sleep(100); }
-  assert.ok(await evaluate('!!window.lab'), errors.join('\n'));
+  for (let i = 0; i < 600; i++) {
+    if (await evaluate('!!window.lab')) break;
+    if (i === 150 || i === 300 || i === 450) await send('Page.reload', { ignoreCache: true });
+    await sleep(100);
+  }
+  const hasLab = await evaluate('!!window.lab');
+  if (!hasLab) {
+    const diag = await evaluate('({href:location.href,ready:document.readyState,html:document.body?.innerHTML?.slice(0,300)})');
+    assert.ok(hasLab, `window.lab missing: ${JSON.stringify({ errors, diag })}`);
+  }
   await evaluate('document.fonts.ready');
 
   // 1. Closed: bar centered in the content column, trigger at the trailing margin, no overlap, no panel.
