@@ -995,7 +995,8 @@ impl QueueStateDto {
                 .zip(slots.iter())
                 .all(|(entry, &slot)| entry.entry_id == suffix[slot].entry_id)
         {
-            entries.swap(0, entries.len() - 1);
+            let last_index = entries.len() - 1;
+            entries.swap(0, last_index);
         }
         for (index, entry) in slots.into_iter().zip(entries) {
             suffix[index] = entry;
