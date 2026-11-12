@@ -2582,7 +2582,7 @@ mod tests {
         assert_eq!(queue.items[..1235], canonical[..1235]);
         assert_eq!(entry_ids(&queue.items[1235..3235]), manual_ids);
         assert_eq!(queue.items[3235..], canonical[1235..]);
-        assert_eq!(queue.snapshot().items.len(), 3235);
+        assert_eq!(queue.snapshot().items.len(), 100);
         assert_eq!(
             entry_ids(&queue.items)
                 .into_iter()
@@ -2617,7 +2617,7 @@ mod tests {
         queue.restore_original_order();
         assert_eq!(queue.current_index, Some(1234));
         assert_eq!(queue.current().unwrap().video_id, "1234");
-        assert_eq!(queue.snapshot().items.len(), 1334);
+        assert_eq!(queue.snapshot().items.len(), 100);
         assert_eq!(
             queue
                 .items
@@ -2822,7 +2822,7 @@ mod tests {
         for entry in expected.items.iter().skip(1) {
             assert_eq!(queue.next().unwrap(), *entry);
         }
-        assert_eq!(queue.snapshot().items, expected.items);
+        assert_eq!(queue.items, expected.items);
         assert!(queue.next().is_none());
     }
 
@@ -2831,8 +2831,9 @@ mod tests {
         let mut queue = QueueStateDto::default();
         queue.replace((0..350).map(|_| item("same")).collect(), 150, source());
         let snapshot = queue.snapshot();
-        assert_eq!(snapshot.items.len(), 250);
-        assert_eq!(snapshot.current_index, Some(150));
+        assert_eq!(snapshot.items.len(), 100);
+        assert_eq!(snapshot.total_count, Some(350));
+        assert_eq!(snapshot.current_index, Some(50));
         assert_eq!(
             snapshot
                 .items
@@ -2840,11 +2841,11 @@ mod tests {
                 .map(|entry| &entry.entry_id)
                 .collect::<HashSet<_>>()
                 .len(),
-            250
+            100
         );
         assert_eq!(
             queue.previous(0.0).unwrap().entry_id,
-            snapshot.items[149].entry_id
+            queue.items[149].entry_id
         );
         queue.replace(vec![item("new")], 0, source());
         assert_eq!(queue.snapshot().items.len(), 1);
@@ -2862,7 +2863,7 @@ mod tests {
         );
         let active = queue.current().unwrap();
         queue.enqueue(vec![item("manual-next")], true);
-        assert_eq!(queue.snapshot().items.len(), 101);
+        assert_eq!(queue.snapshot().items.len(), 100);
         assert_eq!(queue.next().unwrap().video_id, "manual-next");
         let manual_id = queue.current().unwrap().entry_id;
         queue.remove_entry(&active.entry_id).unwrap();

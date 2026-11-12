@@ -2266,7 +2266,7 @@ mod dismissal_tests {
             vec![entry.clone(), entry.clone()],
             0,
             QueueSourceDto {
-                kind: "radio".into(),
+                kind: "album".into(),
                 id: Some("seed".into()),
                 title: None,
             },
