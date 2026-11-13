@@ -4,7 +4,7 @@ Memoria de cambios de Side B para investigar problemas y regresiones. Buscar aqu
 
 Tags de ámbito: `[Apple]`, `[Windows]`, `[Compartido]`. Core y herramientas comunes usan Compartido, detallando el componente. El tag indica dónde se hizo el cambio; no demuestra que ambas plataformas hayan sido verificadas. Estados, fechas, componentes y relaciones se conservan dentro de cada entrada.
 
-Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-343**. Los IDs repetidos FIX-285/286/287 (2026-11-02) se desambiguaron renumerando las entradas de proveedor visual como FIX-310/311/312; FIX-285/286/287 conservan las de Inicio y recomendaciones laterales. Se conservaron los FIX/FEAT históricos. Dos números antiguos repetidos se distinguen como `FIX-027-2` y `FIX-028-2`, anotando el ID original; al citar FIX-027/028 comprobar título y entrada exacta.
+Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-345**. Los IDs repetidos FIX-285/286/287 (2026-11-02) se desambiguaron renumerando las entradas de proveedor visual como FIX-310/311/312; FIX-285/286/287 conservan las de Inicio y recomendaciones laterales. Se conservaron los FIX/FEAT históricos. Dos números antiguos repetidos se distinguen como `FIX-027-2` y `FIX-028-2`, anotando el ID original; al citar FIX-027/028 comprobar título y entrada exacta.
 
 ## Cambios recientes
 

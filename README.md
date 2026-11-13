@@ -29,6 +29,7 @@ It started with the work of [Limusic](https://github.com/SimoHypers/limusic) and
 - **Lyrics and Genius.** Synced lyrics when available, line annotations, song information, and credits.
 - **Everyday desktop controls.** A compact player, keyboard shortcuts, media keys, and system playback controls.
 - **Optional animated artwork.** A separate, removable plugin can show Spotify Canvas in the side player. It is off by default, needs a Spotify sign-in and relies on unofficial endpoints.
+- **Spotify Jam (guest mode).** Join a Spotify Jam via an invitation link, mirror its queue and playback timing, and listen to matched YouTube Music tracks in sync. Uses an optional session plugin and unofficial Spotify web endpoints; never plays Spotify audio.
 - **English and Spanish.** Change the interface language in settings.
 
 The two apps share the same main features, with a few settings and system integrations specific to each platform. Side B is still being actively developed, so some edges are rough.

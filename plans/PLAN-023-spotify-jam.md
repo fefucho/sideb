@@ -1,8 +1,8 @@
 # PLAN-023 — Escuchar juntos: Spotify Jam como invitado
 
 - Fecha: 2026-11-13 (America/Montevideo).
-- Estado: implementado en Mac en la rama (FIX-343); protocolo medido con un Jam real; versión final (sincronía nueva, edición de cola, UI) sin validación manual. Windows pendiente (PAR-062).
-- Rama / carpeta: `feature/listen-together`, worktree `sideb-listen-together/` (base `46e7fcf`). No se integra a `main` hasta que el usuario lo dé por listo.
+- Estado: implementado en Mac ([FIX-343](../FIXES.md#fix-343)) y en fuentes Windows ([FIX-344](../FIXES.md#fix-344), [PAR-062](../PARIDAD.md)), integrado a `main`. Protocolo medido con un Jam real; versión final de Mac y port Windows sin validación manual en PC/app real.
+- Rama / carpeta: integrado en `main` desde `feature/listen-together` (`sideb-listen-together/`).
 - Objetivo: que Side B entre como invitado a un Jam de Spotify, copie su canción actual, posición y cola, y reproduzca el equivalente de cada canción desde YouTube Music. Side B nunca reproduce audio de Spotify.
 - Orden de plataformas: Mac primero; Windows después con el mismo plugin y contrato.
 
@@ -187,8 +187,8 @@ Los controles deshabilitados explican por qué al pasar el mouse. Todo texto en 
 - [x] **4. Modo sesión Mac**: instantánea/restauración, cola espejo, recomendaciones y shuffle/repetir inertes, confirmación al reproducir otra cosa, `JamSyncEngine`.
 - [x] **5. UI Mac**: «Conexiones», panel de Jam, marcadores, cola, avisos, ES/EN. Revisada sólo en capturas fuera de pantalla.
 - [x] **6. Agregar / insertar / reordenar / quitar** desde Side B: implementado; reordenar, insertar y quitar sin medir contra Spotify.
-- [ ] **7. Windows**: pendiente (PAR-062).
-- [ ] **8. Cierre**: FIX-343 y PAR-062 registrados. Faltan validación manual con Jam real, aviso en README e integración a `main`.
+- [x] **7. Windows**: implementado en fuentes ([FIX-344](../FIXES.md#fix-344), [PLAN-028](../windows/plans/PLAN-028-spotify-jam.md)); pendiente de validación en PC ([PAR-062](../PARIDAD.md)).
+- [ ] **8. Cierre**: `FIX-343`, `FIX-344` y `PAR-062` registrados, aviso en `README.md` añadido e integrado a `main`. Faltan validación manual con Jam real en Mac y validación nativa/manual en Windows.
 
 ### Validación manual pendiente (versión final)
 
