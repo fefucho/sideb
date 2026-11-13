@@ -4,9 +4,48 @@ Memoria de cambios de Side B para investigar problemas y regresiones. Buscar aqu
 
 Tags de ámbito: `[Apple]`, `[Windows]`, `[Compartido]`. Core y herramientas comunes usan Compartido, detallando el componente. El tag indica dónde se hizo el cambio; no demuestra que ambas plataformas hayan sido verificadas. Estados, fechas, componentes y relaciones se conservan dentro de cada entrada.
 
-Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-346**. Los IDs repetidos FIX-285/286/287 (2026-11-02) se desambiguaron renumerando las entradas de proveedor visual como FIX-310/311/312; FIX-285/286/287 conservan las de Inicio y recomendaciones laterales. Se conservaron los FIX/FEAT históricos. Dos números antiguos repetidos se distinguen como `FIX-027-2` y `FIX-028-2`, anotando el ID original; al citar FIX-027/028 comprobar título y entrada exacta.
+Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-349**. Los IDs repetidos FIX-285/286/287 (2026-11-02) se desambiguaron renumerando las entradas de proveedor visual como FIX-310/311/312; FIX-285/286/287 conservan las de Inicio y recomendaciones laterales. Se conservaron los FIX/FEAT históricos. Dos números antiguos repetidos se distinguen como `FIX-027-2` y `FIX-028-2`, anotando el ID original; al citar FIX-027/028 comprobar título y entrada exacta.
 
 ## Cambios recientes
+
+<a id="fix-348"></a>
+### [FIX-348] [Windows] - Paridad de recomendaciones con macOS (Relacionado, panel lateral y Automix de cola)
+
+- Fecha: 2026-11-13 (America/Montevideo).
+- Componente: `RecommendationsController` (`windows/src/lib/player/recommendations.ts`), `+page.svelte`, `menu/executor.ts`, `commands/playback.rs`, `commands/catalog.rs`, `lib.rs`.
+- Problema / causa: Windows cargaba muchas menos canciones recomendadas que macOS por cuatro causas combinadas (ninguna en `core/`):
+  1. `RecommendationsController` no recibía `artistBrowseId`/`albumBrowseId` de respaldo desde el contexto de reproducción; cuando `albumTrackWithCredit` omitía `artistId` (p. ej. por artistas invitados) o `albumId`, se saltaban `get_artist` y/o `get_album`, dejando sólo ~15–20 canciones de `similarSongs` (o ~10 en el panel lateral) en lugar de ~35–45 entre las tres repisas.
+  2. `+page.svelte` bloqueaba `recommendations.load()` mientras `playbackState.isLoading || playbackState.error`, y `recommendations.ts` esperaba a `Promise.allSettled` antes de publicar ninguna repisa (descartando las ya listas si ocurría un `suspend()`).
+  3. En la cola, `maybe_prefetch_radio`, `begin_radio_fetch`, `retry_radio`, `handle_track_ended`, `next_track` y `remove_queue_entry` exigían `source.kind == "radio"`, dejando sin recomendaciones/Automix a canciones sueltas, álbumes, artistas, playlists, biblioteca e historial. Además `get_artist_radio` descartaba `continuation`, `startArtistRadio` lanzaba `"mix"` fijo y `start_source_radio` ignoraba `continuation`, pisaba `"search-radio"` por `"radio"` y descartaba `artist_runs`.
+  4. `fetch_radio` no priorizaba `get_next_continuation` ni reintentaba si una página no aportaba canciones nuevas únicas (Mac reintenta hasta 3 páginas).
+- Cambio / motivo:
+  - **Contexto + carga progresiva:** `RecommendationsController.setTrack` acepta `{ artistId, albumId }` de respaldo (alimentados por `playbackArtistContextId`/`playbackAlbumContextId` en `+page.svelte` sin alterar `playArtist` ni `albumTrackWithCredit`), dispara en paralelo con la resolución del stream sin esperar `!isLoading`, y publica cada repisa apenas responde (`commitShelf`).
+  - **Automix + continuaciones nativas:** se añade `can_automix_queue` en `playback.rs` (activo en toda cola no vacía distinta de `"jam"` una vez agotada la paginación de origen), `next_radio_fetch` prioriza `NextContinuation` mediante `radio_continuation` / `radio_consumed_continuations` / `radio_request_cursors` en `PlaybackManager`, `fetch_radio` reintenta hasta 3 páginas cuando una no agrega recomendaciones nuevas, `get_artist_radio` retorna `SearchNextDto` completo para iniciar `"radio"` con `continuation`, y `start_source_radio`/`start_song_radio` conservan `continuation`, `"search-radio"` y `artist_runs`.
+- Archivos: `windows/src/lib/player/recommendations.ts`, `windows/src/routes/+page.svelte`, `windows/src/lib/menu/executor.ts`, `windows/src-tauri/src/{lib.rs,commands/playback.rs,commands/catalog.rs}`, `windows/scripts/recommendations-controller.test.mjs`, `FIXES.md`, `PARIDAD.md`.
+- Verificación: `pnpm check` (0 errores, 0 warnings); `node --test` focal en 12 suites (`97/97` aprobadas, incluidas 2 nuevas pruebas de contexto de respaldo y emisión progresiva); `cargo test --locked --lib` con MSVC 2022 (`193/193` aprobadas, 2 live ignoradas, incluidas 2 nuevas pruebas de `can_automix_queue` y `next_radio_fetch`). Build standalone `debug` (`builds/windows/build-0006/sideb-windows.exe`) sin `verify` completo ni prueba manual contra cuenta/audio real.
+- Paridad: [PAR-063](PARIDAD.md).
+
+<a id="fix-347"></a>
+### [FIX-347] [Windows] - Mantener visible y usable la pestaña «Relacionado» y recomendaciones laterales durante un Spotify Jam
+
+- Fecha: 2026-11-13 (America/Montevideo).
+- Componente: `FullscreenNowPlaying.svelte`, `+page.svelte`, `PlaybackSidebar.svelte`, `jam-ui-browser.mjs`.
+- Problema / causa: tras [FIX-344](#fix-344), al iniciarse un Spotify Jam (`jamLive === true`), la pestaña `Relacionado` (`#fullscreen-tab-related`) desaparecía de pantalla completa, cualquier selección previa de `related` redirigía a `queue` y tanto `+page.svelte` como `PlaybackSidebar.svelte` ocultaban y bloqueaban la carga de recomendaciones.
+- Cambio / motivo: se quita la condición `!jamLive` / `jamLive` sobre `related` en `FullscreenNowPlaying.svelte`, sobre `<SidebarRecommendations>` en `PlaybackSidebar.svelte` (alineado con `PlaybackSidebarScene.swift` de Mac) y sobre `recommendations.load()` / `sidebarRecommendationsProps` en `+page.svelte`. La pestaña `#fullscreen-tab-jam` permanece oculta hasta que exista un Jam activo ([FIX-346](#fix-346)).
+- Archivos: `windows/src/lib/components/fullscreen/FullscreenNowPlaying.svelte`, `windows/src/lib/components/playback-sidebar/PlaybackSidebar.svelte`, `windows/src/routes/+page.svelte`, `windows/scripts/jam-ui-browser.mjs`, `FIXES.md`, `PARIDAD.md`.
+- Verificación: `pnpm check` (0 errores, 0 warnings); `node --test scripts/jam-ui-components.test.mjs scripts/jam-ui-presentation.test.mjs scripts/jam-ui-browser.test.mjs scripts/playback-sidebar-wiring.test.mjs` (12/12 aprobadas en Edge real y happy-dom, verificando `#fullscreen-tab-related` visible y seleccionable con `jamLive = true`).
+- Paridad: [PAR-062](PARIDAD.md). Relacionados: [FIX-343](#fix-343), [FIX-344](#fix-344), [FIX-346](#fix-346).
+
+<a id="fix-346"></a>
+### [FIX-346] [Windows] - Ocultar pestaña «Jam» en pantalla completa hasta que haya un Jam activo
+
+- Fecha: 2026-11-13 (America/Montevideo).
+- Componente: `FullscreenNowPlaying.svelte`, `+page.svelte` (estado de pestaña en pantalla completa).
+- Problema / causa: la tanda inicial de Spotify Jam en pantalla completa ([FIX-344](#fix-344), paridad con [FIX-343](#fix-343)) mostraba siempre la pestaña `Jam` junto a `Cola de reproducción`, `Letras` y `Relacionado`, aunque no hubiera un Jam activo (en Windows, el botón Conexiones de la barra inferior ya sirve para unirse).
+- Cambio / motivo: en `FullscreenNowPlaying.svelte`, `panels` ahora incluye la pestaña `jam` únicamente cuando `jamUi && jamLive` (`showJamTab`). Si `requestedPanel === 'jam'` fuera de un Jam activo (por ejemplo, al salir o cerrarse el Jam mientras la pestaña estaba seleccionada), `panel` cae a `'queue'` y un `$effect` restablece `localPanel` y `selectedPanel` (en `+page.svelte`) a `'queue'` para evitar que quede estado obsoleto si luego comienza otro Jam. El marcador sobre la carátula y el acceso al panel desde él durante un Jam activo se conservan intactos.
+- Archivos: `windows/src/lib/components/fullscreen/FullscreenNowPlaying.svelte`, `windows/src/routes/+page.svelte`, `windows/scripts/jam-ui-browser.mjs`, `FIXES.md`, `PARIDAD.md`.
+- Verificación: `pnpm check` (0 errores, 0 warnings); `node --test scripts/jam-ui-components.test.mjs scripts/jam-ui-presentation.test.mjs scripts/jam-ui-browser.test.mjs scripts/playback-sidebar-wiring.test.mjs` (12/12 aprobadas en Edge real y happy-dom, incluyendo aserciones nuevas para `#fullscreen-tab-jam` ausente sin Jam, visible durante Jam activo y fallback a `queue` al terminar). Nueva build standalone `debug` (`builds/windows/build-0005/sideb-windows.exe`) sin `verify` completo ni prueba manual con cuenta/audio real tras este ajuste.
+- Paridad: [PAR-062](PARIDAD.md). Mac (`apple/Sources/SideB/Views/Fullscreen/FullscreenNowPlayingView.swift`, `FullscreenPanel.allCases`) sigue ofreciendo `.jam` siempre; evaluar si unificar o mantener esa diferencia en Mac sin tocar `apple/` desde esta tarea Windows. Relacionados: [FIX-343](#fix-343), [FIX-344](#fix-344).
 
 <a id="fix-345"></a>
 ### [FIX-345] [Apple] - Actualización de capturas del README e incorporación de vistas de Spotify Jam

@@ -281,13 +281,13 @@ pub(crate) async fn get_playlist(state: tauri::State<'_, AppState>, playlist_id:
 /// Load the same initial artist-radio queue that macOS gets from getNext(nil, playlistId).
 /// The returned first song is the queue's first/current candidate; the frontend owns playback.
 #[tauri::command]
-pub(crate) async fn get_artist_radio(state: tauri::State<'_, AppState>, playlist_id: String) -> Result<Vec<SongDto>, CommandError> {
+pub(crate) async fn get_artist_radio(state: tauri::State<'_, AppState>, playlist_id: String) -> Result<crate::search_page::SearchNextDto, CommandError> {
     let id = playlist_id.trim();
     if id.is_empty() { return Err(CommandError::new("INVALID_ID", "El identificador de radio no puede estar vacío.")); }
     let core = state.core.read().map_err(|_| CommandError::new("LOCK_ERROR", "Error de concurrencia al acceder al motor."))?.clone()
         .ok_or_else(|| CommandError::new("CORE_NOT_INITIALIZED", "El motor de Side B no está listo. Reintentá la inicialización."))?;
     core.get_next(None, Some(id.to_owned())).await
-        .map(|result| result.items.into_iter().map(SongDto::from).collect())
+        .map(crate::search_page::SearchNextDto::from)
         .map_err(|_| CommandError::new("ARTIST_RADIO_FAILED", "No se pudo cargar la radio del artista. Comprobá tu conexión a internet."))
 }
 

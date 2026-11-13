@@ -92,12 +92,15 @@
   $effect(()=>{informationTrackKey;showInformation=false;});
   let localPanel = $state<Panel>("queue");
   let failedArtworkTrackKey = $state<string | null>(null);
-  // During a Jam the queue is the Jam's: recommendations are off (no "related" tab, no fetching).
   const jamUi = useJamUi();
   const jamState = jamUi?.state ?? readable(emptyJamState());
   const jamLive = $derived(isJamLive($jamState));
+  const showJamTab = $derived(Boolean(jamUi && jamLive));
   const requestedPanel = $derived(selectedPanel ?? localPanel);
-  const panel = $derived<Panel>(jamLive && requestedPanel === 'related' ? 'queue' : requestedPanel);
+  const panel = $derived<Panel>(!showJamTab && requestedPanel === 'jam' ? 'queue' : requestedPanel);
+  $effect(() => {
+    if (!showJamTab && localPanel === 'jam') localPanel = 'queue';
+  });
   const currentTrack = $derived(playback.currentTrack);
   const artworkTrackKey = $derived(currentTrack ? `${currentTrack.videoId}\u0000${currentTrack.thumbnail ?? ''}` : '');
   let failedArtworkUrls = $state<string[]>([]);
@@ -108,9 +111,9 @@
   const panels = $derived<{id:Panel;label:string}[]>([
     { id: "queue", label: $t("queue.title") },
     { id: "lyrics", label: $t("fullscreen.lyrics") },
-    ...(jamLive ? [] : [{ id: "related" as const, label: $t("fullscreen.related") }]),
-    // Always offered, so a Jam can be joined from here (macOS parity).
-    ...(jamUi ? [{ id: "jam" as const, label: $t("jam.surface.tab") }] : []),
+    { id: "related", label: $t("fullscreen.related") },
+    // Offered only while a Jam is live; outside a Jam, Connections in the bar handles joining.
+    ...(showJamTab ? [{ id: "jam" as const, label: $t("jam.surface.tab") }] : []),
   ]);
 
   function selectPanel(value: Panel) {

@@ -54,9 +54,15 @@ function albumSong(song: SongDto, detail: AlbumDetailDto | null, albumId: string
   return result;
 }
 
+export interface RecommendationContext {
+  artistId?: string | null;
+  albumId?: string | null;
+}
+
 /** Lazy recommendations only; playback and the native queue remain authoritative. */
 export class RecommendationsController {
   private track: PlaybackTrackDto | null = null;
+  private context: RecommendationContext = {};
   private state = emptyRecommendationsSnapshot();
   private revision = 0;
   private reloadCount = 0;
@@ -67,10 +73,27 @@ export class RecommendationsController {
   constructor(private rpc: RecommendationsRpc, private publish: (snapshot: RecommendationsSnapshot) => void) { this.emit(); }
   get snapshot(): RecommendationsSnapshot { return { ...this.state, data: this.state.data ? cloneData(this.state.data) : null }; }
   private emit() { this.publish(this.snapshot); }
+  private effectiveContext(track: PlaybackTrackDto | null, context: RecommendationContext) {
+    return {
+      artistId: track?.artistId || context.artistId || null,
+      albumId: track?.albumId || context.albumId || null,
+    };
+  }
+  private effectiveIdentity(track: PlaybackTrackDto | null, context: RecommendationContext): string {
+    if (!track) return '';
+    const resolved = this.effectiveContext(track, context);
+    return JSON.stringify([track.videoId, resolved.artistId, resolved.albumId]);
+  }
 
-  setTrack(track: PlaybackTrackDto | null): void {
-    const changed = recommendationIdentity(track) !== recommendationIdentity(this.track);
+  setTrack(track: PlaybackTrackDto | null, context: RecommendationContext = {}): void {
+    const nextContext: RecommendationContext = {
+      artistId: context.artistId ?? null,
+      albumId: context.albumId ?? null,
+    };
+    const changed = this.effectiveIdentity(track, nextContext) !== this.effectiveIdentity(this.track, this.context)
+      || recommendationIdentity(track) !== recommendationIdentity(this.track);
     this.track = track ? { ...track, artistRuns: track.artistRuns?.map(run => ({ ...run })) } : null;
+    this.context = nextContext;
     if (changed) {
       this.contextRevision++;this.revision++; this.pending = null; this.loadedIdentity = ''; this.reloadCount = 0;
       this.state = emptyRecommendationsSnapshot(); this.emit();
@@ -90,57 +113,123 @@ export class RecommendationsController {
   }
   load(forceRefresh = false): Promise<void> {
     if (!this.track?.videoId.trim()) return Promise.resolve();
-    const key = recommendationIdentity(this.track);
+    const effectiveKey = this.effectiveIdentity(this.track, this.context);
     if (!forceRefresh && this.pending) return this.pending;
     // An error is retried explicitly; playback progress must not repeatedly hit the provider.
-    if (!forceRefresh && this.loadedIdentity === key) return Promise.resolve();
+    if (!forceRefresh && this.loadedIdentity === effectiveKey) return Promise.resolve();
     const track = { ...this.track };
+    const context = { ...this.context };
+    const requestKey = recommendationIdentity(track);
     const revision = ++this.revision;
     this.reloadCount = forceRefresh ? this.reloadCount + 1 : 0;
     const rotation = this.reloadCount;
     this.state = { ...this.state, loading: true, error: null }; this.emit();
-    const load = this.fetch(track, revision, key, rotation);
+    const load = this.fetch(track, context, revision, requestKey, effectiveKey, rotation);
     this.pending = load;
     return load;
   }
 
-  private async fetch(track: PlaybackTrackDto, revision: number, key: string, rotation: number): Promise<void> {
-    const requests = await Promise.allSettled([
-      this.rpc<SongDto[]>('get_related_tracks', { videoId: track.videoId }),
-      this.rpc<BrowseCardDto[]>('get_related_artists', { videoId: track.videoId }),
-      track.artistId ? this.rpc<ArtistDetailDto>('get_artist', { browseId: track.artistId }) : Promise.resolve(null),
-      track.albumId ? this.rpc<AlbumDetailDto>('get_album', { browseId: track.albumId }) : Promise.resolve(null),
-    ]);
-    if (revision !== this.revision || recommendationIdentity(this.track) !== key) return;
-    const [similarResult, artistsResult, artistResult, albumResult] = requests;
-    const previous = this.state.data?.loadedVideoId === track.videoId ? this.state.data : null;
-    const artist = artistResult.status === 'fulfilled' ? artistResult.value : null;
-    const album = albumResult.status === 'fulfilled' ? albumResult.value : null;
-    let similarSongs = (similarResult.status === 'fulfilled' ? similarResult.value : previous?.similarSongs ?? []).filter(song => song.videoId !== track.videoId);
-    if (rotation && similarSongs.length > 4) {
-      const offset = (rotation * 4) % similarSongs.length;
-      similarSongs = [...similarSongs.slice(offset), ...similarSongs.slice(0, offset)];
-    }
-    const related = artistsResult.status === 'fulfilled' ? artistsResult.value.filter(card => card.kind.toLowerCase() === 'artist') : previous?.relatedArtists ?? [];
-    const data: RecommendedData = {
-      loadedVideoId: track.videoId,
-      contextKey:JSON.stringify([this.contextRevision,key]),
-      requestIdentity:key,
-      artistName: artist?.name || previous?.artistName || this.track?.artists || null,
-      artistBrowseId: track.artistId ?? null,
-      artistSongs: (artist?.topSongs ?? (artistResult.status === 'rejected' ? previous?.artistSongs : []) ?? []).filter(song => song.videoId !== track.videoId)
-        .map(song => artistSong(song, artist, track.artistId ?? null)),
-      albumTitle: album?.title || previous?.albumTitle || this.track?.album || null,
-      albumBrowseId: track.albumId ?? null,
-      albumSongs: (album?.items ?? (albumResult.status === 'rejected' ? previous?.albumSongs : []) ?? []).filter(song => song.videoId !== track.videoId)
-        .map(song => albumSong(song, album, track.albumId ?? null)),
-      similarSongs,
-      relatedArtists: related.length ? related : artistFallback(artist),
+  private async fetch(
+    track: PlaybackTrackDto,
+    context: RecommendationContext,
+    revision: number,
+    requestKey: string,
+    effectiveKey: string,
+    rotation: number,
+  ): Promise<void> {
+    const resolved = this.effectiveContext(track, context);
+    const contextKey = JSON.stringify([this.contextRevision, requestKey]);
+    const isCurrent = () => revision === this.revision && this.effectiveIdentity(this.track, this.context) === effectiveKey;
+    const baseData = (): RecommendedData => {
+      const existing = this.state.data?.loadedVideoId === track.videoId ? this.state.data : null;
+      if (existing) {
+        return {
+          ...existing,
+          contextKey,
+          requestIdentity: requestKey,
+          artistBrowseId: resolved.artistId,
+          albumBrowseId: resolved.albumId,
+        };
+      }
+      return {
+        loadedVideoId: track.videoId,
+        contextKey,
+        requestIdentity: requestKey,
+        artistName: this.track?.artists || null,
+        artistBrowseId: resolved.artistId,
+        artistSongs: [],
+        albumTitle: this.track?.album || null,
+        albumBrowseId: resolved.albumId,
+        albumSongs: [],
+        similarSongs: [],
+        relatedArtists: [],
+      };
     };
+    const commitShelf = (update: (data: RecommendedData) => void) => {
+      if (!isCurrent()) return;
+      const next = baseData();
+      update(next);
+      this.state = { ...this.state, data: next };
+      this.emit();
+    };
+
+    let artistRelatedFallback: BrowseCardDto[] = [];
+    let artistCardsFulfilled: BrowseCardDto[] | null = null;
+
+    const similarPromise = this.rpc<SongDto[]>('get_related_tracks', { videoId: track.videoId }).then(items => {
+      let similarSongs = items.filter(song => song.videoId !== track.videoId);
+      if (rotation && similarSongs.length > 4) {
+        const offset = (rotation * 4) % similarSongs.length;
+        similarSongs = [...similarSongs.slice(offset), ...similarSongs.slice(0, offset)];
+      }
+      commitShelf(data => { data.similarSongs = similarSongs; });
+    });
+
+    const artistsPromise = this.rpc<BrowseCardDto[]>('get_related_artists', { videoId: track.videoId }).then(cards => {
+      const related = cards.filter(card => card.kind.toLowerCase() === 'artist');
+      artistCardsFulfilled = related;
+      commitShelf(data => {
+        data.relatedArtists = related.length ? related : artistRelatedFallback;
+      });
+    });
+
+    const artistPromise = (resolved.artistId
+      ? this.rpc<ArtistDetailDto>('get_artist', { browseId: resolved.artistId })
+      : Promise.resolve(null)).then(artist => {
+      if (!artist) return;
+      artistRelatedFallback = artistFallback(artist);
+      const artistSongs = artist.topSongs
+        .filter(song => song.videoId !== track.videoId)
+        .map(song => artistSong(song, artist, resolved.artistId));
+      commitShelf(data => {
+        if (artist.name) data.artistName = artist.name;
+        data.artistSongs = artistSongs;
+        if (!(artistCardsFulfilled?.length) && !data.relatedArtists.length && artistRelatedFallback.length) {
+          data.relatedArtists = artistRelatedFallback;
+        }
+      });
+    });
+
+    const albumPromise = (resolved.albumId
+      ? this.rpc<AlbumDetailDto>('get_album', { browseId: resolved.albumId })
+      : Promise.resolve(null)).then(album => {
+      if (!album) return;
+      const albumSongs = album.items
+        .filter(song => song.videoId !== track.videoId)
+        .map(song => albumSong(song, album, resolved.albumId));
+      commitShelf(data => {
+        if (album.title) data.albumTitle = album.title;
+        data.albumSongs = albumSongs;
+      });
+    });
+
+    const requests = await Promise.allSettled([similarPromise, artistsPromise, artistPromise, albumPromise]);
+    if (!isCurrent()) return;
+    const data = baseData();
     // Partial failures retain usable shelves. Provider exception text may contain URLs, so use a public message.
     const error = requests.some(result => result.status === 'rejected')
       ? 'No se pudieron cargar todas las recomendaciones. Podés reintentar.' : null;
-    this.loadedIdentity = key; this.pending = null;
+    this.loadedIdentity = effectiveKey; this.pending = null;
     this.state = { loading: false, error, data }; this.emit();
   }
 
@@ -151,7 +240,7 @@ export class RecommendationsController {
     this.state={...this.state,loading:false};this.emit();
   }
   reset(): void {
-    this.contextRevision++;this.revision++; this.pending = null; this.track = null; this.loadedIdentity = ''; this.reloadCount = 0;
+    this.contextRevision++;this.revision++; this.pending = null; this.track = null; this.context = {}; this.loadedIdentity = ''; this.reloadCount = 0;
     this.state = emptyRecommendationsSnapshot(); this.emit();
   }
   dispose(): void { this.reset(); }

@@ -30,10 +30,93 @@ enum RadioFetch {
     Initial {
         seed_video_id: String,
     },
+    NextContinuation {
+        token: String,
+    },
     Continuation {
         last_video_id: String,
         playlist_id: String,
     },
+}
+
+fn can_automix_queue(playback: &PlaybackManager) -> bool {
+    if playback.queue.items.is_empty() {
+        return false;
+    }
+    if playback
+        .queue
+        .source
+        .as_ref()
+        .is_some_and(|source| source.kind == "jam")
+    {
+        return false;
+    }
+    !playback
+        .runtime
+        .source
+        .as_ref()
+        .is_some_and(|source| source.continuation.is_some() || source.needs_restart)
+}
+
+fn next_radio_fetch(playback: &PlaybackManager) -> Option<RadioFetch> {
+    if let Some(token) = playback
+        .radio_continuation
+        .as_ref()
+        .map(|value| value.trim())
+        .filter(|value| {
+            !value.is_empty()
+                && !playback.radio_consumed_continuations.contains(*value)
+                && !playback.radio_request_cursors.contains(*value)
+        })
+    {
+        return Some(RadioFetch::NextContinuation {
+            token: token.to_owned(),
+        });
+    }
+    if let (Some(playlist_id), Some(last_video_id)) = (
+        playback.radio_playlist_id.clone(),
+        playback.radio_cursor_video_id.clone(),
+    ) {
+        if !playback.radio_request_cursors.contains(&last_video_id) {
+            return Some(RadioFetch::Continuation {
+                last_video_id,
+                playlist_id,
+            });
+        }
+        return None;
+    }
+    let seed_video_id = playback
+        .radio_cursor_video_id
+        .clone()
+        .or_else(|| {
+            playback
+                .queue
+                .recommendations
+                .last()
+                .map(|entry| entry.video_id.clone())
+        })
+        .or_else(|| {
+            playback
+                .queue
+                .items
+                .last()
+                .map(|entry| entry.video_id.clone())
+        })
+        .or_else(|| {
+            playback
+                .current_track
+                .as_ref()
+                .map(|track| track.video_id.clone())
+        })
+        .or_else(|| {
+            playback
+                .queue
+                .source
+                .as_ref()
+                .filter(|source| source.kind == "radio")
+                .and_then(|source| source.id.clone())
+        })?;
+    Some(RadioFetch::Initial { seed_video_id })
 }
 
 fn queue_entry_from_song(song: SongDto) -> QueueEntryDto {
@@ -87,11 +170,7 @@ fn maybe_prefetch_radio(app: tauri::AppHandle) {
         let Ok(mut playback) = state.playback.lock() else {
             return;
         };
-        if playback
-            .queue
-            .source
-            .as_ref()
-            .is_none_or(|source| source.kind != "radio")
+        if !can_automix_queue(&playback)
             || playback.radio_exhausted
             || playback
                 .queue
@@ -105,25 +184,9 @@ fn maybe_prefetch_radio(app: tauri::AppHandle) {
         if remaining > 3 {
             return;
         }
-        let fetch = match (
-            playback.radio_playlist_id.clone(),
-            playback.radio_cursor_video_id.clone(),
-        ) {
-            (Some(playlist_id), Some(last_video_id)) => RadioFetch::Continuation {
-                last_video_id,
-                playlist_id,
-            },
-            _ => {
-                let Some(seed_video_id) = playback
-                    .queue
-                    .source
-                    .as_ref()
-                    .and_then(|source| source.id.clone())
-                else {
-                    return;
-                };
-                RadioFetch::Initial { seed_video_id }
-            }
+        let Some(fetch) = next_radio_fetch(&playback) else {
+            playback.radio_exhausted = true;
+            return;
         };
         playback.queue.begin_radio();
         (playback.queue_epoch, playback.to_dto(), fetch)
@@ -143,94 +206,163 @@ async fn fetch_radio(
     core: std::sync::Arc<sideb_core::SideBCore>,
     queue_epoch: u64,
     auth_generation: u64,
-    request: RadioFetch,
+    mut request: RadioFetch,
 ) {
-    let fetched = match &request {
-        RadioFetch::Initial { seed_video_id } => core.get_radio(seed_video_id.clone()).await,
-        RadioFetch::Continuation {
-            last_video_id,
-            playlist_id,
-        } => {
-            core.get_radio_continuation(last_video_id.clone(), Some(playlist_id.clone()))
-                .await
-        }
-    };
     let state = app.state::<AppState>();
-    let session_is_current = state.auth_generation.load(Ordering::SeqCst) == auth_generation;
     let mut next_to_play = None;
-    let snapshot = {
-        let Ok(mut playback) = state.playback.lock() else {
-            return;
+    let mut final_snapshot = None;
+
+    for attempt in 0..3 {
+        let request_key = match &request {
+            RadioFetch::Initial { seed_video_id } => Some(seed_video_id.clone()),
+            RadioFetch::NextContinuation { token } => Some(token.clone()),
+            RadioFetch::Continuation { last_video_id, .. } => Some(last_video_id.clone()),
         };
-        if playback.queue_epoch != queue_epoch
-            || playback
-                .queue
-                .source
-                .as_ref()
-                .is_none_or(|source| source.kind != "radio")
-        {
-            return;
-        }
-        if !session_is_current {
-            invalidate_queue_owner(&mut playback);
-            if playback.queue.radio.is_some() {
-                playback.queue.end_radio(None, true);
+        if let Some(key) = &request_key {
+            let Ok(mut playback) = state.playback.lock() else {
+                return;
+            };
+            if playback.queue_epoch != queue_epoch || !can_automix_queue(&playback) {
+                return;
             }
-            playback.to_dto()
+            if !playback.radio_request_cursors.insert(key.clone()) {
+                playback.radio_exhausted = true;
+                playback.queue.end_radio(None, false);
+                playback.eof_waiting = None;
+                playback.runtime.pending_next = None;
+                final_snapshot = Some(playback.to_dto());
+                break;
+            }
+        }
+
+        let fetched = match &request {
+            RadioFetch::Initial { seed_video_id } => core.get_radio(seed_video_id.clone()).await,
+            RadioFetch::NextContinuation { token } => {
+                core.get_next_continuation(token.clone()).await
+            }
+            RadioFetch::Continuation {
+                last_video_id,
+                playlist_id,
+            } => {
+                core.get_radio_continuation(last_video_id.clone(), Some(playlist_id.clone()))
+                    .await
+            }
+        };
+
+        let session_is_current = state.auth_generation.load(Ordering::SeqCst) == auth_generation;
+        let mut continue_request = None;
+        let snapshot_for_break = {
+            let Ok(mut playback) = state.playback.lock() else {
+                return;
+            };
+            if playback.queue_epoch != queue_epoch || !can_automix_queue(&playback) {
+                return;
+            }
+            if !session_is_current {
+                invalidate_queue_owner(&mut playback);
+                if playback.queue.radio.is_some() {
+                    playback.queue.end_radio(None, true);
+                }
+                Some(playback.to_dto())
+            } else {
+                match fetched {
+                    Ok(page) => {
+                        if let RadioFetch::NextContinuation { token } = &request {
+                            playback.radio_consumed_continuations.insert(token.clone());
+                            if playback.radio_continuation.as_deref() == Some(token.as_str()) {
+                                playback.radio_continuation = None;
+                            }
+                        }
+                        if let Some(automix_id) = page.automix_playlist_id {
+                            playback.radio_playlist_id = Some(automix_id);
+                        } else if let RadioFetch::Initial { seed_video_id } = &request {
+                            if playback.radio_playlist_id.is_none() {
+                                playback.radio_playlist_id = Some(format!("RDAMVM{seed_video_id}"));
+                            }
+                        }
+                        playback.radio_continuation = page
+                            .continuation
+                            .map(|value| value.trim().to_owned())
+                            .filter(|value| {
+                                !value.is_empty()
+                                    && !playback.radio_consumed_continuations.contains(value)
+                            });
+                        let provider_cursor = page.items.last().map(|entry| entry.video_id.clone());
+                        let recommendations = page
+                            .items
+                            .into_iter()
+                            .map(queue_entry_from_record)
+                            .filter(|entry| {
+                                !playback.runtime.disliked.contains(&entry.video_id)
+                                    && !playback
+                                        .runtime
+                                        .excluded_recommendations
+                                        .contains(&entry.video_id)
+                            })
+                            .collect::<Vec<_>>();
+                        let before_count = playback.queue.recommendations.len();
+                        let prev_cursor = playback.radio_cursor_video_id.clone();
+                        let cursor = merge_radio_metadata(&mut playback, recommendations);
+                        let added = playback.queue.recommendations.len() > before_count;
+                        playback.radio_cursor_video_id = provider_cursor
+                            .clone()
+                            .or(cursor)
+                            .or(prev_cursor.clone());
+                        if added {
+                            playback.radio_exhausted = false;
+                            playback.queue.end_radio(None, false);
+                            next_to_play = consume_waiting_next(&mut playback);
+                            Some(playback.to_dto())
+                        } else if attempt < 2 {
+                            let next_req = next_radio_fetch(&playback).filter(|candidate| match candidate {
+                                RadioFetch::NextContinuation { .. } => true,
+                                RadioFetch::Continuation { last_video_id, .. } => {
+                                    Some(last_video_id) != prev_cursor.as_ref()
+                                }
+                                RadioFetch::Initial { .. } => false,
+                            });
+                            if let Some(next_req) = next_req {
+                                continue_request = Some(next_req);
+                                None
+                            } else {
+                                playback.radio_exhausted = true;
+                                playback.queue.end_radio(None, false);
+                                playback.eof_waiting = None;
+                                playback.runtime.pending_next = None;
+                                Some(playback.to_dto())
+                            }
+                        } else {
+                            playback.radio_exhausted = true;
+                            playback.queue.end_radio(None, false);
+                            playback.eof_waiting = None;
+                            playback.runtime.pending_next = None;
+                            Some(playback.to_dto())
+                        }
+                    }
+                    Err(_) => {
+                        playback.radio_request_cursors.clear();
+                        playback
+                            .queue
+                            .end_radio(Some("No se pudieron cargar recomendaciones.".into()), true);
+                        Some(playback.to_dto())
+                    }
+                }
+            }
+        };
+
+        if let Some(snapshot) = snapshot_for_break {
+            final_snapshot = Some(snapshot);
+            break;
+        }
+        if let Some(next_req) = continue_request {
+            request = next_req;
         } else {
-            match fetched {
-                Ok(page) => {
-                    if let RadioFetch::Initial { seed_video_id } = &request {
-                        playback.radio_playlist_id = Some(
-                            page.automix_playlist_id
-                                .unwrap_or_else(|| format!("RDAMVM{seed_video_id}")),
-                        );
-                    }
-                    let provider_cursor = page.items.last().map(|entry| entry.video_id.clone());
-                    let recommendations = page
-                        .items
-                        .into_iter()
-                        .map(queue_entry_from_record)
-                        .filter(|entry| {
-                            !playback.runtime.disliked.contains(&entry.video_id)
-                                && !playback
-                                    .runtime
-                                    .excluded_recommendations
-                                    .contains(&entry.video_id)
-                        })
-                        .collect::<Vec<_>>();
-                    let cursor = merge_radio_metadata(&mut playback, recommendations);
-                    let empty_provider_page = provider_cursor.is_none();
-                    let repeated_provider_cursor = provider_cursor.as_ref().is_some_and(|received| {
-                        playback.radio_cursor_video_id.as_ref() == Some(received)
-                    });
-                    playback.radio_cursor_video_id = provider_cursor
-                        .or(cursor.clone())
-                        .or(playback.radio_cursor_video_id.clone());
-                    if empty_provider_page
-                        || repeated_provider_cursor
-                        || playback.radio_cursor_video_id.is_none()
-                        || playback.queue.recommendations.is_empty() && cursor.is_none()
-                    {
-                        playback.radio_exhausted = true;
-                        playback.queue.end_radio(None, false);
-                        playback.eof_waiting = None;
-                        playback.runtime.pending_next = None;
-                    } else {
-                        playback.radio_exhausted = false;
-                        playback.queue.end_radio(None, false);
-                        next_to_play = consume_waiting_next(&mut playback);
-                    }
-                    playback.to_dto()
-                }
-                Err(_) => {
-                    playback
-                        .queue
-                        .end_radio(Some("No se pudieron cargar recomendaciones.".into()), true);
-                    playback.to_dto()
-                }
-            }
+            break;
         }
+    }
+
+    let Some(snapshot) = final_snapshot else {
+        return;
     };
     let _ = app.emit("playback-state-changed", &snapshot);
     if let Some((entry_id, generation)) = next_to_play {
@@ -461,15 +593,10 @@ fn begin_radio_fetch(app: tauri::AppHandle, force: bool) -> Result<PlaybackState
             .playback
             .lock()
             .map_err(|_| CommandError::new("LOCK_ERROR", "No se pudo leer el reproductor."))?;
-        if playback
-            .queue
-            .source
-            .as_ref()
-            .is_none_or(|source| source.kind != "radio")
-        {
+        if !can_automix_queue(&playback) {
             return Err(CommandError::new(
                 "NO_RADIO_QUEUE",
-                "La cola actual no es una radio.",
+                "La cola actual no admite recomendaciones automáticas.",
             ));
         }
         if playback
@@ -489,35 +616,23 @@ fn begin_radio_fetch(app: tauri::AppHandle, force: bool) -> Result<PlaybackState
         {
             return Ok(playback.to_dto());
         }
+        if force {
+            playback.radio_exhausted = false;
+            playback.radio_request_cursors.clear();
+        }
         if playback.radio_exhausted {
             return Err(CommandError::new(
                 "RADIO_EXHAUSTED",
                 "La radio no tiene más canciones.",
             ));
         }
-        let request = match (
-            playback.radio_playlist_id.clone(),
-            playback.radio_cursor_video_id.clone(),
-        ) {
-            (Some(playlist_id), Some(last_video_id)) => RadioFetch::Continuation {
-                last_video_id,
-                playlist_id,
-            },
-            _ => {
-                let seed_video_id = playback
-                    .queue
-                    .source
-                    .as_ref()
-                    .and_then(|source| source.id.clone())
-                    .ok_or_else(|| {
-                        CommandError::new(
-                            "RADIO_SEED_MISSING",
-                            "No se encontró la canción de inicio de la radio.",
-                        )
-                    })?;
-                RadioFetch::Initial { seed_video_id }
-            }
-        };
+        let request = next_radio_fetch(&playback).ok_or_else(|| {
+            playback.radio_exhausted = true;
+            CommandError::new(
+                "RADIO_SEED_MISSING",
+                "No se encontró la canción de inicio de la radio.",
+            )
+        })?;
         playback.queue.begin_radio();
         (playback.to_dto(), playback.queue_epoch, request)
     };
@@ -1083,7 +1198,7 @@ pub(crate) async fn start_song_radio(
         entry.artist_id,
         entry.album_id,
         entry.album,
-        None,
+        Some(entry.artist_runs),
         None,
         None,
         None,
@@ -1104,15 +1219,10 @@ pub(crate) async fn retry_radio(
             .playback
             .lock()
             .map_err(|_| CommandError::new("LOCK_ERROR", "No se pudo leer el reproductor."))?;
-        if playback
-            .queue
-            .source
-            .as_ref()
-            .is_none_or(|source| source.kind != "radio")
-        {
+        if !can_automix_queue(&playback) {
             return Err(CommandError::new(
                 "NO_RADIO_QUEUE",
-                "La cola actual no es una radio.",
+                "La cola actual no admite recomendaciones automáticas.",
             ));
         }
         if playback
@@ -1317,7 +1427,7 @@ pub(crate) async fn remove_queue_entry(
             let source_can_continue = playback.runtime.source.as_ref().is_some_and(|source| {
                 source.continuation.is_some() || source.needs_restart
             });
-            let radio_can_continue = playback.queue.source.as_ref().is_some_and(|source| source.kind == "radio")
+            let radio_can_continue = can_automix_queue(&playback)
                 && !playback.radio_exhausted;
             let wait = source_can_continue || radio_can_continue;
             playback.eof_waiting = wait.then_some((playback.generation, playback.queue_epoch));
@@ -1493,11 +1603,7 @@ pub(crate) fn handle_track_ended(app: tauri::AppHandle) {
         }) {
             playback.eof_waiting = Some((generation, playback.queue_epoch));
             None
-        } else if playback
-            .queue
-            .source
-            .as_ref()
-            .is_some_and(|source| source.kind == "radio")
+        } else if can_automix_queue(&playback)
             && !playback.radio_exhausted
         {
             playback.eof_waiting = Some((generation, playback.queue_epoch));
@@ -1533,7 +1639,7 @@ pub(crate) async fn next_track(
         });
         let collection_can_continue = source_has_more && source_kind != Some("search-radio");
         let radio_can_continue = source_has_more && source_kind == Some("search-radio")
-            || playback.queue.source.as_ref().is_some_and(|source| source.kind == "radio")
+            || can_automix_queue(&playback)
                 && !playback.radio_exhausted;
         let at_edge = !playback.queue.has_committed_next();
         if (!playback.is_repeat || playback.queue.current_index.is_none())
@@ -2850,6 +2956,79 @@ mod dismissal_tests {
         assert_eq!(playback.current_track.as_ref().unwrap().artists, "Artist B");
         assert_eq!(playback.duration, 120.0);
     }
+
+    #[test]
+    fn automix_allows_collections_and_songs_after_continuation_but_blocks_jam_and_pending_sources() {
+        let mut pb = PlaybackManager::new();
+        assert!(!can_automix_queue(&pb));
+
+        for kind in ["song", "album", "artist", "playlist", "mix", "library", "history", "radio", "search-radio"] {
+            pb.queue.replace(
+                vec![QueueEntryDto::new("track-1".into(), "Track 1".into(), "".into(), None, None)],
+                0,
+                QueueSourceDto { kind: kind.into(), id: Some("src-1".into()), title: None },
+            );
+            assert!(can_automix_queue(&pb), "expected automix for source kind {kind}");
+        }
+
+        pb.runtime.source = Some(crate::playback_runtime::ProgressiveSource {
+            kind: "playlist".into(),
+            id: Some("list".into()),
+            continuation: Some("next-page".into()),
+            loading: false,
+            error: false,
+            needs_restart: false,
+            loaded_prefix: vec!["track-1".into()],
+            consumed_continuations: Default::default(),
+        });
+        assert!(!can_automix_queue(&pb));
+        pb.runtime.source.as_mut().unwrap().continuation = None;
+        pb.runtime.source.as_mut().unwrap().needs_restart = true;
+        assert!(!can_automix_queue(&pb));
+        pb.runtime.source = None;
+
+        pb.queue.source.as_mut().unwrap().kind = "jam".into();
+        assert!(!can_automix_queue(&pb));
+    }
+
+    #[test]
+    fn next_radio_fetch_prefers_continuation_token_and_falls_back_to_queue_tail_seed() {
+        let mut pb = PlaybackManager::new();
+        pb.queue.replace(
+            vec![
+                QueueEntryDto::new("v1".into(), "One".into(), "".into(), None, None),
+                QueueEntryDto::new("v2".into(), "Two".into(), "".into(), None, None),
+            ],
+            0,
+            QueueSourceDto { kind: "album".into(), id: Some("MPRE123".into()), title: None },
+        );
+        match next_radio_fetch(&pb) {
+            Some(RadioFetch::Initial { seed_video_id }) => assert_eq!(seed_video_id, "v2"),
+            _ => panic!("expected Initial fetch from tail video_id"),
+        }
+
+        pb.radio_playlist_id = Some("RDAMVMv2".into());
+        pb.radio_cursor_video_id = Some("v2".into());
+        match next_radio_fetch(&pb) {
+            Some(RadioFetch::Continuation { last_video_id, playlist_id }) => {
+                assert_eq!(last_video_id, "v2");
+                assert_eq!(playlist_id, "RDAMVMv2");
+            }
+            _ => panic!("expected Continuation fetch when cursor and playlist exist"),
+        }
+
+        pb.radio_continuation = Some("cont-token-1".into());
+        match next_radio_fetch(&pb) {
+            Some(RadioFetch::NextContinuation { token }) => assert_eq!(token, "cont-token-1"),
+            _ => panic!("expected NextContinuation token to take priority"),
+        }
+
+        pb.radio_consumed_continuations.insert("cont-token-1".into());
+        match next_radio_fetch(&pb) {
+            Some(RadioFetch::Continuation { last_video_id, .. }) => assert_eq!(last_video_id, "v2"),
+            _ => panic!("expected fallback to Continuation after token consumed"),
+        }
+    }
 }
 
 #[tauri::command]
@@ -3126,6 +3305,7 @@ pub(crate) async fn start_source_radio(
     source: QueueSourceDto,
     playlist_id: String,
     selected_index: Option<usize>,
+    continuation: Option<String>,
 ) -> Result<PlaybackStateDto, CommandError> {
     let provider_cursor = items.last().map(|entry| entry.video_id.clone());
     let selected_index = selected_index.unwrap_or(0).min(items.len().saturating_sub(1));
@@ -3135,12 +3315,21 @@ pub(crate) async fn start_source_radio(
             "La radio no contiene canciones.",
         ));
     };
-    if playlist_id.trim().is_empty() {
+    let clean_continuation = continuation
+        .map(|value| value.trim().to_owned())
+        .filter(|value| !value.is_empty());
+    let clean_playlist_id = (!playlist_id.trim().is_empty()).then_some(playlist_id);
+    if clean_playlist_id.is_none() && clean_continuation.is_none() {
         return Err(CommandError::new(
             "EMPTY_RADIO",
             "La radio no tiene endpoint.",
         ));
     }
+    let resolved_kind = if source.kind == "search-radio" {
+        "search-radio".to_owned()
+    } else {
+        "radio".to_owned()
+    };
     // Start using the provider's radio page, retaining the collection's actual radio endpoint.
     let auth_generation = state.auth_generation.load(Ordering::SeqCst);
     let generation = state
@@ -3158,7 +3347,7 @@ pub(crate) async fn start_source_radio(
         Some(items),
         Some(selected_index),
         Some(QueueSourceDto {
-            kind: "radio".into(),
+            kind: resolved_kind.clone(),
             id: source.id,
             title: source.title,
         }),
@@ -3167,7 +3356,7 @@ pub(crate) async fn start_source_radio(
         entry.artist_id,
         entry.album_id,
         entry.album,
-        None,
+        Some(entry.artist_runs),
         None,
         None,
         None,
@@ -3187,11 +3376,12 @@ pub(crate) async fn start_source_radio(
             return Ok(pb.to_dto());
         }
         if let Some(source) = pb.queue.source.as_mut() {
-            source.kind = "radio".into();
+            source.kind = resolved_kind;
         }
         pb.queue.revision += 1;
-        pb.radio_playlist_id = Some(playlist_id);
+        pb.radio_playlist_id = clean_playlist_id;
         pb.radio_cursor_video_id = provider_cursor;
+        pb.radio_continuation = clean_continuation;
         pb.to_dto()
     };
     let _ = app.emit("playback-state-changed", &snapshot);

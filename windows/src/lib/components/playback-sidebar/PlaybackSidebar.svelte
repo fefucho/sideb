@@ -16,10 +16,6 @@
   import SidebarRecommendations from './SidebarRecommendations.svelte';
   import SidebarTrackMetadata from './SidebarTrackMetadata.svelte';
   import SidebarUpcomingQueue from './SidebarUpcomingQueue.svelte';
-  import { readable } from 'svelte/store';
-  import { emptyJamState } from '$lib/jam/types';
-  import { useJamUi } from '$lib/components/jam/context';
-  import { isJamLive } from '$lib/components/jam/view';
 
   type LyricsMode = 'synced' | 'genius';
   interface Props {
@@ -68,9 +64,6 @@
   const surfaceCss = $derived(sidebarPaletteCss(palette, { reduceTransparency, increasedContrast }));
   // The hero and its recommendation feed share one scroll owner (the feed); the offset fades/suspends the hero.
   let feedOffset = $state(0), heroHeight = $state(0);
-  // Recommendations (and their fetching) are off while a Jam owns the queue.
-  const jamState = (useJamUi()?.state ?? readable(emptyJamState()));
-  const jamLive = $derived(isJamLive($jamState));
   const occurrence = $derived(playback.queue.items[playback.queue.currentIndex ?? -1]?.entryId ?? null);
 
   const sections = $derived<{ id: SidebarPanel; label: string }[]>([
@@ -138,10 +131,8 @@
           onPortraitChange={portrait => isPortrait = portrait}>
           {#snippet metadata()}<SidebarTrackMetadata {session} {playback} {...metadataProps} />{/snippet}
         </SidebarArtwork>
-        {#if !jamLive}
         <SidebarRecommendations {session} {playback} {heroHeight} initialOffset={feedOffset} occurrenceId={occurrence}
           onScrollOffset={offset => feedOffset = offset} {...recommendationsProps} />
-        {/if}
       </div>
     {/if}
   </div>

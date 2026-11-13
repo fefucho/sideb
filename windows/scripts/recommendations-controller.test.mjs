@@ -135,3 +135,45 @@ test('suspend is idempotent, preserves a valid context and ignores cancelled ref
 test('suspended initial request retries on reentry and old A→B→A or metadata replies cannot replace the new owner',async()=>{
  const pending=[];const {controller,snapshot}=setup(command=>{if(command==='get_related_tracks'){const result=deferred();pending.push(result);return result.promise;}return emptyHandler(command);});controller.setTrack(track('A'));const first=controller.load();controller.suspend();controller.suspend();const resumed=controller.load();assert.notEqual(first,resumed);controller.setTrack(track('B'));const second=controller.load();controller.setTrack(track('A',{albumId:'new-album'}));const latest=controller.load();pending[3].resolve([song('latest')]);await latest;pending[0].resolve([song('stale-original')]);pending[1].resolve([song('stale-resumed')]);pending[2].resolve([song('stale-B')]);await Promise.all([first,resumed,second]);assert.equal(snapshot().data.similarSongs[0].videoId,'latest');assert.equal(snapshot().data.albumBrowseId,'new-album');assert.equal(snapshot().data.requestIdentity,JSON.stringify(['A','artist','new-album']));
 });
+
+test('context fallbacks load artist and album shelves even when track omits browse IDs', async () => {
+  const { controller, calls, snapshot } = setup(command => ({
+    get_related_tracks: [song('similar')],
+    get_related_artists: [card('related')],
+    get_artist: artist([song('popular')]),
+    get_album: album([song('album-song')]),
+  })[command]);
+  controller.setTrack(track('current', { artistId: null, albumId: null }), {
+    artistId: 'ctx-artist',
+    albumId: 'ctx-album',
+  });
+  await controller.load();
+  assert.equal(calls.length, 4);
+  assert.deepEqual(snapshot().data.artistSongs.map(item => item.videoId), ['popular']);
+  assert.deepEqual(snapshot().data.albumSongs.map(item => item.videoId), ['album-song']);
+  assert.equal(snapshot().data.artistBrowseId, 'ctx-artist');
+  assert.equal(snapshot().data.albumBrowseId, 'ctx-album');
+  assert.equal(snapshot().data.requestIdentity, JSON.stringify(['current', null, null]));
+});
+
+test('shelves emit progressively as each endpoint resolves and survive suspend of slower RPCs', async () => {
+  const slowRelated = deferred();
+  const fastAlbum = deferred();
+  const { controller, snapshot } = setup(command => {
+    if (command === 'get_related_tracks') return slowRelated.promise;
+    if (command === 'get_album') return fastAlbum.promise;
+    return emptyHandler(command);
+  });
+  controller.setTrack(track('current'));
+  const pending = controller.load();
+  fastAlbum.resolve(album([song('early-album-song')]));
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.deepEqual(snapshot().data.albumSongs.map(item => item.videoId), ['early-album-song']);
+  assert.equal(snapshot().loading, true);
+  controller.suspend();
+  assert.deepEqual(snapshot().data.albumSongs.map(item => item.videoId), ['early-album-song']);
+  assert.equal(snapshot().loading, false);
+  slowRelated.resolve([song('late-ignored')]);
+  await pending;
+  assert.deepEqual(snapshot().data.similarSongs, []);
+});

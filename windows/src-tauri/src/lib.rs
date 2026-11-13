@@ -157,6 +157,9 @@ pub struct PlaybackManager {
     pub(crate) observed_auth_generation: u64,
     pub(crate) radio_playlist_id: Option<String>,
     pub(crate) radio_cursor_video_id: Option<String>,
+    pub(crate) radio_continuation: Option<String>,
+    pub(crate) radio_consumed_continuations: std::collections::HashSet<String>,
+    pub(crate) radio_request_cursors: std::collections::HashSet<String>,
     pub(crate) radio_exhausted: bool,
     pub(crate) eof_waiting: Option<(u64, u64)>,
 }
@@ -184,6 +187,9 @@ impl PlaybackManager {
             observed_auth_generation: 0,
             radio_playlist_id: None,
             radio_cursor_video_id: None,
+            radio_continuation: None,
+            radio_consumed_continuations: Default::default(),
+            radio_request_cursors: Default::default(),
             radio_exhausted: false,
             eof_waiting: None,
         }
@@ -575,6 +581,9 @@ pub(crate) fn invalidate_queue_owner(playback: &mut PlaybackManager) {
     playback.queue_epoch = next_owner_epoch(playback.queue_epoch);
     playback.radio_playlist_id = None;
     playback.radio_cursor_video_id = None;
+    playback.radio_continuation = None;
+    playback.radio_consumed_continuations.clear();
+    playback.radio_request_cursors.clear();
     playback.radio_exhausted = false;
     playback.eof_waiting = None;
     playback.runtime.source = None;

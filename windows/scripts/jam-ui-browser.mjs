@@ -108,17 +108,28 @@ try{
  await viewport(1280,760,1);
  await lab(`lab.mode('fullscreen');lab.set(${JSON.stringify(fixtures.emptyState())})`);await settle(600);
  const coverIdle=await rectOf('button.artwork');assert.equal(await rectOf('[data-jam-marker]'),null,'no marker outside a Jam');
+ assert.equal(await rectOf('#fullscreen-tab-jam'),null,'no Jam tab in fullscreen until a Jam is live');
+ assert.ok(await rectOf('#fullscreen-tab-related'),'related tab stays visible outside a Jam');
  await shot('fullscreen-idle');
  await lab(`lab.set(${JSON.stringify(active)})`);await settle(600);
  const cover=await rectOf('button.artwork'),marker=await rectOf('[data-jam-marker] .badge');
  assert.deepEqual(cover,coverIdle,'starting a Jam never moves or resizes the artwork');
  assert.ok(marker.bottom<=cover.y-9.5&&marker.bottom>=cover.y-10.5,'the marker ends 10 px above the cover: '+JSON.stringify({marker,cover}));
  assert.ok(Math.abs((marker.x+marker.width/2)-(cover.x+cover.width/2))<1.5,'the marker is centred on the cover');assert.ok(marker.y>=0&&marker.right<=cover.right+1&&marker.x>=cover.x-1,'and fully visible, within the cover column');
+ assert.ok(await rectOf('#fullscreen-tab-jam'),'Jam tab appears once a Jam is live');
+ assert.ok(await rectOf('#fullscreen-tab-related'),'related tab stays visible while a Jam is live');
  await shot('fullscreen-jam');
+ await evaluate(`document.querySelector('#fullscreen-tab-related').click()`);await settle(400);
+ assert.equal(await evaluate(`document.querySelector('#fullscreen-tab-related')?.getAttribute('aria-selected')`),'true','related tab is selectable while a Jam is live');
+ assert.ok(await evaluate(`!!document.querySelector('#fullscreen-panel .recommendations')`),'related panel mounts while a Jam is live');
  await evaluate(`document.querySelector('[data-jam-marker] .badge').click()`);await settle(600);
  assert.ok(await evaluate(`!!document.querySelector('#fullscreen-panel [data-jam-panel]')`),'the marker opens the Jam tab');await shot('fullscreen-jam-tab');
  await viewport(900,620,1);await settle(400);
  const smallCover=await rectOf('button.artwork'),smallMarker=await rectOf('[data-jam-marker] .badge');assert.ok(smallMarker.y>=0&&smallMarker.bottom<=smallCover.y-9.5,'the marker also fits the smallest layouts '+JSON.stringify({smallMarker,smallCover}));await shot('fullscreen-jam-small');
+ await lab(`lab.set(${JSON.stringify({...fixtures.emptyState(),phase:'ended',messageKey:'jam.ended.host'})})`);await settle(400);
+ assert.equal(await rectOf('#fullscreen-tab-jam'),null,'Jam tab hides again when the Jam ends');
+ assert.equal(await evaluate(`document.querySelector('#fullscreen-tab-queue')?.getAttribute('aria-selected')`),'true','leaving or ending a Jam while on the Jam tab falls back to queue');
+ assert.equal(await evaluate(`!!document.querySelector('#fullscreen-panel [data-jam-panel]')`),false,'Jam panel unmounts when the Jam ends');
 
  // Playback sidebar hero: compact marker over the cover's top edge.
  await viewport(1000,720,2);await lab(`lab.mode('sidebar');lab.set(${JSON.stringify(active)})`);await settle(500);

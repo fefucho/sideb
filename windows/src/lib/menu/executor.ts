@@ -1,4 +1,4 @@
-import type { AlbumDetailDto, ArtistDetailDto, PlaylistDetailDto, SongDto } from '../types';
+import type { AlbumDetailDto, ArtistDetailDto, PlaylistDetailDto, SearchNextDto, SongDto } from '../types';
 import type { MenuAction, MenuOrigin, MenuTarget } from './types';
 import { albumTrackWithCredit } from '../detail/metadata';
 
@@ -9,7 +9,7 @@ export interface MenuExecutorPorts {
   resolvePlaylist: (id: string, valid: () => boolean, origin?: MenuOrigin) => Promise<SongDto[]>;
   play: (songs: SongDto[], source: { kind: string; id: string; title: string }, shuffle: boolean, artwork: string | null) => Promise<void>;
   radio: (song: SongDto) => Promise<void>;
-  sourceRadio?: (songs:SongDto[],source:{kind:string;id:string;title:string},playlistId:string)=>Promise<void>;
+  sourceRadio?: (songs:SongDto[],source:{kind:string;id:string;title:string},playlistId:string,continuation?:string|null)=>Promise<void>;
   playPlaylist?: (playlist:PlaylistDetailDto,valid:()=>boolean)=>Promise<void>;
   enqueue: (songs: SongDto[], position: 'next' | 'end') => Promise<void>;
   removeQueue: (entryId: string) => Promise<void>;
@@ -83,8 +83,11 @@ export class MenuExecutor {
         if(!valid())return;endpoint=artist.radioPlaylistId??`RDAMVM${id}`;title=artist.name;
       }
       if(!endpoint.startsWith('RD'))endpoint=`RDAMPL${endpoint}`;
-      const songs=await p.rpc<SongDto[]>('get_artist_radio',{playlistId:endpoint});
-      if(valid()){if(!songs.length)throw new Error('No hay canciones disponibles para esta radio.');await p.sourceRadio(songs,{kind:target.kind,id,title},endpoint);}return;
+      const page=await p.rpc<SongDto[] | SearchNextDto>('get_artist_radio',{playlistId:endpoint});
+      const songs=Array.isArray(page)?page:page.items;
+      const continuation=Array.isArray(page)?null:page.continuation;
+      const radioId=(!Array.isArray(page)&&page.automixPlaylistId)||endpoint;
+      if(valid()){if(!songs.length)throw new Error('No hay canciones disponibles para esta radio.');await p.sourceRadio(songs,{kind:target.kind,id,title},radioId,continuation);}return;
     }
     if(action.type==='play' && target.kind==='playlist' && !id.replace(/^VL/,'').startsWith('RD') && p.playPlaylist) {
       const playlist=target.detail??await p.rpc<PlaylistDetailDto>('get_playlist',{playlistId:id});
@@ -102,15 +105,19 @@ export class MenuExecutor {
       title = album.title; artwork = album.thumbnail;
     }
     if (target.kind === 'playlist') {
-      tracks = id.replace(/^VL/, '').startsWith('RD')
-        ? await p.rpc<SongDto[]>('get_artist_radio', { playlistId: id.replace(/^VL/, '') })
-        : await p.resolvePlaylist(id, valid, origin);
+      if (id.replace(/^VL/, '').startsWith('RD')) {
+        const page = await p.rpc<SongDto[] | SearchNextDto>('get_artist_radio', { playlistId: id.replace(/^VL/, '') });
+        tracks = Array.isArray(page) ? page : page.items;
+      } else {
+        tracks = await p.resolvePlaylist(id, valid, origin);
+      }
     }
     if (target.kind === 'artist' && action.type === 'radio') {
       const artist = target.detail ?? await p.rpc<ArtistDetailDto>('get_artist', { browseId: id });
       if (!valid()) return;
       if (!artist.radioPlaylistId) throw new Error('Este artista no ofrece una radio disponible.');
-      tracks = await p.rpc<SongDto[]>('get_artist_radio', { playlistId: artist.radioPlaylistId });
+      const page = await p.rpc<SongDto[] | SearchNextDto>('get_artist_radio', { playlistId: artist.radioPlaylistId });
+      tracks = Array.isArray(page) ? page : page.items;
     }
     if (!valid()) return;
     if (!tracks.length) throw new Error('No hay canciones disponibles para esta acción.');

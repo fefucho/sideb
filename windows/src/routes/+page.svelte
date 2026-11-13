@@ -278,6 +278,9 @@ import { promotedEntryId } from "$lib/components/fullscreen/queueProjection";
   const jam = createJam({ rpc: (command, args) => invoke(command, args), listen: (name, handler) => listen(name, handler) });
   const jamState = jam.state;
   const jamLive = $derived(isJamLive($jamState));
+  $effect(() => {
+    if (!jamLive && selectedPanel === 'jam') selectedPanel = 'queue';
+  });
   provideJamUi({ state: jam.state, actions: jam.actions, searchSongs: query => invoke<SongDto[]>('search_songs', { query }) });
   const player = new PlaybackController(jam.rpc,
     (name, handler) => listen(name, handler), snapshot => {
@@ -318,6 +321,8 @@ import { promotedEntryId } from "$lib/components/fullscreen/queueProjection";
   const lyrics = new LyricsController((command, args) => invoke(command, args), state => { lyricsState = state; });
   let recommendationsState = $state(emptyRecommendationsSnapshot());
   const recommendations = new RecommendationsController((command, args) => invoke(command, args), snapshot => { recommendationsState = snapshot; });
+  let playbackArtistContextId = $state<string | null>(null);
+  let playbackAlbumContextId = $state<string | null>(null);
 
   $effect(() => {
     // Account changes invalidate pending requests even when the playing track is unchanged.
@@ -329,9 +334,15 @@ import { promotedEntryId } from "$lib/components/fullscreen/queueProjection";
     if(lyricsSurfaceVisible&&lyricsMode==='genius')void genius.ensureNow();
     const lyricEntry = playbackState.queue.currentIndex === null ? null : playbackState.queue.items[playbackState.queue.currentIndex]?.entryId;
     lyrics.setTrack(acceptedTrack, playbackState.generation, playbackState.duration, JSON.stringify([sessionRevision, lyricEntry ?? null]));
-    recommendations.setTrack(acceptedTrack);
-    // Recommendations are off while a Jam owns the queue.
-    if (isFullscreenOpen && selectedPanel === 'related' && !jamLive) void recommendations.load();
+    const activeTrack = playbackState.currentTrack;
+    const queueSource = playbackState.queue.source;
+    const currentQueueEntry = playbackState.queue.currentIndex === null ? null : playbackState.queue.items[playbackState.queue.currentIndex] ?? null;
+    const fallbackArtistId = currentQueueEntry?.artistId
+      ?? (queueSource?.kind === 'artist' ? queueSource.id
+        : queueSource?.kind === 'album' && queueSource.id === playbackAlbumContextId ? playbackArtistContextId : null);
+    const fallbackAlbumId = currentQueueEntry?.albumId ?? (queueSource?.kind === 'album' ? queueSource.id : null);
+    recommendations.setTrack(activeTrack, { artistId: fallbackArtistId, albumId: fallbackAlbumId });
+    if (isFullscreenOpen && selectedPanel === 'related') void recommendations.load();
   });
 
   let sessionRevision = $state(0);
@@ -722,7 +733,9 @@ import { promotedEntryId } from "$lib/components/fullscreen/queueProjection";
     if (changed) void account.load('artists');
   }
 
-  async function playCollection(items: SongDto[], index: number, source: {kind:string;id:string;title:string}, shuffle = false, fallbackThumbnail: string | null = null, fallbackArtist = "") {
+  async function playCollection(items: SongDto[], index: number, source: {kind:string;id:string;title:string}, shuffle = false, fallbackThumbnail: string | null = null, fallbackArtist = "", contextArtistId: string | null = null) {
+    playbackAlbumContextId = source.kind === 'album' ? source.id : null;
+    playbackArtistContextId = source.kind === 'artist' ? source.id : source.kind === 'album' ? (contextArtistId ?? items.find(song => song.artistId)?.artistId ?? null) : null;
     const prepared = prepareCollectionPlayback(items, index, source, shuffle, fallbackThumbnail, fallbackArtist);
     await player.playSong(prepared.song, prepared.options);
   }
@@ -732,7 +745,7 @@ import { promotedEntryId } from "$lib/components/fullscreen/queueProjection";
     const album = selectedAlbum;
     if (album) void playCollection(album.items.map(song => ({ ...albumTrackWithCredit(song,album),
       albumId: song.albumId ?? album.browseId, album: song.album ?? album.title })), index,
-      {kind: "album", id: album.browseId, title: album.title}, shuffle, album.thumbnail, album.artist ?? "").catch(() => {});
+      {kind: "album", id: album.browseId, title: album.title}, shuffle, album.thumbnail, album.artist ?? "", album.artistId ?? null).catch(() => {});
   }
 
   function playArtist(index: number, shuffle = false) {
@@ -807,9 +820,13 @@ import { promotedEntryId } from "$lib/components/fullscreen/queueProjection";
     const identity = catalog.captureIdentity();
     const playRevision = ++collectionPlayRevision;
     try {
-      const items = await invoke<SongDto[]>("get_artist_radio", { playlistId: artist.radioPlaylistId });
+      const page = await invoke<SongDto[] | import('$lib/types').SearchNextDto>("get_artist_radio", { playlistId: artist.radioPlaylistId });
       if (revision !== sessionRevision || playRevision !== collectionPlayRevision || !catalog.isCurrentIdentity(identity)) return;
-      await playCollection(items, 0, {kind: "mix", id: artist.radioPlaylistId, title: `Mix de ${artist.name}`});
+      const items = Array.isArray(page) ? page : page.items;
+      const continuation = Array.isArray(page) ? null : page.continuation;
+      const radioId = (!Array.isArray(page) && page.automixPlaylistId) || artist.radioPlaylistId;
+      playbackAlbumContextId = null; playbackArtistContextId = null;
+      await player.startSourceRadio(items, {kind: "radio", id: artist.channelId, title: `Mix de ${artist.name}`}, radioId, 0, continuation);
     } catch (error) { throw new Error(extractErrorMessage(error, "No se pudo iniciar el mix.")); }
   }
 
@@ -904,7 +921,7 @@ import { promotedEntryId } from "$lib/components/fullscreen/queueProjection";
       await playCollection(playlist.items,0,{kind:'playlist',id:playlist.id,title:playlist.title},false,playlist.thumbnail);
       if(revision===collectionPlayRevision&&session===sessionRevision&&playlist.continuation)void player.beginProgressiveSource({kind:'playlist',id:playlist.id,continuation:playlist.continuation}).catch(()=>{});
     },
-    sourceRadio:(tracks,source,playlistId)=>player.startSourceRadio(tracks,source,playlistId),
+    sourceRadio:(tracks,source,playlistId,continuation)=>player.startSourceRadio(tracks,source,playlistId,0,continuation),
     radio: song => player.startRadio(song), enqueue: (tracks, position) => player.enqueue(tracks, position),
     removeQueue: id => player.removeQueueEntry(id), dislike: song => { if (song.videoId === playbackState.currentTrack?.videoId) dislikeNowPlaying(); }, like: song => account.toggleLike(song), saveSong: song => account.toggleSaved(song),
     recommendationAction: async (entryId, placement, generation, session) => {
@@ -983,7 +1000,7 @@ import { promotedEntryId } from "$lib/components/fullscreen/queueProjection";
   });
   const sidebarRecommendationsProps = $derived({
     snapshot: recommendationsState, loggedIn: authStatus.state === 'ready', likedIds: accountData.likedIds, pendingIds: accountData.pendingIds,
-    onRequestLoad: () => { if (!jamLive) void recommendations.load(); }, onRefresh: () => { if (!jamLive) void recommendations.load(true); }, onSuspend: () => recommendations.suspend(),
+    onRequestLoad: () => { void recommendations.load(); }, onRefresh: () => { void recommendations.load(true); }, onSuspend: () => recommendations.suspend(),
     onPlaySong: (song: SongDto) => { ++collectionPlayRevision; void player.startRadio(song).catch(() => {}); },
     onTogglePlayback: handleTogglePlay,
     onAddToQueue: (song: SongDto) => { void player.enqueue([song], 'end').catch(error => shellError = extractErrorMessage(error, 'No se pudo agregar a la cola.')); },
@@ -1373,7 +1390,7 @@ import { promotedEntryId } from "$lib/components/fullscreen/queueProjection";
       onRevealQueueWindow={(startIndex, generation) => player.revealQueueWindow(startIndex, generation)}
       {geniusState} geniusController={genius} {lyricsMode} onShowGenius={()=>{lyricsMode='genius';selectedPanel='lyrics';void genius.ensureNow();}} onOpenExternal={url=>void invoke('open_external_url',{url}).catch(()=>{})}
       {lyricsState} {recommendationsState} onSeek={handleSeek} onRetryLyrics={() => { void lyrics.retry(); }}
-      onRefreshRecommendations={() => { if (!jamLive) void recommendations.load(true); }}
+      onRefreshRecommendations={() => { void recommendations.load(true); }}
       onSuspendRecommendations={() => recommendations.suspend()}
       onPlayRecommendation={(song) => { ++collectionPlayRevision; void player.startRadio(song).catch(() => {}); }}
       onEnqueueRecommendation={(song) => { void player.enqueue([song], 'next').catch(error => shellError = extractErrorMessage(error, 'No se pudo agregar a la cola.')); }}
