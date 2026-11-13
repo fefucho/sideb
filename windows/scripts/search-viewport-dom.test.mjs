@@ -84,9 +84,10 @@ if(!process.execArgv.includes('--conditions=browser')){
   flushSync(()=>app=mount(Fixture,{target:host,props:{count:20,onCall:(...args)=>calls.push(args)},intro:false}));await settle();
   const input=host.querySelector('input');input.focus();await settle();
   const preview=host.querySelector('.preview-content');assert.equal(preview.querySelectorAll('.query-suggestion').length,3);assert.equal(preview.querySelectorAll('.song-row').length,2);
-  input.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowDown',bubbles:true}));flushSync();assert.equal(document.activeElement,preview.querySelector('.query-suggestion'));
-  for(let index=0;index<3;index++){document.activeElement.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowDown',bubbles:true}));flushSync();}
-  assert.equal(document.activeElement,preview.querySelector('.song-row .play'));document.activeElement.click();flushSync();assert.equal(calls.at(-1)[0],'play');assert.equal(calls.at(-1)[1].setVideoId,'occurrence-0');
+  // The top result and the song group come first and the completions last; the keyboard walks them in that order.
+  input.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowDown',bubbles:true}));flushSync();assert.equal(document.activeElement,preview.querySelector('.song-row .play'));
+  for(let index=0;index<2;index++){document.activeElement.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowDown',bubbles:true}));flushSync();}
+  assert.equal(document.activeElement,preview.querySelector('.query-suggestion'));preview.querySelector('.song-row .play').click();flushSync();assert.equal(calls.at(-1)[0],'play');assert.equal(calls.at(-1)[1].setVideoId,'occurrence-0');
   input.focus();await settle();const outside=host.querySelector('[data-outside]');const event=new dom.PointerEvent('pointerdown',{bubbles:true,cancelable:true});outside.dispatchEvent(event);outside.click();await settle();assert.equal(event.defaultPrevented,false);assert.equal(calls.at(-1)[0],'outside');assert.equal(host.querySelector('.preview-popover'),null);assert.equal(input.value,'homecoming');
   input.focus();await settle();input.dispatchEvent(new Event('compositionstart',{bubbles:true}));host.querySelector('.search-form').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));assert.ok(!calls.some(call=>call[0]==='submit'));
   input.dispatchEvent(new Event('compositionend',{bubbles:true}));host.querySelector('.search-form').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));assert.equal(calls.at(-1)[0],'submit');

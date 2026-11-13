@@ -7,7 +7,7 @@
     items: SongDto[]; currentTrackId: string | null; isPlaying: boolean;
     onPlay: (index: number) => void; onOpenArtist?: (id: string) => void;
     onOpenAlbum?: (id: string) => void; hideAlbumColumn?: boolean;
-    showAlbumInSubtitle?: boolean; numbered?: boolean; flush?: boolean; origin?: MenuOrigin;
+    showAlbumInSubtitle?: boolean; numbered?: boolean; flush?: boolean; origin?: MenuOrigin; showPlayCount?: boolean;
   }
   let props: Props = $props();
 </script>

@@ -934,5 +934,21 @@
   "provider.chip.romance": {
     "es": "Romance",
     "en": "Romance"
+  },
+  "detail.track.plays.thousand": {
+    "es": "%@ mil",
+    "en": "%@K"
+  },
+  "detail.track.plays.million": {
+    "es": "%@ M",
+    "en": "%@M"
+  },
+  "detail.track.plays.billion": {
+    "es": "%@ mil M",
+    "en": "%@B"
+  },
+  "detail.track.playsAX": {
+    "es": "%@ reproducciones",
+    "en": "%@ plays"
   }
 }

@@ -13,7 +13,7 @@
   songs:[song('Hidden video row',true,'video'),song('Visible song one',false,'one'),song('Visible song two',false,'two')],primaryItemIndex:0,relatedItemIndices:[1,2,3],moreQuery:null,moreParams:null,moreBrowseId:null,actions:[{title:'Provider action',playlistId:'p',params:null,videoId:null,browseId:null}]};
  const videos:SearchSectionDto={id:'videos',title:'Only videos section',layout:'list',items:[card('video','Video only card')],songs:[song('Video only card',true,'solo')],moreQuery:null,moreParams:null,moreBrowseId:null,actions:[]};
  let page=$state({chips:[],correction:null,sections:[top,videos],continuation:'next'});
- let data=$state({...emptyProviderSearchData(),query:'q',lastSearchedQuery:'q',hasSearched:true,page});
+ let data=$state({...emptyProviderSearchData(),query:'q',lastSearchedQuery:'q',params:'provider-list',hasSearched:true,page});
  const entries:SearchSuggestionEntryDto[]=[
   {id:'t',kind:'suggestion',query:'video games',runs:[{text:'video games',bold:false}],feedbackToken:null,card:null,song:null},
   {id:'h',kind:'history',query:'old video',runs:[{text:'old video',bold:false}],feedbackToken:'tok',card:null,song:null},

@@ -53,3 +53,4 @@
 Planes previos en `temp/documentation/plans/` (material local de importación): comprobar estado/código antes de trasladar uno.
 
 | [PLAN-034: Inicio continuo](PLAN-034-home-continuous-cards.md) | Implementado y revisado; build-0186, 862 Swift + 298 Rust; QA visual pendiente | FIX-285, PAR-051 |
+| [PLAN-036: búsqueda por categorías](PLAN-036-search-category-sections.md) | Propuesto, sin implementar; decisiones D1–D6 abiertas, etapa 0 de evidencia pendiente | FIX-331, PAR-042 |

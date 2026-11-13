@@ -97,3 +97,12 @@ test('queue recommendation menu routes playback and placements through its ID an
     ['proposal-occurrence', 'end', 17, 4], ['proposal-occurrence', 'remove', 17, 4],
   ]);
 });
+test('dislike menu action reaches the player port with the menu target song', async () => {
+  const song = { videoId: 'now', title: 'Now' }; const seen = [];
+  const executor = new MenuExecutor({ begin: () => () => true, dislike: async value => seen.push(value) });
+  await executor.execute({ type: 'dislike' }, { kind: 'song', song }, { nowPlaying: true, dislike: true });
+  assert.deepEqual(seen, [song]);
+  const stale = []; const guarded = new MenuExecutor({ begin: () => () => false, dislike: async value => stale.push(value) });
+  await guarded.execute({ type: 'dislike' }, { kind: 'song', song }, { nowPlaying: true, dislike: true });
+  assert.deepEqual(stale, [], 'an invalidated session never dislikes');
+});

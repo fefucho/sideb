@@ -4,7 +4,7 @@ import SwiftUI
 /// One occurrence in the flattened provider-search presentation. Heights are
 /// supplied by the projection because principal blocks can change with width.
 struct ProviderSearchViewportEntry: Identifiable, Hashable {
-    enum Kind: Hashable { case row, heading, principal, carousel, action, footer }
+    enum Kind: Hashable { case row, heading, principal, carousel, grid, action, footer }
 
     let id: AnyHashable
     let kind: Kind
@@ -179,6 +179,7 @@ struct ProviderSearchViewport: NSViewRepresentable {
             case .heading: return 44
             case .principal: return 260
             case .carousel: return 240
+            case .grid: return ProviderSearchCategoryLayout.gridHeight
             case .action, .footer: return 48
             }
         }
@@ -233,13 +234,16 @@ struct ProviderSearchViewport: NSViewRepresentable {
             }
         }
 
+        /// Reconfigures every realized row, not only those inside `visibleRect`. NSTableView keeps
+        /// prepared rows just outside the viewport; if they keep the previous width they reappear
+        /// shifted (centered in a narrower row) as soon as the user scrolls to them.
         private func refreshVisibleRows() {
             guard let table else { return }
             table.needsLayout = true
             table.layoutSubtreeIfNeeded()
-            let range = table.rows(in: table.visibleRect)
-            guard range.location != NSNotFound else { return }
-            for row in range.location..<NSMaxRange(range) {
+            var realized: [Int] = []
+            table.enumerateAvailableRowViews { _, row in realized.append(row) }
+            for row in realized {
                 guard let view = table.view(atColumn: 0, row: row, makeIfNecessary: false) as? ProviderSearchRowView else { continue }
                 view.needsLayout = true
                 view.layoutSubtreeIfNeeded()

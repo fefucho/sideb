@@ -1,7 +1,8 @@
 <script lang="ts">
   import { queuePreferences } from '$lib/player/queuePreferences';
   import { FEATURED_ARTIST_CONTEXT, FeaturedArtistService } from '$lib/featured/artists';
-  import { type SearchOrigin } from '$lib/search/recents';
+  import { type SearchOrigin, type SearchRecent, SearchRecentStore } from '$lib/search/recents';
+  import { recentSuggestion, recordOpenedCard, startRecentSong } from '$lib/search/recentActions';
   import { onMount, tick, setContext, untrack, type Snippet } from "svelte";
   import { t, language, translateOwnText, resolveMessage } from '$lib/i18n';
   import { captureTrackOccurrence, findTrackOccurrence, projectedPlayback, type TrackOrder } from '$lib/detail/projection';
@@ -55,6 +56,7 @@
   import SearchView from "$lib/components/search/SearchView.svelte";
   import { type SearchMode, type SearchData } from "$lib/search/controller";
   import {ProviderSearchController as SearchController,emptyProviderSearchData as emptySearchData} from "$lib/search/provider";
+  import { searchPreferences, categoryViewPreference } from "$lib/search/searchPreferences";
   import {ProviderPreviewController as SearchPreviewController,emptySearchPreviewData} from "$lib/search/provider-preview";
   import SpotlightSearch from "$lib/components/search/SpotlightSearch.svelte";
   import { PlaybackController, emptyPlaybackData, prepareCollectionPlayback } from "$lib/player/controller";
@@ -253,9 +255,22 @@ import { promotedEntryId } from "$lib/components/fullscreen/queueProjection";
     announce:value=>volumeAnnouncement=value===null?'':$t('windows.player.volumeAnnouncement',[Math.round(value)]),
   });
   $effect(()=>{confirmedVolume;untrack(()=>volumeFeedback.confirmedChanged());});
+  // Side B's own search recents: opened artists/albums/playlists and songs that really started playing.
+  // The provider keeps the query history; queries are never stored here.
+  let recentEntries = $state<SearchRecent[]>([]);
+  let recentsCanUndo = $state(false);
+  const searchRecents = new SearchRecentStore(typeof localStorage === 'undefined' ? { getItem: () => null, setItem: () => {} } : localStorage,
+    (entries, canUndo) => { recentEntries = entries; recentsCanUndo = canUndo; });
+  searchRecents.setAccount('guest');
+  const localRecentSuggestions = $derived(recentEntries.map(recentSuggestion).filter(entry => entry !== null));
+  // Fill the by-category search sections once per provider page; the controller drops stale replies.
+  $effect(() => {
+    if (searchData.page && searchData.params == null && $categoryViewPreference) untrack(() => search.loadCategories($searchPreferences));
+  });
   const player = new PlaybackController((command, args) => invoke(command, args),
     (name, handler) => listen(name, handler), snapshot => {
       playbackState = snapshot.state;
+      searchRecents.confirmPlayback(snapshot.state);
       confirmedVolume = snapshot.confirmedVolume;
       playbackError = snapshot.error;
     });
@@ -353,6 +368,7 @@ import { promotedEntryId } from "$lib/components/fullscreen/queueProjection";
     if (changedAccount) {
       const identity=next.state==='ready'?`account:${next.channelId||next.email||next.handle||''}`:'guest';
       featuredArtists.resetScope(identity);
+      searchRecents.setAccount(identity);
       const previousExploreRoute = exploreData.route;
       const wasExploring = activeView === 'explore' || primaryNav === 'explore';
       home.reset();
@@ -559,6 +575,7 @@ import { promotedEntryId } from "$lib/components/fullscreen/queueProjection";
   function focusInlinePreview() { searchPreview.setQuery(draftQuery); }
   function selectSearchCard(card: BrowseCardDto) {
     card = normalizeHomeSongCard(card);
+    recordOpenedCard(searchRecents, card);
     dismissSearchPreview();
     if (card.kind === 'artist') void openArtistDetail(card.id);
     else if (card.kind === 'album') void openAlbumDetail(card.id, 'search');
@@ -596,7 +613,7 @@ import { promotedEntryId } from "$lib/components/fullscreen/queueProjection";
   function playSearchPreviewSong(song: SongDto) {
     setPlayerFullscreen(false);
     dismissSearchPreview(); ++collectionPlayRevision;
-    void player.startRadio(song).catch(error => {shellError = extractErrorMessage(error, 'No se pudo iniciar la radio.');});
+    void startRecentSong(searchRecents, song, (item, accepted) => player.startRadio(item, accepted)).catch(error => {shellError = extractErrorMessage(error, 'No se pudo iniciar la radio.');});
   }
 
   function invalidateDetails() { catalog.invalidate(); }
@@ -873,7 +890,7 @@ import { promotedEntryId } from "$lib/components/fullscreen/queueProjection";
     },
     sourceRadio:(tracks,source,playlistId)=>player.startSourceRadio(tracks,source,playlistId),
     radio: song => player.startRadio(song), enqueue: (tracks, position) => player.enqueue(tracks, position),
-    removeQueue: id => player.removeQueueEntry(id), like: song => account.toggleLike(song), saveSong: song => account.toggleSaved(song),
+    removeQueue: id => player.removeQueueEntry(id), dislike: song => { if (song.videoId === playbackState.currentTrack?.videoId) dislikeNowPlaying(); }, like: song => account.toggleLike(song), saveSong: song => account.toggleSaved(song),
     recommendationAction: async (entryId, placement, generation, session) => {
       if (session !== sessionRevision || generation !== playbackState.generation) return;
       const oldIds = new Set(playbackState.queue.items.map(item => item.entryId));
@@ -932,6 +949,10 @@ import { promotedEntryId } from "$lib/components/fullscreen/queueProjection";
   }
   function openNowPlayingMenu(event: MouseEvent | KeyboardEvent) {
     if (playbackState.currentTrack) menuService.open(event, { kind: 'song', song: songFromQueue(playbackState.currentTrack) }, { nowPlaying: true });
+  }
+  // The bottom bar's "..." menu also offers dislike (Mac parity); the other now-playing surfaces keep their own button.
+  function openPlayerBarMenu(event: MouseEvent | KeyboardEvent) {
+    if (playbackState.currentTrack) menuService.open(event, { kind: 'song', song: songFromQueue(playbackState.currentTrack) }, { nowPlaying: true, dislike: true });
   }
   // Contents of the lateral panel reuse the page's own handlers; the native queue stays authoritative.
   const sidebarMetadataProps = $derived({
@@ -1082,11 +1103,10 @@ import { promotedEntryId } from "$lib/components/fullscreen/queueProjection";
   <PlayerBar {variant} sidebarLead={lead} sidebarTail={tail} sidebarSpacing={spacing} playback={playerBarState} onTogglePlayback={handleTogglePlay} onRetryPlayback={handleRetryPlayback} onPrevious={handlePrevious} onNext={handleNext} onSeek={handleSeek} onVolumeChange={handleVolumeChange} onVolumeSurfaceChange={()=>gestureInput?.invalidate()} onSetMuted={muted=>void player.setMuted(muted)} onSetShuffle={handleSetShuffle} onSetRepeat={handleSetRepeat} fullscreenOpen={isFullscreenOpen} onToggleFullscreen={() => setPlayerFullscreen(!isFullscreenOpen)}
     {selectedPanel} {lyricsMode} onSelectPanel={openPlayerPanel}
     onOpenArtist={(id) => { void setPlayerFullscreen(false); void openArtistDetail(id); }}
-    onOpenAlbum={(id) => { void setPlayerFullscreen(false); void openAlbumDetail(id); }} onOpenMenu={openNowPlayingMenu}
+    onOpenAlbum={(id) => { void setPlayerFullscreen(false); void openAlbumDetail(id); }} onOpenMenu={openPlayerBarMenu}
     loggedIn={authStatus.state === 'ready'} liked={accountData.likedIds.has(playbackState.currentTrack?.videoId ?? '')}
     likePending={accountData.pendingIds.has(playbackState.currentTrack?.videoId ?? '')}
     likeError={accountData.actionError || accountData.errors.likes}
-    onDislike={dislikeNowPlaying}
     onToggleLike={() => { if (playbackState.currentTrack) void account.toggleLike(playbackState.currentTrack); }} />
 {/snippet}
 
@@ -1224,7 +1244,8 @@ import { promotedEntryId } from "$lib/components/fullscreen/queueProjection";
       onPlayPreviewSong={playSearchPreviewSong}
       onPreviewFocus={focusInlinePreview} onPreviewDismiss={dismissInlinePreview}
       onModeChange={handleSwitchSearchMode}
-      onPlaySong={(song: SongDto) => { ++collectionPlayRevision; void player.startRadio(song).catch(error => shellError = extractErrorMessage(error, 'No se pudo iniciar la radio.')); }}
+      onPlaySong={(song: SongDto) => { ++collectionPlayRevision; void startRecentSong(searchRecents, song, (item, accepted) => player.startRadio(item, accepted)).catch(error => shellError = extractErrorMessage(error, 'No se pudo iniciar la radio.')); }}
+      onOpenedCard={card => recordOpenedCard(searchRecents, card)}
       onOpenArtist={openArtistDetail}
       onOpenAlbum={(album: AlbumCardDto) => openAlbumDetail(album.id, "search")}
       onOpenPlaylist={(id: string) => openPlaylist(id)} />
@@ -1362,7 +1383,8 @@ import { promotedEntryId } from "$lib/components/fullscreen/queueProjection";
     onSave={details => saveCreatedPlaylist(details, creationRevision)} onClose={() => closeNewPlaylist(creationRevision)} />{/if}
   {#if menuNotice}<div class="menu-notice" role="status">{resolveMessage(menuNotice,$language)}<button type="button" aria-label={$t('windows.ui.dismissNotice')} onclick={() => menuNotice = null}>×</button></div>{/if}
   {#if spotlightOpen}
-    <SpotlightSearch anchored={spotlightAnchored} onRemoveSuggestion={token=>void searchPreview.remove(token)} preview={previewData} backendReady={backendStatus?.ready ?? false}
+    <SpotlightSearch anchored={spotlightAnchored} onRemoveSuggestion={token=>void searchPreview.remove(token)} local={localRecentSuggestions} canUndoRecents={recentsCanUndo}
+      onRemoveLocal={key => searchRecents.remove(key)} onClearRecents={() => searchRecents.clear()} onUndoRecents={() => searchRecents.undo()} preview={previewData} backendReady={backendStatus?.ready ?? false}
       onQueryChange={handleDraftChange} onCommit={(query) => executeSearch(query)} onDismiss={dismissSearchPreview}
       onSelectCard={selectSearchCard} onPlaySong={playSearchPreviewSong} />
   {/if}

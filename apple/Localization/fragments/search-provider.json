@@ -54,5 +54,33 @@
   "search.provider.other_results": {
     "es": "Otros resultados del bloque",
     "en": "Other results in this group"
+  },
+  "search.category.profiles": {
+    "es": "Perfiles",
+    "en": "Profiles"
+  },
+  "search.category.podcasts": {
+    "es": "Podcasts",
+    "en": "Podcasts"
+  },
+  "search.category.episodes": {
+    "es": "Episodios",
+    "en": "Episodes"
+  },
+  "search.quick.recents": {
+    "es": "Recientes",
+    "en": "Recent"
+  },
+  "search.quick.queries": {
+    "es": "Búsquedas",
+    "en": "Searches"
+  },
+  "search.quick.top": {
+    "es": "Mejor resultado",
+    "en": "Top result"
+  },
+  "search.quick.clear": {
+    "es": "Borrar",
+    "en": "Clear"
   }
 }

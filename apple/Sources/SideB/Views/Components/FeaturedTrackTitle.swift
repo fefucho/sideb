@@ -161,7 +161,9 @@ private struct ScrollingFeaturedNativeTitle: NSViewRepresentable {
         viewport.configure(identity:track.videoId + "\u{0}" + track.title, enabled:true, reduceMotion:reduceMotion, active:pageIsActive)
     }
     func sizeThatFits(_ proposal:ProposedViewSize,nsView:NativePlayerTitleViewport,context:Context) -> CGSize? {
-        CGSize(width:proposal.width ?? nsView.field.intrinsicContentSize.width,height:ceil(pointSize * 1.4))
+        // Never wider than the text: neighbours (e.g. the like heart) sit right after it; overflow scrolls inside the proposal.
+        let ideal = nsView.field.intrinsicContentSize.width
+        return CGSize(width:min(proposal.width ?? ideal,ideal),height:ceil(pointSize * 1.4))
     }
     static func dismantleNSView(_ viewport:NativePlayerTitleViewport,coordinator:()) { viewport.tearDown() }
 }

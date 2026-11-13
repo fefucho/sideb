@@ -6749,10 +6749,17 @@ public struct SongItemRecord {
     public var library: LibraryToggleRecord?
     public var artistRuns: [HomeArtistRunRecord]
     public var contentRating: ContentRating
+    /**
+     * Play count as the provider abbreviates it ("53M"); only album rows carry it.
+     */
+    public var playCount: String?
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(videoId: String, title: String, artists: String, album: String?, duration: String?, thumbnail: String?, artistId: String?, albumId: String?, setVideoId: String?, isVideo: Bool, isUpload: Bool, library: LibraryToggleRecord?, artistRuns: [HomeArtistRunRecord], contentRating: ContentRating) {
+    public init(videoId: String, title: String, artists: String, album: String?, duration: String?, thumbnail: String?, artistId: String?, albumId: String?, setVideoId: String?, isVideo: Bool, isUpload: Bool, library: LibraryToggleRecord?, artistRuns: [HomeArtistRunRecord], contentRating: ContentRating, 
+        /**
+         * Play count as the provider abbreviates it ("53M"); only album rows carry it.
+         */playCount: String? = nil) {
         self.videoId = videoId
         self.title = title
         self.artists = artists
@@ -6767,6 +6774,7 @@ public struct SongItemRecord {
         self.library = library
         self.artistRuns = artistRuns
         self.contentRating = contentRating
+        self.playCount = playCount
     }
 }
 
@@ -6816,6 +6824,9 @@ extension SongItemRecord: Equatable, Hashable {
         if lhs.contentRating != rhs.contentRating {
             return false
         }
+        if lhs.playCount != rhs.playCount {
+            return false
+        }
         return true
     }
 
@@ -6834,6 +6845,7 @@ extension SongItemRecord: Equatable, Hashable {
         hasher.combine(library)
         hasher.combine(artistRuns)
         hasher.combine(contentRating)
+        hasher.combine(playCount)
     }
 }
 
@@ -6858,7 +6870,8 @@ public struct FfiConverterTypeSongItemRecord: FfiConverterRustBuffer {
                 isUpload: FfiConverterBool.read(from: &buf), 
                 library: FfiConverterOptionTypeLibraryToggleRecord.read(from: &buf), 
                 artistRuns: FfiConverterSequenceTypeHomeArtistRunRecord.read(from: &buf), 
-                contentRating: FfiConverterTypeContentRating.read(from: &buf)
+                contentRating: FfiConverterTypeContentRating.read(from: &buf), 
+                playCount: FfiConverterOptionString.read(from: &buf)
         )
     }
 
@@ -6877,6 +6890,7 @@ public struct FfiConverterTypeSongItemRecord: FfiConverterRustBuffer {
         FfiConverterOptionTypeLibraryToggleRecord.write(value.library, into: &buf)
         FfiConverterSequenceTypeHomeArtistRunRecord.write(value.artistRuns, into: &buf)
         FfiConverterTypeContentRating.write(value.contentRating, into: &buf)
+        FfiConverterOptionString.write(value.playCount, into: &buf)
     }
 }
 

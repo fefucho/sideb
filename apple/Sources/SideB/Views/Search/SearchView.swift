@@ -234,7 +234,7 @@ struct SearchView: View {
                                     })
                             }
                         }.padding(8)
-                    }.frame(height: min(340, CGFloat(max(1, searchViewModel.visibleProviderSuggestions.count) * 58 + 16)))
+                    }.frame(height: min(340, CGFloat(max(1, searchViewModel.visibleProviderSuggestions.count) * 44 + 16)))
                 }
                 if let message = searchViewModel.quickErrorMessage { searchErrorBanner(message) }
             }
@@ -254,7 +254,7 @@ struct SearchView: View {
         selectedSuggestion = nil
         releasePagePreview()
         if let song = entry.song { playerViewModel.activateMediaRadio(song) }
-        else if let card = entry.card { handleCardClick(card) }
+        else if let card = entry.card { searchViewModel.recordOpened(card); handleCardClick(card) }
         else if let query = entry.query { commitPageQuery(query) }
     }
 

@@ -60,6 +60,50 @@ import XCTest
         }
     }
 
+    /// NSTableView keeps prepared rows just outside `visibleRect`. After a width change they must be
+    /// reconfigured too, otherwise they reappear on scroll shifted by half the width delta.
+    func testWidthChangeReconfiguresPreparedRowsOutsideTheVisibleRect() async throws {
+        var renderedWidth: [AnyHashable: CGFloat] = [:]
+        let parent = ProviderSearchViewport(entries: entries(80), resetIdentity: AnyHashable("prepared"),
+            snapshotRevision: AnyHashable(1), rowContent: { entry, width in
+                renderedWidth[entry.id] = width
+                return AnyView(Text(String(describing: entry.id)).frame(width: width, height: 58, alignment: .leading))
+            })
+        let coordinator = parent.makeCoordinator()
+        let scroll = coordinator.makeScrollView()
+        // Start tall so many rows are realized, then shorten the viewport: AppKit keeps those rows
+        // realized outside `visibleRect`, exactly the state a real window has next to the viewport.
+        let window = NSWindow(contentRect: NSRect(x: -2200, y: -1500, width: 1400, height: 3000),
+            styleMask: .borderless, backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = scroll
+        window.orderFrontRegardless()
+        defer { coordinator.dismantle(); window.contentView = nil; window.close() }
+        let table = try XCTUnwrap(coordinator.tableForTesting)
+        scroll.layoutSubtreeIfNeeded()
+        coordinator.updateGeometryForTesting()
+        for _ in 0..<4 { scroll.layoutSubtreeIfNeeded(); try await Task.sleep(for: .milliseconds(20)) }
+        for width in [700.0, 1100, 960, 1400] {
+            window.setContentSize(NSSize(width: width, height: 300))
+            scroll.layoutSubtreeIfNeeded()
+            coordinator.updateGeometryForTesting()
+            for _ in 0..<4 { scroll.layoutSubtreeIfNeeded(); try await Task.sleep(for: .milliseconds(20)) }
+            var realized: [Int] = []
+            table.enumerateAvailableRowViews { _, row in realized.append(row) }
+            let visible = table.rows(in: table.visibleRect)
+            XCTAssertGreaterThan(realized.count, visible.length,
+                                 "AppKit kept no realized rows outside the viewport at \(width); the test proves nothing")
+            for row in realized {
+                let seen = renderedWidth["entry-\(row)"] ?? 0
+                XCTAssertEqual(seen, table.bounds.width, accuracy: 0.5,
+                               "row \(row) kept width \(seen) after resize to \(width)")
+            }
+            window.setContentSize(NSSize(width: width, height: 3000)) // realize many rows again
+            scroll.layoutSubtreeIfNeeded()
+            coordinator.updateGeometryForTesting()
+        }
+    }
+
     func testFullWidthHeaderAndRowsKeepTwentyEightPointMarginsAcrossSidebarSizes() async throws {
         let coordinator = viewport(entries(40), header: true).makeCoordinator()
         let scroll = coordinator.makeScrollView()

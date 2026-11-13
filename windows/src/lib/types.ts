@@ -22,6 +22,8 @@ export interface SongDto extends ContentMetadata {
   albumId: string | null;
   setVideoId?: string | null;
   library?: LibraryToggleDto | null;
+  /** Provider's abbreviated play count ("53M", "1,234"); only album rows carry it. */
+  playCount?: string | null;
 }
 
 export interface AlbumCardDto extends ContentMetadata {

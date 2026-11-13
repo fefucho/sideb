@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { t } from '$lib/i18n';
+  import { t, text, language } from '$lib/i18n';
+  import { formatPlayCount } from '$lib/detail/playCount';
   import { getContext, onMount, tick } from 'svelte';
   import type { SongDto } from '$lib/types';
   import { MEDIA_CONTEXT, type MediaService } from '$lib/player/media';
@@ -21,11 +22,13 @@
     onMoveTrack?: (setVideoId: string, successorSetVideoId: string | null) => void;
     canReorder?: boolean; mutationPending?: boolean; detail?: boolean;
     likedIds?: Set<string>; pendingIds?: Set<string>; onToggleLike?: (track: SongDto) => void;
+    /** Album detail only: a header-less column with each song's abbreviated play count, when the provider sends it. */
+    showPlayCount?: boolean;
   }
   let { active=true, items, source, indexOffset = 0, currentTrackId, isPlaying, onPlay, onOpenArtist, onOpenAlbum,
     hideAlbumColumn = false, showAlbumInSubtitle = false, numbered = true, flush = false, origin = {},
     onContextMenu, onRemoveTrack, onMoveTrack, canReorder = false, mutationPending = false, occurrenceIndices, occurrenceKeys,
-    detail = false, likedIds, pendingIds, onToggleLike }: Props = $props();
+    detail = false, likedIds, pendingIds, onToggleLike, showPlayCount = false }: Props = $props();
   const media = getContext<MediaService | undefined>(MEDIA_CONTEXT);
   const menu = getContext<MenuService | undefined>(MENU_CONTEXT);
   let root: HTMLDivElement;
@@ -52,6 +55,9 @@
   const virtual = $derived(items.length > 160);
   const segments = $derived(trackSegments(items.length, virtual ? range : [0, items.length], [focusedIndex, draggingIndex]));
   const hasAlbum = $derived(!hideAlbumColumn && !showAlbumInSubtitle && items.some(track => Boolean(track.album)));
+  const playCounts = $derived(showPlayCount ? items.map(track => formatPlayCount(track.playCount, $language, (key, args, lang) => text(key, args, lang))) : []);
+  const hasPlays = $derived(playCounts.some(Boolean));
+  const columnCount = $derived(4 + (hasAlbum ? 1 : 0) + (hasPlays ? 1 : 0));
   const editable = $derived(Boolean(canReorder && onMoveTrack || onRemoveTrack));
   const actionWidth = $derived(36 + (onToggleLike ? 28 : 0) + (canReorder && onMoveTrack ? 48 : 0) + (onRemoveTrack ? 24 : 0));
   const lastEnd = $derived(segments.at(-1)?.[1] ?? 0);
@@ -165,13 +171,13 @@
   onfocusin={event => focusedKey = (event.target as HTMLElement).closest<HTMLElement>('[data-occurrence-key]')?.dataset.occurrenceKey ?? null}
   onfocusout={event => { if (!(event.relatedTarget instanceof Node) || !root.contains(event.relatedTarget)) focusedKey = null; }}>
   <table aria-label={$t('search.filter.songs')} aria-rowcount={items.length} class:with-album={hasAlbum} class:editable style={`--track-actions-width:${actionWidth}px`}>
-    <colgroup><col class="index-column" /><col />{#if hasAlbum}<col class="album-column" />{/if}<col class="duration-column" /><col class="actions-column" /></colgroup>
-    {#if detail && !hideAlbumColumn}<thead><tr><th></th><th>{$t('windows.ui.songArtist')}</th>{#if hasAlbum}<th>{$t('metadata.album')}</th>{/if}<th>{$t('detail.track.duration')}</th><th></th></tr></thead>{/if}
+    <colgroup><col class="index-column" /><col />{#if hasAlbum}<col class="album-column" />{/if}{#if hasPlays}<col class="plays-column" />{/if}<col class="duration-column" /><col class="actions-column" /></colgroup>
+    {#if detail && !hideAlbumColumn}<thead><tr><th></th><th>{$t('windows.ui.songArtist')}</th>{#if hasAlbum}<th>{$t('metadata.album')}</th>{/if}{#if hasPlays}<th></th>{/if}<th>{$t('detail.track.duration')}</th><th></th></tr></thead>{/if}
     <tbody>
       {#each entries as entry (keys[entry.index])}
           {@const index = entry.index}
           {@const track = items[index]}
-          {#if entry.gap > 0}<tr class="spacer" aria-hidden="true"><td colspan={hasAlbum ? 5 : 4} style={`height:${entry.gap * rowHeight}px`}></td></tr>{/if}
+          {#if entry.gap > 0}<tr class="spacer" aria-hidden="true"><td colspan={columnCount} style={`height:${entry.gap * rowHeight}px`}></td></tr>{/if}
           {@const active = rowActive(index)}
           <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
           <tr class="track-row" class:active class:selected={selected.has(keys[index])} class:dragging={draggingSetVideoId !== null && draggingSetVideoId === track.setVideoId}
@@ -188,6 +194,7 @@
               </div>
             </div></td>
             {#if hasAlbum}<td class="album-cell">{#if track.albumId && onOpenAlbum}<button class="metadata-link" type="button" onclick={() => onOpenAlbum?.(track.albumId!)} title={track.album ?? ''}>{track.album}</button>{:else}<span title={track.album ?? ''}>{track.album}</span>{/if}</td>{/if}
+            {#if hasPlays}<td class="plays">{#if playCounts[index]}<span aria-hidden="true">{playCounts[index]}</span><span class="sr-only">{$t('detail.track.playsAX', [playCounts[index]])}</span>{/if}</td>{/if}
             <td class="duration">{track.duration ?? '—'}</td>
             <td class="actions"><div class="action-group">
               {#if onToggleLike}<button class="action-button like" class:liked={likedIds?.has(track.videoId)} type="button" disabled={pendingIds?.has(track.videoId)} aria-pressed={likedIds?.has(track.videoId) ?? false} aria-label={$t('windows.track.like', [track.title])} onclick={() => onToggleLike?.(track)}>♥</button>{/if}
@@ -200,18 +207,18 @@
             </div></td>
           </tr>
       {/each}
-      {#if lastEnd < items.length}<tr class="spacer" aria-hidden="true"><td colspan={hasAlbum ? 5 : 4} style={`height:${(items.length - lastEnd) * rowHeight}px`}></td></tr>{/if}
+      {#if lastEnd < items.length}<tr class="spacer" aria-hidden="true"><td colspan={columnCount} style={`height:${(items.length - lastEnd) * rowHeight}px`}></td></tr>{/if}
     </tbody>
   </table>
 </div>
 
 <style>
-  .index-column {width:34px;} .album-column {width:clamp(60px,18vw,160px);} .duration-column {width:44px;} .actions-column {width:var(--track-actions-width);}
+  .index-column {width:34px;} .album-column {width:clamp(60px,18vw,160px);} .duration-column {width:44px;} .plays-column {width:68px;} .actions-column {width:var(--track-actions-width);}
   .detail td { height:58px; } .detail .track-content {height:56px;} .detail :global(.play-control) {width:32px;height:32px;} .detail .action-button {width:28px;height:28px;} .action-button.liked {opacity:1;color:var(--sideb-highlight);} th {height:32px;font-weight:500;font-size:11px;text-align:left;color:#aaaab1;} th:nth-last-child(2){text-align:right;}
   .table-scroll { min-width:0;max-width:100%;padding:0 20px 0 16px;outline:none; }.table-scroll.flush {padding-inline:0;}.table-scroll:focus-visible {box-shadow:inset 0 0 0 2px var(--sideb-highlight);border-radius:7px;}
   table {width:100%;table-layout:fixed;border-collapse:separate;border-spacing:0;color:#aaaab1;font-size:12px;}td {box-sizing:border-box;height:52px;padding:0;vertical-align:middle;border-block:1px solid transparent;}
   .track-row:hover td {background:#ffffff08;}.track-row.active td {background:rgb(255 255 255 / 6.5%);border-block-color:rgb(255 255 255 / 9%);}.track-row.selected td {background:#ffffff0b;}.track-row.selected.active td {background:rgb(255 255 255 / 6.5%);}.track-row td:first-child {border-radius:7px 0 0 7px;border-left:1px solid transparent;}.track-row td:last-child {border-radius:0 7px 7px 0;border-right:1px solid transparent;}.track-row.active td:first-child,.track-row.active td:last-child {border-inline-color:rgb(255 255 255 / 9%);}.dragging {opacity:.42;}
-  .index {width:34px;padding-left:8px;}.track-cell {padding:0 8px;}.track-content {display:flex;align-items:center;gap:12px;min-width:0;height:50px;}.song-meta {display:flex;flex-direction:column;gap:3px;min-width:0;flex:1;}.song-title,.metadata-link {display:block;max-width:100%;overflow:hidden;padding:0;border:0;background:none;color:#f2f2f4;font:inherit;text-align:left;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;}.song-title {font-size:14px;font-weight:500;}.artist-line {min-width:0;overflow:hidden;white-space:nowrap;font-size:12px;color:#a6a6ad;}.album-cell {width:clamp(60px,18vw,160px);padding:0 12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}.metadata-link {color:#aaaab1;font-size:12px;}.metadata-link:hover {color:white;}.duration {width:44px;text-align:right;font-variant-numeric:tabular-nums;}.actions {width:var(--track-actions-width);padding-inline:4px;}.action-group {display:flex;align-items:center;justify-content:flex-end;gap:0;}.action-button {display:grid;place-items:center;flex:none;width:24px;height:28px;padding:0;border:0;border-radius:6px;background:transparent;color:#aaaab1;cursor:pointer;opacity:0;}.track-row:hover .action-button,.track-row:focus-within .action-button {opacity:1;}.action-button:hover:not(:disabled) {background:var(--sideb-surface-hover);color:white;}.action-button:disabled {cursor:wait;color:#777;}.action-button svg {width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;}.track-menu {width:28px;}button:focus-visible {outline:2px solid var(--sideb-highlight);outline-offset:1px;opacity:1;}.spacer td {padding:0;border:0;}
+  .index {width:34px;padding-left:8px;}.track-cell {padding:0 8px;}.track-content {display:flex;align-items:center;gap:12px;min-width:0;height:50px;}.song-meta {display:flex;flex-direction:column;gap:3px;min-width:0;flex:1;}.song-title,.metadata-link {display:block;max-width:100%;overflow:hidden;padding:0;border:0;background:none;color:#f2f2f4;font:inherit;text-align:left;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;}.song-title {font-size:14px;font-weight:500;}.artist-line {min-width:0;overflow:hidden;white-space:nowrap;font-size:12px;color:#a6a6ad;}.album-cell {width:clamp(60px,18vw,160px);padding:0 12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}.metadata-link {color:#aaaab1;font-size:12px;}.metadata-link:hover {color:white;}.duration {width:44px;text-align:right;font-variant-numeric:tabular-nums;}.plays {width:68px;padding-right:12px;overflow:hidden;text-align:right;white-space:nowrap;text-overflow:ellipsis;color:#a6a6ad;font-variant-numeric:tabular-nums;}.sr-only {position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;}.actions {width:var(--track-actions-width);padding-inline:4px;}.action-group {display:flex;align-items:center;justify-content:flex-end;gap:0;}.action-button {display:grid;place-items:center;flex:none;width:24px;height:28px;padding:0;border:0;border-radius:6px;background:transparent;color:#aaaab1;cursor:pointer;opacity:0;}.track-row:hover .action-button,.track-row:focus-within .action-button {opacity:1;}.action-button:hover:not(:disabled) {background:var(--sideb-surface-hover);color:white;}.action-button:disabled {cursor:wait;color:#777;}.action-button svg {width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;}.track-menu {width:28px;}button:focus-visible {outline:2px solid var(--sideb-highlight);outline-offset:1px;opacity:1;}.spacer td {padding:0;border:0;}
   @media(max-width:700px){.album-column,.album-cell {width:18%;}.album-cell {padding-inline:6px;}.table-scroll {padding-inline:8px;}.track-content {gap:8px;}}
   @media(max-width:500px){.editable .actions-column,.editable .actions {width:min(var(--track-actions-width),88px);}.editable .action-button {width:20px;}.track-cell {padding-inline:4px;}.index-column,.index {width:26px;}.index {padding-left:2px;}}
 </style>

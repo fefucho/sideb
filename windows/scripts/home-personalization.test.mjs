@@ -210,6 +210,7 @@ test('Mac pages keep exact anchor through narrowing/widening and category change
  const ids=['a','b','c','d','e','f'];let anchor=alignCollectionAnchor(2,ids,ids);
  assert.equal(Math.floor(anchor/4),0);anchor=alignCollectionAnchor(anchor,ids,ids);assert.equal(Math.floor(anchor/2),1);
  assert.equal(alignCollectionAnchor(2,ids,['new',...ids]),3);assert.equal(alignCollectionAnchor(2,ids,['a']),0);
+ assert.equal(alignCollectionAnchor(0,ids,['new','other',...ids]),0,'a row at its start is not displaced by a refresh that reorders or prepends items');assert.equal(alignCollectionAnchor(0,ids,ids),0);
  const base=defaults(),changed={...base,categoryOrderMode:'youtube',hiddenCategoryKeys:['quick-picks']};
  assert.equal(featuredSelectionKey('a',null,'albums',base),featuredSelectionKey('a',null,'albums',changed));
  assert.notEqual(featuredSelectionKey('a',null,'albums',base),featuredSelectionKey('b',null,'albums',base));

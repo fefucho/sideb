@@ -15,6 +15,7 @@ struct CollectionTrackColumnLayout: Equatable {
     let song: CGRect
     let artist: CGRect
     let album: CGRect
+    let plays: CGRect
     let duration: CGRect
     let like: CGRect
     let menu: CGRect
@@ -30,8 +31,12 @@ struct CollectionTrackColumnLayout: Equatable {
         let artworkSize = CollectionTrackMetrics.artworkSize
         let artwork = CGRect(x: index.maxX + 12, y: (height - artworkSize) / 2,
                              width: artworkSize, height: artworkSize)
+        // Album rows reserve a play-count column left of the duration; playlists have none.
+        let playsWidth: CGFloat = showsAlbum ? 0 : 68
+        let plays = CGRect(x: duration.minX - (showsAlbum ? 0 : 8) - playsWidth, y: duration.minY,
+                           width: playsWidth, height: duration.height)
         let start = artwork.maxX + 14
-        let space = max(0, duration.minX - 14 - start)
+        let space = max(0, plays.minX - 14 - start)
         let gap: CGFloat = showsAlbum ? 12 : 14
         let available = max(0, space - gap * (showsAlbum ? 2 : 1))
         let songWidth = available * (showsAlbum ? 0.47 : 0.64)
@@ -41,7 +46,7 @@ struct CollectionTrackColumnLayout: Equatable {
         let album = CGRect(x: artist.maxX + gap, y: artist.minY,
                            width: showsAlbum ? available - songWidth - artistWidth : 0, height: 24)
         return Self(index: index, artwork: artwork, song: song, artist: artist, album: album,
-                    duration: duration, like: like, menu: menu)
+                    plays: plays, duration: duration, like: like, menu: menu)
     }
 }
 
@@ -88,6 +93,7 @@ final class NativeCollectionTrackCellView: NSTableCellView, NativeTrackCellPrese
     let artist = NativeTrackCreditField(frame: .zero)
     let album = NativeTrackCreditField(frame: .zero)
     private let duration = NSTextField(labelWithString: "")
+    private let plays = NSTextField(labelWithString: "")
     private let playButton = HomeFocusTrackingButton()
     private let likeButton = HomeFocusTrackingButton()
     private let menuButton = HomeFocusTrackingButton()
@@ -114,12 +120,12 @@ final class NativeCollectionTrackCellView: NSTableCellView, NativeTrackCellPrese
         wantsLayer = true
         for (view, identifier) in [(indexLabel, "Index"), (playingIcon, "Playing"), (artwork, "Artwork"),
                                    (title, "Song"), (ratedMetadata, "Artist"), (album, "Album"),
-                                   (duration, "Duration"), (playButton, "Play"), (likeButton, "Like"),
+                                   (duration, "Duration"), (plays, "Plays"), (playButton, "Play"), (likeButton, "Like"),
                                    (menuButton, "Menu"), (grip, "Grip")] as [(NSView, String)] {
             view.setAccessibilityIdentifier("CollectionTrack\(identifier)")
             addSubview(view)
         }
-        for field in [indexLabel, title, artist, album, duration] {
+        for field in [indexLabel, title, artist, album, duration, plays] {
             field.isEditable = false; field.isSelectable = false
             field.isBezeled = false; field.drawsBackground = false
             field.maximumNumberOfLines = 1; field.lineBreakMode = .byTruncatingTail
@@ -129,6 +135,9 @@ final class NativeCollectionTrackCellView: NSTableCellView, NativeTrackCellPrese
         title.textColor = .labelColor
         title.font = .systemFont(ofSize: 15.5, weight: .medium)
         duration.alignment = .right
+        plays.alignment = .right
+        plays.font = .monospacedDigitSystemFont(ofSize: 13.5, weight: .regular)
+        plays.textColor = .secondaryLabelColor
         indexLabel.alignment = .right
         artwork.wantsLayer = true
         artwork.layer?.cornerRadius = AppTheme.artworkThumbnailRadius
@@ -187,7 +196,7 @@ final class NativeCollectionTrackCellView: NSTableCellView, NativeTrackCellPrese
         indexLabel.frame = g.index
         playingIcon.frame = CGRect(x: g.index.midX - 8, y: g.index.midY - 8, width: 16, height: 16)
         artwork.frame = g.artwork; title.frame = g.song; ratedMetadata.frame = g.artist; album.frame = g.album
-        duration.frame = g.duration; likeButton.frame = g.like; menuButton.frame = g.menu
+        duration.frame = g.duration; plays.frame = g.plays; likeButton.frame = g.like; menuButton.frame = g.menu
         let playSize = CollectionTrackMetrics.playButtonSize
         playButton.frame = CGRect(x: g.artwork.midX - playSize / 2, y: g.artwork.midY - playSize / 2,
                                   width: playSize, height: playSize)
@@ -215,6 +224,10 @@ final class NativeCollectionTrackCellView: NSTableCellView, NativeTrackCellPrese
         artist.configureFeatured(track:track,isTitle:false) { [weak self] id,name in self?.onArtistDestination?(id,name) }
         album.isHidden = !showsAlbum
         duration.stringValue = track.duration ?? "—"
+        let playsText = showsAlbum ? nil : PlayCountFormatter.display(track.playCount)
+        plays.stringValue = playsText ?? ""
+        plays.isHidden = playsText == nil
+        plays.setAccessibilityLabel(playsText.map { L10n.text("detail.track.playsAX", args: [$0]) })
         likeButton.image = NSImage(systemSymbolName: isLiked ? "heart.fill" : "heart", accessibilityDescription: L10n.text(isLiked ? "detail.track.unlike" : "detail.track.like"))?
             .withSymbolConfiguration(.init(pointSize: 15.5, weight: .regular))
         likeButton.contentTintColor = isLiked ? .white : NSColor.white.withAlphaComponent(0.65)

@@ -208,6 +208,9 @@ pub struct SongItemRecord {
     pub library: Option<LibraryToggleRecord>,
     pub artist_runs: Vec<HomeArtistRunRecord>,
     pub content_rating: ContentRating,
+    /// Play count as the provider abbreviates it ("53M"); only album rows carry it.
+    #[uniffi(default = None)]
+    pub play_count: Option<String>,
 }
 
 impl From<innertube::SongItem> for SongItemRecord {
@@ -226,6 +229,7 @@ impl From<innertube::SongItem> for SongItemRecord {
             is_video: item.is_video,
             is_upload: item.is_upload,
             content_rating: ContentRating::from_explicit(item.explicit),
+            play_count: item.play_count,
             library: item.library.map(|toggle| LibraryToggleRecord {
                 in_library: toggle.in_library,
                 add_token: toggle.add_token,
@@ -252,6 +256,7 @@ impl From<innertube::BrowseItem> for SongItemRecord {
             is_video: item.is_video,
             is_upload: item.is_upload,
             content_rating: ContentRating::from_explicit(item.explicit),
+            play_count: item.play_count,
             library: None,
             artist_runs: item.artist_runs.into_iter().map(|run| HomeArtistRunRecord { text: run.text, id: run.id }).collect(),
         }
@@ -2303,6 +2308,7 @@ fn parse_song_record(json: &str) -> Option<SongItemRecord> {
         is_video: false,
         is_upload: false,
         library: None,
+        play_count: None,
     })
 }
 
@@ -2462,6 +2468,18 @@ mod tests {
             };
             assert_eq!(SongItemRecord::from(track).content_rating, expected);
         }
+    }
+
+    #[test]
+    fn play_count_crosses_song_and_browse_conversions() {
+        let track = innertube::SongItem {
+            video_id: "v".into(), play_count: Some("53M".into()), ..Default::default()
+        };
+        assert_eq!(SongItemRecord::from(track).play_count.as_deref(), Some("53M"));
+        let mut item = browse_item("song", "v", "Track");
+        item.play_count = Some("1,234".into());
+        assert_eq!(SongItemRecord::from(item).play_count.as_deref(), Some("1,234"));
+        assert_eq!(SongItemRecord::from(innertube::SongItem::default()).play_count, None);
     }
 
     #[test]

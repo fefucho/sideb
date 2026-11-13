@@ -1,4 +1,4 @@
-import type { SearchResultsDto, SearchSuggestionsPageDto, SearchSuggestionEntryDto } from '../types';
+import type { SearchResultsDto, SearchSuggestionsPageDto, SearchSuggestionEntryDto, SearchPageDto } from '../types';
 import type { SearchRpc } from './controller';
 
 export interface SearchPreviewData {
@@ -7,6 +7,10 @@ export interface SearchPreviewData {
   results: SearchResultsDto | null;
   queries?: string[];
   entries?: SearchSuggestionEntryDto[];
+  /** A full provider search for what is typed, so the quick search can show a top result and several songs,
+   * artists and albums (the suggestions endpoint only returns about three media items). Never recorded in history. */
+  page?: SearchPageDto | null;
+  pageQuery?: string;
   isLoading: boolean;
   error: string | null;
 }
@@ -17,7 +21,7 @@ export interface SearchPreviewScheduler {
 }
 
 export function emptySearchPreviewData(): SearchPreviewData {
-  return { query: '', associatedQuery: '', results: null, queries: [], entries: [], isLoading: false, error: null };
+  return { query: '', associatedQuery: '', results: null, queries: [], entries: [], page: null, pageQuery: '', isLoading: false, error: null };
 }
 
 function errorMessage(error: unknown): string {
@@ -34,6 +38,8 @@ export class ProviderPreviewController {
   private disposed = false;
   private accountRevision=0;
   private removedTokens=new Set<string>();
+  private pageCache=new Map<string,{at:number;page:SearchPageDto}>();
+  private pageTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(private invoke: SearchRpc, private onChange: (data: SearchPreviewData) => void,
     private scheduler: SearchPreviewScheduler = {
@@ -57,6 +63,7 @@ export class ProviderPreviewController {
     if (this.data.associatedQuery !== trimmed) {
       this.data = { ...this.data, associatedQuery: '', results: null, queries: [], entries: [] };
     }
+    if (this.data.pageQuery !== trimmed) this.data = { ...this.data, page: null, pageQuery: '' };
     this.emit();
     this.timer = this.scheduler.setTimeout(() => {
       this.timer = null;
@@ -64,9 +71,29 @@ export class ProviderPreviewController {
     }, 150);
   }
 
+  /** Best effort: when it fails the suggestions alone still populate the list. */
+  private async loadPage(query: string, generation: number) {
+    if (!query) return;
+    const cached = this.pageCache.get(query);
+    if (cached && Date.now() - cached.at < 60_000) { this.data = { ...this.data, page: cached.page, pageQuery: query }; this.emit(); return; }
+    try {
+      const page = await this.invoke<SearchPageDto>('search_page', { query, params: null, recordHistory: false, ignoreSpelling: false });
+      if (this.disposed || generation !== this.generation) return;
+      this.pageCache.delete(query); this.pageCache.set(query, { at: Date.now(), page });
+      while (this.pageCache.size > 12) this.pageCache.delete(this.pageCache.keys().next().value!);
+      this.data = { ...this.data, page, pageQuery: query };
+      this.emit();
+    } catch { /* keep the suggestions */ }
+  }
+
   private async load(query: string, generation: number) {
     this.data = { ...this.data, isLoading: true, error: null };
     this.emit();
+    // The full search waits for the query to settle once more: it never runs per key, only when the user pauses.
+    if (query) this.pageTimer = this.scheduler.setTimeout(() => {
+      this.pageTimer = null;
+      if (!this.disposed && generation === this.generation) void this.loadPage(query, generation);
+    }, 250);
     try {
       const suggestions = await this.invoke<SearchSuggestionsPageDto>('search_suggestions_page', { query });
       if (this.disposed || generation !== this.generation) return;
@@ -97,7 +124,7 @@ export class ProviderPreviewController {
 
   reset() {
     if (this.disposed) return;
-    ++this.accountRevision;this.removedTokens.clear();
+    ++this.accountRevision;this.removedTokens.clear();this.pageCache.clear();
     this.clearTimer();
     ++this.generation;
     this.data = emptySearchPreviewData();
@@ -114,5 +141,7 @@ export class ProviderPreviewController {
   private clearTimer() {
     if (this.timer !== null) this.scheduler.clearTimeout(this.timer);
     this.timer = null;
+    if (this.pageTimer !== null) this.scheduler.clearTimeout(this.pageTimer);
+    this.pageTimer = null;
   }
 }

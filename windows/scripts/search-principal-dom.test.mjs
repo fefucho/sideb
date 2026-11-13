@@ -48,7 +48,7 @@ if(!process.execArgv.includes('--conditions=browser')) {
   assert.ok(source.includes('.principal:not(.artist).has-actions{grid-template-columns:minmax(0,1fr) auto'));
   assert.ok(source.includes('.hero-card .cover{display:grid;place-items:center;width:96px;height:96px'));
   assert.ok(source.includes('.hero-card{display:flex;align-items:center;gap:16px'));assert.ok(source.includes('.actions{display:flex;min-width:0;align-items:center;'));
-  const searchView=await readFile(path.join(root,'src/lib/components/search/SearchView.svelte'),'utf8');assert.ok(searchView.includes('projectSearchDocument(displayPage)')&&searchView.includes('filterSearchPage(displayData.page,'),'document projects the retained page through the video preference');assert.ok(searchView.includes('remaining={[]}'));
+  const searchView=await readFile(path.join(root,'src/lib/components/search/SearchView.svelte'),'utf8');assert.ok(searchView.includes('projectSearchDocument(displayPage)')&&searchView.includes('filterSearchPage(basePage,')&&searchView.includes('categoryPage(displayData.page!'),'document projects the retained page (by category when applicable) through the video preference');assert.ok(searchView.includes('remaining={[]}'));
  });
  test('unpaired song and video principals retain media geometry, accessible playback and safe fallback payloads',async()=>{
   for(const kind of ['song','video']){
