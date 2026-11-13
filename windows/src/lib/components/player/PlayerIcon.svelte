@@ -1,5 +1,5 @@
 <script lang="ts">
-  type Icon = 'shuffle' | 'backward' | 'forward' | 'repeat' | 'repeat-one' | 'lyrics' | 'annotations' | 'queue' | 'related';
+  type Icon = 'shuffle' | 'backward' | 'forward' | 'repeat' | 'repeat-one' | 'lyrics' | 'annotations' | 'queue' | 'related' | 'connections' | 'connections-live';
   let { name, size = 16 }: { name: Icon; size?: number } = $props();
 </script>
 
@@ -23,6 +23,10 @@
     <path d="M8 5h13M8 12h13M8 19h13" /><path d="M3 5h.01M3 12h.01M3 19h.01" stroke-width="3" />
   {:else if name === 'related'}
     <path d="M3 6h9M3 10h9M3 14h7M17 16V4l5-2v5l-5 2" /><ellipse cx="14.5" cy="17.5" rx="2.5" ry="2" fill="currentColor" stroke="none" />
+  {:else if name === 'connections' || name === 'connections-live'}
+    <!-- Two people with waves; filled while a Jam is live. -->
+    <circle cx="8" cy="8" r="3" fill={name === 'connections-live' ? 'currentColor' : 'none'} /><path d="M2.5 20c0-3.6 2.5-5.7 5.5-5.7s5.5 2.1 5.5 5.7Z" fill={name === 'connections-live' ? 'currentColor' : 'none'} />
+    <path d="M16.5 9.5a3.5 3.5 0 0 1 0 5M19.5 7a7 7 0 0 1 0 10" />
   {/if}
 </svg>
 

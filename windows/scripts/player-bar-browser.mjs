@@ -9,7 +9,8 @@ import {svelte} from '@sveltejs/vite-plugin-svelte';
 const root=fileURLToPath(new URL('../',import.meta.url)),cache=path.join(root,'.cache/player-bar-browser');
 await mkdir(cache,{recursive:true});
 await writeFile(path.join(cache,'Fixture.svelte'),String.raw`<script>
-import '$lib/styles/fonts.css';import '$lib/styles/tokens.css';import PlayerBar from '$lib/components/player/PlayerBar.svelte';import {setContext} from 'svelte';import {FEATURED_ARTIST_CONTEXT,featuredClauses} from '$lib/featured/artists';
+import '$lib/styles/fonts.css';import '$lib/styles/tokens.css';import PlayerBar from '$lib/components/player/PlayerBar.svelte';import {setContext} from 'svelte';import {FEATURED_ARTIST_CONTEXT,featuredClauses} from '$lib/featured/artists';import {writable} from 'svelte/store';import {emptyJamState} from '$lib/jam/types';import {provideJamUi} from '$lib/components/jam/context';
+provideJamUi({state:writable(emptyJamState()),actions:new Proxy({},{get:()=>async()=>{}}),searchSongs:async()=>[]});
 let width=$state(820),liked=$state(false);const calls=[];const long='Very long music title with many words to test full scrolling and another long phrase (feat. Guest Artist)';
 let playback=$state({currentTrack:{videoId:'fixture',title:long,artists:'Fixture Artist',artistId:'artist',album:'Fixture Album',albumId:'album',thumbnail:null,contentRating:'explicit'},isPlaying:true,isLoading:false,isEnded:false,isShuffle:false,isRepeat:false,position:30,duration:240,volume:70,error:null,generation:1,queue:{items:[],currentIndex:null}});
 setContext(FEATURED_ARTIST_CONTEXT,{scopeRevision:1,title:async track=>featuredClauses(track.title).map(c=>({...c,id:'guest'})),open:async(track,name,open)=>open('guest'),search:()=>{},candidates:async()=>[],choose:()=>{},clearChoice:()=>{}});
@@ -50,6 +51,8 @@ try{
    assert.equal(g.bar.width,width);assert.equal(g.bar.height,74);assert.equal(g.actions.width,28);assert.equal(g.actions.height,46);
    assert.equal(g.like.width,18);assert.equal(g.like.height,18);assert.equal(g.more.width,28);assert.equal(g.more.height,28);assert.equal(g.seek.height,5,'progress track is 5 px at rest');
    assert.ok(g.like.x>=g.title.right-0.01&&g.like.right<=g.metadata.right+0.01,'heart sits inside the title line, after the title');assert.equal(g.like.right,g.metadata.right,'a long title is clipped and the heart stays visible at the end');
+   const cluster=await evaluate(`(()=>{const box=s=>document.querySelector(s).getBoundingClientRect(),shortcuts=[...document.querySelectorAll('.panel-shortcut')].map(b=>b.getBoundingClientRect()),c=box('.connections-button'),v=box('.volume');return {c:{x:c.x,y:c.y,width:c.width,height:c.height,right:c.right},genius:shortcuts[1].right,volume:v.x,order:document.querySelector('.connections-button').compareDocumentPosition(document.querySelector('.volume'))}})()`);
+   assert.equal(cluster.c.width,width<=760?28:32,'Connections matches the neighbouring shortcut width');assert.equal(cluster.c.height,32);assert.equal(cluster.c.x-cluster.genius,width<=760?2:8,'Connections sits after Genius with the shortcut gap');assert.equal(cluster.volume-cluster.c.right,width<=760?2:8,'and before Volume with the cluster gap');assert.ok(cluster.order&4);
    assert.equal(g.lyrics.x-g.actions.right,17);assert.equal(g.artist.right,g.metadata.right);assert.equal(g.actions.x-g.metadata.right,6);assert.equal(g.lyrics.x-g.actions.right,17);evidence.length&&assert.ok(g.metadata.width>0);
    evidence.push({dpr,width,...g});
   }

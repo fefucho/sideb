@@ -25,9 +25,16 @@
   import AnimatedArtwork from '$lib/components/fullscreen/AnimatedArtwork.svelte';
   import { animatedArtworkAlbumKey } from '$lib/artwork/policy';
   import { artworkCandidates, cardArtworkCandidates, nextArtworkUrl } from '$lib/images/artwork';
-  import { heroScroll, sidebarArtworkGeometry, sidebarArtworkPresentation, sidebarMotionSuspended, type VideoSize } from '$lib/player/sidebarLayout';
+  import { heroScroll, sidebarLayout, sidebarArtworkGeometry, sidebarArtworkPresentation, sidebarMotionSuspended, type VideoSize } from '$lib/player/sidebarLayout';
   import { SidebarPaletteController, neutralSidebarPalette, rgbCss, sidebarTopSurface, type SidebarPalette } from '$lib/player/sidebarPalette';
   import { sidebarFeedTop } from '$lib/player/sidebarRecommendations';
+  import { readable } from 'svelte/store';
+  import { emptyJamState } from '$lib/jam/types';
+  import JamBadge from '$lib/components/jam/JamBadge.svelte';
+  import JamFlyout from '$lib/components/jam/JamFlyout.svelte';
+  import JamPanel from '$lib/components/jam/JamPanel.svelte';
+  import { useJamUi } from '$lib/components/jam/context';
+  import { isJamLive } from '$lib/components/jam/view';
 
   interface Props {
     session: number;
@@ -56,6 +63,13 @@
   // The recommendations sheet rises over this hero (macOS: metadata fixed *behind* the feed, FIX-282). Once its top edge
   // passes the metadata's bottom the block is hidden by the sheet, so it must not keep receiving clicks or focus.
   const metadataCovered = $derived(sidebarFeedTop(height, scrollOffset) < geometry.metadataTop + 68);
+  // Jam marker: overlays the top edge of the cover (no free room above it), so it never moves or resizes the artwork.
+  const jamUi = useJamUi();
+  const jamState = jamUi?.state ?? readable(emptyJamState());
+  const jamBadgeShown = $derived(!!jamUi && isJamLive($jamState) && active && scroll.heroVisible);
+  let jamBadge = $state<HTMLButtonElement>();
+  let jamFlyoutOpen = $state(false);
+  $effect(() => { if (!jamBadgeShown) jamFlyoutOpen = false; });
   const suspended = $derived(sidebarMotionSuspended({ panelActive: active, scroll, reducedMotion }));
 
   // Poster candidates follow the fullscreen policy (original → max quality → 544 px → provider URL).
@@ -123,6 +137,15 @@
       onFirstFrame={size => { ready = { ...size, key: geometryKey }; }} onFrameUnavailable={() => { ready = null; }} />
   </div>
 
+  {#if jamBadgeShown && jamUi}
+    <div class="jam-badge" data-jam-marker style:top="{(presentation.tall ? sidebarLayout.headerHeight : geometry.cardTop) + 8}px">
+      <JamBadge bind:element={jamBadge} state={$jamState} size="compact" expanded={jamFlyoutOpen} controls="jam-sidebar-flyout" onTap={() => jamFlyoutOpen = !jamFlyoutOpen} />
+    </div>
+    <JamFlyout anchor={jamBadge} open={jamFlyoutOpen} onClose={() => jamFlyoutOpen = false} label={$t('jam.panel.title')} id="jam-sidebar-flyout" placement="below">
+      <JamPanel state={$jamState} actions={jamUi.actions} searchSongs={jamUi.searchSongs} />
+    </JamFlyout>
+  {/if}
+
   {#if metadata}
     <div class="metadata" class:covered={metadataCovered} inert={metadataCovered} style:left="{(geometry.width - geometry.metadataWidth) / 2}px" style:top="{geometry.metadataTop}px" style:width="{geometry.metadataWidth}px">
       {@render metadata()}
@@ -145,6 +168,8 @@
   .video.shown { opacity:1; }
   /* No z-index: the feed is a later sibling and must paint over the metadata (a z-index here lifted the title and the
      like/dislike buttons above the rising sheet, on top of its rows). */
+  .jam-badge { position:absolute; left:0; right:0; display:flex; justify-content:center; padding-inline:20px; pointer-events:none; }
+  .jam-badge :global(.badge) { pointer-events:auto; }
   .metadata { position:absolute; height:68px; pointer-events:auto; }
   .metadata.covered { pointer-events:none; }
   @media (prefers-reduced-motion:reduce) { .poster { transition:none; } }

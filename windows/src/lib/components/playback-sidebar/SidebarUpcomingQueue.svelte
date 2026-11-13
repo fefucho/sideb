@@ -8,7 +8,11 @@
    * - `onSelectQueue(queueIndex)`: play that occurrence (same handler as FullscreenNowPlaying's `onSelectQueue`).
    * - `onOpenQueue()`: "View queue ›" — select the Cola tab of the sidebar.
    */
-  import { t } from '$lib/i18n';
+  import { readable } from 'svelte/store';
+  import { t, language } from '$lib/i18n';
+  import { emptyJamState } from '$lib/jam/types';
+  import { useJamUi } from '$lib/components/jam/context';
+  import { formatMs, isJamLive, jamTitle, trackArtists, trackTitle } from '$lib/components/jam/view';
   import type { PlaybackStateDto } from '$lib/types';
   import { cardArtworkCandidates, nextArtworkUrl } from '$lib/images/artwork';
   import { formatSidebarDuration, sidebarUpcomingPreview } from '$lib/player/sidebarUpcoming';
@@ -20,16 +24,21 @@
     onOpenQueue?: () => void;
   }
   let { playback, onSelectQueue, onOpenQueue }: Props = $props();
-  const entries = $derived(sidebarUpcomingPreview(playback.queue));
+  // During a Jam the preview follows the Jam order (first two tracks) and cannot jump to a row.
+  const jamUi = useJamUi();
+  const jamState = jamUi?.state ?? readable(emptyJamState());
+  const jamLive = $derived(isJamLive($jamState));
+  const jamRows = $derived(jamLive ? $jamState.queue.slice(0, 2) : []);
+  const entries = $derived(jamLive ? [] : sidebarUpcomingPreview(playback.queue));
   let failed = $state<Record<string, string[]>>({});
   const pixelRatio = () => (typeof window === 'undefined' ? 1 : window.devicePixelRatio || 1);
   const coverFor = (entryId: string, thumbnail: string | null) => nextArtworkUrl(cardArtworkCandidates(thumbnail, 36, pixelRatio()), failed[entryId] ?? []);
   const rejectCover = (entryId: string, url: string) => { failed = { ...failed, [entryId]: [...(failed[entryId] ?? []), url] }; };
 </script>
 
-<section class="upcoming" aria-label={$t('playbackSidebar.upNext')}>
+<section class="upcoming" aria-label={$t('playbackSidebar.upNext')} data-jam-upcoming={jamLive ? '' : undefined}>
   <header>
-    <h3>{$t('playbackSidebar.upNext')}</h3>
+    <h3>{jamLive ? jamTitle($jamState, $language) : $t('playbackSidebar.upNext')}</h3>
     {#if onOpenQueue}
       <button type="button" class="view-queue" onclick={onOpenQueue}>
         {$t('playbackSidebar.viewQueue')}
@@ -37,9 +46,25 @@
       </button>
     {/if}
   </header>
-  {#if !entries.length}
+  {#if !entries.length && !jamRows.length}
     <p class="empty">{$t('queue.empty')}</p>
   {/if}
+  {#each jamRows as track (track.key)}
+    {@const ok = track.status === 'matched' && !!track.matched}
+    <div class="row jam-row" class:dim={!ok} data-status={track.status} aria-label={ok ? `${trackTitle(track)}, ${trackArtists(track)}` : `${trackTitle(track)}, ${track.status === 'unavailable' ? $t('jam.queue.unavailable') : $t('jam.queue.resolving')}`}>
+      <span class="cover" aria-hidden="true">
+        {#if ok && track.matched?.thumbnail}<img src={track.matched.thumbnail} alt="" decoding="async" draggable="false" />
+        {:else if !ok && track.status !== 'unavailable'}<span class="spinner"></span>
+        {:else if !ok}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9" /><path d="M12 7v6M12 16.5v.5" /></svg>
+        {:else}<svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 5v12.1a4 4 0 1 1-2-3.46V3l12-2v14.1a4 4 0 1 1-2-3.46V4.4z" /></svg>{/if}
+      </span>
+      <span class="text">
+        <span class="name" title={trackTitle(track)}>{trackTitle(track)}</span>
+        <span class="artist" class:warn={track.status === 'unavailable'} title={trackArtists(track)}>{ok ? trackArtists(track) : track.status === 'unavailable' ? $t('jam.queue.unavailable') : $t('jam.queue.resolving')}</span>
+      </span>
+      {#if formatMs(track.durationMs)}<span class="duration">{formatMs(track.durationMs)}</span>{/if}
+    </div>
+  {/each}
   {#each entries as { entry, queueIndex } (entry.entryId)}
     {@const cover = coverFor(entry.entryId, entry.thumbnail)}
     <button type="button" class="row" onclick={() => onSelectQueue(queueIndex)}>
@@ -68,6 +93,8 @@
   .empty { display:flex; align-items:center; min-height:36px; margin:0; color:rgb(255 255 255 / 60%); font-size:12px; }
   .row { display:flex; align-items:center; gap:10px; width:100%; min-width:0; padding:0; border:0; border-radius:6px; background:transparent; color:inherit; font:inherit; text-align:left; cursor:pointer; }
   .row:hover { background:rgb(255 255 255 / 6%); }
+  .jam-row { cursor:default; } .jam-row:hover { background:transparent; } .jam-row.dim .name { color:rgb(255 255 255 / 45%); } .artist.warn { color:rgb(242 184 107 / 90%); }
+  .spinner { width:14px; height:14px; border:2px solid rgb(255 255 255 / 24%); border-top-color:var(--sideb-highlight, #d06c70); border-radius:50%; animation:spin .8s linear infinite; } @keyframes spin { to { transform:rotate(360deg); } }
   .cover { display:grid; place-items:center; flex:none; width:36px; height:36px; overflow:hidden; border-radius:5px; background:rgb(255 255 255 / 8%); color:rgb(255 255 255 / 55%); }
   .cover img { display:block; width:100%; height:100%; object-fit:cover; } .cover svg { width:16px; height:16px; }
   .text { display:flex; flex:1 1 auto; flex-direction:column; gap:3px; min-width:0; }

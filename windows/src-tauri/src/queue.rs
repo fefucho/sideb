@@ -1083,6 +1083,58 @@ impl QueueStateDto {
         self.revision += 1;
     }
 
+    /// Replaces every occurrence after the active one (or after the resume boundary when nothing
+    /// is active) with `items`, in order. History and the active occurrence are untouched, so the
+    /// audio owner never changes. Always bumps the revision. Duplicated video IDs stay distinct
+    /// occurrences. New entries are source occurrences (ranked after everything already ranked),
+    /// so no placement anchor or shuffle bookkeeping survives from the removed tail.
+    pub fn replace_upcoming(&mut self, items: Vec<QueueEntryDto>) {
+        let boundary = self
+            .current_index
+            .map(|index| index + 1)
+            .or(self.resume_index)
+            .unwrap_or(self.items.len())
+            .min(self.items.len());
+        let removed = self.items.split_off(boundary);
+        let removed_ids = removed
+            .iter()
+            .map(|entry| entry.entry_id.as_str())
+            .collect::<HashSet<_>>();
+        for id in &removed_ids {
+            self.source_ranks.remove(*id);
+            self.explicit_placements.remove(*id);
+            self.radio_entries.remove(*id);
+        }
+        // Kept occurrences anchored to a removed one fall back to the end placement.
+        for placement in self.explicit_placements.values_mut() {
+            if matches!(&*placement, QueuePlacement::After(anchor) | QueuePlacement::Before(anchor) if removed_ids.contains(anchor.as_str()))
+            {
+                *placement = QueuePlacement::End;
+            }
+        }
+        self.manual_end_ids
+            .retain(|id| !removed_ids.contains(id.as_str()));
+        let mut known_ids = self
+            .items
+            .iter()
+            .map(|entry| entry.entry_id.clone())
+            .collect::<HashSet<_>>();
+        for mut entry in items {
+            entry.normalize_metadata();
+            entry.entry_id = new_unique_entry_id(&mut known_ids);
+            self.source_ranks
+                .insert(entry.entry_id.clone(), self.next_source_rank);
+            self.next_source_rank += 1;
+            self.items.push(entry);
+        }
+        // Keep what the UI already revealed, and at least a batch beyond the active occurrence.
+        let batch_end = self
+            .current_index
+            .map_or(0, |index| index.saturating_add(PLAYLIST_BATCH_SIZE));
+        self.visible_len = self.visible_len.max(batch_end).min(self.items.len());
+        self.revision += 1;
+    }
+
     /// Removes a queue occurrence. The current item is protected so it cannot desync audio.
     pub fn remove_entry(&mut self, entry_id: &str) -> Result<bool, QueueRemoveError> {
         let Some(index) = self
@@ -3492,5 +3544,111 @@ mod tests {
                 .collect::<Vec<_>>(),
             ["r5"]
         );
+    }
+
+    fn upcoming_ids(q: &QueueStateDto) -> Vec<String> {
+        let start = q.current_index.map_or(q.items.len(), |index| index + 1);
+        q.items[start..].iter().map(|entry| entry.video_id.clone()).collect()
+    }
+
+    #[test]
+    fn replace_upcoming_keeps_history_and_active_and_bumps_revision() {
+        let mut q = QueueStateDto::default();
+        q.replace(
+            vec![item("h1"), item("h2"), item("now"), item("old1"), item("old2")],
+            2,
+            QueueSourceDto { kind: "jam".into(), id: None, title: None },
+        );
+        let before = q.items[..3].to_vec();
+        let active = q.current().unwrap();
+        let revision = q.revision;
+        q.replace_upcoming(vec![item("n1"), item("n2")]);
+        assert_eq!(q.items[..3], before[..]);
+        assert_eq!(q.current(), Some(active));
+        assert_eq!(q.current_index, Some(2));
+        assert_eq!(upcoming_ids(&q), ["n1", "n2"]);
+        assert_eq!(q.revision, revision + 1);
+        assert_eq!(q.source.as_ref().unwrap().kind, "jam");
+        assert!(q.recommendations.is_empty() && q.radio.is_none());
+        let ids = entry_ids(&q.items);
+        assert_eq!(ids.iter().collect::<HashSet<_>>().len(), ids.len());
+    }
+
+    #[test]
+    fn replace_upcoming_with_nothing_leaves_history_and_current_only() {
+        let mut q = queue();
+        let revision = q.revision;
+        q.replace_upcoming(Vec::new());
+        assert_eq!(video_ids(&q), ["same", "same"]);
+        assert_eq!(q.current_index, Some(1));
+        assert_eq!(q.revision, revision + 1);
+        assert!(!q.has_committed_next());
+        let snapshot = q.snapshot();
+        assert_eq!(snapshot.total_count, Some(2));
+        assert_eq!(snapshot.pending_count, Some(0));
+    }
+
+    #[test]
+    fn replace_upcoming_keeps_duplicate_video_ids_as_distinct_occurrences() {
+        let mut q = queue();
+        q.replace_upcoming(vec![item("same"), item("same"), item("x"), item("same")]);
+        assert_eq!(video_ids(&q), ["same", "same", "same", "same", "x", "same"]);
+        let ids = entry_ids(&q.items);
+        assert_eq!(ids.iter().collect::<HashSet<_>>().len(), ids.len());
+        // The active occurrence keeps its identity even though other copies share its video.
+        assert_eq!(q.current().unwrap().entry_id, ids[1]);
+    }
+
+    #[test]
+    fn replace_upcoming_clears_manual_and_radio_bookkeeping_of_the_removed_tail() {
+        let mut q = queue();
+        q.enqueue(vec![item("manual-end")], false);
+        q.enqueue(vec![item("manual-next")], true);
+        let stale = entry_ids(&q.items);
+        q.radio_entries.insert(stale[2].clone());
+        q.replace_upcoming(vec![item("n1")]);
+        assert_eq!(upcoming_ids(&q), ["n1"]);
+        assert!(q.manual_end_ids.is_empty());
+        assert!(q.radio_entries.is_empty());
+        for id in &stale[2..] {
+            assert!(!q.explicit_placements.contains_key(id));
+            assert!(!q.source_ranks.contains_key(id));
+        }
+        // The new tail keeps its order under a restore (source ranks follow insertion order).
+        q.replace_upcoming(vec![item("a"), item("b"), item("c")]);
+        q.restore_original_order();
+        assert_eq!(upcoming_ids(&q), ["a", "b", "c"]);
+    }
+
+    #[test]
+    fn replace_upcoming_works_beyond_the_projection_window() {
+        let mut q = QueueStateDto::default();
+        let first = (0..40).map(|i| item(&format!("old{i}"))).collect::<Vec<_>>();
+        q.replace(first, 3, QueueSourceDto { kind: "jam".into(), id: None, title: None });
+        let items = (0..250).map(|i| item(&format!("new{i}"))).collect::<Vec<_>>();
+        q.replace_upcoming(items);
+        assert_eq!(q.items.len(), 4 + 250);
+        assert_eq!(q.current_index, Some(3));
+        let snapshot = q.snapshot();
+        assert_eq!(snapshot.total_count, Some(254));
+        assert_eq!(snapshot.pending_count, Some(250));
+        assert!(snapshot.items.len() <= QUEUE_PROJECTION_WINDOW + QUEUE_RECENT_MANUAL_TAIL);
+        assert_eq!(snapshot.items[snapshot.current_index.unwrap()].video_id, "old3");
+        // Shrinking again is just as valid.
+        q.replace_upcoming(vec![item("only")]);
+        assert_eq!(q.items.len(), 5);
+        assert_eq!(upcoming_ids(&q), ["only"]);
+        assert_eq!(q.snapshot().pending_count, Some(1));
+    }
+
+    #[test]
+    fn replace_upcoming_without_an_active_entry_replaces_from_the_resume_boundary() {
+        let mut q = queue();
+        // No active occurrence: the queue resumes at index 1.
+        q.current_index = None;
+        q.resume_index = Some(1);
+        q.replace_upcoming(vec![item("n1")]);
+        assert_eq!(video_ids(&q), ["same", "n1"]);
+        assert_eq!(q.resume_index, Some(1));
     }
 }

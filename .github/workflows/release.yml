@@ -160,7 +160,8 @@ jobs:
             windows/src-tauri/target/
             windows/.cache/mpv/
             extensions/spotify-canvas/target/
-          key: release-windows-${{ hashFiles('core/Cargo.lock', 'windows/src-tauri/Cargo.lock', 'extensions/spotify-canvas/Cargo.lock', 'windows/pnpm-lock.yaml', 'windows/scripts/windows.ps1') }}
+            extensions/spotify-jam/target/
+          key: release-windows-${{ hashFiles('core/Cargo.lock', 'windows/src-tauri/Cargo.lock', 'extensions/spotify-canvas/Cargo.lock', 'extensions/spotify-jam/Cargo.lock', 'windows/pnpm-lock.yaml', 'windows/scripts/windows.ps1') }}
       - name: Bootstrap pinned runtimes
         shell: pwsh
         run: ./windows/scripts/windows.ps1 bootstrap
@@ -196,12 +197,19 @@ jobs:
               if ((Get-FileHash -LiteralPath $copy -Algorithm SHA256).Hash.ToLowerInvariant() -ne $verified) { throw "Proveedor visual distinto del verificado: $copy" }
             }
           }
+          # Spotify Jam (invitado): mismo trato, sólo el .exe y su licencia.
+          foreach ($name in @('sideb-spotify-jam.exe', 'LICENSE')) {
+            $verified = $manifest.artifactSHA256.PSObject.Properties["provider/spotify-jam/$name"].Value
+            foreach ($copy in @("$buildDir/provider/spotify-jam/$name", "windows/src-tauri/provider/spotify-jam/$name")) {
+              if ((Get-FileHash -LiteralPath $copy -Algorithm SHA256).Hash.ToLowerInvariant() -ne $verified) { throw "Plugin de Spotify Jam distinto del verificado: $copy" }
+            }
+          }
           $runtime = @('sideb-windows.exe', 'libmpv-2.dll', 'vulkan-1.dll', 'VulkanRT-License.txt', 'provider') | ForEach-Object { Join-Path $buildDir $_ }
           Compress-Archive -LiteralPath $runtime -DestinationPath "$buildDir/SideB-windows-x64.zip"
           Add-Type -AssemblyName System.IO.Compression.FileSystem
           $zip = [IO.Compression.ZipFile]::OpenRead("$buildDir/SideB-windows-x64.zip")
           try { $entries = @($zip.Entries | ForEach-Object { $_.FullName -replace '\\', '/' }) } finally { $zip.Dispose() }
-          foreach ($name in @('provider/spotify-canvas/manifest.json', 'provider/spotify-canvas/sideb-spotify-canvas.exe')) {
+          foreach ($name in @('provider/spotify-canvas/manifest.json', 'provider/spotify-canvas/sideb-spotify-canvas.exe', 'provider/spotify-jam/sideb-spotify-jam.exe', 'provider/spotify-jam/LICENSE')) {
             if ($entries -notcontains $name) { throw "El zip portable no contiene $name" }
           }
           $lines = @('SideB-Windows-x64-setup.exe', 'SideB-windows-x64.zip') | ForEach-Object {

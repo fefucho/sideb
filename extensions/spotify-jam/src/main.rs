@@ -35,7 +35,10 @@ const META_EAGER_LIMIT: usize = 60;
 const META_PARALLEL: usize = 6;
 
 fn now_ms() -> i64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0)
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
 }
 fn emit(value: Value) {
     println!("{value}");
@@ -52,14 +55,22 @@ fn random_hex(bytes: usize) -> String {
 fn num(value: Option<&Value>) -> Option<i64> {
     match value? {
         Value::Number(n) => n.as_i64().or_else(|| n.as_f64().map(|f| f as i64)),
-        Value::String(s) => s.parse::<i64>().ok().or_else(|| s.parse::<f64>().ok().map(|f| f as i64)),
+        Value::String(s) => s
+            .parse::<i64>()
+            .ok()
+            .or_else(|| s.parse::<f64>().ok().map(|f| f as i64)),
         _ => None,
     }
 }
 fn clean_bearer(raw: &str) -> Option<String> {
     let token = raw.trim();
-    let token = token.strip_prefix("Bearer ").or_else(|| token.strip_prefix("bearer ")).unwrap_or(token).trim();
-    (token.len() > 20 && token.len() < 4096 && token.chars().all(|c| c.is_ascii_graphic())).then(|| token.to_string())
+    let token = token
+        .strip_prefix("Bearer ")
+        .or_else(|| token.strip_prefix("bearer "))
+        .unwrap_or(token)
+        .trim();
+    (token.len() > 20 && token.len() < 4096 && token.chars().all(|c| c.is_ascii_graphic()))
+        .then(|| token.to_string())
 }
 /// Accepts a bare join token or an `open.spotify.com/socialsession/<token>` link.
 fn jam_token(link: &str) -> Option<String> {
@@ -68,8 +79,13 @@ fn jam_token(link: &str) -> Option<String> {
         Some(at) => link[at + "socialsession".len()..].trim_start_matches(['/', ':']),
         None => link,
     };
-    let token: String = candidate.chars().take_while(|c| c.is_ascii_alphanumeric()).collect();
-    ((16..=40).contains(&token.len()) && (token.len() == candidate.len() || link.contains("socialsession"))).then_some(token)
+    let token: String = candidate
+        .chars()
+        .take_while(|c| c.is_ascii_alphanumeric())
+        .collect();
+    ((16..=40).contains(&token.len())
+        && (token.len() == candidate.len() || link.contains("socialsession")))
+    .then_some(token)
 }
 /// `spotify:track:<base62>` → 32-hex gid used by the metadata service.
 fn track_gid(uri: &str) -> Option<String> {
@@ -91,12 +107,21 @@ fn track_gid(uri: &str) -> Option<String> {
 }
 fn track_json(uri: &str, provider: Option<&str>, meta: Option<&Value>) -> Value {
     let artists: Vec<&str> = meta
-        .and_then(|m| m.get("artist")).and_then(Value::as_array)
-        .map(|a| a.iter().filter_map(|x| x.get("name").and_then(Value::as_str)).collect())
+        .and_then(|m| m.get("artist"))
+        .and_then(Value::as_array)
+        .map(|a| {
+            a.iter()
+                .filter_map(|x| x.get("name").and_then(Value::as_str))
+                .collect()
+        })
         .unwrap_or_default();
     let isrc = meta
-        .and_then(|m| m.get("external_id")).and_then(Value::as_array)
-        .and_then(|ids| ids.iter().find(|x| x.get("type").and_then(Value::as_str) == Some("isrc")))
+        .and_then(|m| m.get("external_id"))
+        .and_then(Value::as_array)
+        .and_then(|ids| {
+            ids.iter()
+                .find(|x| x.get("type").and_then(Value::as_str) == Some("isrc"))
+        })
         .and_then(|x| x.get("id").and_then(Value::as_str));
     json!({
         "uri": uri,
@@ -109,29 +134,44 @@ fn track_json(uri: &str, provider: Option<&str>, meta: Option<&Value>) -> Value 
     })
 }
 fn members_json(session: &Value) -> Value {
-    let owner = session.get("session_owner_id").and_then(Value::as_str).unwrap_or("");
-    let members: Vec<Value> = session.get("session_members").and_then(Value::as_array).map(|list| {
-        list.iter().map(|m| json!({
+    let owner = session
+        .get("session_owner_id")
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    let members: Vec<Value> =
+        session
+            .get("session_members")
+            .and_then(Value::as_array)
+            .map(|list| {
+                list.iter().map(|m| json!({
             "name": m.get("display_name").or_else(|| m.get("username")),
             "imageUrl": m.get("image_url"),
             "isHost": m.get("id").and_then(Value::as_str) == Some(owner),
             "isMe": m.get("is_current_user").and_then(Value::as_bool).unwrap_or(false),
         })).collect()
-    }).unwrap_or_default();
+            })
+            .unwrap_or_default();
     Value::Array(members)
 }
 fn session_over(reason: &str) -> bool {
-    ["YOU_LEFT", "DELETED", "ENDED", "KICKED", "REMOVED_YOU"].iter().any(|k| reason.contains(k))
+    ["YOU_LEFT", "DELETED", "ENDED", "KICKED", "REMOVED_YOU"]
+        .iter()
+        .any(|k| reason.contains(k))
 }
 /// Dealer payloads are JSON objects, or base64 (optionally gzip) strings of one.
 fn decode_payload(payload: &Value) -> Option<Value> {
     match payload {
         Value::Object(_) => Some(payload.clone()),
         Value::String(text) => {
-            let raw = base64::engine::general_purpose::STANDARD.decode(text).ok()?;
+            let raw = base64::engine::general_purpose::STANDARD
+                .decode(text)
+                .ok()?;
             let bytes = if raw.starts_with(&[0x1f, 0x8b]) {
                 let mut out = Vec::new();
-                flate2::read::GzDecoder::new(&raw[..]).take(8 * 1024 * 1024).read_to_end(&mut out).ok()?;
+                flate2::read::GzDecoder::new(&raw[..])
+                    .take(8 * 1024 * 1024)
+                    .read_to_end(&mut out)
+                    .ok()?;
                 out
             } else {
                 raw
@@ -148,8 +188,13 @@ fn playable_uri(uri: &str) -> bool {
 /// Raw `next_tracks` indices of the entries that are emitted (playable, first QUEUE_LIMIT).
 /// Position `n` in the result is emitted queue index `n`.
 fn emitted_indices(raw: &[Value]) -> Vec<usize> {
-    raw.iter().enumerate()
-        .filter(|(_, t)| t.get("uri").and_then(Value::as_str).is_some_and(playable_uri))
+    raw.iter()
+        .enumerate()
+        .filter(|(_, t)| {
+            t.get("uri")
+                .and_then(Value::as_str)
+                .is_some_and(playable_uri)
+        })
         .map(|(i, _)| i)
         .take(QUEUE_LIMIT)
         .collect()
@@ -171,7 +216,9 @@ enum QueueEdit {
 }
 /// Marks a ContextTrack as user-queued, the way the official clients do.
 fn mark_queued(track: &mut Value) {
-    let Some(object) = track.as_object_mut() else { return };
+    let Some(object) = track.as_object_mut() else {
+        return;
+    };
     object.insert("provider".into(), json!("queue"));
     let metadata = object.entry("metadata").or_insert_with(|| json!({}));
     if !metadata.is_object() {
@@ -229,9 +276,17 @@ fn index_of(message: &Value, key: &str) -> Option<usize> {
 }
 fn parse_edit(action: &str, message: &Value) -> Option<QueueEdit> {
     match action {
-        "move" => Some(QueueEdit::Move { from: index_of(message, "from")?, to: index_of(message, "to")? }),
-        "insert" => Some(QueueEdit::Insert { uri: message.get("uri").and_then(Value::as_str)?.to_string(), index: index_of(message, "index")? }),
-        "remove" => Some(QueueEdit::Remove { index: index_of(message, "index")? }),
+        "move" => Some(QueueEdit::Move {
+            from: index_of(message, "from")?,
+            to: index_of(message, "to")?,
+        }),
+        "insert" => Some(QueueEdit::Insert {
+            uri: message.get("uri").and_then(Value::as_str)?.to_string(),
+            index: index_of(message, "index")?,
+        }),
+        "remove" => Some(QueueEdit::Remove {
+            index: index_of(message, "index")?,
+        }),
         _ => None,
     }
 }
@@ -244,8 +299,12 @@ fn command_result(action: &str, ok: bool, detail: Value, message: &Value) -> Val
 }
 fn resolved_json(request_id: &str, outcome: Result<&search::Match, ()>) -> Value {
     match outcome {
-        Ok(found) => json!({"type":"resolved","requestId":request_id,"uri":found.uri,"title":found.title,"artists":found.artists,"durationMs":found.duration_ms}),
-        Err(()) => json!({"type":"resolved","requestId":request_id,"uri":null,"title":null,"artists":[],"durationMs":null}),
+        Ok(found) => {
+            json!({"type":"resolved","requestId":request_id,"uri":found.uri,"title":found.title,"artists":found.artists,"durationMs":found.duration_ms})
+        }
+        Err(()) => {
+            json!({"type":"resolved","requestId":request_id,"uri":null,"title":null,"artists":[],"durationMs":null})
+        }
     }
 }
 
@@ -268,7 +327,8 @@ struct Jam {
 
 impl Jam {
     fn request(&self, method: reqwest::Method, url: &str) -> reqwest::RequestBuilder {
-        self.http.request(method, url)
+        self.http
+            .request(method, url)
             .bearer_auth(&self.bearer)
             .header("client-token", &self.client_token)
             .header("accept", "application/json")
@@ -276,13 +336,19 @@ impl Jam {
             .header("origin", "https://open.spotify.com")
     }
     async fn load_metadata(&mut self, uris: &[String]) {
-        let missing: Vec<(String, String)> = uris.iter()
+        let missing: Vec<(String, String)> = uris
+            .iter()
             .filter(|u| !self.meta.contains_key(*u))
             .filter_map(|u| track_gid(u).map(|gid| (u.clone(), gid)))
             .collect();
         for chunk in missing.chunks(META_PARALLEL) {
             let calls = chunk.iter().map(|(uri, gid)| {
-                let call = self.request(reqwest::Method::GET, &format!("{SP}/metadata/4/track/{gid}?market=from_token")).send();
+                let call = self
+                    .request(
+                        reqwest::Method::GET,
+                        &format!("{SP}/metadata/4/track/{gid}?market=from_token"),
+                    )
+                    .send();
                 async move {
                     let response = call.await.ok()?;
                     if !response.status().is_success() {
@@ -291,7 +357,11 @@ impl Jam {
                     Some((uri.clone(), response.json::<Value>().await.ok()?))
                 }
             });
-            for (uri, meta) in futures_util::future::join_all(calls).await.into_iter().flatten() {
+            for (uri, meta) in futures_util::future::join_all(calls)
+                .await
+                .into_iter()
+                .flatten()
+            {
                 self.meta.insert(uri, meta);
             }
         }
@@ -301,28 +371,52 @@ impl Jam {
     async fn publish(&mut self, cluster: &Value, received_ms: i64) {
         if let Some(server) = num(cluster.get("server_timestamp_ms")) {
             let sample = server - received_ms;
-            self.clock_offset_ms = Some(self.clock_offset_ms.map_or(sample, |best| best.max(sample)));
+            self.clock_offset_ms =
+                Some(self.clock_offset_ms.map_or(sample, |best| best.max(sample)));
         }
-        let active = cluster.get("active_device_id").and_then(Value::as_str).unwrap_or("");
+        let active = cluster
+            .get("active_device_id")
+            .and_then(Value::as_str)
+            .unwrap_or("");
         if !active.starts_with("social-connect-") {
             return;
         }
-        let Some(player) = cluster.get("player_state") else { return };
-        let current = player.pointer("/track/uri").and_then(Value::as_str).map(String::from);
-        let raw_next = player.get("next_tracks").and_then(Value::as_array).cloned().unwrap_or_default();
-        let entries: Vec<(String, Option<String>)> = emitted_indices(&raw_next).into_iter()
+        let Some(player) = cluster.get("player_state") else {
+            return;
+        };
+        let current = player
+            .pointer("/track/uri")
+            .and_then(Value::as_str)
+            .map(String::from);
+        let raw_next = player
+            .get("next_tracks")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+        let entries: Vec<(String, Option<String>)> = emitted_indices(&raw_next)
+            .into_iter()
             .filter_map(|i| {
                 let t = &raw_next[i];
-                Some((t.get("uri")?.as_str()?.to_string(), t.get("provider").and_then(Value::as_str).map(String::from)))
+                Some((
+                    t.get("uri")?.as_str()?.to_string(),
+                    t.get("provider").and_then(Value::as_str).map(String::from),
+                ))
             })
             .collect();
-        self.raw_prev = player.get("prev_tracks").and_then(Value::as_array).cloned().unwrap_or_default();
+        self.raw_prev = player
+            .get("prev_tracks")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
         self.raw_next = raw_next;
         self.revision = revision_of(player);
 
         let mut wanted: Vec<String> = current.iter().cloned().collect();
         wanted.extend(entries.iter().map(|(uri, _)| uri.clone()));
-        let uncached = wanted.iter().filter(|u| !self.meta.contains_key(*u) && track_gid(u).is_some()).count();
+        let uncached = wanted
+            .iter()
+            .filter(|u| !self.meta.contains_key(*u) && track_gid(u).is_some())
+            .count();
         if uncached > META_EAGER_LIMIT {
             // Show the queue right away with what is cached; the rest follows.
             self.emit_state(player, current.as_deref(), &entries, received_ms);
@@ -330,12 +424,26 @@ impl Jam {
         self.load_metadata(&wanted).await;
         self.emit_state(player, current.as_deref(), &entries, received_ms);
     }
-    fn emit_state(&mut self, player: &Value, current: Option<&str>, entries: &[(String, Option<String>)], received_ms: i64) {
-        let paused = player.get("is_paused").and_then(Value::as_bool).unwrap_or(false)
-            || !player.get("is_playing").and_then(Value::as_bool).unwrap_or(false);
+    fn emit_state(
+        &mut self,
+        player: &Value,
+        current: Option<&str>,
+        entries: &[(String, Option<String>)],
+        received_ms: i64,
+    ) {
+        let paused = player
+            .get("is_paused")
+            .and_then(Value::as_bool)
+            .unwrap_or(false)
+            || !player
+                .get("is_playing")
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
         let position = num(player.get("position_as_of_timestamp")).unwrap_or(0);
         let offset = self.clock_offset_ms.unwrap_or(0);
-        let at_local = num(player.get("timestamp")).map(|t| t - offset).unwrap_or(received_ms);
+        let at_local = num(player.get("timestamp"))
+            .map(|t| t - offset)
+            .unwrap_or(received_ms);
         let state = json!({
             "type": "state",
             "track": current.map(|uri| track_json(uri, None, self.meta.get(uri))),
@@ -368,28 +476,55 @@ impl Jam {
                 Some(ms) if ms >= 0 => json!({"endpoint":"seek_to","value":ms}),
                 _ => return reply(false, "invalid"),
             },
-            "add" => match message.get("uri").and_then(Value::as_str).filter(|u| track_gid(u).is_some()) {
+            "add" => match message
+                .get("uri")
+                .and_then(Value::as_str)
+                .filter(|u| track_gid(u).is_some())
+            {
                 Some(uri) => json!({"endpoint":"add_to_queue","track":{"uri":uri}}),
                 None => return reply(false, "invalid"),
             },
             "move" | "insert" | "remove" => {
-                let Some(edit) = parse_edit(action, message) else { return reply(false, "invalid") };
+                let Some(edit) = parse_edit(action, message) else {
+                    return reply(false, "invalid");
+                };
                 let sent = message.get("revision").and_then(Value::as_str);
-                let Some(revision) = self.revision.as_deref().filter(|current| Some(*current) == sent) else {
+                let Some(revision) = self
+                    .revision
+                    .as_deref()
+                    .filter(|current| Some(*current) == sent)
+                else {
                     return reply(false, "stale");
                 };
-                let Some(next) = edit_queue(&self.raw_next, &edit) else { return reply(false, "invalid") };
+                let Some(next) = edit_queue(&self.raw_next, &edit) else {
+                    return reply(false, "invalid");
+                };
                 set_queue_command(next, &self.raw_prev, revision)
             }
             _ => return reply(false, "unknown"),
         };
-        let url = format!("{SP}/social-connect/v2/sessions/{}/commands/from/hobs_{}", self.session_id, self.device);
+        let url = format!(
+            "{SP}/social-connect/v2/sessions/{}/commands/from/hobs_{}",
+            self.session_id, self.device
+        );
         let body = json!({"command":command,"connection_type":"wlan","intent_id":random_hex(16)});
-        let (ok, detail) = match self.request(reqwest::Method::POST, &url).json(&body).send().await {
+        let (ok, detail) = match self
+            .request(reqwest::Method::POST, &url)
+            .json(&body)
+            .send()
+            .await
+        {
             Ok(response) => {
                 let ok = response.status().is_success();
                 let reply: Value = response.json().await.unwrap_or(Value::Null);
-                (ok, reply.get("status").or_else(|| reply.get("error_type")).cloned().unwrap_or(Value::Null))
+                (
+                    ok,
+                    reply
+                        .get("status")
+                        .or_else(|| reply.get("error_type"))
+                        .cloned()
+                        .unwrap_or(Value::Null),
+                )
             }
             Err(_) => (false, json!("network")),
         };
@@ -400,21 +535,51 @@ impl Jam {
     /// Handles a `resolve` request without blocking the loop: the lookup runs in its own task and
     /// prints its `resolved` reply when done.
     fn spawn_resolve(&self, message: &Value) {
-        let Some(request_id) = message.get("requestId").and_then(Value::as_str).filter(|id| id.len() <= 128).map(String::from) else { return };
-        let title = message.get("title").and_then(Value::as_str).unwrap_or("").trim().to_string();
-        let artist = message.get("artist").and_then(Value::as_str).unwrap_or("").trim().to_string();
-        let Some(searcher) = self.searcher.clone().filter(|_| !title.is_empty() && title.len() <= 1000 && artist.len() <= 1000) else {
+        let Some(request_id) = message
+            .get("requestId")
+            .and_then(Value::as_str)
+            .filter(|id| id.len() <= 128)
+            .map(String::from)
+        else {
+            return;
+        };
+        let title = message
+            .get("title")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .trim()
+            .to_string();
+        let artist = message
+            .get("artist")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .trim()
+            .to_string();
+        let Some(searcher) = self
+            .searcher
+            .clone()
+            .filter(|_| !title.is_empty() && title.len() <= 1000 && artist.len() <= 1000)
+        else {
             return emit(resolved_json(&request_id, Err(())));
         };
         let query = search::Query {
             title,
             artist,
-            album: message.get("album").and_then(Value::as_str).map(String::from),
-            duration_ms: num(message.get("durationMs")).and_then(|n| u64::try_from(n).ok()).filter(|ms| *ms > 0),
+            album: message
+                .get("album")
+                .and_then(Value::as_str)
+                .map(String::from),
+            duration_ms: num(message.get("durationMs"))
+                .and_then(|n| u64::try_from(n).ok())
+                .filter(|ms| *ms > 0),
         };
         let (bearer, client_token) = (self.bearer.clone(), self.client_token.clone());
         tokio::spawn(async move {
-            let outcome = tokio::time::timeout(Duration::from_secs(18), searcher.resolve(&bearer, &client_token, &query)).await;
+            let outcome = tokio::time::timeout(
+                Duration::from_secs(18),
+                searcher.resolve(&bearer, &client_token, &query),
+            )
+            .await;
             match outcome {
                 Ok(Ok(found)) => emit(resolved_json(&request_id, Ok(&found))),
                 _ => emit(resolved_json(&request_id, Err(()))),
@@ -423,7 +588,14 @@ impl Jam {
     }
     async fn leave(&self) {
         let url = format!("{SP}/social-connect/v2/sessions/{}/leave", self.session_id);
-        let _ = tokio::time::timeout(Duration::from_secs(6), self.request(reqwest::Method::POST, &url).body("{}").header("content-type", "application/json").send()).await;
+        let _ = tokio::time::timeout(
+            Duration::from_secs(6),
+            self.request(reqwest::Method::POST, &url)
+                .body("{}")
+                .header("content-type", "application/json")
+                .send(),
+        )
+        .await;
     }
 }
 
@@ -432,9 +604,18 @@ async fn client_token(http: &Client) -> Option<String> {
         "client_version":"1.2.42.432.g3121", "client_id":"d8a5ed958d274c2e8ee717e6a4b0971d",
         "js_sdk_data":{"device_brand":"Apple","device_model":"MacBookPro","os":"Mac OS","os_version":"10.15.7","device_id":random_hex(16),"device_type":"computer"}
     }});
-    let response = http.post("https://clienttoken.spotify.com/v1/clienttoken").header("accept", "application/json").json(&body).send().await.ok()?;
+    let response = http
+        .post("https://clienttoken.spotify.com/v1/clienttoken")
+        .header("accept", "application/json")
+        .json(&body)
+        .send()
+        .await
+        .ok()?;
     let data: Value = response.json().await.ok()?;
-    data.pointer("/granted_token/token").and_then(Value::as_str).filter(|s| !s.is_empty()).map(String::from)
+    data.pointer("/granted_token/token")
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty())
+        .map(String::from)
 }
 
 enum Outcome {
@@ -449,7 +630,12 @@ type Lines = tokio::io::Lines<BufReader<tokio::io::Stdin>>;
 /// One dealer connection: subscribe, mirror state, relay commands, until something ends it.
 async fn run_connection(jam: &mut Jam, lines: &mut Lines) -> Outcome {
     let url = format!("wss://dealer.spotify.com/?access_token={}", jam.bearer);
-    let Ok(Ok((mut socket, _))) = tokio::time::timeout(Duration::from_secs(12), tokio_tungstenite::connect_async(url)).await else {
+    let Ok(Ok((mut socket, _))) = tokio::time::timeout(
+        Duration::from_secs(12),
+        tokio_tungstenite::connect_async(url),
+    )
+    .await
+    else {
         return Outcome::Dropped;
     };
     let mut ping = tokio::time::interval(Duration::from_secs(25));
@@ -561,25 +747,63 @@ async fn main() {
     let _ = rustls::crypto::ring::default_provider().install_default();
     let mut lines = BufReader::new(tokio::io::stdin()).lines();
     let (bearer, token) = loop {
-        let Ok(Some(line)) = lines.next_line().await else { return };
-        let Ok(message) = serde_json::from_str::<Value>(&line) else { continue };
+        let Ok(Some(line)) = lines.next_line().await else {
+            return;
+        };
+        let Ok(message) = serde_json::from_str::<Value>(&line) else {
+            continue;
+        };
         if message.get("type").and_then(Value::as_str) != Some("join") {
             continue;
         }
-        let bearer = message.get("credential").and_then(Value::as_str).and_then(clean_bearer);
-        let token = message.get("link").and_then(Value::as_str).and_then(jam_token);
+        let bearer = message
+            .get("credential")
+            .and_then(Value::as_str)
+            .and_then(clean_bearer);
+        let token = message
+            .get("link")
+            .and_then(Value::as_str)
+            .and_then(jam_token);
         match (bearer, token) {
             (Some(bearer), Some(token)) => break (bearer, token),
             (None, _) => fail("authRequired", false),
             (_, None) => fail("invalidLink", false),
         }
     };
-    let Ok(http) = Client::builder().user_agent(UA).timeout(Duration::from_secs(15)).build() else { return fail("unavailable", false) };
-    let Some(client_token) = client_token(&http).await else { return fail("network", true) };
-    let mut jam = Jam { http, bearer, client_token, device: random_hex(20), session_id: String::new(), clock_offset_ms: None, meta: HashMap::new(), last_state: String::new(), raw_next: Vec::new(), raw_prev: Vec::new(), revision: None, searcher: search::Searcher::new().map(Arc::new) };
+    let Ok(http) = Client::builder()
+        .user_agent(UA)
+        .timeout(Duration::from_secs(15))
+        .build()
+    else {
+        return fail("unavailable", false);
+    };
+    let Some(client_token) = client_token(&http).await else {
+        return fail("network", true);
+    };
+    let mut jam = Jam {
+        http,
+        bearer,
+        client_token,
+        device: random_hex(20),
+        session_id: String::new(),
+        clock_offset_ms: None,
+        meta: HashMap::new(),
+        last_state: String::new(),
+        raw_next: Vec::new(),
+        raw_prev: Vec::new(),
+        revision: None,
+        searcher: search::Searcher::new().map(Arc::new),
+    };
 
-    let joined = jam.request(reqwest::Method::POST, &format!("{SP}/social-connect/v2/sessions/join/{token}"))
-        .header("content-type", "application/json").body("{}").send().await;
+    let joined = jam
+        .request(
+            reqwest::Method::POST,
+            &format!("{SP}/social-connect/v2/sessions/join/{token}"),
+        )
+        .header("content-type", "application/json")
+        .body("{}")
+        .send()
+        .await;
     let session: Value = match joined {
         Ok(response) => match response.status().as_u16() {
             200..=299 => response.json().await.unwrap_or(Value::Null),
@@ -591,7 +815,11 @@ async fn main() {
         },
         Err(_) => return fail("network", true),
     };
-    let Some(session_id) = session.get("session_id").and_then(Value::as_str).filter(|id| id.chars().all(|c| c.is_ascii_alphanumeric())) else {
+    let Some(session_id) = session
+        .get("session_id")
+        .and_then(Value::as_str)
+        .filter(|id| id.chars().all(|c| c.is_ascii_alphanumeric()))
+    else {
         return fail("unsupported", false);
     };
     jam.session_id = session_id.to_string();
@@ -621,13 +849,23 @@ async fn main() {
             }
             Outcome::Dropped => fail("network", true),
         }
-        failures = if now_ms() - started > 60_000 { 1 } else { failures + 1 };
+        failures = if now_ms() - started > 60_000 {
+            1
+        } else {
+            failures + 1
+        };
         if failures > 6 {
             jam.leave().await;
             emit(json!({"type":"ended","reason":"CONNECTION_LOST"}));
             return;
         }
-        if idle(&mut jam, &mut lines, Duration::from_secs(2u64.pow(failures.min(4)))).await {
+        if idle(
+            &mut jam,
+            &mut lines,
+            Duration::from_secs(2u64.pow(failures.min(4))),
+        )
+        .await
+        {
             jam.leave().await;
             emit(json!({"type":"ended","reason":"LEFT"}));
             return;
@@ -642,17 +880,35 @@ mod tests {
     #[test]
     fn reads_join_links_and_bare_tokens() {
         let token = "5QaRAjTyChieQ3Z8fdSlqu";
-        assert_eq!(jam_token(&format!("https://open.spotify.com/socialsession/{token}?si=abc&utm_source=copy-link")).as_deref(), Some(token));
-        assert_eq!(jam_token(&format!("spotify:socialsession:{token}")).as_deref(), Some(token));
+        assert_eq!(
+            jam_token(&format!(
+                "https://open.spotify.com/socialsession/{token}?si=abc&utm_source=copy-link"
+            ))
+            .as_deref(),
+            Some(token)
+        );
+        assert_eq!(
+            jam_token(&format!("spotify:socialsession:{token}")).as_deref(),
+            Some(token)
+        );
         assert_eq!(jam_token(token).as_deref(), Some(token));
-        assert_eq!(jam_token("https://open.spotify.com/track/5QaRAjTyChieQ3Z8fdSlqu"), None);
+        assert_eq!(
+            jam_token("https://open.spotify.com/track/5QaRAjTyChieQ3Z8fdSlqu"),
+            None
+        );
         assert_eq!(jam_token("https://spotify.link/abc"), None);
     }
 
     #[test]
     fn converts_track_ids_to_gids() {
-        assert_eq!(track_gid("spotify:track:0000000000000000000000").as_deref(), Some("00000000000000000000000000000000"));
-        assert_eq!(track_gid("spotify:track:000000000000000000000Z").as_deref(), Some("0000000000000000000000000000003d"));
+        assert_eq!(
+            track_gid("spotify:track:0000000000000000000000").as_deref(),
+            Some("00000000000000000000000000000000")
+        );
+        assert_eq!(
+            track_gid("spotify:track:000000000000000000000Z").as_deref(),
+            Some("0000000000000000000000000000003d")
+        );
         assert_eq!(track_gid("spotify:episode:000000000000000000000Z"), None);
         assert_eq!(track_gid("spotify:track:short"), None);
     }
@@ -692,7 +948,10 @@ mod tests {
         assert!(!session_over("SESSION_MEMBER_PAUSE_CHANGED"));
         let encoded = base64::engine::general_purpose::STANDARD.encode(br#"{"reason":"x"}"#);
         assert_eq!(decode_payload(&json!(encoded)).unwrap()["reason"], "x");
-        assert_eq!(decode_payload(&json!({"reason":"y"})).unwrap()["reason"], "y");
+        assert_eq!(
+            decode_payload(&json!({"reason":"y"})).unwrap()["reason"],
+            "y"
+        );
     }
 
     const A: &str = "spotify:track:aaaaaaaaaaaaaaaaaaaaaa";
@@ -728,33 +987,85 @@ mod tests {
         assert_eq!(backward[0]["metadata"]["x"], "1");
         // Others untouched.
         assert_eq!(backward[1]["provider"], "context");
-        assert_eq!(edit_queue(&list, &QueueEdit::Move { from: 1, to: 1 }).map(|l| uris(&l).len()), Some(3));
+        assert_eq!(
+            edit_queue(&list, &QueueEdit::Move { from: 1, to: 1 }).map(|l| uris(&l).len()),
+            Some(3)
+        );
     }
 
     #[test]
     fn inserts_at_front_middle_and_end() {
         let list = raw(&[A, B]);
-        let front = edit_queue(&list, &QueueEdit::Insert { uri: N.into(), index: 0 }).unwrap();
+        let front = edit_queue(
+            &list,
+            &QueueEdit::Insert {
+                uri: N.into(),
+                index: 0,
+            },
+        )
+        .unwrap();
         assert_eq!(uris(&front), vec![N, A, B]);
         assert_eq!(front[0]["provider"], "queue");
         assert_eq!(front[0]["metadata"]["is_queued"], "true");
-        let middle = edit_queue(&list, &QueueEdit::Insert { uri: N.into(), index: 1 }).unwrap();
+        let middle = edit_queue(
+            &list,
+            &QueueEdit::Insert {
+                uri: N.into(),
+                index: 1,
+            },
+        )
+        .unwrap();
         assert_eq!(uris(&middle), vec![A, N, B]);
-        let end = edit_queue(&list, &QueueEdit::Insert { uri: N.into(), index: 2 }).unwrap();
+        let end = edit_queue(
+            &list,
+            &QueueEdit::Insert {
+                uri: N.into(),
+                index: 2,
+            },
+        )
+        .unwrap();
         assert_eq!(uris(&end), vec![A, B, N]);
-        let into_empty = edit_queue(&[], &QueueEdit::Insert { uri: N.into(), index: 0 }).unwrap();
+        let into_empty = edit_queue(
+            &[],
+            &QueueEdit::Insert {
+                uri: N.into(),
+                index: 0,
+            },
+        )
+        .unwrap();
         assert_eq!(uris(&into_empty), vec![N]);
     }
 
     #[test]
     fn removes_and_rejects_out_of_range() {
         let list = raw(&[A, B, C]);
-        assert_eq!(uris(&edit_queue(&list, &QueueEdit::Remove { index: 1 }).unwrap()), vec![A, C]);
+        assert_eq!(
+            uris(&edit_queue(&list, &QueueEdit::Remove { index: 1 }).unwrap()),
+            vec![A, C]
+        );
         assert_eq!(edit_queue(&list, &QueueEdit::Remove { index: 3 }), None);
         assert_eq!(edit_queue(&list, &QueueEdit::Move { from: 3, to: 0 }), None);
         assert_eq!(edit_queue(&list, &QueueEdit::Move { from: 0, to: 3 }), None);
-        assert_eq!(edit_queue(&list, &QueueEdit::Insert { uri: N.into(), index: 4 }), None);
-        assert_eq!(edit_queue(&list, &QueueEdit::Insert { uri: "spotify:episode:x".into(), index: 0 }), None);
+        assert_eq!(
+            edit_queue(
+                &list,
+                &QueueEdit::Insert {
+                    uri: N.into(),
+                    index: 4
+                }
+            ),
+            None
+        );
+        assert_eq!(
+            edit_queue(
+                &list,
+                &QueueEdit::Insert {
+                    uri: "spotify:episode:x".into(),
+                    index: 0
+                }
+            ),
+            None
+        );
     }
 
     #[test]
@@ -762,13 +1073,32 @@ mod tests {
         let list = raw(&[A, "spotify:delimiter", B, C, "spotify:delimiter"]);
         // Emitted queue is [A, B, C].
         let moved = edit_queue(&list, &QueueEdit::Move { from: 2, to: 0 }).unwrap();
-        assert_eq!(uris(&moved), vec![C, A, "spotify:delimiter", B, "spotify:delimiter"]);
+        assert_eq!(
+            uris(&moved),
+            vec![C, A, "spotify:delimiter", B, "spotify:delimiter"]
+        );
         let appended = edit_queue(&list, &QueueEdit::Move { from: 0, to: 2 }).unwrap();
-        assert_eq!(uris(&appended), vec!["spotify:delimiter", B, C, A, "spotify:delimiter"]);
-        let inserted = edit_queue(&list, &QueueEdit::Insert { uri: N.into(), index: 3 }).unwrap();
-        assert_eq!(uris(&inserted), vec![A, "spotify:delimiter", B, C, N, "spotify:delimiter"]);
+        assert_eq!(
+            uris(&appended),
+            vec!["spotify:delimiter", B, C, A, "spotify:delimiter"]
+        );
+        let inserted = edit_queue(
+            &list,
+            &QueueEdit::Insert {
+                uri: N.into(),
+                index: 3,
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            uris(&inserted),
+            vec![A, "spotify:delimiter", B, C, N, "spotify:delimiter"]
+        );
         let removed = edit_queue(&list, &QueueEdit::Remove { index: 1 }).unwrap();
-        assert_eq!(uris(&removed), vec![A, "spotify:delimiter", C, "spotify:delimiter"]);
+        assert_eq!(
+            uris(&removed),
+            vec![A, "spotify:delimiter", C, "spotify:delimiter"]
+        );
         assert_eq!(removed[1]["provider"], "context");
     }
 
@@ -780,12 +1110,27 @@ mod tests {
         assert_eq!(command["queue_revision"], "123");
         assert_eq!(command["prev_tracks"], json!(prev));
         assert_eq!(command["next_tracks"][0]["uri"], B);
-        assert_eq!(parse_edit("move", &json!({"from":2,"to":"0"})), Some(QueueEdit::Move { from: 2, to: 0 }));
-        assert_eq!(parse_edit("insert", &json!({"uri":N,"index":1})), Some(QueueEdit::Insert { uri: N.into(), index: 1 }));
+        assert_eq!(
+            parse_edit("move", &json!({"from":2,"to":"0"})),
+            Some(QueueEdit::Move { from: 2, to: 0 })
+        );
+        assert_eq!(
+            parse_edit("insert", &json!({"uri":N,"index":1})),
+            Some(QueueEdit::Insert {
+                uri: N.into(),
+                index: 1
+            })
+        );
         assert_eq!(parse_edit("remove", &json!({"index":-1})), None);
         assert_eq!(parse_edit("move", &json!({"from":1})), None);
-        assert_eq!(revision_of(&json!({"queue_revision":"9"})).as_deref(), Some("9"));
-        assert_eq!(revision_of(&json!({"queue_revision":9})).as_deref(), Some("9"));
+        assert_eq!(
+            revision_of(&json!({"queue_revision":"9"})).as_deref(),
+            Some("9")
+        );
+        assert_eq!(
+            revision_of(&json!({"queue_revision":9})).as_deref(),
+            Some("9")
+        );
         assert_eq!(revision_of(&json!({})), None);
     }
 
@@ -793,8 +1138,15 @@ mod tests {
     fn command_results_echo_request_ids_and_resolve_replies_have_a_fixed_shape() {
         let with_id = command_result("pause", true, json!("ok"), &json!({"requestId":"r1"}));
         assert_eq!(with_id["requestId"], "r1");
-        assert!(command_result("pause", true, json!("ok"), &json!({})).get("requestId").is_none());
-        let found = search::Match { uri: A.into(), title: "T".into(), artists: vec!["X".into()], duration_ms: 1000 };
+        assert!(command_result("pause", true, json!("ok"), &json!({}))
+            .get("requestId")
+            .is_none());
+        let found = search::Match {
+            uri: A.into(),
+            title: "T".into(),
+            artists: vec!["X".into()],
+            duration_ms: 1000,
+        };
         let hit = resolved_json("q", Ok(&found));
         assert_eq!(hit["type"], "resolved");
         assert_eq!(hit["uri"], A);

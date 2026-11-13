@@ -43,15 +43,25 @@ pub fn provider_candidates(
     exe_dir: Option<&Path>,
     debug_manifest_dir: Option<&Path>,
 ) -> Vec<PathBuf> {
+    candidates_under(PACKAGE_RELATIVE, resource_dir, exe_dir, debug_manifest_dir)
+}
+
+/// The same candidate order for any bundled `provider/<name>` folder (the Jam plugin reuses it).
+pub fn candidates_under(
+    relative: &str,
+    resource_dir: Option<&Path>,
+    exe_dir: Option<&Path>,
+    debug_manifest_dir: Option<&Path>,
+) -> Vec<PathBuf> {
     let mut found = Vec::new();
     for base in [resource_dir, exe_dir].into_iter().flatten() {
-        found.push(base.join(PACKAGE_RELATIVE));
+        found.push(base.join(relative));
     }
     for base in [resource_dir, exe_dir].into_iter().flatten() {
-        found.push(base.join("resources").join(PACKAGE_RELATIVE));
+        found.push(base.join("resources").join(relative));
     }
     if let Some(manifest_dir) = debug_manifest_dir {
-        found.push(manifest_dir.join(PACKAGE_RELATIVE));
+        found.push(manifest_dir.join(relative));
     }
     found
 }

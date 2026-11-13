@@ -20,8 +20,15 @@
   import type { LyricsState } from '$lib/player/lyrics';
   import type { RecommendationsSnapshot } from '$lib/player/recommendations';
   import AnimatedArtwork from './AnimatedArtwork.svelte';
+  import { readable } from 'svelte/store';
+  import { emptyJamState } from '$lib/jam/types';
+  import JamBadge from '$lib/components/jam/JamBadge.svelte';
+  import JamQueueList from '$lib/components/jam/JamQueueList.svelte';
+  import { useJamUi } from '$lib/components/jam/context';
+  import { isJamLive } from '$lib/components/jam/view';
+  import JamPanelHost from './JamPanelHost.svelte';
 
-  type Panel = "queue" | "lyrics" | "related";
+  type Panel = "queue" | "lyrics" | "related" | "jam";
   interface Props {
     session: number;
     pullDistance?:number; pulling?:boolean;
@@ -85,7 +92,12 @@
   $effect(()=>{informationTrackKey;showInformation=false;});
   let localPanel = $state<Panel>("queue");
   let failedArtworkTrackKey = $state<string | null>(null);
-  const panel = $derived(selectedPanel ?? localPanel);
+  // During a Jam the queue is the Jam's: recommendations are off (no "related" tab, no fetching).
+  const jamUi = useJamUi();
+  const jamState = jamUi?.state ?? readable(emptyJamState());
+  const jamLive = $derived(isJamLive($jamState));
+  const requestedPanel = $derived(selectedPanel ?? localPanel);
+  const panel = $derived<Panel>(jamLive && requestedPanel === 'related' ? 'queue' : requestedPanel);
   const currentTrack = $derived(playback.currentTrack);
   const artworkTrackKey = $derived(currentTrack ? `${currentTrack.videoId}\u0000${currentTrack.thumbnail ?? ''}` : '');
   let failedArtworkUrls = $state<string[]>([]);
@@ -96,7 +108,9 @@
   const panels = $derived<{id:Panel;label:string}[]>([
     { id: "queue", label: $t("queue.title") },
     { id: "lyrics", label: $t("fullscreen.lyrics") },
-    { id: "related", label: $t("fullscreen.related") },
+    ...(jamLive ? [] : [{ id: "related" as const, label: $t("fullscreen.related") }]),
+    // Always offered, so a Jam can be joined from here (macOS parity).
+    ...(jamUi ? [{ id: "jam" as const, label: $t("jam.surface.tab") }] : []),
   ]);
 
   function selectPanel(value: Panel) {
@@ -129,8 +143,12 @@
 
   <div class="pull-surface" data-gesture-pull aria-hidden="true"></div>
   <div class="layout">
-    <div class="art-column">
+    <div class="art-column" class:jam-live={jamLive}>
       <div class="art-block">
+        {#if jamLive}
+          <!-- Centred ~10 px above the cover, outside it: the cover never moves or resizes when a Jam starts or ends. -->
+          <div class="jam-marker" data-volume-excluded data-jam-marker><JamBadge state={$jamState} onTap={() => selectPanel('jam')} /></div>
+        {/if}
         <div class="artwork-flip" class:flipped={showInformation}>
           <div class="artwork-front" inert={showInformation} aria-hidden={showInformation} oncontextmenu={(event)=>{if(onOpenMenu&&currentTrack){event.preventDefault();onOpenMenu(event);}}} role="group">
         <button type="button" class="artwork" data-volume-scroll="fullscreen" data-volume-scroll-control class:volume-feedback={volumeFeedback} onkeydown={trackMenuKey} disabled={!currentTrack || playback.isLoading}
@@ -180,7 +198,7 @@
         <div class="panel-tabs">
           <ControlSegments appearance="toolbar" id="fullscreen-tab" panelId="fullscreen-panel" label={$t('windows.fullscreen.panel')}
             options={panels} value={panel} onChange={selectPanel} collapseLabels>
-            {#snippet icon(id)}<PlayerIcon name={id} size={14} />{/snippet}
+            {#snippet icon(id)}<PlayerIcon name={id === 'jam' ? (jamLive ? 'connections-live' : 'connections') : id} size={14} />{/snippet}
           </ControlSegments>
         </div>
         <button type="button" class="close-button" onclick={onClose} aria-label={$t('player.closeFullscreen')} title={$t('player.closeFullscreen')}>
@@ -190,7 +208,11 @@
 
       <div id="fullscreen-panel" class="panel" role="tabpanel" tabindex="0" aria-labelledby={`fullscreen-tab-${panel}`}>
         <LyricsPanel state={lyricsState} {playback} {session} active={panel==='lyrics'&&lyricsMode!=='genius'} {onSeek} onRetry={onRetryLyrics} />
-        {#if panel === "queue"}
+        {#if panel === "queue" && jamLive}
+          <JamQueueList {playback} {onSelectQueue} {onTogglePlayback} {onQueueContextMenu} />
+        {:else if panel === "jam"}
+          <JamPanelHost />
+        {:else if panel === "queue"}
           <QueuePanel {playback} {focusQueueEntryId} {onQueueFocusHandled} {onSelectQueue} {onTogglePlayback} {onOpenArtist} {onOpenAlbum} {onMoveQueue} {onRevealQueueWindow} {onQueueContextMenu} {onRetryRadio} {onRetrySource} {loggedIn} {likedIds} {pendingIds} {likesLoading} onToggleLike={onToggleQueueLike} onDislike={onDislikeQueueEntry} {onRecommendationAction} />
         {:else if panel === "lyrics"}
           {#if lyricsMode==='genius'}
@@ -248,6 +270,9 @@
     overflow: hidden;
   }
   .art-column { display: grid; place-items: center; min-width: 0; min-height: 0; overflow: hidden; }
+  .art-column.jam-live { overflow: visible; }
+  .jam-marker { position: absolute; right: 0; bottom: 100%; left: 0; display: flex; justify-content: center; height: 32px; margin-bottom: 10px; pointer-events: none; }
+  .jam-marker :global(.badge) { pointer-events: auto; }
   .art-block { position:relative; container-type:inline-size; width: min(90%, max(100px, calc(100dvh - 264px))); max-width: 100%; min-width: 0; max-height: 100%; }
   .artwork { display:grid; position:relative; container-type:inline-size; place-items:center; width:100%; aspect-ratio:1; max-height:calc(100dvh - 264px); padding:0; border:0; overflow:hidden; border-radius:8px; color:rgb(255 255 255 / 42%); background:rgb(255 255 255 / 8%); box-shadow:0 10px 30px rgb(0 0 0 / 42%); cursor:pointer; }
   .artwork:disabled { cursor:default; }

@@ -46,11 +46,21 @@ jobs:
             windows/src-tauri/target/
             windows/.cache/mpv/
             extensions/spotify-canvas/target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('core/Cargo.lock', 'windows/src-tauri/Cargo.lock', 'extensions/spotify-canvas/Cargo.lock', 'windows/pnpm-lock.yaml', 'windows/scripts/windows.ps1') }}
+            extensions/spotify-jam/target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('core/Cargo.lock', 'windows/src-tauri/Cargo.lock', 'extensions/spotify-canvas/Cargo.lock', 'extensions/spotify-jam/Cargo.lock', 'windows/pnpm-lock.yaml', 'windows/scripts/windows.ps1') }}
 
       - name: Lint optional Spotify Canvas provider (Windows x64)
         shell: pwsh
         working-directory: extensions/spotify-canvas
+        run: |
+          cargo fmt --check
+          if ($LASTEXITCODE -ne 0) { throw 'cargo fmt falló' }
+          cargo clippy --locked --all-targets --target x86_64-pc-windows-msvc -- -D warnings
+          if ($LASTEXITCODE -ne 0) { throw 'cargo clippy falló' }
+
+      - name: Lint Spotify Jam plugin (Windows x64)
+        shell: pwsh
+        working-directory: extensions/spotify-jam
         run: |
           cargo fmt --check
           if ($LASTEXITCODE -ne 0) { throw 'cargo fmt falló' }
@@ -89,3 +99,10 @@ jobs:
           name: sideb-spotify-canvas-windows-x64
           if-no-files-found: error
           path: windows/src-tauri/provider/spotify-canvas/
+
+      - name: Upload Spotify Jam plugin
+        uses: actions/upload-artifact@v4
+        with:
+          name: sideb-spotify-jam-windows-x64
+          if-no-files-found: error
+          path: windows/src-tauri/provider/spotify-jam/

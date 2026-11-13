@@ -100,6 +100,9 @@ export async function execute(command, args, { cwd, env, log }) {
 // without extensions/spotify-canvas (plugin removed from the sources) the app builds exactly as before.
 export const providerFiles = ['manifest.json', 'SHA256SUMS'];
 export function providerSourceExists(root) { return existsSync(join(root, 'extensions', 'spotify-canvas', 'Cargo.toml')); }
+// Spotify Jam (Windows guest) ships the same way: provider/spotify-jam/{sideb-spotify-jam.exe, LICENSE}.
+export const jamFiles = ['sideb-spotify-jam.exe', 'LICENSE'];
+export function jamSourceExists(root) { return existsSync(join(root, 'extensions', 'spotify-jam', 'Cargo.toml')); }
 
 function commandVersion(command, args, root) {
   const result = spawnSync(command, args, { cwd: root, encoding: 'utf8', windowsHide: true });
@@ -211,6 +214,16 @@ export async function buildVersion(root, options, dependencies = {}) {
         for (const entry of readdirSync(staged, { withFileTypes: true })) {
           if (entry.isFile()) copyFileSync(join(staged, entry.name), join(destination, entry.name));
         }
+      }
+      if (jamSourceExists(root)) {
+        // Staged by windows.ps1 (Ensure-JamPluginPackage) and bundled by tauri.conf.json resources.
+        const staged = join(root, 'windows', 'src-tauri', 'provider', 'spotify-jam');
+        const destination = join(build.directory, 'provider', 'spotify-jam');
+        for (const file of jamFiles) {
+          if (!existsSync(join(staged, file))) throw new Error(`Falta el plugin de Spotify Jam preinstalado: ${join(staged, file)}`);
+        }
+        mkdirSync(destination, { recursive: true });
+        for (const file of jamFiles) copyFileSync(join(staged, file), join(destination, file));
       }
       artifact = join(build.directory, 'sideb-windows.exe');
     }

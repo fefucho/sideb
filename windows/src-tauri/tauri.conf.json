@@ -41,7 +41,9 @@
       "provider/spotify-canvas/sideb-spotify-canvas.exe",
       "provider/spotify-canvas/LICENSE",
       "provider/spotify-canvas/THIRD_PARTY_NOTICES.md",
-      "provider/spotify-canvas/SHA256SUMS"
+      "provider/spotify-canvas/SHA256SUMS",
+      "provider/spotify-jam/sideb-spotify-jam.exe",
+      "provider/spotify-jam/LICENSE"
     ],
     "icon": [
       "icons/32x32.png",

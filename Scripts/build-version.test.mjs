@@ -201,6 +201,22 @@ test('Windows carries the factory-installed provider next to the executable and 
   }
 });
 
+test('Windows carries the Spotify Jam plugin next to the executable when its source exists; its absence fails the build', async t => {
+  const root = fixture(t);
+  mkdirSync(join(root, 'extensions', 'spotify-jam'), { recursive: true });
+  writeFileSync(join(root, 'extensions', 'spotify-jam', 'Cargo.toml'), '[package]\nversion = "0.2.0"\n');
+  const deps = { host: 'win32', architecture: 'x64', powerShell: 'mock-powershell', snapshot, execute: async (command, args) => { if (args[args.indexOf('-Action') + 1] === 'build') nativeArtifacts(root, 'release'); } };
+  await assert.rejects(buildVersion(root, parseArguments(['windows']), deps), /Falta el plugin de Spotify Jam preinstalado/);
+  const dir = join(root, 'windows', 'src-tauri', 'provider', 'spotify-jam');
+  mkdirSync(dir, { recursive: true });
+  for (const name of ['sideb-spotify-jam.exe', 'LICENSE']) writeFileSync(join(dir, name), name);
+  const result = await buildVersion(root, parseArguments(['windows']), deps);
+  for (const name of ['sideb-spotify-jam.exe', 'LICENSE']) {
+    assert.equal(readFileSync(join(result.directory, 'provider', 'spotify-jam', name), 'utf8'), name);
+    assert.match(result.metadata.artifactSHA256[`provider/spotify-jam/${name}`], /^[a-f0-9]{64}$/);
+  }
+});
+
 test('Mac requires the factory-installed provider inside the bundle when its source exists', async t => {
   const root = fixture(t); withProviderSource(root);
   const bundle = (withProvider) => async (command, args) => {

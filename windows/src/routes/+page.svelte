@@ -75,6 +75,12 @@
 import { promotedEntryId } from "$lib/components/fullscreen/queueProjection";
   import { invoke } from "@tauri-apps/api/core";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+  import { createJam } from '$lib/jam';
+  import { provideJamUi } from '$lib/components/jam/context';
+  import { isJamLive } from '$lib/components/jam/view';
+  import JamToasts from '$lib/components/jam/JamToasts.svelte';
+  import JamExitDialog from '$lib/components/jam/JamExitDialog.svelte';
+  import JamQueueList from '$lib/components/jam/JamQueueList.svelte';
   import type {
     AlbumCardDto,
     SongDto,
@@ -99,7 +105,7 @@ import { promotedEntryId } from "$lib/components/fullscreen/queueProjection";
   let presentation = $state(initialPresentation());
   const isFullscreenOpen = $derived(presentation.mode === 'fullscreen');
   const sidebarOpen = $derived(presentation.mode === 'sidebar');
-  let selectedPanel = $state<'queue' | 'lyrics' | 'related'>('queue');
+  let selectedPanel = $state<'queue' | 'lyrics' | 'related' | 'jam'>('queue');
   let lyricsMode = $state<'synced' | 'genius'>('synced');
   const lyricsSurfaceVisible = $derived((isFullscreenOpen && selectedPanel === 'lyrics') || (sidebarOpen && presentation.sidebarPanel === 'lyrics'));
   // Shared bar<->panel transition: one progress value retargeted from wherever it currently is.
@@ -267,9 +273,15 @@ import { promotedEntryId } from "$lib/components/fullscreen/queueProjection";
   $effect(() => {
     if (searchData.page && searchData.params == null && $categoryViewPreference) untrack(() => search.loadCategories($searchPreferences));
   });
-  const player = new PlaybackController((command, args) => invoke(command, args),
+  // Spotify Jam: every playback/queue command goes through `jam.rpc` (raw invoke outside a Jam), and every snapshot is fed back.
+  const jam = createJam({ rpc: (command, args) => invoke(command, args), listen: (name, handler) => listen(name, handler) });
+  const jamState = jam.state;
+  const jamLive = $derived(isJamLive($jamState));
+  provideJamUi({ state: jam.state, actions: jam.actions, searchSongs: query => invoke<SongDto[]>('search_songs', { query }) });
+  const player = new PlaybackController(jam.rpc,
     (name, handler) => listen(name, handler), snapshot => {
       playbackState = snapshot.state;
+      jam.onPlaybackState(snapshot.state);
       searchRecents.confirmPlayback(snapshot.state);
       confirmedVolume = snapshot.confirmedVolume;
       playbackError = snapshot.error;
@@ -317,7 +329,8 @@ import { promotedEntryId } from "$lib/components/fullscreen/queueProjection";
     const lyricEntry = playbackState.queue.currentIndex === null ? null : playbackState.queue.items[playbackState.queue.currentIndex]?.entryId;
     lyrics.setTrack(acceptedTrack, playbackState.generation, playbackState.duration, JSON.stringify([sessionRevision, lyricEntry ?? null]));
     recommendations.setTrack(acceptedTrack);
-    if (isFullscreenOpen && selectedPanel === 'related') void recommendations.load();
+    // Recommendations are off while a Jam owns the queue.
+    if (isFullscreenOpen && selectedPanel === 'related' && !jamLive) void recommendations.load();
   });
 
   let sessionRevision = $state(0);
@@ -826,19 +839,21 @@ import { promotedEntryId } from "$lib/components/fullscreen/queueProjection";
     finally { volumeModePending = false; }
   }
 
+  /** The Jam tab has no lateral twin: collapsing from it lands on the artwork (where the Jam marker lives). */
+  const presentablePanel = (panel: typeof selectedPanel) => panel === 'jam' ? 'related' : panel;
   function setPlayerFullscreen(open: boolean, panel = selectedPanel) {
     if (open) selectedPanel = panel;
     // Collapsing returns to where fullscreen was opened from (bar or lateral panel, keeping its section).
-    presentation = setFullscreen(presentation, open, selectedPanel);
+    presentation = setFullscreen(presentation, open, presentablePanel(selectedPanel));
   }
   function selectSidebarSection(panel: SidebarPanel) {
     presentation = selectSidebarPanel(presentation, panel);
-    selectedPanel = fullscreenPanelFor(panel, selectedPanel);
+    selectedPanel = fullscreenPanelFor(panel, presentablePanel(selectedPanel));
   }
   function toggleSidebar(panel?: SidebarPanel) {
     const wasOpen = sidebarOpen;
     presentation = toggleSidebarState(presentation, panel);
-    selectedPanel = fullscreenPanelFor(presentation.sidebarPanel, selectedPanel);
+    selectedPanel = fullscreenPanelFor(presentation.sidebarPanel, presentablePanel(selectedPanel));
     if (wasOpen && presentation.mode !== 'sidebar') void tick().then(() => playbackDock?.focusTrigger());
   }
   function closePlaybackSidebar() {
@@ -967,7 +982,7 @@ import { promotedEntryId } from "$lib/components/fullscreen/queueProjection";
   });
   const sidebarRecommendationsProps = $derived({
     snapshot: recommendationsState, loggedIn: authStatus.state === 'ready', likedIds: accountData.likedIds, pendingIds: accountData.pendingIds,
-    onRequestLoad: () => { void recommendations.load(); }, onRefresh: () => { void recommendations.load(true); }, onSuspend: () => recommendations.suspend(),
+    onRequestLoad: () => { if (!jamLive) void recommendations.load(); }, onRefresh: () => { if (!jamLive) void recommendations.load(true); }, onSuspend: () => recommendations.suspend(),
     onPlaySong: (song: SongDto) => { ++collectionPlayRevision; void player.startRadio(song).catch(() => {}); },
     onTogglePlayback: handleTogglePlay,
     onAddToQueue: (song: SongDto) => { void player.enqueue([song], 'end').catch(error => shellError = extractErrorMessage(error, 'No se pudo agregar a la cola.')); },
@@ -1085,6 +1100,7 @@ import { promotedEntryId } from "$lib/components/fullscreen/queueProjection";
       window.removeEventListener('mousedown', handleMouseNavigation);
       window.removeEventListener('auxclick', handleMouseNavigation);
       void player.dispose();
+      jam.destroy();
       lyrics.dispose();
       recommendations.dispose();
       home.reset();
@@ -1101,7 +1117,7 @@ import { promotedEntryId } from "$lib/components/fullscreen/queueProjection";
 
 {#snippet playerControls(variant: 'bar' | 'sidebar', lead?: Snippet, tail?: Snippet, spacing: number | null = null)}
   <PlayerBar {variant} sidebarLead={lead} sidebarTail={tail} sidebarSpacing={spacing} playback={playerBarState} onTogglePlayback={handleTogglePlay} onRetryPlayback={handleRetryPlayback} onPrevious={handlePrevious} onNext={handleNext} onSeek={handleSeek} onVolumeChange={handleVolumeChange} onVolumeSurfaceChange={()=>gestureInput?.invalidate()} onSetMuted={muted=>void player.setMuted(muted)} onSetShuffle={handleSetShuffle} onSetRepeat={handleSetRepeat} fullscreenOpen={isFullscreenOpen} onToggleFullscreen={() => setPlayerFullscreen(!isFullscreenOpen)}
-    {selectedPanel} {lyricsMode} onSelectPanel={openPlayerPanel}
+    selectedPanel={selectedPanel === 'jam' ? undefined : selectedPanel} {lyricsMode} onSelectPanel={openPlayerPanel}
     onOpenArtist={(id) => { void setPlayerFullscreen(false); void openArtistDetail(id); }}
     onOpenAlbum={(id) => { void setPlayerFullscreen(false); void openAlbumDetail(id); }} onOpenMenu={openPlayerBarMenu}
     loggedIn={authStatus.state === 'ready'} liked={accountData.likedIds.has(playbackState.currentTrack?.videoId ?? '')}
@@ -1316,6 +1332,10 @@ import { promotedEntryId } from "$lib/components/fullscreen/queueProjection";
       {lyricsMode} onLyricsMode={setLyricsMode} progress={presentationProgress.current} reduced={reducedMotion}
       interactive={sidebarOpen && !spotlightOpen} onClose={closePlaybackSidebar} onExpand={() => setPlayerFullscreen(true)} controls={sidebarControls} {lyricsState} onSelectQueue={playQueueIndex} metadataProps={sidebarMetadataProps} recommendationsProps={sidebarRecommendationsProps}>
       {#snippet queueBody()}
+        {#if jamLive}
+        <JamQueueList playback={playerBarState} onSelectQueue={playQueueIndex} onTogglePlayback={handleTogglePlay}
+          onQueueContextMenu={(event, entry) => menuService.open(event, {kind:'song',song:songFromQueue(entry),entryId:entry.entryId})} />
+        {:else}
         <QueuePanel playback={playerBarState} focusQueueEntryId={queueFocusEntryId} onQueueFocusHandled={(entryId)=>{if(queueFocusEntryId===entryId)queueFocusEntryId=null;}} onSelectQueue={playQueueIndex} onTogglePlayback={handleTogglePlay}
           onOpenArtist={(id) => { void openArtistDetail(id); }} onOpenAlbum={(id) => { void openAlbumDetail(id); }}
           onMoveQueue={(entryId, beforeEntryId) => player.moveQueueEntry(entryId, beforeEntryId)}
@@ -1332,6 +1352,7 @@ import { promotedEntryId } from "$lib/components/fullscreen/queueProjection";
           onToggleLike={(entry) => { void account.toggleLike(entry); }}
           onDislike={(entry)=>{const session=sessionRevision;const generation=playbackState.generation;const proposal=playbackState.queue.recommendations?.some(item=>item.entryId===entry.entryId)??false;void account.dislike(entry).then(async changed=>{if(changed&&session===sessionRevision&&generation===playbackState.generation){recommendations.removeSong(entry.videoId);await player.filterDislikedRecommendations(entry.videoId);if(!proposal)await player.removeQueueEntry(entry.entryId);}}).catch(error=>shellError=extractErrorMessage(error,'No se pudo quitar la canción.'));}}
           onRecommendationAction={(entryId, placement, generation)=>player.actOnQueueRecommendation(entryId, placement, generation, queuePreferences.currentSelection() === 'advance').catch(error=>{shellError=extractErrorMessage(error,'No se pudo actualizar la cola.');return undefined;})} />
+        {/if}
       {/snippet}
       {#snippet lyricsBody(mode)}
         <LyricsPanel state={lyricsState} playback={playerBarState} session={sessionRevision} active={sidebarOpen && mode !== 'genius'} onSeek={handleSeek} onRetry={() => { void lyrics.retry(); }} />
@@ -1350,7 +1371,7 @@ import { promotedEntryId } from "$lib/components/fullscreen/queueProjection";
       onRevealQueueWindow={(startIndex, generation) => player.revealQueueWindow(startIndex, generation)}
       {geniusState} geniusController={genius} {lyricsMode} onShowGenius={()=>{lyricsMode='genius';selectedPanel='lyrics';void genius.ensureNow();}} onOpenExternal={url=>void invoke('open_external_url',{url}).catch(()=>{})}
       {lyricsState} {recommendationsState} onSeek={handleSeek} onRetryLyrics={() => { void lyrics.retry(); }}
-      onRefreshRecommendations={() => { void recommendations.load(true); }}
+      onRefreshRecommendations={() => { if (!jamLive) void recommendations.load(true); }}
       onSuspendRecommendations={() => recommendations.suspend()}
       onPlayRecommendation={(song) => { ++collectionPlayRevision; void player.startRadio(song).catch(() => {}); }}
       onEnqueueRecommendation={(song) => { void player.enqueue([song], 'next').catch(error => shellError = extractErrorMessage(error, 'No se pudo agregar a la cola.')); }}
@@ -1389,6 +1410,8 @@ import { promotedEntryId } from "$lib/components/fullscreen/queueProjection";
       onSelectCard={selectSearchCard} onPlaySong={playSearchPreviewSong} />
   {/if}
 
+  <JamToasts toasts={$jamState.toasts} onDismiss={id => jam.actions.dismissToast(id)} />
+  <JamExitDialog pending={$jamState.pendingExit} actions={jam.actions} />
   <UpdateModal controller={updater} onOpenExternal={url=>void invoke('open_external_url',{url}).catch(error=>shellError=extractErrorMessage(error,'No se pudo abrir el enlace.'))} />
 </div>
 

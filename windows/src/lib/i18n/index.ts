@@ -21,6 +21,8 @@ const ownPatterns = Object.entries(resources).flatMap(([key, value]) => [value.e
 })).sort((a, b) => b.specificity - a.specificity);
 export const text = (key: string, args: Arguments = [], selected: AppLanguage = get(language)): string => lookup(resources, key, selected, args);
 export const t = derived(language, selected => (key: string, args: Arguments = []) => text(key, args, selected));
+/** True when the key exists in the shared or the Windows catalog (dynamic keys from the Jam logic are probed first). */
+export const hasText = (key: string): boolean => key in resources;
 export const count = (key: string, amount: number, selected: AppLanguage = get(language)): string => lookup(resources, key, selected, [], amount);
 /** Adapter for legacy app-owned labels/errors only. Never run over user or provider metadata. */
 export const translateOwnText = (value: string, selected: AppLanguage = get(language)): string => {

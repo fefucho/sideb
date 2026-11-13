@@ -51,7 +51,7 @@ test('bar shortcuts open only fullscreen sections; the outer trigger is the only
 });
 
 test('fullscreen collapses to its origin and the lateral panel is not a covered page', () => {
-  assert.match(page, /presentation = setFullscreen\(presentation, open, selectedPanel\)/);
+  assert.match(page, /presentation = setFullscreen\(presentation, open, presentablePanel\(selectedPanel\)\)/, 'the Jam tab has no lateral twin and collapses onto the artwork');
   assert.match(page, /covered=\{isFullscreenOpen\|\|spotlightOpen\}/, 'pages are covered by fullscreen and Spotlight, never by the panel');
   assert.match(page, /inert=\{isFullscreenOpen \|\| spotlightOpen\}/);
   assert.doesNotMatch(fullscreen, /presentation|toggleSidebar/, 'FullscreenNowPlaying stays a pure host: origin lives in the presentation state');

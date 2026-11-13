@@ -3,6 +3,7 @@
   import MoreIcon from '$lib/components/common/MoreIcon.svelte';
   import { tick, type Snippet } from "svelte";
   import PlayerIcon from "./PlayerIcon.svelte";
+  import ConnectionsButton from "$lib/components/jam/ConnectionsButton.svelte";
   import type { PlaybackStateDto } from "$lib/types";
   import ArtistCredits from "$lib/components/ArtistCredits.svelte";
   import FeaturedTrackTitle from "$lib/components/FeaturedTrackTitle.svelte";
@@ -228,6 +229,7 @@
     <input class="side-volume-slider" type="range" min="0" max="100" step="1" value={volume} style={`--fill:${volume}%`}
       oninput={handleVolumeInput} onpointerdown={() => volumeDragging = true}
       aria-label={$t('windows.ui.volume')} aria-valuetext={$t('windows.player.volumeValue', [Math.round(volume)])} />
+    <ConnectionsButton />
   </div>
 </div>
 {:else}
@@ -294,6 +296,7 @@
         </button>
         <button type="button" class="panel-shortcut" class:panel-active={fullscreenOpen && selectedPanel === 'lyrics' && lyricsMode === 'genius'} disabled={!hasTrack} aria-label={$t('genius.lyricsAndAnnotations')} title={$t('genius.lyricsAndAnnotations')} aria-pressed={fullscreenOpen && selectedPanel === 'lyrics' && lyricsMode === 'genius'} onclick={() => onSelectPanel?.('genius')}><PlayerIcon name="annotations" /></button>
       {/if}
+      <ConnectionsButton />
       </div>
       <div class="volume" data-volume-dragging={volumeDragging ? '' : undefined} class:open={volumeOpen} bind:this={volumeRoot} role="group" aria-label={$t('windows.ui.volume')} onpointerenter={() => volumeHovered = true} onpointerleave={leaveVolume} onfocusout={handleVolumeFocusOut}>
         <button bind:this={volumeButton} type="button" class="volume-toggle" aria-label={$t('windows.ui.showVolume')} title={$t('windows.player.volumeValue', [Math.round(volume)])} aria-expanded={volumeOpen} aria-controls="player-volume" aria-hidden={volumeOpen} tabindex={volumeOpen ? -1 : 0} onclick={toggleVolume}>
@@ -611,7 +614,7 @@
     .artwork { width:40px;height:40px;flex-basis:40px;margin-right:8px; }
     .panel-shortcuts { gap:2px; }
     .volume, .fullscreen-toggle { margin-left:2px; }
-    .panel-shortcut { width:28px;flex-basis:28px; }
+    .panel-shortcut, .panel-shortcuts :global(.connections-button) { width:28px;flex-basis:28px; }
     .title-line {gap:3px;}
   }
 </style>

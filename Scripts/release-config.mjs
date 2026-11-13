@@ -41,7 +41,7 @@ export function compiledBuild(root, platform, version, build, commit) {
   // Spotify Canvas is factory-installed in both apps (removable plugin): a release must carry and hash it.
   const mac = 'Side B.app/Contents/Resources/VisualProviders/spotify-canvas/';
   const required = platform === 'windows'
-    ? ['sideb-windows.exe','libmpv-2.dll','vulkan-1.dll','VulkanRT-License.txt','provider/spotify-canvas/manifest.json','provider/spotify-canvas/sideb-spotify-canvas.exe','provider/spotify-canvas/SHA256SUMS']
+    ? ['sideb-windows.exe','libmpv-2.dll','vulkan-1.dll','VulkanRT-License.txt','provider/spotify-canvas/manifest.json','provider/spotify-canvas/sideb-spotify-canvas.exe','provider/spotify-canvas/SHA256SUMS','provider/spotify-jam/sideb-spotify-jam.exe','provider/spotify-jam/LICENSE']
     : ['Side B.app/Contents/MacOS/Side B','Side B.app/Contents/Info.plist',mac+'manifest.json',mac+'sideb-spotify-canvas',mac+'SHA256SUMS'];
   for (const name of required) if (!metadata.artifactSHA256[name]) throw new Error(`Required artifact not verified: ${name}`);
   return directory;

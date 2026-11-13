@@ -200,6 +200,39 @@ function Ensure-VisualProviderPackage {
     } finally { Remove-Item -LiteralPath $staging -Recurse -Force -ErrorAction SilentlyContinue }
 }
 
+# Spotify Jam (invitado) viaja preinstalado igual que Canvas, pero sin manifest ni empaquetador: el host
+# (src-tauri/src/jam) sólo busca provider\spotify-jam\sideb-spotify-jam.exe. Se compila y deja el .exe y
+# su LICENSE en src-tauri\provider\spotify-jam; no se reescribe si el .exe no cambió. Para retirarlo: borrar
+# extensions\spotify-jam y las entradas provider/spotify-jam/* de bundle.resources en tauri.conf.json.
+function Get-JamExtensionDir { Join-Path $RepoRoot 'extensions\spotify-jam' }
+
+function Ensure-JamPluginPackage {
+    $extension = Get-JamExtensionDir
+    if (-not (Test-Path -LiteralPath (Join-Path $extension 'Cargo.toml'))) {
+        Write-Host 'Sin extensions\spotify-jam: se omite el plugin de Spotify Jam preinstalado.'
+        return
+    }
+    Require-Command cargo
+    $targetDir = Join-Path $extension 'target'
+    & cargo build --release --locked --target x86_64-pc-windows-msvc --manifest-path (Join-Path $extension 'Cargo.toml') --target-dir $targetDir
+    if ($LASTEXITCODE -ne 0) { throw "cargo build del plugin de Spotify Jam falló ($LASTEXITCODE)." }
+    $binary = Join-Path $targetDir 'x86_64-pc-windows-msvc\release\sideb-spotify-jam.exe'
+    $license = Join-Path $extension 'LICENSE'
+    if (-not (Test-Path -LiteralPath $binary)) { throw "Falta el ejecutable de Spotify Jam: $binary" }
+    if (-not (Test-Path -LiteralPath $license)) { throw "Falta la licencia de Spotify Jam: $license" }
+    $destination = Join-Path $WindowsDir 'src-tauri\provider\spotify-jam'
+    $current = Join-Path $destination 'sideb-spotify-jam.exe'
+    if ((Test-Path -LiteralPath $current) -and
+        ((Get-FileHash -LiteralPath $current -Algorithm SHA256).Hash -eq (Get-FileHash -LiteralPath $binary -Algorithm SHA256).Hash) -and
+        (Test-Path -LiteralPath (Join-Path $destination 'LICENSE')) -and
+        ((Get-Content -LiteralPath (Join-Path $destination 'LICENSE') -Raw) -ceq (Get-Content -LiteralPath $license -Raw))) { return }
+    if (Test-Path -LiteralPath $destination) { Remove-Item -LiteralPath $destination -Recurse -Force }
+    New-Item -ItemType Directory -Force -Path $destination | Out-Null
+    Copy-Item -LiteralPath $binary -Destination $current -Force
+    Copy-Item -LiteralPath $license -Destination (Join-Path $destination 'LICENSE') -Force
+    Write-Host "Plugin de Spotify Jam preparado en $destination"
+}
+
 function Show-Doctor {
     Write-Host "Repository: $RepoRoot"
     Write-Host "Windows project: $WindowsDir"
@@ -267,6 +300,7 @@ function Invoke-Verify {
     Ensure-MpvImportLibrary
     Import-VsDevEnvironment
     Ensure-VisualProviderPackage
+    Ensure-JamPluginPackage
     Invoke-Pnpm @('install', '--frozen-lockfile')
     Invoke-Pnpm @('check')
     Invoke-Pnpm @('test')
@@ -283,6 +317,11 @@ function Invoke-Verify {
         & cargo test --locked --manifest-path (Join-Path $extension 'Cargo.toml') --target-dir (Join-Path $extension 'target')
         if ($LASTEXITCODE -ne 0) { throw "cargo test del proveedor visual falló ($LASTEXITCODE)." }
     }
+    $jam = Get-JamExtensionDir
+    if (Test-Path -LiteralPath (Join-Path $jam 'Cargo.toml')) {
+        & cargo test --locked --manifest-path (Join-Path $jam 'Cargo.toml') --target-dir (Join-Path $jam 'target')
+        if ($LASTEXITCODE -ne 0) { throw "cargo test del plugin de Spotify Jam falló ($LASTEXITCODE)." }
+    }
 }
 
 switch ($Action) {
@@ -292,12 +331,14 @@ switch ($Action) {
     'dev' {
         Require-Command pnpm; Ensure-MpvImportLibrary; Import-VsDevEnvironment
         Ensure-VisualProviderPackage
+        Ensure-JamPluginPackage
         Ensure-FrontendDependencies
         Invoke-Tauri @('dev')
     }
     'build' {
         Require-Command pnpm; Ensure-MpvImportLibrary; Import-VsDevEnvironment
         Ensure-VisualProviderPackage
+        Ensure-JamPluginPackage
         Ensure-FrontendDependencies
         # Publish the runnable executable plus its adjacent DLL; a bundle is disabled until it
         # has a real Tauri resource mapping and runtime DLL lookup configured.
@@ -307,6 +348,7 @@ switch ($Action) {
     'package' {
         Require-Command pnpm; Ensure-MpvImportLibrary; Import-VsDevEnvironment
         Ensure-VisualProviderPackage
+        Ensure-JamPluginPackage
         Ensure-FrontendDependencies
         $mpvDir = Get-MpvDir
         $srcTauriDll = Join-Path $WindowsDir 'src-tauri\libmpv-2.dll'

@@ -26,8 +26,10 @@ mod commands {
     pub(crate) mod update_version;
     pub(crate) mod updater;
     pub(crate) mod visual_provider;
+    pub(crate) mod jam;
 }
 mod visual_provider;
+mod jam;
 pub use dto::*;
 use queue::{next_owner_epoch, QueueStateDto};
 
@@ -141,6 +143,8 @@ pub struct PlaybackManager {
     pub is_shuffle: bool,
     pub is_repeat: bool,
     pub position: f64,
+    /// Wall-clock instant at which the player last reported `position` (Jam clock sampling).
+    pub(crate) position_observed: Option<(f64, std::time::SystemTime)>,
     pub duration: f64,
     pub volume: f64,
     pub audio_revision: u64,
@@ -167,6 +171,7 @@ impl PlaybackManager {
             is_shuffle: false,
             is_repeat: false,
             position: 0.0,
+            position_observed: None,
             duration: 0.0,
             volume: 100.0,
             audio_revision: 0,
@@ -823,6 +828,7 @@ pub fn run() {
                                     // Sólo procesar eventos de posición si hay una pista efectivamente cargada para la generación activa
                                     if pb.loaded_generation.is_some() && !pb.is_ended {
                                         pb.position = pos;
+                                        pb.position_observed = Some((pos, std::time::SystemTime::now()));
                                         let seek_changed = commands::playback::observe_seek(&mut pb, pos);
                                         if pb.is_loading && pos > 0.0 {
                                             pb.is_loading = false;
@@ -933,6 +939,7 @@ pub fn run() {
             app.manage(state);
             artwork_runtime::initialize(app.handle());
             visual_provider::init(app.handle());
+            jam::init(app.handle());
             #[cfg(windows)]
             {
                 let _ = media_controls::initialize(app.handle());
@@ -1051,6 +1058,16 @@ pub fn run() {
             commands::visual_provider::cancel_visual_provider_artwork,
             commands::visual_provider::get_visual_provider_cache_size,
             commands::visual_provider::clear_visual_provider_cache,
+            commands::jam::jam_status,
+            commands::jam::jam_join,
+            commands::jam::jam_send,
+            commands::jam::jam_leave,
+            commands::jam::jam_open_spotify_login,
+            commands::jam::jam_cancel_spotify_login,
+            commands::jam::jam_spotify_sign_out,
+            commands::jam::jam_set_speed,
+            commands::jam::jam_clock,
+            commands::jam::jam_replace_upcoming,
             commands::recommendations::get_related_tracks,
             commands::recommendations::get_related_artists,
             commands::playback::next_track,
@@ -1072,6 +1089,11 @@ pub fn run() {
             commands::updater::skip_version,
             commands::updater::reset_skipped_version
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app, event| {
+            if matches!(event, tauri::RunEvent::Exit) {
+                jam::shutdown(app);
+            }
+        });
 }
