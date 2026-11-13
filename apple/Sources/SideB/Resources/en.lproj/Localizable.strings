@@ -246,6 +246,14 @@
 	<string>More song options</string>
 	<key>detail.track.play</key>
 	<string>Play song</string>
+	<key>detail.track.plays.billion</key>
+	<string>%@B</string>
+	<key>detail.track.plays.million</key>
+	<string>%@M</string>
+	<key>detail.track.plays.thousand</key>
+	<string>%@K</string>
+	<key>detail.track.playsAX</key>
+	<string>%@ plays</string>
 	<key>detail.track.reorder</key>
 	<string>Drag to reorder</string>
 	<key>detail.track.song</key>
@@ -1331,6 +1339,12 @@ History: %@</string>
 	<string>Dislike; remove from queue</string>
 	<key>queue.track.reorderSong</key>
 	<string>Drag to reorder song</string>
+	<key>search.category.episodes</key>
+	<string>Episodes</string>
+	<key>search.category.podcasts</key>
+	<string>Podcasts</string>
+	<key>search.category.profiles</key>
+	<string>Profiles</string>
 	<key>search.category.top_result</key>
 	<string>Top result</string>
 	<key>search.correction.original</key>
@@ -1405,6 +1419,14 @@ History: %@</string>
 	<string>Show all</string>
 	<key>search.provider.show_related</key>
 	<string>Show all %@ related results</string>
+	<key>search.quick.clear</key>
+	<string>Clear</string>
+	<key>search.quick.queries</key>
+	<string>Searches</string>
+	<key>search.quick.recents</key>
+	<string>Recent</string>
+	<key>search.quick.top</key>
+	<string>Top result</string>
 	<key>search.recents.clear</key>
 	<string>Clear Side B recents</string>
 	<key>search.recents.remove</key>

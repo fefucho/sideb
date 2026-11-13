@@ -24,3 +24,22 @@ export function createSearchPreferences(storage = browserStorage()) {
   };
 }
 export const searchPreferences = createSearchPreferences();
+
+export const categoryViewKey = 'sideb.search.categoryView.v1';
+/** Results grouped by category (Apple-Music style, PLAN-027 W4). Default on; only an explicit `false` turns it off,
+ * which shows the provider's own mixed list again. Same storage rules as the videos preference. */
+export function createCategoryViewPreference(storage = browserStorage()) {
+  let current = true;
+  try { current = resolveShowVideos(storage?.getItem(categoryViewKey)); } catch { /* Keep default. */ }
+  const store = writable(current);
+  return {
+    subscribe: store.subscribe,
+    current: () => current,
+    set(value: unknown) {
+      current = resolveShowVideos(value);
+      try { storage?.setItem(categoryViewKey, String(current)); } catch { /* Session choice remains usable. */ }
+      store.set(current);
+    },
+  };
+}
+export const categoryViewPreference = createCategoryViewPreference();

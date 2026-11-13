@@ -37,6 +37,8 @@ func collectionDetailFixtureTrack(_ id: String = "song") -> SongItemRecord {
         #expect(playlist.menu.maxX <= width - 24)
         #expect(album.song.width > playlist.song.width)
         #expect(album.album.width == 0)
+        #expect(album.plays.width > 0 && album.plays.maxX < album.duration.minX && album.plays.minX > album.artist.maxX)
+        #expect(playlist.plays.width == 0)
     }
 }
 
@@ -163,4 +165,16 @@ func collectionDetailFixtureTrack(_ id: String = "song") -> SongItemRecord {
         }
         coordinator.detachScrollingBackground()
     }
+}
+
+@Test func playCountsUseTheAppLanguageAndHideWhenMissing() {
+    #expect(PlayCountFormatter.display("1.2M", language: .es) == "1,2 M")
+    #expect(PlayCountFormatter.display("53M", language: .es) == "53 M")
+    #expect(PlayCountFormatter.display("1.2M", language: .en) == "1.2M")
+    #expect(PlayCountFormatter.display("980K", language: .es) == "980 mil")
+    #expect(PlayCountFormatter.display("2.1B", language: .es) == "2,1 mil M")
+    #expect(PlayCountFormatter.display("1,234", language: .en) == "1,234")
+    #expect(PlayCountFormatter.display("", language: .es) == nil)
+    #expect(PlayCountFormatter.display(nil, language: .es) == nil)
+    #expect(PlayCountFormatter.display("The Album", language: .es) == nil)
 }

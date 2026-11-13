@@ -60,5 +60,6 @@
 | Plan | Estado | Alcance |
 |---|---|---|
 | [PLAN-001 — Paridad de funciones y diseño](PLAN-001-feature-parity.md) | Auditoría conservada; ejecución en PLAN-003 | 113 tareas, incluidas decisiones y ensayos físicos. Casillas de aceptación conservadas; PAR-001 a PAR-021 conservan el significado publicado |
+| [PLAN-027 — Búsqueda: paridad con FIX-332/333/336/337](PLAN-027-search-parity-mac-1.4.md) | W1–W4 implementadas y probadas en Node/DOM; captura en navegador y validación nativa pendientes | [FIX-340](../../FIXES.md#fix-340), [FIX-341](../../FIXES.md#fix-341), [FIX-342](../../FIXES.md#fix-342), PAR-057/058/060 |
 
 No se reactiva ningún plan automáticamente. Los planes UX-01 a UX-06 y los pendientes previos están reunidos en `temp/windows/` como material local de importación. Al retomar uno, comprobar evidencia/código y trasladar sólo ese plan a esta carpeta, con sus enlaces actualizados.

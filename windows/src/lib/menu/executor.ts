@@ -15,6 +15,7 @@ export interface MenuExecutorPorts {
   removeQueue: (entryId: string) => Promise<void>;
   recommendationAction?: (entryId: string, placement: 'next' | 'end' | 'now' | 'remove', generation: number, session: number) => Promise<unknown>;
   like: (song: SongDto) => Promise<void>;
+  dislike?: (song: SongDto) => void | Promise<void>;
   saveSong: (song: SongDto) => Promise<void>;
   addPlaylist: (id: string, song: SongDto) => Promise<void>;
   removePlaylistSong: (id: string, song: SongDto) => Promise<void>;
@@ -63,6 +64,7 @@ export class MenuExecutor {
         await p.recommendationAction(target.queueRecommendationId, placement, target.queueRecommendationGeneration, target.queueRecommendationSession);
         return;
       }
+      if (action.type === 'dislike') { if (valid() && p.dislike) await p.dislike(target.song); return; }
       if (action.type === 'like') { await p.like(target.song); return; }
       if (action.type === 'save-song') { await p.saveSong(target.song); return; }
       if (action.type === 'add-to-playlist') { await p.addPlaylist(action.playlistId, target.song); return; }

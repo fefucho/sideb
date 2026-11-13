@@ -47,6 +47,10 @@ final class HomeFeaturedRailView: NSView, NSCollectionViewDataSource, NSCollecti
     private(set) var retainedOffset: CGFloat = 0
     /// Índice de la tarjeta alineada a la izquierda en la fila de colecciones; sólo lo mueve una medida real.
     private(set) var anchorIndex = 0
+    /// El ancla sólo sigue al scroll cuando lo origina el usuario (gesto, rueda o flechas). Sin esto, un
+    /// desplazamiento de AppKit al poblar o medir el carril por primera vez (arranque de la app) se leía como
+    /// una medida real y la fila quedaba corrida a la derecha.
+    private var userMovedRail = false
     private var isApplying = false
     private(set) var isStopped = false
     private var model: HomeFeaturedNativeRail?
@@ -95,6 +99,7 @@ final class HomeFeaturedRailView: NSView, NSCollectionViewDataSource, NSCollecti
         previous.setAccessibilityLabel(L10n.text("home.shelf.previous"))
         next.setAccessibilityLabel(L10n.text("home.shelf.next"))
         scroll.contentView.postsBoundsChangedNotifications = true
+        scroll.onUserScroll = { [weak self] in self?.userMovedRail = true }
         NotificationCenter.default.addObserver(self, selector: #selector(liveScrollBegan),
                                                name: NSScrollView.willStartLiveScrollNotification, object: scroll)
         NotificationCenter.default.addObserver(self, selector: #selector(liveScrollEnded),
@@ -371,7 +376,7 @@ final class HomeFeaturedRailView: NSView, NSCollectionViewDataSource, NSCollecti
         }
         // Sólo una medida real (ancho > 0, no una reubicación propia) mueve el ancla.
         // Con una reubicación pendiente (tras un ancho ≤ 0) la posición actual no es una medida del usuario.
-        if !isApplying, !measuredWhileHidden, bounds.width > 0, scroll.contentSize.width > 0, cardStride > HomeCollectionRowLayout.gap {
+        if !isApplying, userMovedRail, !measuredWhileHidden, bounds.width > 0, scroll.contentSize.width > 0, cardStride > HomeCollectionRowLayout.gap {
             anchorIndex = min(max(0, model.records.count - 1), max(0, Int((max(0, clip.bounds.minX) / cardStride).rounded())))
         }
         previous.isHidden = clip.bounds.minX <= 1
@@ -406,6 +411,7 @@ final class HomeFeaturedRailView: NSView, NSCollectionViewDataSource, NSCollecti
             x = HomeRailPaging.target(position: clip.bounds.minX, extent: extent, maximum: collectionsMaximumOffset,
                                       direction: direction, stride: cardStride)
         }
+        userMovedRail = true
         cancelSnap()
         clip.scroll(to: NSPoint(x: x, y: 0))
         scroll.reflectScrolledClipView(clip)
@@ -416,6 +422,7 @@ final class HomeFeaturedRailView: NSView, NSCollectionViewDataSource, NSCollecti
     /// Un gesto nuevo interrumpe el encaje en curso: no se pelea con el usuario.
     @objc private func liveScrollBegan() {
         guard !isStopped else { return }
+        userMovedRail = true
         cancelSnap()
     }
 
@@ -468,6 +475,7 @@ final class HomeFeaturedRailView: NSView, NSCollectionViewDataSource, NSCollecti
     var mosaicContentSizeForTesting: NSSize { mosaicLayout.collectionViewContentSize }
     var scrollOffsetForTesting: CGFloat { scroll.contentView.bounds.minX }
     func setScrollOffsetForTesting(_ x: CGFloat) {
+        userMovedRail = true
         scroll.contentView.scroll(to: NSPoint(x: x, y: 0))
         scroll.reflectScrolledClipView(scroll.contentView)
     }
@@ -489,6 +497,7 @@ final class HomeFeaturedRailView: NSView, NSCollectionViewDataSource, NSCollecti
 }
 private final class HomeFeaturedScrollView: HomeFeedScrollView, HorizontalNavigationGestureOwner {
     var ownsHorizontalNavigationGesture: Bool { true }
+    var onUserScroll: (() -> Void)?
     override func scrollWheel(with event: NSEvent) {
         if abs(event.scrollingDeltaY) > abs(event.scrollingDeltaX) {
             var parent = superview
@@ -497,6 +506,7 @@ private final class HomeFeaturedScrollView: HomeFeedScrollView, HorizontalNaviga
                 parent = view.superview
             }
         }
+        if abs(event.scrollingDeltaX) > 0 || abs(event.deltaX) > 0 { onUserScroll?() }
         super.scrollWheel(with: event)
     }
 }

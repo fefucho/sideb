@@ -10,11 +10,14 @@ struct QuickResultCardRow: View {
     var isActive: Bool = false
     var isPlaying: Bool = false
     var isLoading: Bool = false
+    /// Quick-search density: 32 pt artwork, 40 pt rows, and no type label (the subtitle already has it).
+    var compact = false
     var onPlay: (() -> Void)? = nil
     var menuProvider: (() -> NSMenu?)? = nil
     let onSelect: () -> Void
 
     @State private var isHovered: Bool = false
+    private var artSize: CGFloat { compact ? 32 : 42 }
 
     private var isArtist: Bool {
         card.kind.lowercased() == "artist"
@@ -26,12 +29,12 @@ struct QuickResultCardRow: View {
         let artwork = Group {
             if let thumb = card.thumbnail,
                let url = ImageURLHelper.optimizedThumbnailURL(from: thumb, targetPixelSize: isHero ? 120 : 96) {
-                CachedAsyncImage(url: url, targetSize: CGSize(width: 42, height: 42)) { image in
+                CachedAsyncImage(url: url, targetSize: CGSize(width: artSize, height: artSize)) { image in
                     image.resizable().aspectRatio(contentMode: .fill)
                 } placeholder: {
                     placeholderIcon
                 }
-                .frame(width: 42, height: 42)
+                .frame(width: artSize, height: artSize)
                 .clipShape(isArtist ? AnyShape(Circle()) : AnyShape(RoundedRectangle(cornerRadius: AppTheme.artworkThumbnailRadius, style: .continuous)))
                 .overlay(isArtist
                     ? AnyView(Circle().stroke(Color.white.opacity(0.12), lineWidth: 0.5))
@@ -41,7 +44,7 @@ struct QuickResultCardRow: View {
                 placeholderIcon
             }
         }
-        HStack(spacing: 12) {
+        HStack(spacing: compact ? 10 : 12) {
             if isCollection, let onPlay {
                 MediaArtworkControls(
                     isCollection: true,
@@ -54,7 +57,7 @@ struct QuickResultCardRow: View {
                     onPlay: onPlay,
                     menuProvider: menuProvider
                 ) { artwork }
-                    .frame(width: 42, height: 42)
+                    .frame(width: artSize, height: artSize)
             } else if let onPlay, !isArtist {
                 MediaArtworkControls(
                     isCollection: false,
@@ -63,7 +66,7 @@ struct QuickResultCardRow: View {
                     onPlay: onPlay,
                     menuProvider: menuProvider
                 ) { artwork }
-                    .frame(width: 42, height: 42)
+                    .frame(width: artSize, height: artSize)
             } else {
                 Button(action: onSelect) { artwork }
                     .buttonStyle(.plain)
@@ -73,23 +76,27 @@ struct QuickResultCardRow: View {
             Button(action: onSelect) {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(card.title)
-                        .font(.system(size: 15, weight: isHero ? .semibold : .medium))
+                        .font(.system(size: compact ? 13 : 15, weight: isHero ? .semibold : .medium))
                         .foregroundStyle(.primary)
                         .lineLimit(1)
 
                     ContentRatedMetadata(rating: card.contentRating, fontSize: 12) {
                         HStack(spacing: 4) {
-                            Text(kindDisplayName)
-                                .font(.system(size: 12, weight: .semibold))
-                                .foregroundStyle(isHero ? .primary : .secondary)
+                            if !compact {
+                                Text(kindDisplayName)
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .foregroundStyle(isHero ? .primary : .secondary)
+                            }
 
                             if let sub = card.subtitle, !sub.isEmpty {
-                                Text("•")
-                                    .font(.system(size: 10))
-                                    .foregroundStyle(.tertiary)
+                                if !compact {
+                                    Text("•")
+                                        .font(.system(size: 10))
+                                        .foregroundStyle(.tertiary)
+                                }
 
                                 Text(sub)
-                                    .font(.system(size: 12))
+                                    .font(.system(size: compact ? 11 : 12))
                                     .foregroundStyle(.secondary)
                                     .lineLimit(1)
                             }
@@ -113,7 +120,7 @@ struct QuickResultCardRow: View {
             }
         }
             .padding(.horizontal, 10)
-            .frame(minHeight: 58)
+            .frame(minHeight: compact ? 40 : 58)
             .background(
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .fill(isHovered ? Color.white.opacity(0.08) : Color.clear)
@@ -148,7 +155,7 @@ struct QuickResultCardRow: View {
                     .foregroundStyle(.secondary)
             }
         }
-        .frame(width: 42, height: 42)
+        .frame(width: artSize, height: artSize)
     }
 }
 
@@ -160,12 +167,14 @@ struct QuickResultSongRow: View {
     var onArtist: (() -> Void)? = nil
     var onAlbum: (() -> Void)? = nil
     var menuProvider: (() -> NSMenu?)? = nil
+    var compact = false
     let onSelect: () -> Void
 
     @State private var isHovered: Bool = false
+    private var artSize: CGFloat { compact ? 32 : 42 }
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: compact ? 10 : 12) {
             MediaArtworkControls(
                 isCollection: false,
                 accessibilityTitle: song.title,
@@ -175,10 +184,10 @@ struct QuickResultSongRow: View {
             ) {
                 if let thumb = song.thumbnail,
                    let url = ImageURLHelper.optimizedThumbnailURL(from: thumb, targetPixelSize: 96) {
-                    CachedAsyncImage(url: url, targetSize: CGSize(width: 42, height: 42)) { image in
+                    CachedAsyncImage(url: url, targetSize: CGSize(width: artSize, height: artSize)) { image in
                         image.resizable().aspectRatio(contentMode: .fill)
                     } placeholder: { quickSongPlaceholder }
-                        .frame(width: 42, height: 42)
+                        .frame(width: artSize, height: artSize)
                         .clipShape(RoundedRectangle(cornerRadius: AppTheme.artworkThumbnailRadius, style: .continuous))
                         .overlay(RoundedRectangle(cornerRadius: AppTheme.artworkThumbnailRadius, style: .continuous)
                             .stroke(Color.white.opacity(0.12), lineWidth: 0.5))
@@ -186,12 +195,12 @@ struct QuickResultSongRow: View {
                     quickSongPlaceholder
                 }
             }
-            .frame(width: 42, height: 42)
+            .frame(width: artSize, height: artSize)
 
-            VStack(alignment: .leading, spacing: 2.5) {
+            VStack(alignment: .leading, spacing: compact ? 1.5 : 2.5) {
                 if let onFeatured {
-                    FeaturedTrackTitle(track: song, font: .system(size: 15, weight: .medium), color: .primary, pointSize: 15, onNavigate: onFeatured)
-                } else { Text(song.title).font(.system(size: 15, weight: .medium)).foregroundStyle(.primary).lineLimit(1).allowsHitTesting(false) }
+                    FeaturedTrackTitle(track: song, font: .system(size: compact ? 13 : 15, weight: .medium), color: .primary, pointSize: compact ? 13 : 15, onNavigate: onFeatured)
+                } else { Text(song.title).font(.system(size: compact ? 13 : 15, weight: .medium)).foregroundStyle(.primary).lineLimit(1).allowsHitTesting(false) }
 
                 ContentRatedMetadata(rating: song.contentRating, fontSize: 12) {
                     HStack(spacing: 4) {
@@ -233,7 +242,7 @@ struct QuickResultSongRow: View {
             }
         }
         .padding(.horizontal, 10)
-        .frame(minHeight: 58)
+        .frame(minHeight: compact ? 40 : 58)
         .background(RoundedRectangle(cornerRadius: 8, style: .continuous)
             .fill(isHovered ? Color.white.opacity(0.08) : Color.clear))
         .contentShape(Rectangle())
@@ -245,7 +254,7 @@ struct QuickResultSongRow: View {
     private var quickSongPlaceholder: some View {
         RoundedRectangle(cornerRadius: AppTheme.artworkThumbnailRadius, style: .continuous)
             .fill(Color.white.opacity(0.06))
-            .frame(width: 42, height: 42)
+            .frame(width: artSize, height: artSize)
             .overlay(Image(systemName: "music.note").foregroundStyle(.secondary))
     }
 }

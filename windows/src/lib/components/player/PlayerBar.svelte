@@ -26,7 +26,6 @@
     liked?: boolean;
     likePending?: boolean;
     onToggleLike?: () => void;
-    onDislike?: () => void;
     likeError?: string | null;
     selectedPanel?: Panel;
     lyricsMode?: 'synced' | 'genius';
@@ -44,7 +43,7 @@
     sidebarSpacing?: number | null;
   }
 
-  let { playback, onTogglePlayback, onRetryPlayback, onPrevious, onNext, onSeek, onVolumeChange, onVolumeSurfaceChange, onSetMuted, onSetShuffle, onSetRepeat, fullscreenOpen, onToggleFullscreen, loggedIn = false, liked = false, likePending = false, onToggleLike, onDislike, likeError = null, selectedPanel, lyricsMode = 'synced', onSelectPanel, onOpenArtist, onOpenAlbum, onOpenMenu, variant = 'bar', sidebarLead, sidebarTail, sidebarSpacing = null }: Props = $props();
+  let { playback, onTogglePlayback, onRetryPlayback, onPrevious, onNext, onSeek, onVolumeChange, onVolumeSurfaceChange, onSetMuted, onSetShuffle, onSetRepeat, fullscreenOpen, onToggleFullscreen, loggedIn = false, liked = false, likePending = false, onToggleLike, likeError = null, selectedPanel, lyricsMode = 'synced', onSelectPanel, onOpenArtist, onOpenAlbum, onOpenMenu, variant = 'bar', sidebarLead, sidebarTail, sidebarSpacing = null }: Props = $props();
   let seekDraft = $state<{ generation: number; value: number } | null>(null);
   let failedArtworkUrl = $state<string | null>(null);
   let volumeOpen = $state(false);
@@ -122,6 +121,10 @@
           ? $t('player.pause')
           : $t('player.play')
   );
+
+  /** Apple Music style: remaining time as "-0:38" (follows the scrub draft); "—:—" while the duration is unknown. */
+  const remainingText = $derived(duration > 0 ? `-${formatTime(duration - position)}` : '—:—');
+  const remainingLabel = $derived(duration > 0 ? $t('windows.player.remaining', [formatTime(duration - position)]) : $t('windows.player.duration', [remainingText]));
 
   function finitePositive(value: number): number {
     return Number.isFinite(value) ? Math.max(0, value) : 0;
@@ -209,7 +212,7 @@
     {@render seekSlider()}
     <div class="side-times">
       <span class="time" aria-label={$t('windows.player.elapsed', [formatTime(position)])}>{formatTime(position)}</span>
-      <span class="time time-end" aria-label={$t('windows.player.duration', [formatTime(duration)])}>{formatTime(duration)}</span>
+      <span class="time time-end" aria-label={remainingLabel}>{remainingText}</span>
     </div>
   </div>
   <div class="side-gap" style:flex={sidebarSpacing === null ? '1 1 10px' : `0 0 ${sidebarSpacing}px`} aria-hidden="true"></div>
@@ -234,8 +237,8 @@
       {formatTime(position)}
     </span>
     {@render seekSlider()}
-    <span class="time time-end" aria-label={$t('windows.player.duration', [formatTime(duration)])}>
-      {formatTime(duration)}
+    <span class="time time-end" aria-label={remainingLabel}>
+      {remainingText}
     </span>
   </div>
 
@@ -257,7 +260,9 @@
         <span class="title" title={playback.currentTrack?.title ?? $t('player.noPlayback')}>
           {#if playback.currentTrack}<FeaturedTrackTitle track={playback.currentTrack} {onOpenArtist} prefetch scrollTitle />{:else}{$t('player.noPlayback')}{/if}
         </span>
-
+        <button class="like-toggle" type="button" class:liked class:absent={!hasTrack} disabled={!loggedIn || !hasTrack || !onToggleLike || likePending || playback.isLoading} onclick={onToggleLike} aria-busy={likePending || undefined} aria-pressed={liked} aria-label={liked ? $t('windows.ui.removeLike') : $t('windows.ui.like')} title={!loggedIn ? $t('windows.ui.signInToUseLike') : likeError ?? (likePending ? $t('windows.ui.updatingLike') : liked ? $t('windows.ui.removeLike') : $t('windows.ui.like'))}>
+          <svg viewBox="0 0 24 24" aria-hidden="true" fill={liked ? "currentColor" : "none"} stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.8 8.7c0 4.2-6.4 9.1-8.8 11-2.4-1.9-8.8-6.8-8.8-11a4.9 4.9 0 0 1 8.8-3.1 4.9 4.9 0 0 1 8.8 3.1Z" /></svg>
+        </button>
         </div>
         {#if playback.error}
           <span class="status error" role="status" title={resolveMessage(playback.error, $language)}>{resolveMessage(playback.error, $language)}</span>
@@ -275,17 +280,9 @@
         {/if}
       </div>
       <div class="track-actions">
-        <button class="like-toggle" type="button" class:liked disabled={!loggedIn || !hasTrack || !onToggleLike || likePending || playback.isLoading} onclick={onToggleLike} aria-busy={likePending || undefined} aria-pressed={liked} aria-label={liked ? $t('windows.ui.removeLike') : $t('windows.ui.like')} title={!loggedIn ? $t('windows.ui.signInToUseLike') : likeError ?? (likePending ? $t('windows.ui.updatingLike') : liked ? $t('windows.ui.removeLike') : $t('windows.ui.like'))}>
-          <svg viewBox="0 0 24 24" aria-hidden="true" fill={liked ? "currentColor" : "none"} stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.8 8.7c0 4.2-6.4 9.1-8.8 11-2.4-1.9-8.8-6.8-8.8-11a4.9 4.9 0 0 1 8.8-3.1 4.9 4.9 0 0 1 8.8 3.1Z" /></svg>
-        </button>
-        <div class="secondary-actions">
-        <button class="dislike-toggle" type="button" disabled={!loggedIn || !hasTrack || !onDislike || likePending || playback.isLoading} onclick={onDislike} aria-busy={likePending || undefined} aria-label={$t('windows.queue.dislike', [playback.currentTrack?.title ?? ''])} title={!loggedIn ? $t('windows.ui.signInToUseLike') : $t('windows.ui.dislikeAndRemoveFromQueue')}>
-          <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4H3v10h4M7 13l4 7a2 2 0 0 0 3-2l-1-4h5a3 3 0 0 0 3-3l-2-5a3 3 0 0 0-3-2H7Z" /></svg>
-        </button>
         <button class="more-toggle" type="button" disabled={!onOpenMenu || !hasTrack} aria-label={$t('detail.track.moreOptionsForSong')} title={$t('menu.more_options')} onclick={onOpenMenu}>
           <MoreIcon />
         </button>
-        </div>
       </div>
     </div>
 
@@ -296,9 +293,6 @@
           <PlayerIcon name="lyrics" />
         </button>
         <button type="button" class="panel-shortcut" class:panel-active={fullscreenOpen && selectedPanel === 'lyrics' && lyricsMode === 'genius'} disabled={!hasTrack} aria-label={$t('genius.lyricsAndAnnotations')} title={$t('genius.lyricsAndAnnotations')} aria-pressed={fullscreenOpen && selectedPanel === 'lyrics' && lyricsMode === 'genius'} onclick={() => onSelectPanel?.('genius')}><PlayerIcon name="annotations" /></button>
-        <button type="button" class="panel-shortcut" class:panel-active={fullscreenOpen && selectedPanel === "queue"} aria-label={$t('windows.ui.openQueue')} title={$t('queue.title')} aria-pressed={fullscreenOpen && selectedPanel === "queue"} onclick={() => onSelectPanel?.("queue")}>
-          <PlayerIcon name="queue" />
-        </button>
       {/if}
       </div>
       <div class="volume" data-volume-dragging={volumeDragging ? '' : undefined} class:open={volumeOpen} bind:this={volumeRoot} role="group" aria-label={$t('windows.ui.volume')} onpointerenter={() => volumeHovered = true} onpointerleave={leaveVolume} onfocusout={handleVolumeFocusOut}>
@@ -406,7 +400,9 @@
 
   input[type="range"]:disabled { cursor: default; opacity: 0.45; }
 
-  .seek { height: 2.5px; border-radius: 3px; }
+  /* Apple Music style track: 5 px (7 px on hover/drag), rounded ends, no visible thumb, elapsed in the accent. */
+  .seek { height: 5px; border-radius: 999px; background: linear-gradient(to right, #d06c70 0 var(--fill), rgba(255, 255, 255, 0.22) var(--fill) 100%); transition: height 120ms ease; }
+  .seek:hover:not(:disabled), .seek:active:not(:disabled) { height: 7px; }
 
   input[type="range"]::-webkit-slider-thumb {
     appearance: none;
@@ -426,6 +422,9 @@
     border-radius: 3px;
     background: #fff;
   }
+
+  input.seek::-webkit-slider-thumb { width: 1px; height: 1px; border-radius: 0; background: transparent; box-shadow: none; }
+  input.seek::-moz-range-thumb { width: 1px; height: 1px; border-radius: 0; background: transparent; }
 
   .main-row {
     position: absolute;
@@ -508,29 +507,26 @@
 
   .artwork img { width: 100%; height: 100%; object-fit: cover; }
   .artwork svg { width: 18px; height: 18px; }
-  .metadata { display: flex; flex: 0 1 auto; width: max-content; flex-direction: column; gap: 2px; min-width: 0; margin-right: 10px; }
-  .title-line { display: flex; min-width: 0; align-items: center; gap: 7px; }
+  .metadata { display: flex; flex: 0 1 auto; width: max-content; flex-direction: column; gap: 2px; min-width: 0; margin-right: 6px; }
+  .title-line { display: flex; min-width: 0; align-items: center; gap: 5px; }
   .title, .artist, .status { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .title { flex: 1; min-width: 0; font-size: 13px; font-weight: 650; line-height: 16px; }
+  .title { flex: 0 1 auto; min-width: 0; font-size: 13px; font-weight: 650; line-height: 16px; }
   .artist, .status { color: #a4a4a8; font-size: 11.5px; font-weight: 500; line-height: 14px; }
   .artist-line { display: flex; min-width: 0; align-items: center; overflow: hidden; color: #a4a4a8; font-size: 11.5px; font-weight: 500; line-height: 14px; }
   .status.error { color: #ffd37a; }
   .status.like-error { color: #ff9ba1; }
-  .like-toggle { display: grid; box-sizing:border-box; flex: 0 0 32px; place-items: center; width: 32px; height: 44px; padding: 0; border: 0; border-radius: 50%; color: rgb(255 255 255 / 80%); background: transparent; cursor: pointer; }
-  .like-toggle:hover:not(:disabled) { color: #fff; background: rgb(255 255 255 / 9%); }
-  .like-toggle.liked { color: #d06c70; }
-  .like-toggle.liked:hover:not(:disabled), .like-toggle.liked:focus-visible { color: #d06c70; background: rgb(255 255 255 / 9%); }
-  .like-toggle:disabled { opacity: .55; cursor: wait; }
-  .like-toggle svg { width: 25px; height: 25px; }
-  .like-toggle[aria-busy="true"] { opacity: 1; cursor: progress; }
+  /* Small heart next to the title (Apple Music). Hidden until the bar is hovered or the heart has keyboard focus;
+     a liked song keeps it always visible, filled, in the accent. The slot is reserved, so nothing shifts. */
+  .like-toggle { display: grid; box-sizing: border-box; flex: 0 0 18px; place-items: center; width: 18px; height: 18px; padding: 0; border: 0; border-radius: 50%; color: rgb(255 255 255 / 60%); background: transparent; cursor: pointer; opacity: 0; pointer-events: none; transition: opacity 120ms ease, color var(--control-transition); }
+  .player-bar:hover .like-toggle, .like-toggle.liked, .like-toggle:focus-visible { opacity: 1; pointer-events: auto; }
+  .like-toggle:hover:not(:disabled) { color: #fff; }
+  .like-toggle.liked, .like-toggle.liked:hover:not(:disabled) { color: #d06c70; }
+  .player-bar:hover .like-toggle:disabled, .like-toggle.liked:disabled { opacity: .55; cursor: wait; }
+  .player-bar:hover .like-toggle[aria-busy="true"], .like-toggle.liked[aria-busy="true"] { opacity: 1; cursor: progress; }
+  .like-toggle.absent { visibility: hidden; }
+  .like-toggle svg { width: 12px; height: 12px; }
 
-  .track-actions { display: flex; flex: 0 0 60px; width: 60px; height: 46px; align-items:center; gap: 4px; }
-  .secondary-actions { display:flex; flex:0 0 24px; width:24px; height:46px; flex-direction:column; gap:2px; }
-  .secondary-actions .dislike-toggle, .secondary-actions .more-toggle { box-sizing: border-box; flex: 0 0 22px; width: 24px; height: 22px; }
-  .dislike-toggle {display:grid;place-items:center;padding:3px;border:0;border-radius:50%;color:rgb(255 255 255 / 55%);background:transparent;cursor:pointer;}
-  .dislike-toggle svg {width:14px;height:14px;}
-  .dislike-toggle:hover:not(:disabled) {color:#fff;background:rgb(255 255 255 / 9%);}
-  .dislike-toggle:disabled {opacity:.55;cursor:default;}
+  .track-actions { display: flex; flex: 0 0 28px; width: 28px; height: 46px; align-items: center; }
   .end-controls::before { content: ''; flex: 0 0 17px; width: 17px; height: 22px; }
   .end-controls { display: flex; align-items: center; justify-content: flex-end; gap: 0; min-width: 0; }
   .volume, .fullscreen-toggle { margin-left: 8px; }
@@ -565,7 +561,7 @@
   .fullscreen-toggle svg.flipped { transform: rotate(180deg); }
 
   .skip, .mode-toggle, .panel-shortcut, .more-toggle, .volume-toggle, .volume-mute, .fullscreen-toggle { border-radius: 50%; }
-  .skip, .mode-toggle, .play-toggle, .like-toggle, .dislike-toggle, .panel-shortcut, .more-toggle, .volume-mute, .fullscreen-toggle {
+  .skip, .mode-toggle, .play-toggle, .panel-shortcut, .more-toggle, .volume-mute, .fullscreen-toggle {
     transition: background-color var(--control-transition), color var(--control-transition), box-shadow var(--control-transition);
   }
   .skip:active:not(:disabled), .mode-toggle:active:not(:disabled), .panel-shortcut:active:not(:disabled), .more-toggle:active:not(:disabled), .volume-toggle:active:not(:disabled), .volume-mute:active:not(:disabled), .fullscreen-toggle:active:not(:disabled) { background-color: rgb(255 255 255 / 6%); }
@@ -577,7 +573,6 @@
      (lyrics sample / queue, or `.side-flex` when there is none), never to a gap between the metadata and the progress. */
   .sidebar-controls .side-top { flex: 0 0 10px; min-height: 0; }
   .side-progress { display: flex; flex: none; flex-direction: column; gap: 6px; }
-  .side-progress .seek { height: 4px; }
   .side-times { display: flex; justify-content: space-between; }
   .side-times .time { font-size: 11px; }
   .side-transport { flex: none; justify-content: center; gap: 17px; width: 100%; }

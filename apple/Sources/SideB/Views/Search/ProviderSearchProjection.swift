@@ -45,6 +45,25 @@ enum ProviderSearchProjection {
         songsByItemIndex(in: section)[cardIndex]
     }
 
+    /// YouTube leaves the artist out of the rows under an artist's top result (the artist is implied by
+    /// the card), and the core keeps it empty on purpose rather than guess (#216). The app would then
+    /// print «Various artists». Those rows are that artist's songs, so they inherit its name and id.
+    static func principalArtist(of section: SearchSectionRecord) -> (name: String, id: String)? {
+        guard section.layout == "top", let raw = section.primaryItemIndex else { return nil }
+        let index = Int(raw)
+        guard section.items.indices.contains(index), section.items[index].kind == "artist" else { return nil }
+        return (section.items[index].title, section.items[index].id)
+    }
+
+    static func inheritingArtist(_ song: SongItemRecord, from artist: (name: String, id: String)?) -> SongItemRecord {
+        guard let artist, song.artists.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, song.artistRuns.isEmpty else { return song }
+        var result = song
+        result.artists = artist.name
+        result.artistId = artist.id
+        result.artistRuns = [HomeArtistRunRecord(text: artist.name, id: artist.id)]
+        return result
+    }
+
     /// Prepares every song/video occurrence once so row builders can do an O(1) lookup.
     /// Payloads first pair by their ordinal among media cards, preserving duplicate IDs with
     /// different setVideoId values. A mismatched ordinal falls back to an ID only when unique.
@@ -58,6 +77,7 @@ enum ProviderSearchProjection {
 
         var result: [Int: SongItemRecord] = [:]
         result.reserveCapacity(min(section.items.count, section.songs.count))
+        let principal = principalArtist(of: section)
         var mediaPosition = 0
         for (itemIndex, card) in section.items.enumerated() where ["song", "video"].contains(card.kind) {
             if section.songs.indices.contains(mediaPosition),
@@ -68,7 +88,7 @@ enum ProviderSearchProjection {
             } else {
                 result[itemIndex] = SongItemRecord(fromCard: card)
             }
-            if let song = result[itemIndex] { result[itemIndex] = mergingRating(song, from: card) }
+            if let song = result[itemIndex] { result[itemIndex] = inheritingArtist(mergingRating(song, from: card), from: principal) }
             mediaPosition += 1
         }
         return result

@@ -44,14 +44,8 @@ private struct PlayerMetadataProbe: NSViewRepresentable {
             let root = NSHostingView(rootView: VStack(spacing: 0) {
                 PlayerBarMetadataActionLayout {
                     metadata.background(PlayerMetadataProbe(name: "metadata"))
-                    HStack(spacing: 4) {
-                        Color.clear.frame(width: 32, height: 44)
-                        VStack(spacing: 2) {
-                            Color.clear.frame(width: 24, height: 22)
-                            Color.clear.frame(width: 24, height: 22)
-                        }
-                    }
-                    .frame(width: 60, height: 46)
+                    Color.clear
+                    .frame(width: 28, height: 46)
                     .background(PlayerMetadataProbe(name: "actions"))
                 }
                 .background(PlayerMetadataProbe(name: "slot"))
@@ -66,9 +60,9 @@ private struct PlayerMetadataProbe: NSViewRepresentable {
             let actions = try #require(views.first { $0.identifier?.rawValue == "actions" })
             let textFrame = text.convert(text.bounds, to: root)
             let actionFrame = actions.convert(actions.bounds, to: root)
-            #expect(abs(textFrame.width - min(natural, available - 70)) < 1)
-            #expect(abs(actionFrame.minX - textFrame.maxX - 10) < 1)
-            #expect(abs(actionFrame.width - 60) < 0.5)
+            #expect(abs(textFrame.width - min(natural, available - 34)) < 1)
+            #expect(abs(actionFrame.minX - textFrame.maxX - 6) < 1)
+            #expect(abs(actionFrame.width - 28) < 0.5)
             #expect(abs(actionFrame.height - 46) < 0.5)
             #expect(actionFrame.maxX <= available + 0.5)
         }

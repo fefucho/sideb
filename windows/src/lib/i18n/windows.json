@@ -438,6 +438,10 @@
     "es": "Tiempo transcurrido %@",
     "en": "Elapsed time %@"
   },
+  "windows.player.remaining": {
+    "es": "Tiempo restante %@",
+    "en": "Time remaining %@"
+  },
   "windows.player.duration": {
     "es": "Duración %@",
     "en": "Duration %@"

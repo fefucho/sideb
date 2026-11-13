@@ -37,7 +37,10 @@ private final class QuickSearchHostCore: SideBCore, @unchecked Sendable {
         ])
     }
     override func searchPage(query: String, params: String?, recordHistory: Bool, ignoreSpelling: Bool) async throws -> SearchPageRecord {
-        await requests.catalog(query)
+        // The quick search also runs a full search for what is typed; it never records history.
+        // Only a submitted search counts as a request here.
+        guard recordHistory else { return SearchPageRecord(chips: [], correction: nil, sections: [], continuation: nil) }
+        return await requests.catalog(query)
     }
 }
 
@@ -78,7 +81,14 @@ final class QuickSearchHostingTests: XCTestCase {
         await pump(until: { model.associatedQuickQuery == "sample" })
         XCTAssertEqual(model.providerSuggestions.count, 7)
         XCTAssertEqual(model.visibleProviderSuggestions.count, 4)
-        for _ in 0..<4 { commands.commands.send(.moveDown) }
+        // The best result (the provider's first media entry) now comes first, then the visible
+        // completions. Hidden completions are never reachable, however many keys are pressed.
+        commands.commands.send(.moveDown)
+        await pump(until: { state.selectionLabel == "Visible artist" })
+        for _ in 0..<5 { commands.commands.send(.moveDown) }
+        await pump(until: { state.selectionLabel == "completion 2" })
+        XCTAssertEqual(state.selectionLabel, "completion 2", "the three hidden completions are skipped")
+        for _ in 0..<3 { commands.commands.send(.moveUp) }
         await pump(until: { state.selectionLabel == "Visible artist" })
         commands.commands.send(.submit)
         await pump(until: { !state.isPresented })

@@ -75,7 +75,7 @@
       <div class="header-divider" aria-hidden="true"></div>
       {#if error}<div class="inline-error" role="status">{$t('windows.error.update', [resolveMessage(error, $language)])}<ControlButton onclick={onRetry}>{$t('sidebar.retry')}</ControlButton></div>{/if}
       {#if album.items.length}
-        <TrackTable items={projection.map(entry=>entry.track)} occurrenceIndices={projection.map(entry=>entry.sourceIndex)} occurrenceKeys={projection.map(entry=>entry.key)} source={{kind:'album',id:album.browseId}} detail {currentTrackId} {isPlaying} onPlay={(index) => onPlay(projection[index].sourceIndex)} onOpenArtist={onOpenArtist} onOpenAlbum={onOpenAlbum} hideAlbumColumn origin={{ view: 'album_detail', currentId: album.browseId }} />
+        <TrackTable items={projection.map(entry=>entry.track)} occurrenceIndices={projection.map(entry=>entry.sourceIndex)} occurrenceKeys={projection.map(entry=>entry.key)} source={{kind:'album',id:album.browseId}} detail {currentTrackId} {isPlaying} onPlay={(index) => onPlay(projection[index].sourceIndex)} onOpenArtist={onOpenArtist} onOpenAlbum={onOpenAlbum} hideAlbumColumn showPlayCount origin={{ view: 'album_detail', currentId: album.browseId }} />
         {#if !projection.length}<p class="no-tracks">{$t('windows.ui.noSongsMatchYourSearch')}</p>{/if}
       {:else}<p class="no-tracks">{$t('windows.ui.thisAlbumHasNoSongsAvailableYet')}</p>{/if}
       {#if album.sections.length}

@@ -1,8 +1,8 @@
 <script lang="ts">
   import {t} from '$lib/i18n';
   import { onMount, tick } from 'svelte';
-  import type { BrowseCardDto, SongDto } from '$lib/types';
-  import type { SearchPreviewData } from '$lib/search/preview';
+  import type { BrowseCardDto, SearchSuggestionEntryDto, SongDto } from '$lib/types';
+  import type { SearchPreviewData } from '$lib/search/provider-preview';
   import QuickResults from './QuickResults.svelte';
 
   interface Props {
@@ -16,15 +16,21 @@
     onPlaySong: (song: SongDto) => void;
     /** Hangs the field and results under the top navigation capsules instead of centering a modal. */
     anchored?: boolean;
+    /** Side B's own recents (opened artists/albums/playlists and played songs), shaped as suggestion entries. */
+    local?: SearchSuggestionEntryDto[];
+    canUndoRecents?: boolean;
+    onRemoveLocal?: (key: string) => void;
+    onClearRecents?: () => void;
+    onUndoRecents?: () => void;
   }
-  let {anchored=false,onRemoveSuggestion,preview,backendReady,onQueryChange,onCommit,onDismiss,onSelectCard,onPlaySong}:Props=$props();
+  let {anchored=false,local=[],canUndoRecents=false,onRemoveLocal,onClearRecents,onUndoRecents,onRemoveSuggestion,preview,backendReady,onQueryChange,onCommit,onDismiss,onSelectCard,onPlaySong}:Props=$props();
   let input = $state<HTMLInputElement>();
   let dialog = $state<HTMLDivElement>();
   let restoreFocus: HTMLElement | null = null;
   let wasOpen = $state(false);
   let composing=false;
   const hasQuery = $derived(Boolean(preview.query.trim()));
-  const showPanel = $derived(hasQuery || preview.isLoading || Boolean(preview.error) || Boolean(preview.entries?.length));
+  const showPanel = $derived(hasQuery || preview.isLoading || Boolean(preview.error) || Boolean(preview.entries?.length) || local.length > 0);
 
   onMount(() => {
     restoreFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -90,7 +96,7 @@
   {#if showPanel}
   <div class="panel" class:has-query={hasQuery}>
     <div class="results-scroll" aria-live="polite">
-      <QuickResults preview={preview} variant="spotlight" {onRemoveSuggestion} onSelectCard={selectCard} onPlaySong={playSong} onQuery={query=>{dismissForNavigation();onCommit(query);}} />{#if preview.error}<button type="button" class="retry-preview" onclick={()=>onQueryChange(preview.query)}>{$t('common.retry')}</button>{/if}
+      <QuickResults preview={preview} variant="spotlight" {onRemoveSuggestion} {local} {canUndoRecents} {onRemoveLocal} {onClearRecents} {onUndoRecents} onSelectCard={selectCard} onPlaySong={playSong} onQuery={query=>{dismissForNavigation();onCommit(query);}} />{#if preview.error}<button type="button" class="retry-preview" onclick={()=>onQueryChange(preview.query)}>{$t('common.retry')}</button>{/if}
     </div>
     {#if hasQuery}<div class="divider footer-divider"></div><button type="button" class="commit" disabled={!backendReady} onclick={commit}>
       <span class="return-key"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M13 3v4H4m0 0 3-3M4 7l3 3"/></svg></span>
@@ -111,7 +117,7 @@
     </form>
     <div class="divider"></div>
     <div class="results-scroll" aria-live="polite">
-      <QuickResults preview={preview} variant="spotlight" {onRemoveSuggestion} onSelectCard={selectCard} onPlaySong={playSong} onQuery={query=>{dismissForNavigation();onCommit(query);}} />{#if preview.error}<button type="button" class="retry-preview" onclick={()=>onQueryChange(preview.query)}>{$t('common.retry')}</button>{/if}
+      <QuickResults preview={preview} variant="spotlight" {onRemoveSuggestion} {local} {canUndoRecents} {onRemoveLocal} {onClearRecents} {onUndoRecents} onSelectCard={selectCard} onPlaySong={playSong} onQuery={query=>{dismissForNavigation();onCommit(query);}} />{#if preview.error}<button type="button" class="retry-preview" onclick={()=>onQueryChange(preview.query)}>{$t('common.retry')}</button>{/if}
     </div>
     {#if hasQuery}<div class="divider footer-divider"></div><button type="button" class="commit" disabled={!backendReady} onclick={commit}>
       <span class="return-key"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M13 3v4H4m0 0 3-3M4 7l3 3"/></svg></span>
@@ -154,7 +160,7 @@
   .anchored { display:contents; }
   .capsule { position:fixed; z-index:220; top:var(--topnav-top, 28px); left:calc(var(--topnav-inset, 28px) + 52px); box-sizing:border-box; display:flex; align-items:center; gap:10px; width:298px; height:42px; padding:0 14px; border:1px solid var(--sideb-acrylic-border, rgb(255 255 255 / 20%)); border-radius:21px; color:#fff; background:var(--sideb-acrylic-surface, rgb(43 43 49 / 62%)); backdrop-filter:var(--sideb-acrylic-blur); -webkit-backdrop-filter:var(--sideb-acrylic-blur); box-shadow:0 0 0 1px rgb(0 0 0 / 14%), 0 4px 14px rgb(0 0 0 / 22%); }
   .capsule input { font-size:14px; }
-  .panel { position:fixed; z-index:220; top:calc(var(--topnav-top, 28px) + 50px); left:calc(var(--topnav-inset, 28px) + 52px); box-sizing:border-box; display:flex; flex-direction:column; width:min(560px, calc(100vw - var(--topnav-inset, 28px) - 70px)); max-height:min(540px, calc(100dvh - 170px)); min-height:0; overflow:hidden; border:1px solid var(--sideb-acrylic-border, rgb(255 255 255 / 20%)); border-radius:18px; color:#fff; background:#25252a; box-shadow:0 14px 42px rgb(0 0 0 / 40%); animation:fade-in 140ms ease both; }
+  .panel { position:fixed; z-index:220; top:calc(var(--topnav-top, 28px) + 50px); left:calc(var(--topnav-inset, 28px) + 52px); box-sizing:border-box; display:flex; flex-direction:column; width:min(560px, calc(100vw - var(--topnav-inset, 28px) - 70px)); max-height:min(640px, calc(100dvh - 170px)); min-height:0; overflow:hidden; border:1px solid var(--sideb-acrylic-border, rgb(255 255 255 / 20%)); border-radius:18px; color:#fff; background:#25252a; box-shadow:0 14px 42px rgb(0 0 0 / 40%); animation:fade-in 140ms ease both; }
   @supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) { .panel { background:rgb(37 37 42 / 92%); backdrop-filter:var(--sideb-acrylic-blur, blur(20px) saturate(1.4)); -webkit-backdrop-filter:var(--sideb-acrylic-blur, blur(20px) saturate(1.4)); } }
   @media (prefers-reduced-transparency: reduce) { .capsule { background:var(--sideb-acrylic-fallback, #353538); backdrop-filter:none; -webkit-backdrop-filter:none; } .panel { background:#25252a; backdrop-filter:none; -webkit-backdrop-filter:none; } }
   @media (forced-colors: active) { .capsule, .panel { background:Canvas; color:CanvasText; border-color:CanvasText; box-shadow:none; backdrop-filter:none; } }

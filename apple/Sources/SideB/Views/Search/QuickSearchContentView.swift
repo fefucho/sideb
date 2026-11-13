@@ -124,8 +124,11 @@ struct QuickSearchContentView: View {
             let playerBarTotalHeight: CGFloat = 94.0
             let availableHeight = max(280, totalHeight - playerBarTotalHeight)
             let hasQuery = !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            let recentHeight = min(540, max(220, 96 + searchViewModel.visibleProviderSuggestions.count * 58))
-            let modalHeight = min(hasQuery ? 540 : CGFloat(recentHeight), max(180, availableHeight - 80))
+            let layout = presentation
+            let content = CGFloat(layout.entries.count) * 44 + CGFloat(layout.sections.count) * 28
+                + (layout.sections.contains { $0.style == .top } ? 26 : 0)
+            let contentHeight = min(640, max(hasQuery ? 240 : 200, 76 + content + (hasQuery ? 44 : 0)))
+            let modalHeight = min(contentHeight, max(180, availableHeight - 80))
             let modalWidth = min(max(proxy.size.width - 48, 360), 780)
 
             ZStack(alignment: .top) {
@@ -180,10 +183,17 @@ struct QuickSearchContentView: View {
         }
     }
 
-    private var keyboardActions: [SearchSuggestionEntryRecord] {
-        guard searchViewModel.associatedQuickQuery == draft.trimmingCharacters(in: .whitespacesAndNewlines) else { return [] }
-        return searchViewModel.visibleProviderSuggestions
+    /// Local recents, the provider's suggestions and their grouping, in display order.
+    private var presentation: QuickSearchPresentation {
+        let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        let remote = searchViewModel.associatedQuickQuery == text ? searchViewModel.visibleProviderSuggestions : []
+        let page = searchViewModel.quickPageQuery == text ? searchViewModel.quickPage : nil
+        return QuickSearchPresentation.make(draft: draft, local: searchViewModel.localRecents.entries, remote: remote,
+            page: page, showVideos: SearchPreferences.shared.showVideos,
+            recentsTitle: L10n.text("search.quick.recents"), queriesTitle: L10n.text("search.quick.queries"),
+            topTitle: L10n.text("search.quick.top"), title: { L10n.text($0.titleKey) })
     }
+    private var keyboardActions: [SearchSuggestionEntryRecord] { presentation.entries }
     private var keyboardSelectionLabel: String? {
         keyboardActions.first { $0.id == selectedRecentKey }?.displayTitle
     }
@@ -202,6 +212,7 @@ struct QuickSearchContentView: View {
         } else if let card = entry.card {
             playerViewModel.dismissFullscreen()
             dismiss()
+            searchViewModel.recordOpened(card)
             switch card.kind {
             case "artist": router.navigate(to: .artist(browseId: card.id))
             case "album": router.navigate(to: .album(browseId: card.id))
@@ -266,21 +277,15 @@ struct QuickSearchContentView: View {
     private var resultsScrollView: some View {
         ScrollViewReader { scroll in
             ScrollView(.vertical, showsIndicators: true) {
-                LazyVStack(alignment: .leading, spacing: 4) {
-                    if searchViewModel.isQuickSearching {
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    let layout = presentation
+                    let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if searchViewModel.isQuickSearching, layout.entries.isEmpty {
                         searchLoadingPlaceholder
-                    } else if searchViewModel.associatedQuickQuery == draft.trimmingCharacters(in: .whitespacesAndNewlines) {
-                        ForEach(searchViewModel.visibleProviderSuggestions, id: \.id) { entry in
-                            ProviderSearchSuggestionRow(entry: entry, selected: selectedRecentKey == entry.id,
-                                removing: searchViewModel.removingSuggestionIDs.contains(entry.id),
-                                player: playerViewModel, router: router, core: rustCore,
-                                onActivate: { activate(entry) },
-                                onRemove: { Task { await searchViewModel.removeProviderSuggestion(entry, core: rustCore) } },
-                                onNavigate: { destination in
-                                    playerViewModel.dismissFullscreen(); dismiss(); router.navigate(to: destination)
-                                })
-                        }
-                        if searchViewModel.visibleProviderSuggestions.isEmpty { emptySearchPlaceholder }
+                    } else {
+                        ForEach(layout.sections) { section in sectionView(section) }
+                        if !searchViewModel.isQuickSearching, searchViewModel.associatedQuickQuery == text,
+                           layout.entries.isEmpty { emptySearchPlaceholder }
                     }
                     if let message = searchViewModel.quickErrorMessage {
                         HStack {
@@ -288,10 +293,60 @@ struct QuickSearchContentView: View {
                             Button(L10n.text("common.retry")) { requestPreview() }.buttonStyle(.plain)
                         }.font(.system(size: 12)).foregroundStyle(.secondary).padding(8)
                     }
-                }.padding(.horizontal, 16).padding(.vertical, 14)
+                }.padding(.horizontal, 8).padding(.vertical, 8)
             }
             .onChange(of: selectedRecentKey) { _, key in if let key { scroll.scrollTo(key, anchor: .center) } }
         }
+    }
+
+    // MARK: - Secciones
+
+    @ViewBuilder private func sectionView(_ section: QuickSearchPresentation.Section) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if let title = section.title { sectionHeader(title, style: section.style) }
+            ForEach(section.entries, id: \.id) { entry in
+                ProviderSearchSuggestionRow(entry: entry, selected: selectedRecentKey == entry.id,
+                    removing: searchViewModel.removingSuggestionIDs.contains(entry.id),
+                    player: playerViewModel, router: router, core: rustCore,
+                    onActivate: { activate(entry) },
+                    onRemove: { remove(entry) },
+                    onNavigate: { destination in
+                        playerViewModel.dismissFullscreen(); dismiss(); router.navigate(to: destination)
+                    },
+                    style: section.style)
+            }
+        }.padding(.bottom, 6)
+    }
+
+    private func sectionHeader(_ title: String, style: QuickSearchPresentation.Style) -> some View {
+        HStack {
+            Text(title)
+                .font(.system(size: 10, weight: .semibold))
+                .textCase(.uppercase)
+                .tracking(0.6)
+                .foregroundStyle(.secondary)
+            Spacer(minLength: 8)
+            if style == .recents { recentsAction }
+        }
+        .padding(.horizontal, 10).padding(.top, 6).padding(.bottom, 3)
+    }
+
+    /// Clearing affects only Side B's own recents; the provider's history keeps its per-item ✕.
+    @ViewBuilder private var recentsAction: some View {
+        let store = searchViewModel.localRecents
+        if store.canUndo {
+            Button(L10n.text("common.undo")) { store.undo() }
+                .buttonStyle(.plain).font(.system(size: 11)).foregroundStyle(AppTheme.accent)
+        } else if !store.entries.isEmpty {
+            Button(L10n.text("search.quick.clear")) { store.clear() }
+                .buttonStyle(.plain).font(.system(size: 11)).foregroundStyle(AppTheme.accent)
+                .help(L10n.text("search.recents.clear"))
+        }
+    }
+
+    private func remove(_ entry: SearchSuggestionEntryRecord) {
+        if let key = QuickSearchPresentation.localKey(of: entry) { searchViewModel.localRecents.remove(key) }
+        else { Task { await searchViewModel.removeProviderSuggestion(entry, core: rustCore) } }
     }
 
     // MARK: - Barra Inferior de Confirmación
@@ -409,6 +464,7 @@ struct QuickSearchContentView: View {
     private func requestPreview() {
         guard isActive, isPresented else { return }
         searchViewModel.onQueryChanged(draft, core: rustCore, updateDraft: false, owner: previewOwner)
+        searchViewModel.loadQuickPage(draft, core: rustCore)
     }
 
     private func handleCommand(_ command: QuickSearchCommand.Kind) {

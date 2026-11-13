@@ -29,8 +29,8 @@ if(!process.execArgv.includes('--conditions=browser')) {
   [...document.querySelectorAll('.credit-link')].find(b=>b.textContent==='The Album').click();assert.ok(calls.includes('album:MPRE1'));
   assert.ok(document.querySelector('.title .scroll-title .title-parts'),'title uses the shared marquee viewport');
   assert.ok(document.querySelector('.credits .credit-viewport > .credit-content .album-name'),'artist • album line moves inside a clipped viewport and keeps its links');
-  const barDislike=/<button class="dislike-toggle"[\s\S]*?<path d="([^"]+)"/.exec(fs.readFileSync(path.join(root,'src/lib/components/player/PlayerBar.svelte'),'utf8'))[1];
-  assert.equal(document.querySelector('.actions .dislike-icon path').getAttribute('d'),barDislike,'dislike glyph is the bottom bar one');
+  const barDislike=/name === 'dislike'\}[\s\S]*?\sd="([^"]+)"/.exec(fs.readFileSync(path.join(root,'src/lib/components/menu/MenuIcon.svelte'),'utf8'))[1];
+  assert.equal(document.querySelector('.actions .dislike-icon path').getAttribute('d'),barDislike,'dislike glyph is the one in the bottom bar menu (FIX-339)');
   await unmount(app);
   const mac=mount(Metadata,{target:document.body,props:{session:1,playback:playback(),loggedIn:false,onToggleLike:handlers.onToggleLike,onOpenMenu:handlers.onOpenMenu}});flushSync();await settle();
   assert.equal(document.querySelectorAll('.actions button').length,2,'omitting callbacks gives the macOS heart + menu layout');

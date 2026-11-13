@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import Testing
 import SideBCore
@@ -97,4 +98,51 @@ private func recentDirectory() -> URL { FileManager.default.temporaryDirectory.a
     #expect(projection.songs.map(\.videoId) == ["d", "e"])
     #expect(projection.artists.count == 1)
     #expect(projection.albums.count == 1)
+}
+
+private final class StoreClock { var seconds = 1_000.0 }
+private func entityCard(_ kind: String, _ id: String) -> BrowseCardRecord {
+    BrowseCardRecord(kind: kind, id: id, title: "T \(id)", subtitle: "S \(id)", thumbnail: "thumb", duration: nil)
+}
+
+@Test @MainActor func openedEntitiesPersistDeduplicateAndReloadWithTheirCard() throws {
+    let directory = recentDirectory(), clock = StoreClock()
+    let store = SearchRecentStore(directory: directory, now: { Date(timeIntervalSince1970: clock.seconds) })
+    store.recordEntity(entityCard("artist", "a1")); clock.seconds += 1
+    store.recordEntity(entityCard("album", "b1")); clock.seconds += 1
+    store.recordEntity(entityCard("artist", "a1")); clock.seconds += 1   // reopened: moves up, no duplicate
+    store.recordEntity(entityCard("song", "s1"))                         // songs enter only through confirmed playback
+    store.recordEntity(entityCard("playlist", ""))                       // no id: nothing to reopen
+    #expect(store.entries.map(\.key) == ["entity:artist:a1", "entity:album:b1"])
+
+    let reloaded = SearchRecentStore(directory: directory)
+    #expect(reloaded.entries.map(\.key) == ["entity:artist:a1", "entity:album:b1"])
+    #expect(reloaded.entries.first?.card?.title == "T a1")
+    #expect(reloaded.entries.first?.card?.record.kind == "artist")
+
+    reloaded.remove("entity:album:b1")
+    #expect(reloaded.entries.count == 1 && reloaded.canUndo)
+    reloaded.undo()
+    #expect(reloaded.entries.count == 2)
+    reloaded.clear()
+    #expect(reloaded.entries.isEmpty)
+}
+
+@Test @MainActor func filesWithoutEntitiesStillLoadAndMalformedEntitiesAreDropped() throws {
+    let directory = recentDirectory()
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    let store = SearchRecentStore(directory: directory)
+    let digest = SHA256.hash(data: Data(store.accountIdentity.utf8)).map { String(format: "%02x", $0) }.joined()
+    let file = directory.appendingPathComponent(digest + ".json")
+    let json = """
+    {"version":1,"entries":[
+      {"key":"query:old","kind":"query","lastUsedAt":3,"query":"old"},
+      {"key":"x","kind":"artist","lastUsedAt":2},
+      {"key":"y","kind":"planet","lastUsedAt":1,"card":{"kind":"planet","id":"p","title":"P"}},
+      {"key":"z","kind":"album","lastUsedAt":4,"card":{"kind":"album","id":"b","title":"B"}}]}
+    """
+    try json.write(to: file, atomically: true, encoding: .utf8)
+    let reloaded = SearchRecentStore(directory: directory)
+    #expect(reloaded.entries.map(\.key) == ["entity:album:b", "query:old"],
+            "a query-only legacy file keeps working; an entity without its card or an unknown kind is ignored")
 }

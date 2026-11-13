@@ -24,7 +24,7 @@ struct PlayerBarProgressView: View {
                             alignment: .leading
                         )
                         Spacer(minLength: 0)
-                        timeLabel(viewModel.formattedDuration, alignment: .trailing)
+                        timeLabel(remainingText, alignment: .trailing)
                     }
                 }
             } else {
@@ -36,7 +36,7 @@ struct PlayerBarProgressView: View {
                         alignment: .leading
                     )
                     scrubberBarSection
-                    timeLabel(viewModel.formattedDuration, alignment: .trailing)
+                    timeLabel(remainingText, alignment: .trailing)
                 }
                 .frame(height: 14)
                 .padding(.horizontal, horizontalInset)
@@ -44,6 +44,13 @@ struct PlayerBarProgressView: View {
                 .offset(y: 3)
             }
         }
+    }
+
+    /// Remaining time as "-0:38" (Apple Music style); follows the scrub position while dragging.
+    private var remainingText: String {
+        guard viewModel.duration.isFinite, viewModel.duration > 0 else { return viewModel.formattedDuration }
+        guard isSeeking else { return viewModel.formattedRemaining }
+        return "-" + viewModel.formattedTime(at: max(0, viewModel.duration * (1 - seekFraction)))
     }
 
     private func timeLabel(_ value: String, alignment: Alignment) -> some View {
@@ -63,23 +70,18 @@ struct PlayerBarProgressView: View {
             let clampedFraction = max(0.0, min(1.0, activeFraction))
             let fillWidth = width * clampedFraction
 
-            ZStack(alignment: .leading) {
-                // Rail no transcurrido (gris translúcido ultra fino)
-                Capsule()
-                    .fill(Color.white.opacity(0.14))
-                    .frame(height: isHoveringScrubber ? 3.5 : 2.5)
+            let thickness: CGFloat = isHoveringScrubber || isSeeking ? 7 : 5
 
-                // Rail transcurrido (Acento Side B calibrado)
+            ZStack(alignment: .leading) {
+                // Pista completa atenuada, extremos redondeados.
+                Capsule()
+                    .fill(Color.white.opacity(0.22))
+                    .frame(height: thickness)
+
+                // Parte transcurrida con el acento de Side B (sin thumb visible).
                 Capsule()
                     .fill(Color.sidebAccentHighlight)
-                    .frame(width: max(0, fillWidth), height: isHoveringScrubber ? 3.5 : 2.5)
-
-                // Cabezal Playhead Vertical (píldora vertical de precisión)
-                RoundedRectangle(cornerRadius: 1.5, style: .continuous)
-                    .fill(Color.white)
-                    .frame(width: isHoveringScrubber ? 3.0 : 2.5, height: isHoveringScrubber ? 10.5 : 9.0)
-                    .shadow(color: .black.opacity(0.45), radius: 1.5, x: 0, y: 0.5)
-                    .offset(x: max(0, min(width - 2.5, fillWidth - 1.25)))
+                    .frame(width: max(0, fillWidth), height: thickness)
             }
             .frame(height: proxy.size.height, alignment: .center)
             .contentShape(Rectangle())

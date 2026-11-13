@@ -49,4 +49,31 @@ if(!process.execArgv.includes('--conditions=browser')) {
   test('without a media service the ID fallback still invokes onPlay',async()=>{
     const f=await fixture(false);assert.deepEqual(f.rows().map(row=>row.classList.contains('active')),[true,false,false]);f.click(0);assert.deepEqual(f.played,[0]);await f.dispose();
   });
+  const playSource=`<script>
+    import TrackList from '$lib/components/common/TrackList.svelte';
+    let {items,showPlayCount=false}=$props();
+  </script>
+  <TrackList {items} source={{kind:'album',id:'MPRE1'}} currentTrackId={null} isPlaying={false} onPlay={()=>{}} detail hideAlbumColumn {showPlayCount} />`;
+  const PlayFixture=(await import(await moduleFor(path.join(root,'scripts/fixtures/TrackListPlays.svelte'),playSource))).default;
+  async function plays(items,showPlayCount){
+    const host=document.createElement('div');document.body.append(host);let instance;
+    flushSync(()=>instance=mount(PlayFixture,{target:host,props:{items,showPlayCount},intro:false}));
+    return {host,dispose:async()=>{await unmount(instance);host.remove();}};
+  }
+  const counted=[{videoId:'a',title:'One',artists:'Artist',playCount:'1.2M'},{videoId:'b',title:'Two',artists:'Artist',playCount:'980K'},{videoId:'c',title:'Three',artists:'Artist',playCount:null},{videoId:'d',title:'Four',artists:'Artist',playCount:'not a number'}];
+  test('album rows show a header-less, right-aligned play count column between artist and duration with an accessible label',async()=>{
+    const f=await plays(counted,true);
+    const cells=[...f.host.querySelectorAll('td.plays')];assert.equal(cells.length,4,'the column is present on every row');
+    assert.equal(cells[0].querySelector('[aria-hidden="true"]').textContent,'1,2 M');assert.equal(cells[0].querySelector('.sr-only').textContent,'1,2 M reproducciones');
+    assert.equal(cells[1].querySelector('[aria-hidden="true"]').textContent,'980 mil');
+    assert.equal(cells[2].textContent.trim(),'','a song without data leaves no text');assert.equal(cells[3].textContent.trim(),'','unrecognised provider text is never shown raw');
+    const row=f.host.querySelector('tr.track-row');const order=[...row.children].map(td=>td.className.split(' ')[0]);
+    assert.ok(order.indexOf('track-cell')<order.indexOf('plays')&&order.indexOf('plays')<order.indexOf('duration'),order.join(','));
+    assert.equal(f.host.querySelectorAll('col.plays-column').length,1);assert.equal(f.host.querySelector('thead'),null,'album detail has no header row, so the column has no heading');
+    await f.dispose();
+  });
+  test('without the album flag, or without any count, no column is rendered (playlists keep their layout)',async()=>{
+    const off=await plays(counted,false);assert.equal(off.host.querySelectorAll('td.plays').length,0);assert.equal(off.host.querySelectorAll('col.plays-column').length,0);await off.dispose();
+    const none=await plays(counted.map(song=>({...song,playCount:null})),true);assert.equal(none.host.querySelectorAll('td.plays').length,0);await none.dispose();
+  });
 }

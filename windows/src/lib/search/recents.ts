@@ -1,8 +1,17 @@
-import type { SongDto, PlaybackStateDto } from '../types';
+import type { SongDto, PlaybackStateDto, BrowseCardDto } from '../types';
 import { contentRating, ratingForIdentity } from '../contentRating';
 export type SearchOrigin = 'submit' | 'recentQuery' | 'preview' | 'filter' | 'refresh' | 'navigationRestore' | 'artistResolution';
 export const recordsSearch = (origin: SearchOrigin) => origin === 'submit' || origin === 'recentQuery';
-export type SearchRecent = {key:string;kind:'query';lastUsedAt:number;query:string} | {key:string;kind:'track';lastUsedAt:number;track:SongDto};
+/** What is needed to show and reopen an artist, album or playlist the user opened. */
+export interface RecentCard {kind:string;id:string;title:string;subtitle:string|null;thumbnail:string|null}
+export const ENTITY_KINDS=['artist','album','playlist'] as const;
+export type SearchRecent = {key:string;kind:'query';lastUsedAt:number;query:string} | {key:string;kind:'track';lastUsedAt:number;track:SongDto} | {key:string;kind:typeof ENTITY_KINDS[number];lastUsedAt:number;card:RecentCard};
+const isEntityKind=(kind:unknown):kind is typeof ENTITY_KINDS[number]=>ENTITY_KINDS.some(item=>item===kind);
+function safeCard(card:BrowseCardDto|RecentCard):RecentCard {
+ const nullable=(value:unknown)=>typeof value==='string'?value:null;
+ return {kind:card.kind,id:card.id,title:card.title,subtitle:nullable(card.subtitle),thumbnail:nullable(card.thumbnail)};
+}
+export const entityKey=(card:{kind:string;id:string})=>`entity:${card.kind}:${card.id}`;
 export interface RecentStorage {getItem(key:string):string|null;setItem(key:string,value:string):void}
 export function normalizedQuery(query:string) { return query.trim().replace(/\s+/gu,' ').normalize('NFC'); }
 function safeTrack(song:SongDto):SongDto {
@@ -19,10 +28,12 @@ export class SearchRecentStore {
  constructor(private storage:RecentStorage,private publish:(entries:SearchRecent[],canUndo:boolean,unavailableTrack?:SongDto|null)=>void,private now=()=>Date.now()){}
  private key(){return `sideb.searchRecents.v1:${encodeURIComponent(this.account)}`;}
  private emit(){this.publish([...this.entries],!!this.undone,this.unavailableTrack);}
- setAccount(account:string){if(this.initialized&&account===this.account)return;this.initialized=true;this.account=account;this.intent=null;this.unavailableTrack=null;++this.revision;this.entries=[];this.undone=null;this.emit();try{const data=JSON.parse(this.storage.getItem(this.key())??'null');if(data?.version===1&&Array.isArray(data.entries)){const seen=new Set<string>();this.entries=data.entries.map((entry:any)=>entry?.kind==='query'&&typeof entry.query==='string'?{...entry,query:normalizedQuery(entry.query),key:`query:${normalizedQuery(entry.query).toLowerCase()}`}:entry?.kind==='track'&&typeof entry.track?.videoId==='string'?{...entry,key:`track:${entry.track.isUpload?'upload:':'youtube:'}${entry.track.videoId}`}:entry).sort((a:any,b:any)=>(b?.lastUsedAt??0)-(a?.lastUsedAt??0)).filter((entry:any)=>{if(!entry||typeof entry.key!=='string'||!Number.isFinite(entry.lastUsedAt)||seen.has(entry.key))return false;const valid=entry.kind==='query'?typeof entry.query==='string'&&normalizedQuery(entry.query).length>0:entry.kind==='track'&&typeof entry.track?.videoId==='string'&&entry.track.videoId.length>0&&typeof entry.track.title==='string'&&typeof entry.track.artists==='string';if(valid)seen.add(entry.key);return valid;}).map((entry:SearchRecent)=>entry.kind==='track'?{...entry,track:safeTrack(entry.track)}:entry).slice(0,50);}}catch{}this.emit();}
+ setAccount(account:string){if(this.initialized&&account===this.account)return;this.initialized=true;this.account=account;this.intent=null;this.unavailableTrack=null;++this.revision;this.entries=[];this.undone=null;this.emit();try{const data=JSON.parse(this.storage.getItem(this.key())??'null');if(data?.version===1&&Array.isArray(data.entries)){const seen=new Set<string>();this.entries=data.entries.map((entry:any)=>entry?.kind==='query'&&typeof entry.query==='string'?{...entry,query:normalizedQuery(entry.query),key:`query:${normalizedQuery(entry.query).toLowerCase()}`}:entry?.kind==='track'&&typeof entry.track?.videoId==='string'?{...entry,key:`track:${entry.track.isUpload?'upload:':'youtube:'}${entry.track.videoId}`}:isEntityKind(entry?.kind)&&typeof entry.card?.id==='string'?{...entry,key:entityKey({kind:entry.kind,id:entry.card.id})}:entry).sort((a:any,b:any)=>(b?.lastUsedAt??0)-(a?.lastUsedAt??0)).filter((entry:any)=>{if(!entry||typeof entry.key!=='string'||!Number.isFinite(entry.lastUsedAt)||seen.has(entry.key))return false;const valid=entry.kind==='query'?typeof entry.query==='string'&&normalizedQuery(entry.query).length>0:isEntityKind(entry.kind)?entry.card?.kind===entry.kind&&typeof entry.card.id==='string'&&entry.card.id.length>0&&typeof entry.card.title==='string'&&entry.card.title.length>0:entry.kind==='track'&&typeof entry.track?.videoId==='string'&&entry.track.videoId.length>0&&typeof entry.track.title==='string'&&typeof entry.track.artists==='string';if(valid)seen.add(entry.key);return valid;}).map((entry:SearchRecent)=>entry.kind==='track'?{...entry,track:safeTrack(entry.track)}:'card' in entry?{...entry,card:safeCard(entry.card)}:entry).slice(0,50);}}catch{}this.emit();}
  private save(){try{this.storage.setItem(this.key(),JSON.stringify({version:1,entries:this.entries}));}catch{}this.emit();}
  private use(entry:SearchRecent){this.entries=[entry,...this.entries.filter(item=>item.key!==entry.key)].slice(0,50);this.undone=null;this.save();}
  recordQuery(query:string){query=normalizedQuery(query);if(query)this.use({key:`query:${query.toLowerCase()}`,kind:'query',query,lastUsedAt:this.now()});}
+ /** An artist, album or playlist the user opened. Songs enter through confirmed playback only. Never records a query. */
+ recordEntity(card:BrowseCardDto){if(!isEntityKind(card.kind)||!card.id||!card.title)return;this.use({key:entityKey(card),kind:card.kind,card:safeCard(card),lastUsedAt:this.now()});}
  beginTrack(song:SongDto,generation:number|null=null){const revision=++this.revision;this.unavailableTrack=null;this.intent={song:safeTrack(song),account:this.account,generation,revision};this.emit();return revision;}
  bindTrack(revision:number,generation:number){if(this.intent?.revision===revision)this.intent.generation=generation;}
  failTrack(revision?:number){if(this.intent && (revision===undefined||this.intent.revision===revision)){this.unavailableTrack=this.intent.song;this.intent=null;this.emit();}}

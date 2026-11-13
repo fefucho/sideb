@@ -4,10 +4,26 @@ import {contentRating} from '../contentRating';
 export interface SearchSectionRow {card:BrowseCardDto|null;song:SongDto|null;itemIndex:number|null;songIndex?:number|null}
 export interface SearchSectionProjection {primary:SearchSectionRow|null;related:SearchSectionRow[];remaining:SearchSectionRow[];explicit:boolean}
 
+/** YouTube omits the artist from the rows under an artist's top result (the artist is implied by the
+ * card) and the core leaves it empty on purpose instead of guessing (#216). Those rows are that artist's
+ * songs, so they inherit its name, id and link. A row that names its artist, or a principal that is not an
+ * artist, is left untouched. Mirrors Apple `ProviderSearchProjection.inheritingArtist` (FIX-337). */
+function principalArtist(section:SearchSectionDto):{name:string;id:string}|null {
+ const index=section.primaryItemIndex;
+ if(section.layout!=='top'||index==null)return null;
+ const card=section.items[index];
+ return card&&card.kind==='artist'?{name:card.title,id:card.id}:null;
+}
+export function inheritingArtist(song:SongDto,artist:{name:string;id:string}|null):SongDto {
+ if(!artist||song.artists.trim()||song.artistRuns?.length)return song;
+ return {...song,artists:artist.name,artistId:artist.id,artistRuns:[{text:artist.name,id:artist.id}]};
+}
+
 /** Match the Mac projection: media ordinal + ID first, then an unambiguous ID.
  * Never attach a duplicate payload to a different ordinal after a mismatch. Keep
  * unused DTO occurrences as standalone rows instead of silently dropping them. */
 function providerRows(section:SearchSectionDto):SearchSectionRow[] {
+ const artist=principalArtist(section);
  const payloads=new Map<string,{count:number;index:number}>();
  const payloadIds:string[]=[];
  section.songs.forEach((song,index)=>{
@@ -29,9 +45,10 @@ function providerRows(section:SearchSectionDto):SearchSectionRow[] {
   if(songIndex>=0)usedSongs.add(songIndex);
   const song=songIndex>=0?section.songs[songIndex]:null;
   const rating=contentRating(card);
-  return {card,song:song && contentRating(song)==='unknown' && rating!=='unknown' && payloadIds[songIndex]===card.id ? {...song,contentRating:rating} : song,itemIndex,songIndex:songIndex>=0?songIndex:null};
+  const rated=song && contentRating(song)==='unknown' && rating!=='unknown' && payloadIds[songIndex]===card.id ? {...song,contentRating:rating} : song;
+  return {card,song:rated?inheritingArtist(rated,artist):rated,itemIndex,songIndex:songIndex>=0?songIndex:null};
  });
- section.songs.forEach((song,index)=>{if(!usedSongs.has(index))rows.push({card:null,song,itemIndex:null,songIndex:index});});
+ section.songs.forEach((song,index)=>{if(!usedSongs.has(index))rows.push({card:null,song:inheritingArtist(song,artist),itemIndex:null,songIndex:index});});
  return rows;
 }
 

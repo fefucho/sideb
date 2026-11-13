@@ -3,8 +3,8 @@ import SwiftUI
 /// The metadata's ideal native/SwiftUI size owns the action anchor. A marquee's
 /// clip bounds never participate in this measurement, and unused space stays trailing.
 struct PlayerBarMetadataActionLayout: Layout {
-    static let actionWidth: CGFloat = 60
-    static let gap: CGFloat = 10
+    static let actionWidth: CGFloat = 28
+    static let gap: CGFloat = 6
 
     static func metadataWidth(ideal: CGFloat, available: CGFloat) -> CGFloat {
         min(max(0, ideal), max(0, available - actionWidth - gap))

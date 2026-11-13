@@ -90,7 +90,7 @@ test('provider media credits retain direct artist and album navigation',async()=
 test('text-only provider suggestions remain separate primary rows with no invented native result',()=>{
  const html=modal({query:'typed',associatedQuery:'typed',queries:['provider second','provider first'],results:{top:[],topSongs:[],songs:[],artists:[],albums:[],playlists:[]},error:null});
  assert.equal(primaries(html).length,2);assert.ok(html.indexOf('provider second')<html.indexOf('provider first'));
- assert.ok(!html.includes('media-card'));assert.ok(!html.includes('song-row'));assert.ok(html.includes('query-suggestions'));
+ assert.ok(!html.includes('media-card'));assert.ok(!html.includes('song-row'));assert.ok(html.includes('query-suggestion'));
 });
 
 test('inline preview arrow navigation skips secondary artist and menu buttons',async()=>{
@@ -111,8 +111,8 @@ test('autocomplete caps active-query text at three while preserving heterogeneou
  const topSong={kind:'song',id:song.videoId,title:song.title,subtitle:song.artists,thumbnail:null,duration:60};
  const album={kind:'album',id:'record',title:'Provider Album',subtitle:'Main Artist',thumbnail:null,duration:null};
  const html=modal({query:'typed',associatedQuery:'typed',queries:['query one','query two','query three','query four'],results:{top:[topSong,card,album],topSongs:[song],songs:[],artists:[],albums:[],playlists:[]},error:null});
- assert.deepEqual(primaries(html).map(tag=>tag.match(/class="([^"]+)"/)?.[1].split(/\s+/)[0]??'query'),['query-suggestion','query-suggestion','query-suggestion','play','primary','primary']);
- assert.ok(html.indexOf('query one')<html.indexOf('Song (feat.'));assert.ok(!html.includes('query four'));
+ assert.deepEqual(primaries(html).map(tag=>tag.match(/class="([^"]+)"/)?.[1].split(/\s+/)[0]??'query'),['play','primary','primary','query-suggestion','query-suggestion','query-suggestion']);
+ assert.ok(html.indexOf('Song (feat.')<html.indexOf('query one'),'completions come last, after the results');assert.ok(!html.includes('query four'));
  assert.equal((html.match(/class="song-row/g)??[]).length,1);assert.ok(html.includes('featured-link'));assert.ok(html.indexOf('Artist</h3>')<html.indexOf('Provider Album'));
 });
 
@@ -124,7 +124,8 @@ test('quick typed video shows its video label and remains a playable primary res
 
 test('provider section exposes show-all for a query-only endpoint',async()=>{
  const SearchView=await component('src/lib/components/search/SearchView.svelte');
- const data={query:'q',lastSearchedQuery:'q',mode:'all',hasSearched:true,isLoading:false,error:null,page:{chips:[],correction:null,continuation:null,sections:[{id:'query-only',title:'Provider section',layout:'list',items:[],songs:[],actions:[],moreQuery:'provider-expanded-query',moreParams:null,moreBrowseId:null}]}};
+ // A filtered page (opaque params) is the provider's own list, not the by-category view of the general search.
+ const data={query:'q',lastSearchedQuery:'q',mode:'all',params:'opaque-filter',hasSearched:true,isLoading:false,error:null,page:{chips:[],correction:null,continuation:null,sections:[{id:'query-only',title:'Provider section',layout:'list',items:[],songs:[],actions:[],moreQuery:'provider-expanded-query',moreParams:null,moreBrowseId:null}]}};
  const html=render(SearchView,{props:{data,backendReady:true,currentTrackId:null,isPlaying:false,draftQuery:'q',preview:{query:'',results:null},onAction:noop,onSelectParams:noop,onLoadMore:noop,onMore:noop,onSubmit:noop,onRetry:noop,onModeChange:noop,onPlaySong:noop,onOpenAlbum:noop,onDraftChange:noop,onPreviewFocus:noop,onPreviewDismiss:noop}}).body;
  assert.ok(html.includes('Mostrar todo'));
 });

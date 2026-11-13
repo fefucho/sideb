@@ -14,11 +14,30 @@ public final class SearchRecentStore {
     public static let shared = SearchRecentStore()
     public struct Entry: Codable, Identifiable {
         public let key: String
+        /// `query`, `track`, or an opened entity: `artist`, `album`, `playlist`.
         public let kind: String
         public let lastUsedAt: Double
         public let query: String?
         public let track: Track?
+        /// Present for opened artists, albums and playlists. Older files simply lack it.
+        public let card: Card?
         public var id: String { key }
+        init(key: String, kind: String, lastUsedAt: Double, query: String?, track: Track?, card: Card? = nil) {
+            self.key = key; self.kind = kind; self.lastUsedAt = lastUsedAt
+            self.query = query; self.track = track; self.card = card
+        }
+    }
+    /// What is needed to show and reopen an artist, album or playlist.
+    public struct Card: Codable {
+        let kind: String, id: String, title: String
+        let subtitle: String?, thumbnail: String?
+        static let entityKinds: Set<String> = ["artist", "album", "playlist"]
+        init(_ card: BrowseCardRecord) {
+            kind = card.kind; id = card.id; title = card.title; subtitle = card.subtitle; thumbnail = card.thumbnail
+        }
+        var record: BrowseCardRecord {
+            BrowseCardRecord(kind: kind, id: id, title: title, subtitle: subtitle, thumbnail: thumbnail, duration: nil)
+        }
     }
     public struct Track: Codable {
         let videoId: String, title: String, artists: String
@@ -84,6 +103,11 @@ public final class SearchRecentStore {
                 return Entry(key: "track:" + (track.isUpload ? "upload:" : "youtube:") + track.videoId,
                     kind: "track", lastUsedAt: entry.lastUsedAt, query: nil, track: track)
             }
+            if Card.entityKinds.contains(entry.kind), let card = entry.card, card.kind == entry.kind,
+               !card.id.isEmpty, !card.title.isEmpty {
+                return Entry(key: Self.entityKey(card), kind: card.kind, lastUsedAt: entry.lastUsedAt,
+                             query: nil, track: nil, card: card)
+            }
             return nil
         }.sorted { $0.lastUsedAt > $1.lastUsedAt }
         var seen = Set<String>()
@@ -105,6 +129,17 @@ public final class SearchRecentStore {
         let key = query.lowercased()
         use(Entry(key: "query:" + key, kind: "query", lastUsedAt: now().timeIntervalSince1970 * 1000, query: query, track: nil))
     }
+    static func entityKey(_ card: Card) -> String { "entity:" + card.kind + ":" + card.id }
+
+    /// An artist, album or playlist the user opened. Songs are not recorded here: they enter through
+    /// `confirmTrack` once playback really starts.
+    public func recordEntity(_ card: BrowseCardRecord) {
+        guard Card.entityKinds.contains(card.kind), !card.id.isEmpty, !card.title.isEmpty else { return }
+        let value = Card(card)
+        use(Entry(key: Self.entityKey(value), kind: value.kind, lastUsedAt: now().timeIntervalSince1970 * 1000,
+                  query: nil, track: nil, card: value))
+    }
+
     /// Root binds this token to its accepted playback request and confirms only actual playback.
     @discardableResult public func beginTrack(_ song: SongItemRecord) -> UUID {
         let token = UUID(); unavailableTrack = nil; intent = Intent(token: token, account: accountIdentity, track: Track(song)); return token

@@ -507,6 +507,22 @@
     "es": "Reproducir canción",
     "en": "Play song"
   },
+  "detail.track.plays.billion": {
+    "es": "%@ mil M",
+    "en": "%@B"
+  },
+  "detail.track.plays.million": {
+    "es": "%@ M",
+    "en": "%@M"
+  },
+  "detail.track.plays.thousand": {
+    "es": "%@ mil",
+    "en": "%@K"
+  },
+  "detail.track.playsAX": {
+    "es": "%@ reproducciones",
+    "en": "%@ plays"
+  },
   "detail.track.reorder": {
     "es": "Arrastrar para reordenar",
     "en": "Drag to reorder"
@@ -2667,6 +2683,18 @@
     "es": "Arrastrar para reordenar la canción",
     "en": "Drag to reorder song"
   },
+  "search.category.episodes": {
+    "es": "Episodios",
+    "en": "Episodes"
+  },
+  "search.category.podcasts": {
+    "es": "Podcasts",
+    "en": "Podcasts"
+  },
+  "search.category.profiles": {
+    "es": "Perfiles",
+    "en": "Profiles"
+  },
   "search.category.top_result": {
     "es": "Mejor resultado",
     "en": "Top result"
@@ -2814,6 +2842,22 @@
   "search.provider.show_related": {
     "es": "Mostrar las %@ relacionadas",
     "en": "Show all %@ related results"
+  },
+  "search.quick.clear": {
+    "es": "Borrar",
+    "en": "Clear"
+  },
+  "search.quick.queries": {
+    "es": "Búsquedas",
+    "en": "Searches"
+  },
+  "search.quick.recents": {
+    "es": "Recientes",
+    "en": "Recent"
+  },
+  "search.quick.top": {
+    "es": "Mejor resultado",
+    "en": "Top result"
   },
   "search.recents.clear": {
     "es": "Borrar recientes de Side B",

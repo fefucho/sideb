@@ -54,3 +54,12 @@ test('queue recommendation menu exposes recommendation placements, not committed
   assert.equal(items.find(item => item.action?.type === 'remove-queue').label, 'Dismiss suggestion');
   assert.equal(items.find(item => item.action?.type === 'enqueue-end').label, 'Add suggestion to end');
 });
+test('only the bottom bar menu leads with dislike (FIX-339); other now-playing surfaces keep their own button', () => {
+  const bar = menuItems({ kind: 'song', song }, { nowPlaying: true, dislike: true }, facts);
+  assert.equal(bar[0].id, 'dislike'); assert.equal(bar[0].icon, 'dislike'); assert.equal(bar[0].disabled, false);
+  assert.equal(bar[0].label, 'No me gusta (quitar de la cola)'); assert.ok(bar[1].separator);
+  assert.ok(actions(bar).includes('like'), 'the rest of the song menu follows');
+  assert.ok(!actions(menuItems({ kind: 'song', song }, { nowPlaying: true }, facts)).includes('dislike'));
+  assert.ok(!actions(menuItems({ kind: 'song', song }, {}, facts)).includes('dislike'));
+  assert.equal(menuItems({ kind: 'song', song }, { nowPlaying: true, dislike: true }, { ...facts, loggedIn: false })[0].disabled, true, 'needs a signed-in account like Like');
+});

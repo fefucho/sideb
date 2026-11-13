@@ -35,10 +35,10 @@ if(!process.execArgv.includes('--conditions=browser')) {
    host.querySelector('[data-append]').click();await settle();
    assert.equal(text(host).includes('Appended video'),false);assert.ok(text(host).includes('Appended song'));assert.equal(text(host).includes('More videos'),false);
    assert.ok([...host.querySelectorAll('button')].some(button=>button.textContent.trim().length&&button.closest('.results-scroll')&&!button.closest('[role=region]')),'a load-more control remains');
-   // Suggestions in the focused dropdown: text and history stay, video media does not.
+   // Suggestions in the focused dropdown: text completions stay, video media does not, and the user's own history is for the empty field.
    host.querySelector('.search-field input').dispatchEvent(new window.FocusEvent('focus'));await settle();
    const preview=host.querySelector('.preview-content')?.textContent??'';
-   assert.ok(preview.includes('video games')&&preview.includes('old video'),'text queries and remote history remain');
+   assert.ok(preview.includes('video games'),'text completions remain');assert.equal(preview.includes('old video'),false,'own history is not shown while typing');
    assert.equal(preview.includes('Suggested video'),false);assert.ok(preview.includes('Suggested song'));
    // Reactivation returns the same videos with no refetch.
    toggle.checked=true;toggle.dispatchEvent(new window.Event('change',{bubbles:true}));await settle();

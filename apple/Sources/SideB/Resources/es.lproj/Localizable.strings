@@ -246,6 +246,14 @@
 	<string>Más opciones de la canción</string>
 	<key>detail.track.play</key>
 	<string>Reproducir canción</string>
+	<key>detail.track.plays.billion</key>
+	<string>%@ mil M</string>
+	<key>detail.track.plays.million</key>
+	<string>%@ M</string>
+	<key>detail.track.plays.thousand</key>
+	<string>%@ mil</string>
+	<key>detail.track.playsAX</key>
+	<string>%@ reproducciones</string>
 	<key>detail.track.reorder</key>
 	<string>Arrastrar para reordenar</string>
 	<key>detail.track.song</key>
@@ -1331,6 +1339,12 @@ Historial: %@</string>
 	<string>No me gusta; quitar de la cola</string>
 	<key>queue.track.reorderSong</key>
 	<string>Arrastrar para reordenar la canción</string>
+	<key>search.category.episodes</key>
+	<string>Episodios</string>
+	<key>search.category.podcasts</key>
+	<string>Podcasts</string>
+	<key>search.category.profiles</key>
+	<string>Perfiles</string>
 	<key>search.category.top_result</key>
 	<string>Mejor resultado</string>
 	<key>search.correction.original</key>
@@ -1405,6 +1419,14 @@ Historial: %@</string>
 	<string>Mostrar todo</string>
 	<key>search.provider.show_related</key>
 	<string>Mostrar las %@ relacionadas</string>
+	<key>search.quick.clear</key>
+	<string>Borrar</string>
+	<key>search.quick.queries</key>
+	<string>Búsquedas</string>
+	<key>search.quick.recents</key>
+	<string>Recientes</string>
+	<key>search.quick.top</key>
+	<string>Mejor resultado</string>
 	<key>search.recents.clear</key>
 	<string>Borrar recientes de Side B</string>
 	<key>search.recents.remove</key>

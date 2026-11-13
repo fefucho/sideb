@@ -20,6 +20,7 @@ export function menuItems(target: MenuTarget, origin: MenuOrigin, facts: MenuFac
       case 'share': return 'share';
       case 'remove-playlist': case 'delete-playlist': return 'trash';
       case 'remove-queue': return 'minus';
+      case 'dislike': return 'dislike';
       case 'edit-playlist': return 'edit';
       case 'new-playlist': return 'plus';
       case 'sort-playlist': return 'sort';
@@ -32,6 +33,7 @@ export function menuItems(target: MenuTarget, origin: MenuOrigin, facts: MenuFac
   if (target.kind === 'song') {
     const { song, entryId } = target;
     const current = !!origin.nowPlaying || !!entryId && entryId === origin.currentQueueEntryId;
+    if (origin.nowPlaying && origin.dislike) { add('dislike', 'No me gusta (quitar de la cola)', auth); group(); }
     if (!origin.nowPlaying && !current) add('play', target.queueRecommendationId ? 'Play suggestion now' : 'Reproducir ahora');
     if (song.videoId) add('radio', 'Iniciar radio');
     if (!current) add('enqueue-next', target.queueRecommendationId ? 'Choose as next' : 'Reproducir a continuación');

@@ -7,12 +7,18 @@ final class SearchPreferences {
     static let shared = SearchPreferences(defaults: HomeAppearance.preferences)
     static let showVideosKey = "sideb.search.showVideos.v1"
     private let defaults: UserDefaults
+    static let categoryViewKey = "sideb.search.categoryView.v1"
     var showVideos: Bool {
         didSet { defaults.set(showVideos, forKey: Self.showVideosKey) }
+    }
+    /// Results grouped by category (PLAN-036). Off shows the provider's own mixed list.
+    var categoryView: Bool {
+        didSet { defaults.set(categoryView, forKey: Self.categoryViewKey) }
     }
     init(defaults: UserDefaults) {
         self.defaults = defaults
         showVideos = defaults.object(forKey: Self.showVideosKey) as? Bool ?? true
+        categoryView = defaults.object(forKey: Self.categoryViewKey) as? Bool ?? true
     }
 
     static func includes(_ entry: SearchSuggestionEntryRecord, showVideos: Bool) -> Bool {

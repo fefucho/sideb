@@ -26,6 +26,8 @@ enum ProviderSearchPageEntry {
     case principal(ProviderSearchPreparedSection)
     case actions(ProviderSearchPreparedSection)
     case carousel(ProviderSearchPreparedSection)
+    case categoryGrid(ProviderSearchPreparedSection)
+    case categoryLoading(ProviderSearchPreparedSection)
     case row(ProviderSearchPreparedSection, Int)
     case correction, loading, error, empty, more
 }
@@ -35,6 +37,7 @@ enum ProviderSearchPageEntry {
     private var sourceRevision: UInt?
     private var expansion: Set<String> = []
     private var showsVideos = true
+    private var usesCategories = false
     private var footerIdentity: [String] = []
     private(set) var sections: [ProviderSearchPreparedSection] = []
     private(set) var entries: [ProviderSearchViewportEntry] = []
@@ -43,15 +46,20 @@ enum ProviderSearchPageEntry {
     private(set) var projectionCount = 0
 
     func prepare(page: SearchPageRecord?, revision: UInt, expanded: Set<String>, loading: Bool,
-                 error: String?, loadingMore: Bool, localization: String, showVideos: Bool = true) {
+                 error: String?, loadingMore: Bool, localization: String, showVideos: Bool = true,
+                 categories: ProviderSearchCategoryInput? = nil) {
         let footer = [String(loading), error ?? "", String(loadingMore), localization]
-        let changedPage = sourceRevision != revision || showsVideos != showVideos
+        let changedPage = sourceRevision != revision || showsVideos != showVideos || usesCategories != (categories != nil)
         guard changedPage || expansion != expanded || footerIdentity != footer else { return }
         if changedPage {
             sourceRevision = revision
             showsVideos = showVideos
+            usesCategories = categories != nil
+            let displayed = page.map { source in
+                categories.map { ProviderSearchCategoryProjection.page(from: source, input: $0) } ?? source
+            }
             let previous = Dictionary(uniqueKeysWithValues: sections.map { ($0.id, $0) })
-            sections = (page?.sections ?? []).enumerated().compactMap { position, source in
+            sections = (displayed?.sections ?? []).enumerated().compactMap { position, source in
                 guard let record = SearchPreferences.section(source, showVideos: showVideos) else { return nil }
                 let old = previous["\(position):\(record.id)"]
                 return ProviderSearchPreparedSection(record: record, position: position,
@@ -82,7 +90,13 @@ enum ProviderSearchPageEntry {
             } else if !record.actions.isEmpty {
                 append("\(section.id):actions", kind: .action, height: 48, .actions(section))
             }
-            if record.layout == "carousel" {
+            if record.layout == "category-loading" {
+                append("\(section.id):loading", kind: .footer, height: ProviderSearchCategoryLayout.loadingHeight, .categoryLoading(section))
+            } else if record.layout == "category-carousel" {
+                append("\(section.id):carousel", kind: .carousel, height: ProviderSearchCategoryLayout.carouselHeight, .carousel(section))
+            } else if record.layout == "category-grid" {
+                append("\(section.id):grid", kind: .grid, height: ProviderSearchCategoryLayout.gridHeight, .categoryGrid(section))
+            } else if record.layout == "carousel" {
                 append("\(section.id):carousel", kind: .carousel, height: 232, .carousel(section))
             } else {
                 for index in section.remaining {
@@ -91,7 +105,7 @@ enum ProviderSearchPageEntry {
             }
         }
         if error != nil { append("error", kind: .footer, .error) }
-        if page?.continuation != nil { append("more", kind: .footer, height: 64, .more) }
+        if page?.continuation != nil, !usesCategories { append("more", kind: .footer, height: 64, .more) }
         if !loading && sections.isEmpty && error == nil { append("empty", kind: .footer, height: 80, .empty) }
         self.revision &+= 1
     }
@@ -113,10 +127,13 @@ struct ProviderSearchPageView: View {
     }
 
     var body: some View {
-        let _ = snapshot.prepare(page: page, revision: model.providerPageRevision, expanded: expandedRelatedSections,
+        let categoryMode = SearchPreferences.shared.categoryView && model.providerParams == nil
+        let _ = snapshot.prepare(page: page, revision: (model.providerPageRevision &<< 16) ^ model.categoryRevision,
+            expanded: expandedRelatedSections,
             loading: model.isCommittedLoading || model.isMixedLoading,
             error: pageError, loadingMore: model.isLoadingMore, localization: String(L10n.revision),
-            showVideos: SearchPreferences.shared.showVideos)
+            showVideos: SearchPreferences.shared.showVideos,
+            categories: categoryMode ? model.categoryInput : nil)
         ProviderSearchViewport(entries: snapshot.entries, resetIdentity: AnyHashable(model.providerRequestIdentity),
             snapshotRevision: AnyHashable(snapshot.revision),
             renderRevision: AnyHashable([player.currentTrack?.videoId ?? "", String(player.isPlaying), String(describing: player.queueManager.context)]),
@@ -138,6 +155,7 @@ struct ProviderSearchPageView: View {
                 }
             })
             .onChange(of: model.providerRequestIdentity) { _, _ in expandedRelatedSections = [] }
+            .task(id: model.providerPageRevision) { model.loadCategories(core: core) }
     }
 
     @ViewBuilder private func content(_ entry: ProviderSearchViewportEntry, width: CGFloat) -> some View {
@@ -147,6 +165,8 @@ struct ProviderSearchPageView: View {
             case .principal(let section): principal(section, width: width).padding(.vertical, 8)
             case .actions(let section): sectionActions(section.record)
             case .carousel(let section): carousel(section)
+            case .categoryGrid(let section): categoryGrid(section, width: width)
+            case .categoryLoading: ProgressView().frame(maxWidth: .infinity, minHeight: ProviderSearchCategoryLayout.loadingHeight)
             case .row(let section, let index): row(section.record.items[index], index: index, section: section)
             case .correction:
                 if let correction = page?.correction {
@@ -214,6 +234,23 @@ struct ProviderSearchPageView: View {
         }.frame(height: 40)
     }
 
+    /// Apple-Music-style song grid: always `gridRows` rows, filled column by column; only the number
+    /// of columns follows the width, so the entry height is a constant.
+    private func categoryGrid(_ section: ProviderSearchPreparedSection, width: CGFloat) -> some View {
+        let rows = ProviderSearchCategoryLayout.gridRows
+        let columns = ProviderSearchCategoryLayout.columns(for: width)
+        let indices = Array(section.record.items.indices.prefix(columns * rows))
+        return HStack(alignment: .top, spacing: 24) {
+            ForEach(0..<columns, id: \.self) { column in
+                VStack(spacing: 0) {
+                    ForEach(Array(indices.dropFirst(column * rows).prefix(rows)), id: \.self) { index in
+                        row(section.record.items[index], index: index, section: section)
+                    }
+                }.frame(maxWidth: .infinity, alignment: .top)
+            }
+        }.frame(maxHeight: .infinity, alignment: .top)
+    }
+
     private func carousel(_ section: ProviderSearchPreparedSection) -> some View {
         ScrollView(.horizontal, showsIndicators: false) {
             LazyHStack(alignment: .top, spacing: 16) {
@@ -273,6 +310,7 @@ struct ProviderSearchPageView: View {
     }
 
     private func open(_ card: BrowseCardRecord) {
+        model.recordOpened(card)
         switch card.kind {
         case "artist": router.navigate(to: .artist(browseId: card.id))
         case "album": router.navigate(to: .album(browseId: card.id))
@@ -302,7 +340,7 @@ struct ProviderSearchPageView: View {
 }
 
 /// A provider carousel retains its card geometry and occurrence-specific actions.
-private struct ProviderSearchCarouselCard: View {
+struct ProviderSearchCarouselCard: View {
     let card: BrowseCardRecord
     let isActive: Bool
     let isPlaying: Bool

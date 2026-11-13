@@ -26,6 +26,7 @@ struct PlayerBarView: View {
     @State private var isHoveringVolumeCapsule: Bool = false
     @State private var isDraggingVolume: Bool = false
     @State private var isHoveringAlbum: Bool = false
+    @State private var isHoveringBar: Bool = false
 
     init(viewModel: PlayerViewModel, router: NavigationRouter? = nil, isVolumeExpanded: Bool = false, isSidebar: Bool = false, sidebarHeight: CGFloat? = nil, sidebarIsPortrait: Bool = false, sidebarWidth: CGFloat = 380,
          sidebarLyricsPreview: ((CGFloat) -> AnyView)? = nil) {
@@ -134,7 +135,7 @@ struct PlayerBarView: View {
 
                     Color.clear.frame(width: 17, height: 22).accessibilityHidden(true)
 
-                    // (c) Atajos (Letras y Cola), AirPlay, Volumen Adaptativo y Flecha Fullscreen
+                    // (c) Atajos (Letras y Genius), Volumen Adaptativo y Flecha Fullscreen
                     rightControlsSection(isCompact: isCompact)
                         .fixedSize()
                 }
@@ -147,6 +148,7 @@ struct PlayerBarView: View {
         .frame(height: 74)
         .compatGlass(interactive: true, in: Capsule())
         .shadow(color: .black.opacity(0.18), radius: 14, x: 0, y: 6)
+        .onHover { isHoveringBar = $0 }
     }
 
     // MARK: - 2. Controles de Transporte (Izquierda - Sin rebordes, botones más amplios y proporcionados)
@@ -296,15 +298,16 @@ struct PlayerBarView: View {
         PlayerBarMetadataActionLayout {
                 // Both lines share their ideal width; actions sit after the longer line.
                 VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 7) {
+                    HStack(spacing: 5) {
                         Group {
                             if let track = viewModel.currentTrack {
                                 FeaturedTrackTitle(track:track,font:.system(size:14,weight:.semibold),color:.primary, scrollsOnOverflow:true) { id,name in navigateToArtist(track:track,artistId:id,name:name) }
                             } else { Text(L10n.text("player.noPlayback")).font(.system(size:13.5,weight:.semibold)).lineLimit(1) }
                         }
-                        .frame(maxWidth: .infinity)
                         .layoutPriority(1)
 
+                        likeButton
+                            .disabled(viewModel.currentTrack == nil || viewModel.rustCore?.isLoggedIn() != true)
                     }
 
                     if let error = viewModel.errorMessage {
@@ -377,69 +380,69 @@ struct PlayerBarView: View {
                     }
                 }
 
-                HStack(spacing: 4) {
-                    likeButton.disabled(viewModel.currentTrack == nil || viewModel.rustCore?.isLoggedIn() != true)
-                    VStack(spacing: 2) {
-                        dislikeButton
-                        if let track = viewModel.currentTrack {
-                            Menu {
-                                SongMenuItems(song: track, player: viewModel, router: router, core: viewModel.rustCore, origin: .nowPlaying)
-                            } label: {
-                                Image(systemName: "ellipsis")
-                                    .font(.system(size: 13, weight: .semibold))
-                                    .foregroundStyle(Color.white.opacity(0.78))
-                                    .frame(width: 24, height: 22)
-                                    .contentShape(Rectangle())
-                            }
-                            .menuStyle(.borderlessButton)
-                            .menuIndicator(.hidden)
-                            .accessibilityLabel(L10n.text("common.moreOptions"))
-                            .frame(width: 24, height: 22)
-                        } else {
-                            Color.clear.frame(width: 24, height: 22).accessibilityHidden(true)
-                        }
-                    }
-                    .frame(width: 24, height: 46)
-                }
-                .frame(width: 60, height: 46)
+                moreOptionsMenu
+                    .frame(width: PlayerBarMetadataActionLayout.actionWidth, height: 46)
             }
             .frame(minWidth: 0, maxWidth: .infinity)
     }
 
+    /// Apple Music style: a small heart next to the title. Hidden until the bar is hovered,
+    /// always visible (filled, accent) when the song is liked. Space is reserved to avoid layout shifts.
     private var likeButton: some View {
-        Button {
+        let liked = viewModel.isCurrentTrackLiked
+        let visible = viewModel.currentTrack != nil && (liked || isHoveringBar)
+        return Button {
             guard viewModel.rustCore?.isLoggedIn() == true else { return }
             viewModel.toggleCurrentTrackLike()
         } label: {
-            Image(systemName: viewModel.isCurrentTrackLiked ? "heart.fill" : "heart")
-                .font(.system(size: 25, weight: .medium))
-                .foregroundStyle(viewModel.isCurrentTrackLiked ? Color.sidebAccentHighlight : Color.white.opacity(0.60))
-                .frame(width: 32, height: 44)
+            Image(systemName: liked ? "heart.fill" : "heart")
+                .font(.system(size: 11.5, weight: .semibold))
+                .foregroundStyle(liked ? Color.sidebAccentHighlight : Color.white.opacity(0.60))
+                .frame(width: 18, height: 18)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .help(L10n.text(viewModel.isCurrentTrackLiked ? "detail.track.unlike" : "detail.track.like"))
-        .accessibilityLabel(L10n.text(viewModel.isCurrentTrackLiked ? "detail.track.unlike" : "detail.track.like"))
+        .opacity(visible ? 1 : 0)
+        .allowsHitTesting(visible)
+        .animation(.easeInOut(duration: 0.12), value: visible)
+        .help(L10n.text(liked ? "detail.track.unlike" : "detail.track.like"))
+        .accessibilityLabel(L10n.text(liked ? "detail.track.unlike" : "detail.track.like"))
     }
 
-    private var dislikeButton: some View {
-        Button {
-            guard viewModel.rustCore?.isLoggedIn() == true, let track = viewModel.currentTrack else { return }
-            viewModel.dislikeTrack(track)
-        } label: {
-            Image(systemName: "hand.thumbsdown")
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(Color.white.opacity(0.60))
-                .frame(width: 24, height: 22)
-                .contentShape(Rectangle())
+    /// "..." menu with the song actions; the dislike action lives here (no dedicated button).
+    @ViewBuilder
+    private var moreOptionsMenu: some View {
+        if let track = viewModel.currentTrack {
+            Menu {
+                Button {
+                    guard viewModel.rustCore?.isLoggedIn() == true else { return }
+                    viewModel.dislikeTrack(track)
+                } label: {
+                    Label(L10n.text("queue.track.dislikeRemove"), systemImage: "hand.thumbsdown")
+                }
+                .disabled(viewModel.rustCore?.isLoggedIn() != true)
+                .help(L10n.text("queue.track.dislikeRemove"))
+                .accessibilityLabel(L10n.text("queue.track.dislikeRemoveAX"))
+                Divider()
+                SongMenuItems(song: track, player: viewModel, router: router, core: viewModel.rustCore, origin: .nowPlaying)
+            } label: {
+                Image(systemName: "ellipsis")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(Color.white.opacity(0.78))
+                    .frame(width: 28, height: 28)
+                    .contentShape(Rectangle())
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .help(L10n.text("common.moreOptions"))
+            .accessibilityLabel(L10n.text("common.moreOptions"))
+            .frame(width: 28, height: 28)
+        } else {
+            Color.clear.frame(width: 28, height: 28).accessibilityHidden(true)
         }
-        .buttonStyle(.plain)
-        .disabled(viewModel.currentTrack == nil || viewModel.rustCore?.isLoggedIn() != true)
-        .help(L10n.text("queue.track.dislikeRemove"))
-        .accessibilityLabel(L10n.text("queue.track.dislikeRemoveAX"))
     }
 
-    // MARK: - 4. Controles Derechos (Shortcuts Letras/Cola, AirPlay, Volumen y Flecha)
+    // MARK: - 4. Controles Derechos (Shortcuts Letras/Genius, Volumen y Flecha)
     private func rightControlsSection(isCompact: Bool) -> some View {
         let isVolumeExpanded = self.isVolumeExpanded || isDraggingVolume
         let expandedCapsuleWidth: CGFloat = 152
@@ -454,20 +457,10 @@ struct PlayerBarView: View {
                 .opacity(isVolumeExpanded ? 0 : 1)
                 .allowsHitTesting(!isVolumeExpanded)
 
-            // (b) Shortcut a Cola de Reproducción
-            queueShortcutButton
-                .opacity(isVolumeExpanded ? 0 : 1)
-                .allowsHitTesting(!isVolumeExpanded)
-
-            // (c) AirPlay (100% nativo y sin rebordes)
-            AirPlayButton()
-                .opacity(isVolumeExpanded ? 0 : 1)
-                .allowsHitTesting(!isVolumeExpanded)
-
-            // (d) Control de Volumen Adaptativo en Overlay Flotante
+            // (c) Control de Volumen Adaptativo en Overlay Flotante
             volumeControlSection(isExpanded: isVolumeExpanded, capsuleWidth: expandedCapsuleWidth)
 
-            // (e) Flecha Fullscreen Grande Estilizada (Sin círculo)
+            // (d) Flecha Fullscreen Grande Estilizada (Sin círculo)
             fullscreenArrowButton
         }
     }
@@ -503,21 +496,6 @@ struct PlayerBarView: View {
         .disabled(viewModel.currentTrack == nil)
         .help(L10n.text("genius.lyricsAndAnnotations"))
         .accessibilityLabel(L10n.text("genius.lyricsAndAnnotations"))
-    }
-
-    private var queueShortcutButton: some View {
-        Button {
-            viewModel.toggleFullscreenPanel(.queue)
-        } label: {
-            Image(systemName: (viewModel.isFullscreenPresented && viewModel.selectedFullscreenPanel == .queue) ? "list.bullet.indent" : "list.bullet")
-                .font(.system(size: 15, weight: .medium))
-                .foregroundStyle((viewModel.isFullscreenPresented && viewModel.selectedFullscreenPanel == .queue) ? Color.sidebAccentHighlight : Color.white.opacity(0.70))
-                .frame(width: 32, height: 32)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .help(L10n.text("queue.title"))
-        .accessibilityLabel(L10n.text("queue.title"))
     }
 
     // MARK: - Volumen Adaptativo (Overlay Flotante hacia la izquierda)

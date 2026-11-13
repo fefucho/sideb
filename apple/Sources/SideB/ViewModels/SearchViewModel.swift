@@ -106,6 +106,15 @@ public final class SearchViewModel {
         }
     }
     public private(set) var providerParams: String?
+    /// Category pages (one chip search per type) that fill the Apple-Music-style sections.
+    private(set) var quickPage: SearchPageRecord?
+    private(set) var quickPageQuery = ""
+    @ObservationIgnored private var quickPageTask: Task<Void, Never>?
+    @ObservationIgnored private var quickPageCache: [String: (page: SearchPageRecord, date: Date)] = [:]
+    private(set) var categoryInput = ProviderSearchCategoryInput()
+    private(set) var categoryRevision: UInt = 0
+    @ObservationIgnored private var categoryTask: Task<Void, Never>?
+    @ObservationIgnored private var categoryGeneration: UInt?
     public private(set) var isLoadingMore = false
     public private(set) var removingSuggestionIDs = Set<String>()
     @ObservationIgnored private var continuationTask: Task<Void, Never>?
@@ -163,6 +172,10 @@ public final class SearchViewModel {
     @ObservationIgnored private var previewCache: [String: PreviewCacheEntry] = [:]
     @ObservationIgnored private let recentStore: SearchRecentStore
     public init(recentStore: SearchRecentStore? = nil) { self.recentStore = recentStore ?? .shared }
+    /// Local recents shown in the quick search (queries, opened entities and played songs).
+    var localRecents: SearchRecentStore { recentStore }
+    /// An artist, album or playlist opened from search; songs are recorded when playback starts.
+    func recordOpened(_ card: BrowseCardRecord) { recentStore.recordEntity(card) }
 
     // MARK: Preview
 
@@ -229,11 +242,45 @@ public final class SearchViewModel {
         isTopdownVisible = true
     }
 
+    // MARK: Quick results
+
+    /// A full provider search for what is being typed, so the quick search can show a top result and
+    /// several songs/artists/albums/playlists (the suggestions endpoint only returns about three media
+    /// items). Requested by the quick-search view, never by `onQueryChanged`: the view model keeps
+    /// issuing exactly the requests it is asked for. Not recorded in any history.
+    func loadQuickPage(_ text: String, core: SideBCore) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        quickPageTask?.cancel()
+        guard !trimmed.isEmpty else { quickPage = nil; quickPageQuery = ""; return }
+        if let cached = quickPageCache[trimmed], Date().timeIntervalSince(cached.date) < 60 {
+            quickPage = cached.page; quickPageQuery = trimmed
+            return
+        }
+        let generation = previewGeneration
+        quickPageTask = Task {
+            try? await Task.sleep(for: .milliseconds(250))
+            guard !Task.isCancelled, generation == previewGeneration else { return }
+            do {
+                let page = try await core.searchPage(query: trimmed, params: nil, recordHistory: false, ignoreSpelling: false)
+                guard !Task.isCancelled, generation == previewGeneration else { return }
+                if quickPageCache.count >= 12, let oldest = quickPageCache.min(by: { $0.value.date < $1.value.date })?.key {
+                    quickPageCache[oldest] = nil
+                }
+                quickPageCache[trimmed] = (page, Date())
+                quickPage = page; quickPageQuery = trimmed
+            } catch {
+                // The suggestions alone still populate the list.
+            }
+        }
+    }
+
     /// Invalidates a pending preview when the dropdown is dismissed or a search is submitted.
     public func cancelPreview() {
         previewOwner = nil
         debounceTask?.cancel()
         debounceTask = nil
+        quickPageTask?.cancel()
+        quickPageTask = nil
         previewGeneration &+= 1
         quickErrorMessage = nil
         isQuickSearching = false
@@ -267,6 +314,7 @@ public final class SearchViewModel {
         filterTask?.cancel()
 
         continuationTask?.cancel()
+        resetCategories()
         consumedContinuations = []
         isLoadingMore = false
         providerPage = nil
@@ -318,6 +366,56 @@ public final class SearchViewModel {
             let message = AppMessage(key: "search.error.global"); searchError = message; partialErrorMessages[.global] = message
         }
     }
+    private func resetCategories() {
+        categoryTask?.cancel()
+        categoryTask = nil
+        categoryGeneration = nil
+        categoryInput = ProviderSearchCategoryInput()
+        categoryRevision &+= 1
+    }
+
+    /// Called by the results page once it shows the provider's page; runs once per query. Kept out of
+    /// `commitSearch` so the view model itself never issues requests beyond the one it was asked for.
+    func loadCategories(core: SideBCore) {
+        guard providerParams == nil, let page = providerPage, categoryGeneration != queryGeneration else { return }
+        categoryGeneration = queryGeneration
+        startCategoryFill(page: page, query: committedQuery, core: core, generation: queryGeneration,
+                          ignoreSpelling: isOriginalSearch)
+    }
+
+    /// One chip request per category, at most three at a time, stale responses dropped by generation.
+    /// Sections already show the mixed list's items; each response replaces its own category only.
+    private func startCategoryFill(page: SearchPageRecord, query: String, core: SideBCore,
+                                   generation: UInt, ignoreSpelling: Bool) {
+        guard SearchPreferences.shared.categoryView else { return }
+        let targets = ProviderSearchCategoryProjection.fetchTargets(page: page, showVideos: SearchPreferences.shared.showVideos)
+        guard !targets.isEmpty else { return }
+        let effectiveQuery = page.correction.flatMap { $0.applied ? $0.query : nil } ?? query
+        categoryInput.pending = Set(targets.map(\.kind))
+        categoryRevision &+= 1
+        categoryTask?.cancel()
+        categoryTask = Task { [weak self] in
+            await withTaskGroup(of: (ProviderSearchChipKind, SearchPageRecord?).self) { group in
+                var next = targets.makeIterator()
+                func enqueue() {
+                    guard let target = next.next() else { return }
+                    group.addTask {
+                        (target.kind, try? await core.searchPage(query: effectiveQuery, params: target.params,
+                                                                 recordHistory: false, ignoreSpelling: ignoreSpelling))
+                    }
+                }
+                for _ in 0..<3 { enqueue() }
+                while let (kind, result) = await group.next() {
+                    guard let self, !Task.isCancelled, generation == self.queryGeneration else { group.cancelAll(); return }
+                    if let result { self.categoryInput.chipPages[kind] = result }
+                    self.categoryInput.pending.remove(kind)
+                    self.categoryRevision &+= 1
+                    enqueue()
+                }
+            }
+        }
+    }
+
     private func loadSongs(query: String, core: SideBCore, generation: UInt) async {
         defer { if generation == queryGeneration { isSongsLoading = false } }
         do {
@@ -571,8 +669,11 @@ public final class SearchViewModel {
         filterTask = nil
 
         query = ""
+        quickPageTask?.cancel(); quickPageTask = nil
+        quickPage = nil; quickPageQuery = ""; quickPageCache = [:]
         continuationTask?.cancel()
         continuationTask = nil
+        resetCategories()
         consumedContinuations = []
         providerPage = nil
         providerSuggestions = []

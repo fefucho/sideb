@@ -7,7 +7,9 @@
   import SearchViewport from './SearchViewport.svelte';
   import {projectSearchDocument, estimateSearchEntryHeight, searchEntryCanFocus} from '$lib/search/document';
   import {filterSearchPage} from '$lib/search/videoPreferences';
-  import {searchPreferences} from '$lib/search/searchPreferences';
+  import {searchPreferences,categoryViewPreference} from '$lib/search/searchPreferences';
+  import {categoryPage,categoryTitleKey,emptyCategoryInput} from '$lib/search/categories';
+  import SearchCategoryGrid from './SearchCategoryGrid.svelte';
 
   import {t} from '$lib/i18n';
 
@@ -46,6 +48,8 @@
     onOpenAlbum: (album: AlbumCardDto) => void;
     onOpenArtist?: (id: string) => void;
     onOpenPlaylist?: (id: string) => void;
+    /** Called with the card an artist/album/playlist was opened from, so Side B can keep it in its recents. */
+    onOpenedCard?: (card: BrowseCardDto) => void;
     onDraftChange: (query: string) => void;
     onPreviewFocus: () => void;
     onPreviewDismiss: () => void;
@@ -54,7 +58,7 @@
   let {
     active=true,contentScrollElement=$bindable(),onAction,onSelectParams,onLoadMore,onMore,onRemoveSuggestion,data, backendReady, currentTrackId, isPlaying, draftQuery, preview,
     onSearchOriginal, onSubmit, onRetry, onRetrySection, onModeChange, onPlaySong, onPlayPreviewSong, onOpenAlbum, onOpenArtist,
-    onOpenPlaylist, onDraftChange, onPreviewFocus, onPreviewDismiss,
+    onOpenPlaylist, onOpenedCard, onDraftChange, onPreviewFocus, onPreviewDismiss,
   }: Props = $props();
 
   // Retained pages keep their rendered snapshot and geometry while hidden.
@@ -66,9 +70,14 @@
   // (cached per DTO object); a hidden page keeps its last projection until it is shown again.
   let visibleShowVideos=$state(untrack(()=>$searchPreferences));
   $effect(()=>{if(active)visibleShowVideos=$searchPreferences;});
-  const displayPage=$derived(filterSearchPage(displayData.page,visibleShowVideos));
+  // Results by category (PLAN-027 W4): only the general search; a chip or «show all» page is already one category.
+  let visibleCategoryView=$state(untrack(()=>$categoryViewPreference));
+  $effect(()=>{if(active)visibleCategoryView=$categoryViewPreference;});
+  const categoryMode=$derived(visibleCategoryView&&displayData.params==null&&displayData.page!=null);
+  const basePage=$derived(categoryMode?categoryPage(displayData.page!,displayData.categories??emptyCategoryInput(),category=>$t(categoryTitleKey[category])):displayData.page);
+  const displayPage=$derived(filterSearchPage(basePage,visibleShowVideos));
   const entries=$derived(projectSearchDocument(displayPage));
-  const documentKey=$derived(`${displayData.lastSearchedQuery}:${displayData.params??''}`);
+  const documentKey=$derived(`${displayData.lastSearchedQuery}:${displayData.params??''}:${categoryMode}`);
   let expandedSections=$state<Record<string,boolean>>({});
   $effect(()=>{documentKey;visibleShowVideos;expandedSections={};});
   let composing=false;
@@ -140,6 +149,7 @@
   }
 
   function openCard(card: BrowseCardDto) {
+    onOpenedCard?.(card);
     if (card.kind === 'artist') onOpenArtist?.(card.id);
     else if (card.kind === 'album') onOpenAlbum({ id: card.id, title: card.title, subtitle: card.subtitle, thumbnail: card.thumbnail });
     else if (card.kind === 'playlist') onOpenPlaylist?.(card.id);
@@ -225,13 +235,17 @@
             {:else if row.card}{@const card=row.card}<SearchResultCard {card} size={card.kind==='artist'?'artist':card.kind==='playlist'?'playlist':'album'} onActivate={()=>openCard(card)}/>{/if}
           {/each}</div>
           </HorizontalNavigation>
+        {:else if entry.kind==='loading'}
+          <div class="state" role="status"><span class="spinner"></span></div>
+        {:else if entry.kind==='grid'}
+          <SearchCategoryGrid rows={entry.rows} label={entry.section.title} currentTrackId={visiblePlayback.currentTrackId} isPlaying={visiblePlayback.isPlaying} {onPlaySong} {onOpenArtist} {openAlbumForSong}/>
         {:else if entry.kind==='row'}{@const row=entry.row}
           {#if row.song}{@const song=row.song}<SearchSongRow {song} currentTrackId={visiblePlayback.currentTrackId} isPlaying={visiblePlayback.isPlaying} onPlay={onPlaySong} {onOpenArtist} onOpenAlbum={id=>openAlbumForSong(song,id)}/>
           {:else if row.card}{@const card=row.card}<MediaCard {card} layout="compact" onOpen={()=>openCard(card)} {onOpenArtist} onOpenAlbum={id=>onOpenAlbum({id,title:card.album??'',subtitle:card.artists??null,thumbnail:card.thumbnail})}/>{/if}
         {/if}
       {/snippet}
     </SearchViewport>
-    {#if displayData.page?.continuation}<ControlButton type="button" disabled={displayData.loadingMore} onclick={onLoadMore}>{$t(displayData.loadingMore?'common.loading':'search.provider.load_more')}</ControlButton>{/if}
+    {#if displayData.page?.continuation&&!categoryMode}<ControlButton type="button" disabled={displayData.loadingMore} onclick={onLoadMore}>{$t(displayData.loadingMore?'common.loading':'search.provider.load_more')}</ControlButton>{/if}
     {#if !displayData.isLoading&&!displayData.error&&!displayPage?.sections.length}<div class="state empty-state"><strong>{$t(displayData.hasSearched?'search.empty.query':'search.empty.prompt_title',[displayData.lastSearchedQuery])}</strong></div>{/if}
   </div>
 </div>

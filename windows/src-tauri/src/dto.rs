@@ -408,6 +408,9 @@ pub struct SongDto {
     pub library: Option<LibraryToggleDto>,
     #[serde(default)]
     pub artist_runs: Vec<HomeArtistRunDto>,
+    /// Provider's abbreviated play count ("53M", "1,234"); only album rows carry it.
+    #[serde(default)]
+    pub play_count: Option<String>,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -443,6 +446,7 @@ impl From<sideb_core::SongItemRecord> for SongDto {
                 .into_iter()
                 .map(HomeArtistRunDto::from)
                 .collect(),
+            play_count: r.play_count,
         }
     }
 }
@@ -823,5 +827,46 @@ impl From<sideb_core::PlaylistContinuationRecord> for PlaylistContinuationDto {
             items: r.items.into_iter().map(SongDto::from).collect(),
             continuation: r.continuation,
         }
+    }
+}
+
+#[cfg(test)]
+mod song_play_count_tests {
+    use super::*;
+
+    fn record(play_count: Option<&str>) -> sideb_core::SongItemRecord {
+        sideb_core::SongItemRecord {
+            video_id: "v".into(),
+            title: "T".into(),
+            artists: "A".into(),
+            album: None,
+            duration: None,
+            thumbnail: None,
+            artist_id: None,
+            album_id: None,
+            set_video_id: None,
+            is_video: false,
+            is_upload: false,
+            library: None,
+            artist_runs: Vec::new(),
+            content_rating: Default::default(),
+            play_count: play_count.map(str::to_owned),
+        }
+    }
+
+    #[test]
+    fn play_count_reaches_the_frontend_payload() {
+        let json = serde_json::to_value(SongDto::from(record(Some("1.2M")))).unwrap();
+        assert_eq!(json["playCount"], "1.2M");
+        let none = serde_json::to_value(SongDto::from(record(None))).unwrap();
+        assert!(none["playCount"].is_null());
+    }
+
+    #[test]
+    fn older_song_payloads_without_play_count_still_deserialize() {
+        let dto: SongDto = serde_json::from_str(
+            r#"{"videoId":"v","title":"T","artists":"A","album":null,"duration":null,"thumbnail":null,"isVideo":false,"artistId":null,"albumId":null,"setVideoId":null,"library":null}"#,
+        ).unwrap();
+        assert_eq!(dto.play_count, None);
     }
 }

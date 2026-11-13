@@ -12,6 +12,13 @@ struct ProviderSearchSuggestionRow: View {
     let onActivate: () -> Void
     let onRemove: () -> Void
     var onNavigate: ((PageDestination) -> Void)? = nil
+    /// Quick-search density. `.top` keeps the full-size row for the best result.
+    var style: QuickSearchPresentation.Style = .recents
+
+    @State private var isHovered = false
+    private var compact: Bool { style != .top }
+    private var isLocal: Bool { QuickSearchPresentation.isLocal(entry) }
+    private var removable: Bool { entry.kind == "history" && (entry.feedbackToken != nil || isLocal) }
 
     var body: some View {
         HStack(spacing: 8) {
@@ -19,23 +26,30 @@ struct ProviderSearchSuggestionRow: View {
                 mediaRow(card)
             } else {
                 Button(action: onActivate) {
-                    HStack(spacing: 12) {
+                    HStack(spacing: compact ? 10 : 12) {
                         Image(systemName: entry.kind == "history" ? "clock.arrow.circlepath" : "magnifyingglass")
-                            .foregroundStyle(.secondary).frame(width: 42)
-                        styledText.font(.system(size: 15)).lineLimit(2)
+                            .font(.system(size: compact ? 12 : 14))
+                            .foregroundStyle(.secondary).frame(width: compact ? 32 : 42)
+                        styledText.font(.system(size: compact ? 13 : 15)).lineLimit(2)
                         Spacer(minLength: 0)
-                    }.padding(.horizontal, 10).frame(minHeight: 48).contentShape(Rectangle())
+                    }.padding(.horizontal, 10).frame(minHeight: compact ? 32 : 48).contentShape(Rectangle())
                 }.buttonStyle(.plain)
             }
-            if entry.kind == "history", entry.feedbackToken != nil {
+            if removable {
+                let visible = isHovered || selected
                 Button(action: onRemove) {
-                    Image(systemName: "xmark").font(.system(size: 11)).frame(width: 28, height: 28)
+                    Image(systemName: "xmark").font(.system(size: 10, weight: .semibold)).frame(width: 24, height: 24)
                 }.buttonStyle(.plain).disabled(removing)
-                    .accessibilityLabel(L10n.text("search.provider.remove_history"))
-                    .help(L10n.text("search.provider.remove_history"))
+                    .foregroundStyle(.secondary)
+                    .opacity(visible ? 1 : 0)
+                    .padding(.trailing, 4)
+                    .accessibilityLabel(L10n.text(isLocal ? "search.recents.remove" : "search.provider.remove_history"))
+                    .help(L10n.text(isLocal ? "search.recents.remove" : "search.provider.remove_history"))
             }
         }
-        .background(selected ? Color.white.opacity(0.12) : Color.clear, in: RoundedRectangle(cornerRadius: 8))
+        .onHover { isHovered = $0 }
+        .background(selected ? Color.white.opacity(0.12) : (style == .top ? Color.white.opacity(0.06) : Color.clear),
+                    in: RoundedRectangle(cornerRadius: style == .top ? 10 : 8))
         .accessibilityAddTraits(selected ? .isSelected : [])
         .id(entry.id)
     }
@@ -68,12 +82,13 @@ struct ProviderSearchSuggestionRow: View {
             }, onArtist: song.artistId.map { id in { navigate(.artist(browseId: id)) } },
                 onAlbum: song.albumId.map { id in { navigate(.album(browseId: id)) } },
                 menuProvider: { AppContextMenuFactory.shared.buildSongNSMenu(song: song, player: player,
-                    router: router, core: core, origin: .search) }, onSelect: onActivate)
+                    router: router, core: core, origin: .search) }, compact: compact, onSelect: onActivate)
                 .songContextMenu(song: song, player: player, router: router, core: core, origin: .search)
         } else {
-            QuickResultCardRow(card: card,
+            QuickResultCardRow(card: card, isHero: style == .top,
                 isActive: MediaPlaybackIdentity.isCollectionActive(kind: card.kind, id: card.id, context: player.queueManager.context),
                 isPlaying: player.isPlaying,
+                compact: compact,
                 onPlay: ["album", "playlist"].contains(card.kind) ? { player.activateMediaCollection(id: card.id, kind: card.kind) } : nil,
                 onSelect: onActivate)
                 .browseCardContextMenu(card: card, player: player, router: router, core: core, origin: .search)
