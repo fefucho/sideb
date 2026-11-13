@@ -43,9 +43,11 @@ const noop=()=>{};const genius={ensureNow:noop,dispose:noop};
 .bar{position:absolute;left:20px;right:20px;bottom:30px;display:flex;justify-content:center}.sidebar{position:absolute;top:0;left:20px;width:380px;height:640px;background:#24242a;overflow:hidden;border-radius:16px}</style>`);
 await writeFile(path.join(cache,'main.js'),`import {mount} from 'svelte';import Fixture from './Fixture.svelte';window.__initial=${JSON.stringify(fixtures.activeState())};window.__playback=${JSON.stringify(fixtures.jamPlayback({currentTrack:{videoId:'vid1',title:'Blinding Lights',artists:'The Weeknd',album:'After Hours',thumbnail:null,artistId:null,albumId:null},duration:200,position:60}))};mount(Fixture,{target:document.getElementById('app')});`);
 await writeFile(path.join(cache,'index.html'),'<div id="app"></div><script type="module" src="/main.js"></script>');
-const server=await createServer({configFile:false,root:cache,publicDir:path.join(root,'static'),plugins:[svelte()],optimizeDeps:{entries:[path.join(cache,'index.html')]},resolve:{alias:{$lib:path.join(root,'src/lib')}},server:{watch:null,host:'127.0.0.1',port:0,fs:{allow:[root]}},logLevel:'error'});
+const mockFile=path.join(cache,'tauri-mock.js');
+await writeFile(mockFile,'export const invoke = async cmd => cmd === "get_animated_artwork_runtime_state" ? ({ visible: true, minimized: false, cloaked: false, powerSaver: false, memoryPressure: false }) : null; export const listen = async () => () => {}; export const convertFileSrc = path => path; export const getCurrentWindow = () => ({ isFullscreen: async () => false, setFullscreen: async () => {} });');
+const server=await createServer({configFile:false,root:cache,publicDir:path.join(root,'static'),plugins:[svelte()],optimizeDeps:{entries:[path.join(cache,'index.html')]},resolve:{alias:{$lib:path.join(root,'src/lib'),'@tauri-apps/api/core':mockFile,'@tauri-apps/api/event':mockFile,'@tauri-apps/api/window':mockFile}},server:{watch:null,host:'127.0.0.1',port:0,fs:{allow:[root]}},logLevel:'error'});
 await server.listen();
-const browser=spawn(process.env.SIDEB_BROWSER??'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',['--headless=new','--edge-skip-compat-layer-relaunch','--no-first-run','--disable-extensions','--hide-scrollbars','--remote-debugging-port=0',`--user-data-dir=${path.join(cache,'browser-'+Date.now())}`,'about:blank'],{stdio:['ignore','ignore','pipe']});
+const browser=spawn(process.env.SIDEB_BROWSER??'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',['--headless=new','--edge-skip-compat-layer-relaunch','--no-first-run','--no-default-browser-check','--disable-extensions','--disable-background-networking','--disable-background-timer-throttling','--hide-scrollbars','--remote-debugging-port=0',`--user-data-dir=${path.join(cache,'browser-'+Date.now())}`,'about:blank'],{windowsHide:true,stdio:['ignore','ignore','pipe']});
 let stderr='',ws;browser.stderr.on('data',x=>stderr+=x);
 try{
  for(let i=0;i<100&&!stderr.includes('DevTools listening on');i++)await new Promise(r=>setTimeout(r,100));
@@ -59,8 +61,10 @@ try{
  const settle=(ms=250)=>new Promise(resolve=>setTimeout(resolve,ms));
  await send('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'reduce'}]});await send('Emulation.setFocusEmulationEnabled',{enabled:true});
  await send('Runtime.enable');await send('Page.navigate',{url:server.resolvedUrls.local[0]});
- for(let i=0;i<300;i++){if(await evaluate('!!window.lab'))break;await settle(100)}
- assert.ok(await evaluate('!!window.lab'),errors.join('\n'));await evaluate('document.fonts.ready');
+ for(let i=0;i<600;i++){if(await evaluate('!!window.lab')){await settle(150);if(await evaluate('!!window.lab'))break;}if(i===150||i===300||i===450)await send('Page.reload',{ignoreCache:true});await settle(100)}
+ const hasLab=await evaluate('!!window.lab');
+ if(!hasLab){const diag=await evaluate('({href:location.href,ready:document.readyState,html:document.body?.innerHTML?.slice(0,300)})');assert.ok(hasLab,`window.lab missing: ${JSON.stringify({errors,diag})}`)}
+ await evaluate('document.fonts.ready');
  const out=[];
  const shot=async(name,clip)=>{await settle();const r=await send('Page.captureScreenshot',{format:'png',...(clip?{clip:{...clip,scale:1}}:{})});const file=path.join(shots,name+'.png');await writeFile(file,Buffer.from(r.data,'base64'));out.push(file)};
  const viewport=(width,height,dpr=2)=>send('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:dpr,mobile:false});
