@@ -67,6 +67,20 @@ enum JamAccess: Equatable {
     case pluginMissing
 }
 
+struct JamPanelInvite: Equatable, Identifiable {
+    let id: String
+    let token: String
+    let link: String
+    let senderName: String?
+    let senderImageURL: URL?
+    let participantCount: Int?
+
+    var senderDisplayName: String? {
+        guard let senderName, !senderName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        return senderName.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+
 struct JamPanelSnapshot: Equatable {
     enum Stage: Equatable { case join, connecting, live }
 
@@ -74,6 +88,7 @@ struct JamPanelSnapshot: Equatable {
     var access: JamAccess = .ready
     var failure: JamFailureKind?
     var ended: JamEndedKind?
+    var invites: [JamPanelInvite] = []
     var members: [JamPanelMember] = []
     var hostName: String?
     var canControl = true
@@ -119,6 +134,18 @@ struct JamPanelSnapshot: Equatable {
             else if controller.playback?.paused == true { snapshot.status = .paused }
             else if controller.isAdjusting { snapshot.status = .adjusting }
             else { snapshot.status = .synced }
+        }
+        if snapshot.stage == .join {
+            snapshot.invites = controller.invites.map {
+                JamPanelInvite(
+                    id: $0.id,
+                    token: $0.token,
+                    link: $0.link,
+                    senderName: $0.senderName,
+                    senderImageURL: $0.senderImageUrl.flatMap(URL.init(string:)),
+                    participantCount: $0.participantCount
+                )
+            }
         }
         return snapshot
     }

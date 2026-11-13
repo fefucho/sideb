@@ -474,5 +474,45 @@
   "jam.menu.signOut": {
     "es": "Cerrar sesión de Spotify",
     "en": "Sign out of Spotify"
+  },
+  "jam.invite.banner.title": {
+    "es": "%@ te invitó a un Jam",
+    "en": "%@ invited you to a Jam"
+  },
+  "jam.invite.banner.titleUnknown": {
+    "es": "Tenés una invitación a un Jam",
+    "en": "You have a Jam invitation"
+  },
+  "jam.invite.banner.subtitle": {
+    "es": "Spotify Jam · Escuchar juntos en Side B",
+    "en": "Spotify Jam · Listen together in Side B"
+  },
+  "jam.invite.join": {
+    "es": "Unirse",
+    "en": "Join"
+  },
+  "jam.invite.dismiss": {
+    "es": "Ignorar",
+    "en": "Dismiss"
+  },
+  "jam.invites.section": {
+    "es": "Invitaciones activas",
+    "en": "Active invitations"
+  },
+  "jam.invites.from": {
+    "es": "Jam de %@",
+    "en": "%@'s Jam"
+  },
+  "jam.invites.fromUnknown": {
+    "es": "Invitación de Spotify Jam",
+    "en": "Spotify Jam invitation"
+  },
+  "jam.invites.participants.one": {
+    "es": "1 persona escuchando",
+    "en": "1 person listening"
+  },
+  "jam.invites.participants.many": {
+    "es": "%@ personas escuchando",
+    "en": "%@ people listening"
   }
 }

@@ -108,6 +108,10 @@
 	<string>Spotify Jam</string>
 	<key>connections.help</key>
 	<string>Connections: audio output and Spotify Jam</string>
+	<key>connections.inviteHelp</key>
+	<string>Connections · You have a Jam invite from %@</string>
+	<key>connections.inviteHelpUnknown</key>
+	<string>Connections · You have a Jam invitation</string>
 	<key>connections.jam.noControl</key>
 	<string>%@ unavailable: the host hasn't given you control of the Jam</string>
 	<key>connections.jam.pauseLocal</key>
@@ -886,6 +890,26 @@
 	<string>Something went wrong while joining the Jam.</string>
 	<key>jam.failure.unsupported</key>
 	<string>This kind of Jam isn't supported yet.</string>
+	<key>jam.invite.banner.subtitle</key>
+	<string>Spotify Jam · Listen together in Side B</string>
+	<key>jam.invite.banner.title</key>
+	<string>%@ invited you to a Jam</string>
+	<key>jam.invite.banner.titleUnknown</key>
+	<string>You have a Jam invitation</string>
+	<key>jam.invite.dismiss</key>
+	<string>Dismiss</string>
+	<key>jam.invite.join</key>
+	<string>Join</string>
+	<key>jam.invites.from</key>
+	<string>%@'s Jam</string>
+	<key>jam.invites.fromUnknown</key>
+	<string>Spotify Jam invitation</string>
+	<key>jam.invites.participants.many</key>
+	<string>%@ people listening</string>
+	<key>jam.invites.participants.one</key>
+	<string>1 person listening</string>
+	<key>jam.invites.section</key>
+	<string>Active invitations</string>
 	<key>jam.join</key>
 	<string>Join Jam</string>
 	<key>jam.join.needsLink</key>

@@ -53,12 +53,20 @@ import Testing
     var connecting = join; connecting.stage = .connecting
     var tuned = live; tuned.nudgeMs = 20; tuned.globalOffsetMs = -150
     join.globalOffsetMs = 0
+    var joinWithInvites = join
+    joinWithInvites.invites = [
+        JamPanelInvite(id: "inv-1", token: "tok1", link: "https://open.spotify.com/socialsession/tok1",
+                       senderName: "Valentina", senderImageURL: nil, participantCount: 3),
+        JamPanelInvite(id: "inv-2", token: "tok2", link: "https://open.spotify.com/socialsession/tok2",
+                       senderName: nil, senderImageURL: nil, participantCount: 1)
+    ]
 
     func states(_ s: JamPanelSnapshot, style: JamPanelView.Style = .popover, link: String = "", versions: Bool = false, sync: Bool = false) -> JamPanelContent {
         JamPanelContent(snapshot: s, style: style, link: link, showVersions: versions, showSync: sync)
     }
     let popover: [(String, JamPanelContent)] = [
         ("join", states(join)),
+        ("join-invites", states(joinWithInvites)),
         ("join-link", states(join, link: "https://open.spotify.com/socialsession/AbCdEfGhIjKl123?si=xyz")),
         ("join-badlink", states(join, link: "hola esto no es un link")),
         ("join-failed", states(failed, link: "https://open.spotify.com/socialsession/Abc")),
@@ -81,6 +89,7 @@ import Testing
     ]
     let fullscreen: [(String, JamPanelContent)] = [
         ("fs-join", states(join, style: .fullscreen, link: "https://open.spotify.com/socialsession/AbCdEf")),
+        ("fs-join-invites", states(joinWithInvites, style: .fullscreen)),
         ("fs-live", states(live, style: .fullscreen, versions: true)),
         ("fs-nocontrol", states(noControl, style: .fullscreen))
     ]
@@ -97,11 +106,12 @@ import Testing
     let compact = JamBadgeContent(hostName: "Valentina", members: Array(members.prefix(3)), size: .compact, onTap: {})
     let toasts = VStack(alignment: .leading, spacing: 12) {
         pill; compact
+        JamInviteBannerView(invite: JamInvite(id: "inv-1", token: "tok1", link: "https://open.spotify.com/socialsession/tok1", senderName: "Valentina", participantCount: 3))
         JamToastView(message: JamActionMessage(key: "jam.action.added", args: ["Blinding Lights"]))
         JamToastView(message: JamActionMessage(key: "jam.action.stale", args: []))
         JamToastView(message: JamActionMessage(key: "jam.action.shuffleRepeatInert", args: []))
     }.padding(20)
-    try render(toasts, width: 460, dark: true, fullscreen: true, to: "\(dir)/pills-toasts.png")
+    try render(toasts, width: 520, dark: true, fullscreen: true, to: "\(dir)/pills-toasts.png")
 }
 
 @MainActor

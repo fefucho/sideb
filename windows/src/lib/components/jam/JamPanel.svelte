@@ -9,7 +9,7 @@
   import JamDebugPanel from './JamDebugPanel.svelte';
   import JamOffsetControl from './JamOffsetControl.svelte';
   import JamVersionPicker from './JamVersionPicker.svelte';
-  import { durationDelta, formatMs, formatSecs, isJamPhase, jamText, jamTitle, syncLabel } from './view';
+  import { durationDelta, formatMs, formatSecs, inviteCardTitle, inviteParticipantsLabel, isJamPhase, jamText, jamTitle, syncLabel } from './view';
 
   interface Props {
     state: JamViewState;
@@ -133,6 +133,45 @@
       </div>
     {:else}
       <div class="intro"><p class="lead">{$t('jam.panel.intro')}</p><p class="hint">{$t('jam.panel.introHint')}</p></div>
+      {#if jam.invites.length > 0}
+        <div class="invites-section" data-jam-invites>
+          <span class="caption">{$t('jam.invites.section')}</span>
+          <div class="invites-list">
+            {#each jam.invites as invite (invite.id)}
+              {@const cardTitle = inviteCardTitle(invite, $language)}
+              <div class="invite-card" data-jam-invite-id={invite.id}>
+                <JamAvatar name={invite.senderName} imageUrl={invite.senderImageUrl} size={32} />
+                <div class="invite-copy">
+                  <b title={cardTitle}>{cardTitle}</b>
+                  <span>{inviteParticipantsLabel(invite, $language)}</span>
+                </div>
+                <div class="invite-actions">
+                  <ControlButton
+                    size="utility"
+                    emphasis="prominent"
+                    disabled={busy}
+                    data-jam-invite-join={invite.id}
+                    aria-label={`${$t('jam.invite.join')}, ${cardTitle}`}
+                    onclick={() => void actions.joinInvite(invite)}
+                  >
+                    {$t('jam.invite.join')}
+                  </ControlButton>
+                  <button
+                    type="button"
+                    class="invite-dismiss"
+                    title={$t('jam.invite.dismiss')}
+                    aria-label={`${$t('jam.invite.dismiss')}, ${cardTitle}`}
+                    data-jam-invite-dismiss={invite.id}
+                    onclick={() => actions.dismissInvite(invite.id)}
+                  >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.600" stroke-linecap="round" aria-hidden="true"><path d="M6 6 18 18M18 6 6 18" /></svg>
+                  </button>
+                </div>
+              </div>
+            {/each}
+          </div>
+        </div>
+      {/if}
       <div class="field" class:wrong={linkLooksWrong}>
         <svg class="link-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 14a4.500 4.500 0 0 0 6.400 0l3-3a4.500 4.500 0 0 0-6.400-6.400l-1 1M14 10a4.500 4.500 0 0 0-6.400 0l-3 3a4.500 4.500 0 0 0 6.400 6.400l1-1" /></svg>
         <input type="text" inputmode="url" autocomplete="off" spellcheck="false" bind:value={link} placeholder={$t('jam.link.placeholder')} aria-label={$t('jam.link.label')} aria-invalid={linkLooksWrong || undefined} data-jam-link data-autofocus onkeydown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void join(); } }} />
@@ -280,5 +319,16 @@
   .spinner { flex: none; width: 14px; height: 14px; border: 2px solid rgb(255 255 255 / 24%); border-top-color: var(--sideb-highlight); border-radius: 50%; animation: spin .8s linear infinite; } .spinner.small { width: 10px; height: 10px; border-width: 1.5px; }
   @keyframes spin { to { transform: rotate(360deg); } }
   @media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 2.4s; } .choose svg { transition: none; } }
+  .invites-section { display: flex; flex-direction: column; gap: 8px; }
+  .invites-list { display: flex; flex-direction: column; gap: 8px; }
+  .invite-card { display: flex; align-items: center; gap: 10px; box-sizing: border-box; min-width: 0; padding: 10px; border: 1px solid var(--sideb-surface-border); border-radius: 10px; background: var(--sideb-surface); }
+  .invite-copy { display: flex; flex: 1; flex-direction: column; gap: 2px; min-width: 0; }
+  .invite-copy b, .invite-copy span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .invite-copy b { font-size: 12.5px; font-weight: 600; }
+  .invite-copy span { color: rgb(255 255 255 / 68%); font-size: 11px; }
+  .invite-actions { display: flex; flex: none; align-items: center; gap: 4px; }
+  .invite-dismiss { display: grid; flex: none; place-items: center; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 50%; color: rgb(255 255 255 / 56%); background: transparent; cursor: pointer; }
+  .invite-dismiss:hover { color: #fff; background: var(--sideb-surface-hover); }
+  .invite-dismiss svg { width: 10px; height: 10px; }
   button:focus-visible { outline: 2px solid var(--sideb-highlight); outline-offset: 2px; }
 </style>

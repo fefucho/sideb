@@ -14,5 +14,7 @@
   "connections.jam.noControl": { "es": "%@ no disponible: el anfitrión no te dio el control del Jam", "en": "%@ unavailable: the host hasn't given you control of the Jam" },
   "connections.jam.pauseLocal": { "es": "Pausar (sólo para vos; el Jam sigue)", "en": "Pause (only for you; the Jam keeps going)" },
   "connections.jam.seekSharedHelp": { "es": "Mover la posición (afecta a todos en el Jam)", "en": "Change position (affects everyone in the Jam)" },
-  "connections.jam.seekNoControl": { "es": "No podés mover la posición: el anfitrión no te dio el control del Jam", "en": "You can't change the position: the host hasn't given you control of the Jam" }
+  "connections.jam.seekNoControl": { "es": "No podés mover la posición: el anfitrión no te dio el control del Jam", "en": "You can't change the position: the host hasn't given you control of the Jam" },
+  "connections.inviteHelp": { "es": "Conexiones · Tenés una invitación a un Jam de %@", "en": "Connections · You have a Jam invite from %@" },
+  "connections.inviteHelpUnknown": { "es": "Conexiones · Tenés una invitación a un Jam", "en": "Connections · You have a Jam invitation" }
 }

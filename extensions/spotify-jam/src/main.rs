@@ -13,6 +13,7 @@
 //!
 //! Never format reqwest/tungstenite errors into output: they can contain the bearer.
 
+mod invites;
 mod search;
 
 use base64::Engine;
@@ -27,23 +28,23 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio_tungstenite::tungstenite::Message;
 
-const SP: &str = "https://spclient.wg.spotify.com";
-const UA: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
+pub(crate) const SP: &str = "https://spclient.wg.spotify.com";
+pub(crate) const UA: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
 const QUEUE_LIMIT: usize = 200;
 /// More uncached tracks than this: emit the state with what is cached first, then again.
 const META_EAGER_LIMIT: usize = 60;
 const META_PARALLEL: usize = 6;
 
-fn now_ms() -> i64 {
+pub(crate) fn now_ms() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_millis() as i64)
         .unwrap_or(0)
 }
-fn emit(value: Value) {
+pub(crate) fn emit(value: Value) {
     println!("{value}");
 }
-fn fail(code: &str, retryable: bool) {
+pub(crate) fn fail(code: &str, retryable: bool) {
     emit(json!({"type":"error","code":code,"retryable":retryable}));
 }
 fn random_hex(bytes: usize) -> String {
@@ -62,7 +63,7 @@ fn num(value: Option<&Value>) -> Option<i64> {
         _ => None,
     }
 }
-fn clean_bearer(raw: &str) -> Option<String> {
+pub(crate) fn clean_bearer(raw: &str) -> Option<String> {
     let token = raw.trim();
     let token = token
         .strip_prefix("Bearer ")
@@ -73,7 +74,7 @@ fn clean_bearer(raw: &str) -> Option<String> {
         .then(|| token.to_string())
 }
 /// Accepts a bare join token or an `open.spotify.com/socialsession/<token>` link.
-fn jam_token(link: &str) -> Option<String> {
+pub(crate) fn jam_token(link: &str) -> Option<String> {
     let link = link.trim();
     let candidate = match link.find("socialsession") {
         Some(at) => link[at + "socialsession".len()..].trim_start_matches(['/', ':']),
@@ -599,7 +600,7 @@ impl Jam {
     }
 }
 
-async fn client_token(http: &Client) -> Option<String> {
+pub(crate) async fn client_token(http: &Client) -> Option<String> {
     let body = json!({"client_data":{
         "client_version":"1.2.42.432.g3121", "client_id":"d8a5ed958d274c2e8ee717e6a4b0971d",
         "js_sdk_data":{"device_brand":"Apple","device_model":"MacBookPro","os":"Mac OS","os_version":"10.15.7","device_id":random_hex(16),"device_type":"computer"}
@@ -625,7 +626,7 @@ enum Outcome {
     AuthExpired,
 }
 
-type Lines = tokio::io::Lines<BufReader<tokio::io::Stdin>>;
+pub(crate) type Lines = tokio::io::Lines<BufReader<tokio::io::Stdin>>;
 
 /// One dealer connection: subscribe, mirror state, relay commands, until something ends it.
 async fn run_connection(jam: &mut Jam, lines: &mut Lines) -> Outcome {
@@ -742,32 +743,50 @@ async fn idle(jam: &mut Jam, lines: &mut Lines, wait: Duration) -> bool {
     }
 }
 
+enum StartMode {
+    Join { bearer: String, token: String },
+    WatchInvites { bearer: String },
+}
+
 #[tokio::main]
 async fn main() {
     let _ = rustls::crypto::ring::default_provider().install_default();
     let mut lines = BufReader::new(tokio::io::stdin()).lines();
-    let (bearer, token) = loop {
+    let mode = loop {
         let Ok(Some(line)) = lines.next_line().await else {
             return;
         };
         let Ok(message) = serde_json::from_str::<Value>(&line) else {
             continue;
         };
-        if message.get("type").and_then(Value::as_str) != Some("join") {
-            continue;
-        }
-        let bearer = message
-            .get("credential")
-            .and_then(Value::as_str)
-            .and_then(clean_bearer);
-        let token = message
-            .get("link")
-            .and_then(Value::as_str)
-            .and_then(jam_token);
-        match (bearer, token) {
-            (Some(bearer), Some(token)) => break (bearer, token),
-            (None, _) => fail("authRequired", false),
-            (_, None) => fail("invalidLink", false),
+        match message.get("type").and_then(Value::as_str) {
+            Some("join") => {
+                let bearer = message
+                    .get("credential")
+                    .and_then(Value::as_str)
+                    .and_then(clean_bearer);
+                let token = message
+                    .get("link")
+                    .and_then(Value::as_str)
+                    .and_then(jam_token);
+                match (bearer, token) {
+                    (Some(bearer), Some(token)) => break StartMode::Join { bearer, token },
+                    (None, _) => fail("authRequired", false),
+                    (_, None) => fail("invalidLink", false),
+                }
+            }
+            Some("watchInvites") => {
+                let Some(bearer) = message
+                    .get("credential")
+                    .and_then(Value::as_str)
+                    .and_then(clean_bearer)
+                else {
+                    return fail("authRequired", false);
+                };
+                break StartMode::WatchInvites { bearer };
+            }
+            Some("leave") | Some("stop") => return,
+            _ => continue,
         }
     };
     let Ok(http) = Client::builder()
@@ -779,6 +798,13 @@ async fn main() {
     };
     let Some(client_token) = client_token(&http).await else {
         return fail("network", true);
+    };
+    let (bearer, token) = match mode {
+        StartMode::Join { bearer, token } => (bearer, token),
+        StartMode::WatchInvites { bearer } => {
+            invites::run(http, bearer, client_token, &mut lines).await;
+            return;
+        }
     };
     let mut jam = Jam {
         http,

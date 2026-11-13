@@ -36,6 +36,9 @@ final class JamSessionController {
     var liveSeconds: Double = 0
     private(set) var notice: String?
     private(set) var log: [String] = []
+    private(set) var invites: [JamInvite] = []
+    private(set) var bannerInvite: JamInvite?
+    private(set) var activeJamToken: String?
     /// Added to every target position: compensates output latency (AirPlay, Bluetooth).
     var globalOffsetMs: Double = UserDefaults.standard.double(forKey: "sideb.jam.globalOffsetMs") {
         didSet { UserDefaults.standard.set(globalOffsetMs, forKey: "sideb.jam.globalOffsetMs"); beginAdjusting() }
@@ -47,6 +50,18 @@ final class JamSessionController {
     private var eventsTask: Task<Void, Never>?
     private var syncTask: Task<Void, Never>?
     private var renewalTask: Task<Void, Never>?
+    var watchProcess: JamProcess?
+    private var watchEventsTask: Task<Void, Never>?
+    private var watchRenewalTask: Task<Void, Never>?
+    private var watchStartTask: Task<Void, Never>?
+    @ObservationIgnored private var watchToken = UUID()
+    @ObservationIgnored private var hasSubscribedToSpotifySession = false
+    @ObservationIgnored private var shownBannerInviteIds = Set<String>()
+    @ObservationIgnored private var dismissedInviteOrder: [String] = []
+    @ObservationIgnored private var dismissedInviteIds = Set<String>()
+    @ObservationIgnored private let userDefaults: UserDefaults
+    @ObservationIgnored private static let dismissedInvitesKey = "sideb.jam.dismissedInvites.v1"
+    @ObservationIgnored private static let maxDismissedInviteCount = 50
     weak var player: PlayerViewModel?
     var rankings: [String: [JamMatcher.Candidate]] = [:]
     private var resolveGeneration = 0
@@ -84,6 +99,17 @@ final class JamSessionController {
     var overrides: [String: String] = (UserDefaults.standard.dictionary(forKey: "sideb.jam.overrides.v1") as? [String: String]) ?? [:]
     private var nudges: [String: Double] = (UserDefaults.standard.dictionary(forKey: "sideb.jam.nudges.v1") as? [String: Double]) ?? [:]
 
+    init(userDefaults: UserDefaults = .standard) {
+        self.userDefaults = userDefaults
+        var saved = userDefaults.stringArray(forKey: Self.dismissedInvitesKey) ?? []
+        if saved.count > Self.maxDismissedInviteCount {
+            saved.removeFirst(saved.count - Self.maxDismissedInviteCount)
+            userDefaults.set(saved, forKey: Self.dismissedInvitesKey)
+        }
+        self.dismissedInviteOrder = saved
+        self.dismissedInviteIds = Set(saved)
+    }
+
     var isActive: Bool { phase == .connecting || phase == .live }
     var hostName: String? { members.first(where: \.isHost)?.name }
     /// Per-match fine adjustment for versions whose audio starts at a different instant.
@@ -107,13 +133,33 @@ final class JamSessionController {
 
     // MARK: Lifecycle
 
+    /// Binds the app's player early so top-level invite banners can join before any popover opens,
+    /// and starts watching for incoming Jam invites when a Spotify session is already stored.
+    func configure(player: PlayerViewModel) {
+        self.player = player
+        subscribeToSpotifySession()
+        if SpotifySession.shared.hasCredential {
+            startInviteWatcher()
+        }
+    }
+
     func join(link: String, player: PlayerViewModel, manualCredential: String? = nil) {
+        joinInternal(link: link, player: player, manualCredential: manualCredential, knownToken: nil)
+    }
+
+    private func joinInternal(link: String, player: PlayerViewModel, manualCredential: String?, knownToken: String?) {
         guard !isActive else { return }
         guard let executable = JamProcess.locateExecutable() else {
             phase = .failed(Failure.pluginMissing)
             return
         }
         self.player = player
+        let resolvedToken = knownToken ?? Self.extractJamToken(from: link)
+        activeJamToken = resolvedToken
+        if let resolvedToken {
+            invites.removeAll { $0.token == resolvedToken }
+            if bannerInvite?.token == resolvedToken { bannerInvite = nil }
+        }
         phase = .connecting
         notice = nil
         log.removeAll()
@@ -126,6 +172,7 @@ final class JamSessionController {
             if let manual, !manual.isEmpty { credential = manual } else { credential = await SpotifySession.shared.credential() }
             guard token == sessionToken, phase == .connecting else { return } // Left while connecting.
             guard let credential else {
+                activeJamToken = nil
                 phase = .failed(Failure.noSession)
                 return
             }
@@ -141,6 +188,7 @@ final class JamSessionController {
                     if token == sessionToken { processExited() }
                 }
             } catch {
+                activeJamToken = nil
                 phase = .failed(Failure.startFailed)
             }
         }
@@ -175,6 +223,7 @@ final class JamSessionController {
         anchor = nil
         isAdjusting = false
         driftMs = nil
+        activeJamToken = nil
         phase = final
         note("Sesión terminada: \(final)")
     }
@@ -207,6 +256,204 @@ final class JamSessionController {
         }
         process?.send(["type": "credential", "credential": token])
         note("Sesión de Spotify renovada")
+    }
+
+    // MARK: Invite Watcher
+
+    private func subscribeToSpotifySession() {
+        guard !hasSubscribedToSpotifySession else { return }
+        hasSubscribedToSpotifySession = true
+        SpotifySession.shared.subscribe { [weak self] event in
+            guard let self else { return false }
+            switch event {
+            case .signedIn:
+                self.stopInviteWatcher()
+                self.startInviteWatcher()
+            case .renewed:
+                if let token = SpotifySession.shared.currentCredential() {
+                    self.watchProcess?.send(["type": "credential", "credential": token])
+                }
+            case .signedOut:
+                self.stopInviteWatcher()
+                self.invites.removeAll()
+                self.bannerInvite = nil
+                self.shownBannerInviteIds.removeAll()
+            }
+            return true
+        }
+    }
+
+    func startInviteWatcher() {
+        guard watchProcess == nil, watchStartTask == nil else { return }
+        guard SpotifySession.shared.hasCredential else { return }
+        guard let executable = JamProcess.locateExecutable() else { return }
+        let token = watchToken
+        watchStartTask = Task { [weak self] in
+            let credential = await SpotifySession.shared.credential()
+            guard let self, token == self.watchToken else { return }
+            self.watchStartTask = nil
+            guard let credential, SpotifySession.shared.hasCredential else { return }
+            do {
+                let process = try JamProcess(executable: executable)
+                guard token == self.watchToken else {
+                    process.stop()
+                    return
+                }
+                self.watchProcess = process
+                process.send(["type": "watchInvites", "credential": credential])
+                self.watchEventsTask = Task { [weak self] in
+                    for await event in process.events {
+                        guard let self, token == self.watchToken else { return }
+                        self.handleWatchEvent(event)
+                    }
+                    if let self, token == self.watchToken {
+                        self.watchProcessDidExit()
+                    }
+                }
+                self.watchRenewalTask = Task { [weak self] in
+                    while !Task.isCancelled {
+                        try? await Task.sleep(for: .seconds(25 * 60))
+                        guard !Task.isCancelled else { return }
+                        await self?.renewWatchCredential(force: false)
+                    }
+                }
+            } catch {
+                self.note("No se pudo iniciar el detector de invitaciones")
+            }
+        }
+    }
+
+    func stopInviteWatcher() {
+        watchToken = UUID()
+        watchStartTask?.cancel(); watchStartTask = nil
+        watchRenewalTask?.cancel(); watchRenewalTask = nil
+        watchEventsTask?.cancel(); watchEventsTask = nil
+        watchProcess?.stop()
+        watchProcess = nil
+    }
+
+    private func watchProcessDidExit() {
+        watchRenewalTask?.cancel(); watchRenewalTask = nil
+        watchEventsTask = nil
+        watchProcess = nil
+    }
+
+    private func renewWatchCredential(force: Bool) async {
+        guard watchProcess != nil else { return }
+        let token = watchToken
+        guard let credential = await SpotifySession.shared.credential(forceRenew: force) else {
+            note("No se pudo renovar la sesión de Spotify para invitaciones")
+            return
+        }
+        guard token == watchToken else { return }
+        watchProcess?.send(["type": "credential", "credential": credential])
+    }
+
+    func handleWatchEvent(_ event: JamEvent) {
+        switch event.type {
+        case "inviteAvailable":
+            guard let invite = JamInvite(event: event) else { return }
+            if isActive && activeJamToken == invite.token { return }
+            if dismissedInviteIds.contains(invite.id) { return }
+            if let index = invites.firstIndex(where: { $0.id == invite.id || $0.token == invite.token }) {
+                invites[index] = invite
+            } else {
+                invites.insert(invite, at: 0)
+            }
+            if !shownBannerInviteIds.contains(invite.id) {
+                shownBannerInviteIds.insert(invite.id)
+                bannerInvite = invite
+            } else if bannerInvite?.id == invite.id {
+                bannerInvite = invite
+            }
+        case "inviteExpired":
+            let expiredId = event.id
+            let expiredToken = event.token
+            guard expiredId != nil || expiredToken != nil else { return }
+            invites.removeAll { invite in
+                (expiredId != nil && invite.id == expiredId) ||
+                (expiredToken != nil && invite.token == expiredToken)
+            }
+            if let current = bannerInvite,
+               (expiredId != nil && current.id == expiredId) ||
+               (expiredToken != nil && current.token == expiredToken) {
+                bannerInvite = nil
+            }
+        case "error":
+            if event.code == "authRequired", event.retryable == true {
+                let token = watchToken
+                Task { [weak self] in
+                    guard let self, token == self.watchToken else { return }
+                    await self.renewWatchCredential(force: true)
+                }
+            }
+        default:
+            break
+        }
+    }
+
+    func dismissBanner(id: String? = nil) {
+        guard let current = bannerInvite else { return }
+        if let id, current.id != id { return }
+        bannerInvite = nil
+    }
+
+    func dismissInvite(id: String) {
+        markInviteDismissed(id)
+        invites.removeAll { $0.id == id }
+        if bannerInvite?.id == id {
+            bannerInvite = nil
+        }
+    }
+
+    func joinInvite(_ invite: JamInvite) {
+        if bannerInvite?.id == invite.id || bannerInvite?.token == invite.token {
+            bannerInvite = nil
+        }
+        guard let player else {
+            note("No se pudo unir a la invitación: reproductor no configurado")
+            return
+        }
+        joinInvite(invite, player: player)
+    }
+
+    func joinInvite(_ invite: JamInvite, player: PlayerViewModel) {
+        if bannerInvite?.id == invite.id || bannerInvite?.token == invite.token {
+            bannerInvite = nil
+        }
+        guard !isActive else { return }
+        invites.removeAll { $0.id == invite.id || $0.token == invite.token }
+        joinInternal(link: invite.link, player: player, manualCredential: nil, knownToken: invite.token)
+    }
+
+    private func markInviteDismissed(_ id: String) {
+        dismissedInviteOrder.removeAll { $0 == id }
+        dismissedInviteOrder.append(id)
+        if dismissedInviteOrder.count > Self.maxDismissedInviteCount {
+            dismissedInviteOrder.removeFirst(dismissedInviteOrder.count - Self.maxDismissedInviteCount)
+        }
+        dismissedInviteIds = Set(dismissedInviteOrder)
+        userDefaults.set(dismissedInviteOrder, forKey: Self.dismissedInvitesKey)
+    }
+
+    static func extractJamToken(from link: String) -> String? {
+        let trimmed = link.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        if let range = trimmed.range(of: "socialsession") {
+            let after = trimmed[range.upperBound...].drop(while: { $0 == "/" || $0 == ":" })
+            let token = String(after.prefix(while: { $0 != "?" && $0 != "#" && $0 != "/" && !$0.isWhitespace }))
+            return token.isEmpty ? nil : token
+        }
+        if !trimmed.contains("/"), !trimmed.contains(":"), !trimmed.contains("?"),
+           !trimmed.contains(where: \.isWhitespace) {
+            return trimmed
+        }
+        return nil
+    }
+
+    func setPhaseForTesting(_ phase: Phase, activeJamToken: String? = nil) {
+        self.phase = phase
+        self.activeJamToken = activeJamToken
     }
 
     // MARK: Events

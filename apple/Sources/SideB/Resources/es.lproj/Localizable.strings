@@ -108,6 +108,10 @@
 	<string>Jam de Spotify</string>
 	<key>connections.help</key>
 	<string>Conexiones: salida de audio y Spotify Jam</string>
+	<key>connections.inviteHelp</key>
+	<string>Conexiones · Tenés una invitación a un Jam de %@</string>
+	<key>connections.inviteHelpUnknown</key>
+	<string>Conexiones · Tenés una invitación a un Jam</string>
 	<key>connections.jam.noControl</key>
 	<string>%@ no disponible: el anfitrión no te dio el control del Jam</string>
 	<key>connections.jam.pauseLocal</key>
@@ -886,6 +890,26 @@
 	<string>Algo salió mal al entrar al Jam.</string>
 	<key>jam.failure.unsupported</key>
 	<string>Este tipo de Jam todavía no es compatible.</string>
+	<key>jam.invite.banner.subtitle</key>
+	<string>Spotify Jam · Escuchar juntos en Side B</string>
+	<key>jam.invite.banner.title</key>
+	<string>%@ te invitó a un Jam</string>
+	<key>jam.invite.banner.titleUnknown</key>
+	<string>Tenés una invitación a un Jam</string>
+	<key>jam.invite.dismiss</key>
+	<string>Ignorar</string>
+	<key>jam.invite.join</key>
+	<string>Unirse</string>
+	<key>jam.invites.from</key>
+	<string>Jam de %@</string>
+	<key>jam.invites.fromUnknown</key>
+	<string>Invitación de Spotify Jam</string>
+	<key>jam.invites.participants.many</key>
+	<string>%@ personas escuchando</string>
+	<key>jam.invites.participants.one</key>
+	<string>1 persona escuchando</string>
+	<key>jam.invites.section</key>
+	<string>Invitaciones activas</string>
 	<key>jam.join</key>
 	<string>Unirse al Jam</string>
 	<key>jam.join.needsLink</key>

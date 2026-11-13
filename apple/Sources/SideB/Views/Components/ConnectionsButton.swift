@@ -11,6 +11,8 @@ struct ConnectionsJamState: Equatable {
     var hostName: String?
     var hostImageURL: URL?
     var canControl: Bool
+    var pendingInviteCount: Int = 0
+    var latestInviteHostName: String? = nil
 
     /// Set by tests and the visual harness only.
     nonisolated(unsafe) static var testOverride: ConnectionsJamState?
@@ -21,7 +23,17 @@ struct ConnectionsJamState: Equatable {
     static func current(_ jam: JamSessionController? = nil) -> ConnectionsJamState {
         if let override = testOverride { return override }
         let jam = jam ?? JamSessionController.shared
-        guard jam.phase == .live else { return .inactive }
+        guard jam.phase == .live else {
+            let trimmedHost = jam.invites.first?.senderName?.trimmingCharacters(in: .whitespacesAndNewlines)
+            return ConnectionsJamState(
+                isLive: false,
+                hostName: nil,
+                hostImageURL: nil,
+                canControl: false,
+                pendingInviteCount: jam.invites.count,
+                latestInviteHostName: (trimmedHost?.isEmpty ?? true) ? nil : trimmedHost
+            )
+        }
         let host = jam.members.first(where: \.isHost)
         let name = host?.name?.trimmingCharacters(in: .whitespacesAndNewlines)
         return ConnectionsJamState(
@@ -38,6 +50,26 @@ struct ConnectionsJamState: Equatable {
 
     var buttonAccessibilityLabel: String {
         hostName.map { L10n.text("connections.activeJam", args: [$0]) } ?? L10n.text("connections.activeJamUnknownHost")
+    }
+
+    var buttonHelpText: String {
+        if isLive {
+            return hostName.map { L10n.text("connections.activeJam", args: [$0]) } ?? L10n.text("connections.help")
+        }
+        if pendingInviteCount > 0 {
+            return latestInviteHostName.map { L10n.text("connections.inviteHelp", args: [$0]) }
+                ?? L10n.text("connections.inviteHelpUnknown")
+        }
+        return L10n.text("connections.help")
+    }
+
+    var buttonAccessibilityLabelText: String {
+        if isLive { return buttonAccessibilityLabel }
+        if pendingInviteCount > 0 {
+            return latestInviteHostName.map { L10n.text("connections.inviteHelp", args: [$0]) }
+                ?? L10n.text("connections.inviteHelpUnknown")
+        }
+        return L10n.text("connections.title")
     }
 
     // Transport rules while a Jam is live.
@@ -125,6 +157,15 @@ struct ConnectionsButton: View {
                         .background(Circle().fill(Color(white: 0.10)))
                         .offset(x: 10, y: 10)
                         .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.6)))
+                } else if jam.pendingInviteCount > 0 {
+                    Circle()
+                        .fill(Color.sidebAccentHighlight)
+                        .frame(width: 9, height: 9)
+                        .padding(1.5)
+                        .background(Circle().fill(Color(white: 0.10)))
+                        .offset(x: 10, y: 10)
+                        .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.6)))
+                        .accessibilityHidden(true)
                 }
             }
             .frame(width: 32, height: 32)
@@ -133,8 +174,9 @@ struct ConnectionsButton: View {
         .buttonStyle(.plain)
         .onHover { isHovering = $0 }
         .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: jam.isLive)
-        .help(jam.hostName.map { L10n.text("connections.activeJam", args: [$0]) } ?? L10n.text("connections.help"))
-        .accessibilityLabel(jam.isLive ? jam.buttonAccessibilityLabel : L10n.text("connections.title"))
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: jam.pendingInviteCount > 0)
+        .help(jam.buttonHelpText)
+        .accessibilityLabel(jam.buttonAccessibilityLabelText)
         .accessibilityHint(L10n.text("connections.help"))
         .background {
             // Real route picker kept out of the way; the popover row triggers it.

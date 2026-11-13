@@ -38,8 +38,12 @@ final class JamProcess: @unchecked Sendable {
         try? input.fileHandleForWriting.write(contentsOf: data)
     }
 
-    /// Asks the plugin to leave, then makes sure it does not outlive the session.
+    private var isStopped = false
+
+    /// Asks the plugin to leave (for both `join` and `watchInvites`), then makes sure it does not outlive the session.
     func stop() {
+        guard !isStopped else { return }
+        isStopped = true
         send(["type": "leave"])
         try? input.fileHandleForWriting.close()
         let process = process

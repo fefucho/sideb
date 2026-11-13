@@ -13,6 +13,7 @@ if(!process.execArgv.includes('--conditions=browser')){
  const {root,dom,moduleFor,mount,unmount,flushSync,tick}=await mountedSvelteEnvironment('jam-ui-components');
  Object.defineProperty(dom.HTMLElement.prototype,'offsetParent',{configurable:true,get(){return this.parentElement;}});
  const Harness=(await import(await moduleFor(path.join(root,'scripts/fixtures/JamHarness.svelte')))).default;
+ const JamInviteBanner=(await import(await moduleFor(path.join(root,'src/lib/components/jam/JamInviteBanner.svelte')))).default;
  const fx=await import('./jam-ui-fixtures.mjs');
  const settle=async()=>{for(let i=0;i<3;i++){flushSync();await tick();await Promise.resolve();}flushSync();await new Promise(r=>setTimeout(r,5));flushSync();};
  const sleep=ms=>new Promise(r=>setTimeout(r,ms));
@@ -236,6 +237,67 @@ if(!process.execArgv.includes('--conditions=browser')){
   view.q('.reset').click();assert.deepEqual(view.jam.last('setManualOffset'),['setManualOffset',0]);
   view.q('[data-debug="resync"]').click();assert.ok(view.jam.last('resync'));
   view.jam.set({sync:{status:'idle',offsetMs:null,manualOffsetMs:0},log:[]});await settle();assert.ok(view.q('[data-debug="offset"]').textContent.includes('—'));assert.ok(view.q('.log .empty'));assert.equal(view.q('.reset').disabled,true);assert.equal(view.q('[data-debug="copy"]').disabled,true);
+  await view.done();
+ });
+
+ // MARK: Live Jam invites UI
+ test('JamInviteBanner renders known and unknown senders and triggers join and dismiss',async()=>{
+  const host=document.createElement('div');document.body.append(host);
+  const events=[];
+  const inv1=fx.invite(1,{senderName:'Valentina'});
+  let app=mount(JamInviteBanner,{target:host,props:{invite:null,onJoin:inv=>events.push(['join',inv.id]),onDismiss:id=>events.push(['dismiss',id])}});await settle();
+  assert.equal(host.querySelector('[data-jam-invite-banner]'),null,'nothing renders when invite is null');
+  await unmount(app);
+
+  app=mount(JamInviteBanner,{target:host,props:{invite:inv1,onJoin:inv=>events.push(['join',inv.id]),onDismiss:id=>events.push(['dismiss',id])}});await settle();
+  const banner=host.querySelector('[data-jam-invite-banner]');assert.ok(banner);
+  assert.equal(banner.querySelector('[data-invite-title]').textContent,'Valentina te invitó a un Jam');
+  assert.equal(banner.querySelector('[data-invite-subtitle]').textContent,'Spotify Jam · Escuchar juntos en Side B');
+  banner.querySelector('[data-invite-join]').click();await settle();
+  banner.querySelector('[data-invite-dismiss]').click();await settle();
+  assert.deepEqual(events,[['join','inv-1'],['dismiss','inv-1']]);
+  await unmount(app);
+
+  const invUnknown=fx.invite(2,{senderName:null});
+  app=mount(JamInviteBanner,{target:host,props:{invite:invUnknown,onJoin:()=>{},onDismiss:()=>{}}});await settle();
+  assert.equal(host.querySelector('[data-invite-title]').textContent,'Tenés una invitación a un Jam');
+  await unmount(app);host.remove();
+ });
+
+ test('JamPanel lists active invitations above the link input only when signed in and plugin ready',async()=>{
+  const inv1=fx.invite(1,{senderName:'Valentina',participantCount:3});
+  const inv2=fx.invite(2,{senderName:null,participantCount:1});
+  const view=await render('panel',{...fx.emptyState(),invites:[inv1,inv2]});
+  const section=view.q('[data-jam-invites]');assert.ok(section);
+  assert.ok(section.textContent.includes('Invitaciones activas'));
+  const cards=view.qa('[data-jam-invite-id]');assert.equal(cards.length,2);
+  assert.ok(cards[0].textContent.includes('Jam de Valentina'));assert.ok(cards[0].textContent.includes('3 personas escuchando'));
+  assert.ok(cards[1].textContent.includes('Invitación de Spotify Jam'));assert.ok(cards[1].textContent.includes('1 persona escuchando'));
+  const field=view.q('.field');
+  assert.ok(Boolean(section.compareDocumentPosition(field)&Node.DOCUMENT_POSITION_FOLLOWING),'active invitations appear above link field');
+  view.q('[data-jam-invite-join="inv-1"]').click();await settle();assert.deepEqual(view.jam.last('joinInvite'),['joinInvite',inv1]);
+  view.q('[data-jam-invite-dismiss="inv-2"]').click();await settle();assert.deepEqual(view.jam.last('dismissInvite'),['dismissInvite','inv-2']);
+
+  view.jam.set({runtime:{pluginAvailable:true,running:false,signedIn:false}});await settle();
+  assert.equal(view.q('[data-jam-invites]'),null,'hidden when signed out');
+  view.jam.set({runtime:{pluginAvailable:false,running:false,signedIn:true}});await settle();
+  assert.equal(view.q('[data-jam-invites]'),null,'hidden when plugin missing');
+  await view.done();
+ });
+
+ test('ConnectionsButton shows an invite dot and tooltip when idle with invites, while live Jam badge takes precedence',async()=>{
+  const inv=fx.invite(1,{senderName:'Valentina'});
+  const view=await render('connections',{...fx.emptyState(),invites:[inv]});
+  const button=()=>view.q('[data-connections]');
+  assert.ok(view.q('[data-invite-badge]'));assert.equal(view.q('[data-host-badge]'),null);
+  assert.equal(button().getAttribute('aria-label'),'Conexiones · Tenés una invitación a un Jam de Valentina');
+  assert.equal(button().title,'Conexiones · Tenés una invitación a un Jam de Valentina');
+
+  view.jam.set({invites:[fx.invite(2,{senderName:null})]});await settle();
+  assert.equal(button().title,'Conexiones · Tenés una invitación a un Jam');
+
+  view.jam.set(fx.activeState({invites:[inv]}));await settle();
+  assert.ok(view.q('[data-host-badge]'));assert.equal(view.q('[data-invite-badge]'),null,'live host badge takes precedence');
   await view.done();
  });
 }

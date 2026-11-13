@@ -153,6 +153,15 @@ pub fn is_token_rejection(event: &Value) -> bool {
         && event.get("code").and_then(Value::as_str) == Some("authRequired")
 }
 
+pub fn watch_invites_message(token: &str) -> Value {
+    json!({ "type": "watchInvites", "credential": token })
+}
+
+/// Errors from the background invite watcher must not interfere with an active Jam session.
+pub fn should_forward_watcher_event(kind: &str, session_active: bool) -> bool {
+    !(session_active && kind == "error")
+}
+
 /// The instant a position was true: when the player reported it if it is still the playing
 /// position (so the consumer can extrapolate), otherwise now.
 pub fn position_sample_ms(
@@ -215,10 +224,13 @@ struct Inner {
     token: Option<CachedToken>,
     signed_in: Option<bool>,
     session: Option<Session>,
+    watcher: Option<Session>,
     speed: f64,
     next_id: u64,
     /// Bumped by `leave`, so a `join` that was still acquiring its token does not start afterwards.
     leave_epoch: u64,
+    /// Bumped by `stop_invite_watch` / `sign_out`, so a pending watcher start does not launch afterwards.
+    watcher_epoch: u64,
 }
 
 pub struct JamRuntime {
@@ -227,6 +239,8 @@ pub struct JamRuntime {
     inner: Mutex<Inner>,
     /// Joins run one at a time (the token acquisition can take a while).
     join_lock: tokio::sync::Mutex<()>,
+    /// Invite watchers start one at a time (silent token acquisition can take a while).
+    watch_lock: tokio::sync::Mutex<()>,
 }
 
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -245,9 +259,16 @@ pub fn init(app: &AppHandle) {
 /// Stops the plugin when the app exits (stdin EOF would also make it leave).
 pub fn shutdown(app: &AppHandle) {
     if let Some(runtime) = app.try_state::<Arc<JamRuntime>>() {
-        let session = lock(&runtime.inner).session.take();
+        let (session, watcher) = {
+            let mut inner = lock(&runtime.inner);
+            inner.watcher_epoch += 1;
+            (inner.session.take(), inner.watcher.take())
+        };
         if let Some(session) = session {
             stop_session(session, EXIT_GRACE);
+        }
+        if let Some(watcher) = watcher {
+            stop_session(watcher, EXIT_GRACE);
         }
     }
 }
@@ -262,6 +283,7 @@ impl JamRuntime {
                 ..Default::default()
             }),
             join_lock: tokio::sync::Mutex::new(()),
+            watch_lock: tokio::sync::Mutex::new(()),
         }
     }
 
@@ -307,10 +329,17 @@ impl JamRuntime {
     }
 
     pub fn sign_out(&self) {
-        {
+        let watcher = {
             let mut inner = lock(&self.inner);
             inner.token = None;
             inner.signed_in = Some(false);
+            inner.watcher_epoch += 1;
+            inner.watcher.take()
+        };
+        if let Some(watcher) = watcher {
+            let _ = std::thread::Builder::new()
+                .name("jam-watcher-stop".into())
+                .spawn(move || stop_session(watcher, LEAVE_GRACE));
         }
         crate::visual_provider::webview::forget_session(&self.app, &spotify_auth());
     }
@@ -335,6 +364,10 @@ impl JamRuntime {
                     let _ = host.save_credential(&token);
                 }
                 runtime.store_token(token);
+                let watcher_runtime = runtime.clone();
+                tauri::async_runtime::spawn(async move {
+                    watcher_runtime.start_invite_watch().await;
+                });
                 true
             }),
             Arc::new(move |state: LoginState| {
@@ -594,6 +627,230 @@ impl JamRuntime {
                 pending = true;
             }
             if !self.is_current(id) {
+                return;
+            }
+        }
+    }
+
+    // MARK: Background invite watcher
+
+    /// Starts the background invite watcher when the plugin exists and the user is already signed
+    /// in. Never opens a visible login window.
+    pub async fn start_invite_watch(self: &Arc<Self>) {
+        if lock(&self.inner).watcher.is_some() {
+            return;
+        }
+        let Some(exe) = resolve_plugin(&self.app) else {
+            return;
+        };
+        let epoch = lock(&self.inner).watcher_epoch;
+        let _serial = self.watch_lock.lock().await;
+        {
+            let inner = lock(&self.inner);
+            if inner.watcher.is_some() || inner.watcher_epoch != epoch {
+                return;
+            }
+        }
+        let token = match self.fresh_token() {
+            Some(token) => token,
+            None => {
+                if self.status().signed_in != Some(true) {
+                    return;
+                }
+                match self.tokens.acquire(&spotify_auth(), None).await {
+                    Some(token) => {
+                        self.store_token(token.clone());
+                        token
+                    }
+                    None => return,
+                }
+            }
+        };
+        let runtime = self.clone();
+        if let Ok(Some((id, renew))) =
+            spawn_blocking(move || runtime.start_watcher(exe, token, epoch)).await
+        {
+            tauri::async_runtime::spawn(self.clone().watcher_renew_loop(id, renew));
+        }
+    }
+
+    pub async fn stop_invite_watch(self: &Arc<Self>) {
+        let watcher = {
+            let mut inner = lock(&self.inner);
+            inner.watcher_epoch += 1;
+            inner.watcher.take()
+        };
+        if let Some(watcher) = watcher {
+            let _ = spawn_blocking(move || stop_session(watcher, LEAVE_GRACE)).await;
+        }
+    }
+
+    fn start_watcher(
+        self: &Arc<Self>,
+        exe: PathBuf,
+        token: String,
+        epoch: u64,
+    ) -> Option<(u64, UnboundedReceiver<()>)> {
+        {
+            let inner = lock(&self.inner);
+            if inner.watcher.is_some() || inner.watcher_epoch != epoch {
+                return None;
+            }
+        }
+        let mut child = spawn_plugin(&exe).ok()?;
+        let (Some(stdin), Some(stdout)) = (child.stdin.take(), child.stdout.take()) else {
+            let _ = child.kill();
+            let _ = child.wait();
+            return None;
+        };
+        let (line_tx, line_rx) = channel::<String>();
+        if line_tx
+            .send(watch_invites_message(&token).to_string())
+            .is_err()
+        {
+            let _ = child.kill();
+            let _ = child.wait();
+            return None;
+        }
+        let child = Arc::new(Mutex::new(child));
+        let id = {
+            let mut inner = lock(&self.inner);
+            if inner.watcher.is_some() || inner.watcher_epoch != epoch {
+                drop(line_tx);
+                if let Ok(mut guard) = child.lock() {
+                    let _ = guard.kill();
+                    let _ = guard.wait();
+                }
+                return None;
+            }
+            inner.next_id += 1;
+            let id = inner.next_id;
+            inner.watcher = Some(Session {
+                id,
+                stdin: line_tx,
+                child: child.clone(),
+            });
+            id
+        };
+        spawn_writer(stdin, line_rx);
+        let (renew_tx, renew_rx) = unbounded_channel();
+        let runtime = self.clone();
+        let reader = std::thread::Builder::new()
+            .name("jam-watcher-stdout".into())
+            .spawn(move || runtime.watch_read_loop(id, stdout, child, renew_tx));
+        if reader.is_err() {
+            if let Some(watcher) = lock(&self.inner).watcher.take() {
+                stop_session(watcher, Duration::ZERO);
+            }
+            return None;
+        }
+        Some((id, renew_rx))
+    }
+
+    fn is_current_watcher(&self, id: u64) -> bool {
+        lock(&self.inner)
+            .watcher
+            .as_ref()
+            .is_some_and(|watcher| watcher.id == id)
+    }
+
+    fn send_to_watcher(&self, id: u64, line: String) {
+        if let Some(watcher) = lock(&self.inner)
+            .watcher
+            .as_ref()
+            .filter(|watcher| watcher.id == id)
+        {
+            let _ = watcher.stdin.send(line);
+        }
+    }
+
+    fn watch_read_loop(
+        self: Arc<Self>,
+        id: u64,
+        stdout: ChildStdout,
+        child: Arc<Mutex<Child>>,
+        renew: UnboundedSender<()>,
+    ) {
+        let mut reader = BufReader::new(stdout);
+        let mut buffer = Vec::new();
+        loop {
+            buffer.clear();
+            match reader.read_until(b'\n', &mut buffer) {
+                Ok(0) | Err(_) => break,
+                Ok(_) => {}
+            }
+            let Ok(event) = serde_json::from_slice::<Value>(&buffer) else {
+                continue;
+            };
+            let Some(kind) = event.get("type").and_then(Value::as_str) else {
+                continue;
+            };
+            if !self.is_current_watcher(id) {
+                continue;
+            }
+            if is_token_rejection(&event) {
+                let _ = renew.send(());
+            }
+            let session_active = lock(&self.inner).session.is_some();
+            if should_forward_watcher_event(kind, session_active) {
+                let _ = self.app.emit(EVENT, &event);
+            }
+        }
+        let _ = reap(&child, Duration::from_secs(3));
+        let mut inner = lock(&self.inner);
+        if inner
+            .watcher
+            .as_ref()
+            .is_some_and(|watcher| watcher.id == id)
+        {
+            inner.watcher = None;
+        }
+    }
+
+    async fn watcher_renew_loop(self: Arc<Self>, id: u64, mut rejections: UnboundedReceiver<()>) {
+        let mut failures = 0u32;
+        let mut wait = RENEW_EVERY;
+        let mut pending = false;
+        loop {
+            let rejected = if pending {
+                true
+            } else {
+                match tokio::time::timeout(wait, rejections.recv()).await {
+                    Ok(Some(())) => true,
+                    Ok(None) => return,
+                    Err(_) => false,
+                }
+            };
+            pending = false;
+            while rejections.try_recv().is_ok() {}
+            if !self.is_current_watcher(id) {
+                return;
+            }
+            let previous = if rejected { self.cached_token() } else { None };
+            match self
+                .tokens
+                .acquire(&spotify_auth(), previous.as_deref())
+                .await
+            {
+                Some(token) => {
+                    failures = 0;
+                    wait = RENEW_EVERY;
+                    self.store_token(token.clone());
+                    self.send_to_watcher(
+                        id,
+                        json!({ "type": "credential", "credential": token }).to_string(),
+                    );
+                }
+                None => {
+                    failures = failures.saturating_add(1);
+                    wait = renew_backoff(failures);
+                }
+            }
+            tokio::time::sleep(RENEW_MIN_GAP).await;
+            while rejections.try_recv().is_ok() {
+                pending = true;
+            }
+            if !self.is_current_watcher(id) {
                 return;
             }
         }
@@ -932,5 +1189,18 @@ mod tests {
         ] {
             assert!(clock.get(key).is_some(), "{key}");
         }
+    }
+
+    #[test]
+    fn watch_invites_payload_and_forwarding_rules() {
+        assert_eq!(
+            watch_invites_message("tok123"),
+            json!({ "type": "watchInvites", "credential": "tok123" })
+        );
+        assert!(should_forward_watcher_event("inviteAvailable", false));
+        assert!(should_forward_watcher_event("inviteAvailable", true));
+        assert!(should_forward_watcher_event("inviteExpired", true));
+        assert!(should_forward_watcher_event("error", false));
+        assert!(!should_forward_watcher_event("error", true));
     }
 }

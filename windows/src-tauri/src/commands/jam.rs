@@ -62,6 +62,18 @@ pub(crate) async fn jam_clock(runtime: Runtime<'_>) -> Result<JamClock, CommandE
     runtime.clock()
 }
 
+#[tauri::command]
+pub(crate) async fn jam_start_invite_watch(runtime: Runtime<'_>) -> Result<(), CommandError> {
+    runtime.inner().start_invite_watch().await;
+    Ok(())
+}
+
+#[tauri::command]
+pub(crate) async fn jam_stop_invite_watch(runtime: Runtime<'_>) -> Result<(), CommandError> {
+    runtime.inner().stop_invite_watch().await;
+    Ok(())
+}
+
 /// Replaces everything after the current entry with `items`, without touching the audio and
 /// without starting radio or recommendation fetches. Only valid while the queue belongs to a Jam.
 #[tauri::command]

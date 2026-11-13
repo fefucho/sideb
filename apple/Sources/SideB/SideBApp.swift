@@ -80,6 +80,7 @@ struct SideBApp: App {
                     guard !hasBootstrappedSession else { return }
                     hasBootstrappedSession = true
                     playerViewModel.rustCore = core
+                    JamSessionController.shared.configure(player: playerViewModel)
                     playbackSpaceShortcut.install(player: playerViewModel)
                     libraryViewModel.rustCore = core
                     let hasSession = accountViewModel.restoreSession(core: core, storage: cookieStorage)
@@ -644,6 +645,7 @@ struct WindowRootView: View {
         }
         // Once, at the window root: covers the bar, the lateral panel and fullscreen alike.
         .jamToasts()
+        .jamInviteBanner(player: playerViewModel)
         .jamExitConfirmation(player: playerViewModel)
         .background {
             Button("") {

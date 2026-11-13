@@ -19,6 +19,8 @@ struct JamPalette {
 /// Everything the panel can ask for; the hosting view wires it to the controller.
 struct JamPanelActions {
     var join: (String) -> Void = { _ in }
+    var joinInvite: ((JamPanelInvite) -> Void)? = nil
+    var dismissInvite: (String) -> Void = { _ in }
     var cancel: () -> Void = {}
     var leave: () -> Void = {}
     var choose: (String) -> Void = { _ in }
@@ -68,6 +70,7 @@ struct JamPanelContent: View {
         .environment(\.jamPalette, palette)
         .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: showVersions)
         .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: showSync)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: snapshot.invites)
         if style == .fullscreen {
             ScrollView { content }.scrollIndicators(.hidden).environment(\.colorScheme, .dark)
         } else {
@@ -167,6 +170,9 @@ struct JamPanelContent: View {
             }
         case .ready:
             introText
+            if !snapshot.invites.isEmpty {
+                invitesSection
+            }
             linkField
             Button { actions.join(trimmedLink) } label: {
                 SideBControlLabel(title: L10n.text("jam.join"), symbol: "arrow.right.circle.fill").frame(maxWidth: .infinity)
@@ -180,6 +186,25 @@ struct JamPanelContent: View {
                 Text(L10n.text("jam.signin.connected")).foregroundStyle(palette.tertiary)
             }
             .font(.system(size: 11))
+        }
+    }
+
+    private var invitesSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            caption(L10n.text("jam.invites.section"))
+            ForEach(snapshot.invites) { invite in
+                JamInviteRow(
+                    invite: invite,
+                    onJoin: {
+                        if let joinInvite = actions.joinInvite {
+                            joinInvite(invite)
+                        } else {
+                            actions.join(invite.link)
+                        }
+                    },
+                    onDismiss: { actions.dismissInvite(invite.id) }
+                )
+            }
         }
     }
 
@@ -593,6 +618,95 @@ private struct JamOffsetControl: View {
     }
 
     private static func format(_ value: Double) -> String { value > 0 ? "+\(Int(value))" : "\(Int(value))" }
+}
+
+/// One incoming active Spotify Jam invitation row inside the Connections popover / fullscreen panel.
+private struct JamInviteRow: View {
+    let invite: JamPanelInvite
+    let onJoin: () -> Void
+    let onDismiss: () -> Void
+    @Environment(\.jamPalette) private var palette
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var isJoinHovered = false
+    @State private var isDismissHovered = false
+
+    private var titleText: String {
+        if let name = invite.senderDisplayName {
+            return L10n.text("jam.invites.from", args: [name])
+        }
+        return L10n.text("jam.invites.fromUnknown")
+    }
+
+    private var subtitleText: String {
+        if let count = invite.participantCount, count > 0 {
+            return count == 1
+                ? L10n.text("jam.invites.participants.one")
+                : L10n.text("jam.invites.participants.many", args: [String(count)])
+        }
+        return L10n.text("jam.invite.banner.subtitle")
+    }
+
+    var body: some View {
+        HStack(spacing: 10) {
+            JamAvatarView(name: invite.senderDisplayName, imageURL: invite.senderImageURL, size: 32)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(verbatim: titleText)
+                    .font(.system(size: 12.5, weight: .semibold))
+                    .foregroundStyle(palette.primary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                Text(verbatim: subtitleText)
+                    .font(.system(size: 11))
+                    .foregroundStyle(palette.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            HStack(spacing: 4) {
+                Button(action: onJoin) {
+                    Text(verbatim: L10n.text("jam.invite.join"))
+                        .font(.system(size: 11.5, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+                        .padding(.horizontal, 10)
+                        .frame(height: 26)
+                        .background(
+                            Capsule()
+                                .fill(Color.sidebAccent.opacity(isJoinHovered ? 1 : 0.92))
+                        )
+                        .overlay(
+                            Capsule()
+                                .strokeBorder(Color.sidebAccentHighlight.opacity(0.75), lineWidth: 0.75)
+                        )
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .onHover { isJoinHovered = $0 }
+                .animation(reduceMotion ? nil : .easeOut(duration: 0.14), value: isJoinHovered)
+                .accessibilityLabel("\(L10n.text("jam.invite.join")), \(titleText)")
+
+                Button(action: onDismiss) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(isDismissHovered ? palette.primary : palette.tertiary)
+                        .frame(width: 22, height: 22)
+                        .background(
+                            Circle().fill(isDismissHovered ? palette.card : .clear)
+                        )
+                        .contentShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .onHover { isDismissHovered = $0 }
+                .animation(reduceMotion ? nil : .easeOut(duration: 0.14), value: isDismissHovered)
+                .help(L10n.text("jam.invite.dismiss"))
+                .accessibilityLabel("\(L10n.text("jam.invite.dismiss")), \(titleText)")
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(palette.card))
+        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(palette.border, lineWidth: 0.75))
+    }
 }
 
 private struct JamPaletteKey: EnvironmentKey { static let defaultValue = JamPalette.popover }

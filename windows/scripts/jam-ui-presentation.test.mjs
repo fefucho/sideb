@@ -15,7 +15,7 @@ if(!process.execArgv.includes('--conditions=browser')){
  const presentation=await import(await moduleFor(path.join(root,'src/lib/components/jam/view.ts')));
  const i18n=await import(await moduleFor(path.join(root,'src/lib/i18n/index.ts')));
  const fixtures=await import('./jam-ui-fixtures.mjs');
- const {jamText,noticeTone,syncLabel,mergeJamQueue,durationDelta,parseDuration,avatarTint,orderedMembers,isJamLive,jamTitle,badgeLabel,formatMs}=presentation;
+ const {jamText,noticeTone,syncLabel,mergeJamQueue,durationDelta,parseDuration,avatarTint,orderedMembers,isJamLive,jamTitle,badgeLabel,formatMs,inviteSenderName,inviteBannerTitle,inviteCardTitle,inviteParticipantsLabel,connectionsInviteTooltip}=presentation;
 
  test('every contract key the session logic may emit resolves to real copy in both languages',()=>{
   const keys=['jam.notice.localOnly','jam.notice.noHostDevice','jam.notice.noEquivalent','jam.notice.unavailableInJam','jam.error.notSignedIn','jam.error.pluginMissing','jam.error.linkInvalid','jam.error.connection','jam.error.generic','jam.ended.host','jam.ended.left','jam.exit.playOther'];
@@ -71,5 +71,30 @@ if(!process.execArgv.includes('--conditions=browser')){
   for(const key of ['jam.panel.title','jam.join','jam.exit.confirm','jam.exit.cancel','connections.title','jam.surface.tab','jam.queue.unavailable','jam.queue.resolving'])assert.ok(catalog[key]?.es&&catalog[key]?.en,key);
   const jamKeys=Object.keys(own).filter(key=>key.startsWith('windows.jam.'));assert.ok(jamKeys.length>20);
   for(const key of jamKeys)assert.ok(own[key].es&&own[key].en,key);
+ });
+ test('invite presentation formats sender, participant counts and connections tooltip in es and en',()=>{
+  const known=fixtures.invite(1,{senderName:'  Valentina  ',participantCount:3});
+  const single=fixtures.invite(2,{senderName:'',participantCount:1});
+  const unknown=fixtures.invite(3,{senderName:null,participantCount:null});
+  assert.equal(inviteSenderName(known),'Valentina');
+  assert.equal(inviteSenderName(single),null);
+  assert.equal(inviteBannerTitle(known,'es'),'Valentina te invitó a un Jam');
+  assert.equal(inviteBannerTitle(known,'en'),'Valentina invited you to a Jam');
+  assert.equal(inviteBannerTitle(unknown,'es'),'Tenés una invitación a un Jam');
+  assert.equal(inviteBannerTitle(unknown,'en'),'You have a Jam invitation');
+  assert.equal(inviteCardTitle(known,'es'),'Jam de Valentina');
+  assert.equal(inviteCardTitle(known,'en'),"Valentina's Jam");
+  assert.equal(inviteCardTitle(unknown,'es'),'Invitación de Spotify Jam');
+  assert.equal(inviteCardTitle(unknown,'en'),'Spotify Jam invitation');
+  assert.equal(inviteParticipantsLabel(single,'es'),'1 persona escuchando');
+  assert.equal(inviteParticipantsLabel(single,'en'),'1 person listening');
+  assert.equal(inviteParticipantsLabel(known,'es'),'3 personas escuchando');
+  assert.equal(inviteParticipantsLabel(known,'en'),'3 people listening');
+  assert.equal(inviteParticipantsLabel(unknown,'es'),'Spotify Jam · Escuchar juntos en Side B');
+  assert.equal(inviteParticipantsLabel(unknown,'en'),'Spotify Jam · Listen together in Side B');
+  assert.equal(connectionsInviteTooltip([known],'es'),'Conexiones · Tenés una invitación a un Jam de Valentina');
+  assert.equal(connectionsInviteTooltip([known],'en'),'Connections · You have a Jam invite from Valentina');
+  assert.equal(connectionsInviteTooltip([unknown],'es'),'Conexiones · Tenés una invitación a un Jam');
+  assert.equal(connectionsInviteTooltip([unknown],'en'),'Connections · You have a Jam invitation');
  });
 }

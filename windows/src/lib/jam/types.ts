@@ -34,6 +34,8 @@ export type JamPluginEvent =
   | { type: 'resolved'; requestId: string; uri: string | null; title: string | null; artists: string[]; durationMs: number | null }
   | { type: 'ended'; reason: string | null }
   | { type: 'error'; code: string; retryable: boolean }
+  | { type: 'inviteAvailable'; id?: string | null; token?: string | null; link?: string | null; senderName?: string | null; senderImageUrl?: string | null; sentAtMs?: number | null; participantCount?: number | null }
+  | { type: 'inviteExpired'; id?: string | null; token?: string | null }
   /** Synthesised by the runtime when the plugin process ends without `ended`. */
   | { type: 'exited'; code: number | null };
 
@@ -74,6 +76,7 @@ export interface JamClock {
  * - `jam_leave(): void` — idempotent; also restores speed 1.
  * - `jam_open_spotify_login({ title }): boolean`, `jam_cancel_spotify_login(): void`
  * - `jam_spotify_sign_out(): void`
+ * - `jam_start_invite_watch(): void`, `jam_stop_invite_watch(): void`
  * - `jam_set_speed({ speed }): void` — clamped to 0.9…1.1.
  * - `jam_clock(): JamClock`
  * - `jam_replace_upcoming({ items: QueueEntryDto[] }): PlaybackStateDto` — replaces everything
@@ -97,6 +100,16 @@ export interface JamScheduler {
 export type JamPhase = 'idle' | 'joining' | 'active' | 'reconnecting' | 'ended' | 'error';
 export type JamMatchStatus = 'pending' | 'searching' | 'matched' | 'unavailable';
 export type JamSyncStatus = 'idle' | 'adjusting' | 'locked' | 'gaveUp';
+
+export interface JamInvite {
+  id: string;
+  token: string;
+  link: string;
+  senderName: string | null;
+  senderImageUrl: string | null;
+  sentAtMs: number | null;
+  participantCount: number | null;
+}
 
 export interface JamMember {
   id: string;
@@ -161,6 +174,10 @@ export interface JamViewState {
     /** User trim added to the target (debug menu). */
     manualOffsetMs: number;
   };
+  /** Active incoming Jam invitations delivered by the invite watcher. */
+  invites: JamInvite[];
+  /** Currently visible top-right invite banner, if any. */
+  inviteBanner: JamInvite | null;
   /** Newest first, capped; the UI shows them as toasts. */
   toasts: Array<JamNoticeView & { id: number }>;
   pendingExit: JamPendingExit | null;
@@ -173,6 +190,9 @@ export interface JamActions {
   openLogin(title: string): Promise<void>;
   signOut(): Promise<void>;
   join(link: string): Promise<void>;
+  joinInvite(invite: JamInvite): Promise<void>;
+  dismissInvite(id: string): void;
+  dismissInviteBanner(id: string): void;
   leave(): Promise<void>;
   /** The user picked another YouTube Music version for a Jam track: load and sync it right away. */
   correctMatch(key: string, song: JamMatchedSong): Promise<void>;
@@ -201,6 +221,8 @@ export const emptyJamState = (): JamViewState => ({
   queue: [],
   paused: true,
   sync: { status: 'idle', offsetMs: null, manualOffsetMs: 0 },
+  invites: [],
+  inviteBanner: null,
   toasts: [],
   pendingExit: null,
   log: []

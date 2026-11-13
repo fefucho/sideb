@@ -48,6 +48,60 @@ struct JamEvent: Decodable, Sendable {
     var uri: String?
     var title: String?
     var artists: [String]?
+    /// `inviteAvailable` and `inviteExpired` fields.
+    var id: String?
+    var token: String?
+    var link: String?
+    var senderName: String?
+    var senderImageUrl: String?
+    var sentAtMs: Double?
+    var participantCount: Int?
+}
+
+/// Incoming live Spotify Jam invitation delivered by the `watchInvites` stream.
+struct JamInvite: Identifiable, Equatable, Sendable {
+    let id: String
+    let token: String
+    let link: String
+    let senderName: String?
+    let senderImageUrl: String?
+    let sentAtMs: Double?
+    let participantCount: Int?
+
+    init(
+        id: String,
+        token: String,
+        link: String,
+        senderName: String? = nil,
+        senderImageUrl: String? = nil,
+        sentAtMs: Double? = nil,
+        participantCount: Int? = nil
+    ) {
+        self.id = id
+        self.token = token
+        self.link = link
+        self.senderName = senderName
+        self.senderImageUrl = senderImageUrl
+        self.sentAtMs = sentAtMs
+        self.participantCount = participantCount
+    }
+
+    init?(event: JamEvent) {
+        guard event.type == "inviteAvailable",
+              let token = event.token?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !token.isEmpty else { return nil }
+        let rawId = event.id?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let rawLink = event.link?.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.id = (rawId?.isEmpty == false) ? rawId! : token
+        self.token = token
+        self.link = (rawLink?.isEmpty == false) ? rawLink! : "https://open.spotify.com/socialsession/\(token)"
+        let trimmedName = event.senderName?.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.senderName = (trimmedName?.isEmpty == false) ? trimmedName : nil
+        let trimmedImage = event.senderImageUrl?.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.senderImageUrl = (trimmedImage?.isEmpty == false) ? trimmedImage : nil
+        self.sentAtMs = event.sentAtMs
+        self.participantCount = event.participantCount
+    }
 }
 
 /// Spotify equivalent of a YouTube Music song, from the plugin's `resolve` request.

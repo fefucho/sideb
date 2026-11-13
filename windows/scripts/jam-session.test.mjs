@@ -377,8 +377,138 @@ test('runtime status and login/sign-out go through the commands', async () => {
   const jam = await bootJam();
   await jam.jam.actions.refreshStatus();
   assert.deepEqual(jam.view.runtime, {pluginAvailable: true, running: false, signedIn: true});
+  assert.equal(jam.app.callsOf('jam_start_invite_watch').length, 1);
   await jam.jam.actions.openLogin('Spotify');
   assert.deepEqual(jam.app.callsOf('jam_open_spotify_login')[0].args, {title: 'Spotify'});
   await jam.jam.actions.signOut();
   assert.equal(jam.app.callsOf('jam_spotify_sign_out').length, 1);
+});
+
+test('incoming live invites: deduplicate, auto-hide banner at 10s, distinguish banner vs card dismiss with persistence, and expire', async () => {
+  const prevStorage = globalThis.localStorage;
+  const backing = new Map();
+  globalThis.localStorage = {
+    getItem: key => backing.get(key) ?? null,
+    setItem: (key, value) => { backing.set(key, String(value)); },
+    removeItem: key => { backing.delete(key); }
+  };
+  try {
+    const jam = await bootJam();
+    jam.app.emit({
+      type: 'inviteAvailable',
+      id: 'inv-1',
+      token: 'tok-1',
+      link: 'https://open.spotify.com/socialsession/tok-1',
+      senderName: 'Valentina',
+      senderImageUrl: 'https://img/v.jpg',
+      sentAtMs: 1_700_000_000_000,
+      participantCount: 2
+    });
+    await jam.time.advance(10);
+    assert.equal(jam.view.invites.length, 1);
+    assert.equal(jam.view.inviteBanner?.id, 'inv-1');
+    assert.equal(jam.view.invites[0].participantCount, 2);
+
+    // Re-announcing the same invite updates metadata in place without duplicating.
+    jam.app.emit({
+      type: 'inviteAvailable',
+      id: 'inv-1',
+      token: 'tok-1',
+      senderName: 'Valentina',
+      participantCount: 4
+    });
+    await jam.time.advance(10);
+    assert.equal(jam.view.invites.length, 1);
+    assert.equal(jam.view.invites[0].participantCount, 4);
+    assert.equal(jam.view.inviteBanner?.participantCount, 4);
+
+    // After 10s the floating banner auto-hides, while the invite stays in the panel list.
+    await jam.time.advance(10_000);
+    assert.equal(jam.view.inviteBanner, null);
+    assert.equal(jam.view.invites.length, 1);
+
+    // Re-announcing an already-shown invite does not re-pop the banner.
+    jam.app.emit({type: 'inviteAvailable', id: 'inv-1', token: 'tok-1', senderName: 'Valentina', participantCount: 5});
+    await jam.time.advance(10);
+    assert.equal(jam.view.inviteBanner, null);
+    assert.equal(jam.view.invites[0].participantCount, 5);
+
+    // Second invite shows banner; dismissing banner keeps invite in list; dismissing card removes & persists it.
+    jam.app.emit({type: 'inviteAvailable', id: 'inv-2', token: 'tok-2', senderName: 'Lucas'});
+    await jam.time.advance(10);
+    assert.equal(jam.view.inviteBanner?.id, 'inv-2');
+    assert.deepEqual(jam.view.invites.map(i => i.id), ['inv-2', 'inv-1']);
+    jam.jam.actions.dismissInviteBanner('inv-2');
+    assert.equal(jam.view.inviteBanner, null);
+    assert.deepEqual(jam.view.invites.map(i => i.id), ['inv-2', 'inv-1']);
+
+    jam.jam.actions.dismissInvite('inv-1');
+    assert.deepEqual(jam.view.invites.map(i => i.id), ['inv-2']);
+    jam.app.emit({type: 'inviteAvailable', id: 'inv-1', token: 'tok-1', senderName: 'Valentina'});
+    await jam.time.advance(10);
+    assert.deepEqual(jam.view.invites.map(i => i.id), ['inv-2'], 'dismissed invite is ignored on re-emit');
+
+    // Expiring inv-2 clears it from the list (and banner if active).
+    jam.app.emit({type: 'inviteAvailable', id: 'inv-3', token: 'tok-3', senderName: 'Ana'});
+    await jam.time.advance(10);
+    assert.equal(jam.view.inviteBanner?.id, 'inv-3');
+    jam.app.emit({type: 'inviteExpired', id: 'inv-3', token: 'tok-3'});
+    jam.app.emit({type: 'inviteExpired', id: 'inv-2', token: 'tok-2'});
+    await jam.time.advance(10);
+    assert.equal(jam.view.inviteBanner, null);
+    assert.equal(jam.view.invites.length, 0);
+
+    // Dismissed IDs persist across sessions and cap at 50 entries.
+    for (let i = 0; i < 55; i += 1) jam.jam.actions.dismissInvite(`cap-${i}`);
+    const reloaded = await bootJam();
+    reloaded.app.emit({type: 'inviteAvailable', id: 'inv-1', token: 'tok-evicted', senderName: 'Old'});
+    reloaded.app.emit({type: 'inviteAvailable', id: 'cap-54', token: 'tok-kept', senderName: 'Recent'});
+    await reloaded.time.advance(10);
+    assert.deepEqual(reloaded.view.invites.map(i => i.id), ['inv-1']);
+    // Specifically: inv-1 was evicted when 55 newer IDs were pushed past the 50-item cap, while cap-54 stayed dismissed.
+    assert.ok(reloaded.view.invites.some(i => i.id === 'inv-1'));
+    assert.ok(!reloaded.view.invites.some(i => i.id === 'cap-54'));
+  } finally {
+    globalThis.localStorage = prevStorage;
+  }
+});
+
+test('invites ignore active Jam token, support joinInvite, clear on signOut, and start watcher only when signed in', async () => {
+  const jam = await bootJam();
+  // Signed out -> refreshStatus does not start invite watcher.
+  jam.app.on('jam_status', () => ({pluginAvailable: true, running: false, signedIn: false}));
+  await jam.jam.actions.refreshStatus();
+  assert.equal(jam.app.callsOf('jam_start_invite_watch').length, 0);
+
+  // Signed in -> refreshStatus starts invite watcher.
+  jam.app.on('jam_status', () => ({pluginAvailable: true, running: false, signedIn: true}));
+  await jam.jam.actions.refreshStatus();
+  assert.equal(jam.app.callsOf('jam_start_invite_watch').length, 1);
+
+  // While active in SECRETTOKEN123, an invite with the same token is ignored.
+  await jam.start();
+  jam.app.emit({type: 'inviteAvailable', id: 'same', token: 'SECRETTOKEN123', senderName: 'Host'});
+  await jam.time.advance(10);
+  assert.equal(jam.view.invites.length, 0);
+  assert.equal(jam.view.inviteBanner, null);
+
+  // Leave and join an incoming invite via joinInvite.
+  await jam.jam.actions.leave();
+  jam.app.emit({type: 'inviteAvailable', id: 'inv-join', token: 'tok-join', link: 'https://open.spotify.com/socialsession/tok-join', senderName: 'Sofía'});
+  await jam.time.advance(10);
+  assert.equal(jam.view.invites.length, 1);
+  assert.equal(jam.view.inviteBanner?.id, 'inv-join');
+  await jam.jam.actions.joinInvite(jam.view.invites[0]);
+  assert.equal(jam.view.inviteBanner, null);
+  assert.equal(jam.view.invites.length, 0);
+  assert.equal(jam.app.callsOf('jam_join').at(-1).args.link, 'https://open.spotify.com/socialsession/tok-join');
+
+  // signOut clears any pending invites and banner.
+  await jam.jam.actions.leave();
+  jam.app.emit({type: 'inviteAvailable', id: 'inv-out', token: 'tok-out', senderName: 'Mateo'});
+  await jam.time.advance(10);
+  assert.equal(jam.view.invites.length, 1);
+  await jam.jam.actions.signOut();
+  assert.equal(jam.view.invites.length, 0);
+  assert.equal(jam.view.inviteBanner, null);
 });

@@ -79,6 +79,7 @@ import { promotedEntryId } from "$lib/components/fullscreen/queueProjection";
   import { provideJamUi } from '$lib/components/jam/context';
   import { isJamLive } from '$lib/components/jam/view';
   import JamToasts from '$lib/components/jam/JamToasts.svelte';
+  import JamInviteBanner from '$lib/components/jam/JamInviteBanner.svelte';
   import JamExitDialog from '$lib/components/jam/JamExitDialog.svelte';
   import JamQueueList from '$lib/components/jam/JamQueueList.svelte';
   import type {
@@ -1084,6 +1085,7 @@ import { promotedEntryId } from "$lib/components/fullscreen/queueProjection";
       if(authStatus.state==='ready'&&event.payload.accountKey===`account:${authStatus.channelId||authStatus.email||authStatus.handle||''}`)account.recordPlayback({...track,isVideo:false,album:track.album??null,albumId:track.albumId??null,artistId:track.artistId??null,duration:track.duration==null?null:`${Math.floor(track.duration/60)}:${String(Math.floor(track.duration%60)).padStart(2,'0')}`});
     }).then(unlisten=>{if(mounted)unlistenRecorded=unlisten;else unlisten();});
     void player.connect();
+    void jam.actions.refreshStatus();
     void updater.init();
     const updateCheckTimeout = setTimeout(() => {
       if (mounted) void updater.checkForUpdates(false);
@@ -1411,6 +1413,11 @@ import { promotedEntryId } from "$lib/components/fullscreen/queueProjection";
   {/if}
 
   <JamToasts toasts={$jamState.toasts} onDismiss={id => jam.actions.dismissToast(id)} />
+  <JamInviteBanner
+    invite={$jamState.inviteBanner}
+    onJoin={invite => void jam.actions.joinInvite(invite)}
+    onDismiss={id => jam.actions.dismissInviteBanner(id)}
+  />
   <JamExitDialog pending={$jamState.pendingExit} actions={jam.actions} />
   <UpdateModal controller={updater} onOpenExternal={url=>void invoke('open_external_url',{url}).catch(error=>shellError=extractErrorMessage(error,'No se pudo abrir el enlace.'))} />
 </div>

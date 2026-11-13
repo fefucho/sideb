@@ -1068,6 +1068,8 @@ pub fn run() {
             commands::jam::jam_set_speed,
             commands::jam::jam_clock,
             commands::jam::jam_replace_upcoming,
+            commands::jam::jam_start_invite_watch,
+            commands::jam::jam_stop_invite_watch,
             commands::recommendations::get_related_tracks,
             commands::recommendations::get_related_artists,
             commands::playback::next_track,

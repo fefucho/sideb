@@ -1,6 +1,6 @@
 // Pure presentation rules of the Jam surfaces (no DOM): kept apart so they are testable and shared.
 import { text, hasText, type AppLanguage } from '$lib/i18n';
-import type { JamMatchedSong, JamMember, JamNoticeView, JamPhase, JamTrackView, JamViewState } from '$lib/jam/types';
+import type { JamInvite, JamMatchedSong, JamMember, JamNoticeView, JamPhase, JamTrackView, JamViewState } from '$lib/jam/types';
 import type { PlaybackStateDto, QueueEntryDto, SongDto } from '$lib/types';
 
 /** The Jam owns the queue and the transport (also while it reconnects). */
@@ -23,6 +23,30 @@ export const jamTitle = (state: Pick<JamViewState, 'host' | 'members'>, language
 export const badgeLabel = (state: Pick<JamViewState, 'host' | 'members'>, language?: AppLanguage): string => {
   const host = hostNameOf(state);
   return host ? text('jam.badge.label', [host], language) : text('jam.badge.labelNoHost', [], language);
+};
+
+export const inviteSenderName = (invite: Pick<JamInvite, 'senderName'> | null | undefined): string | null => {
+  const name = invite?.senderName?.trim();
+  return name ? name : null;
+};
+export const inviteBannerTitle = (invite: Pick<JamInvite, 'senderName'>, language?: AppLanguage): string => {
+  const name = inviteSenderName(invite);
+  return name ? text('jam.invite.banner.title', [name], language) : text('jam.invite.banner.titleUnknown', [], language);
+};
+export const inviteCardTitle = (invite: Pick<JamInvite, 'senderName'>, language?: AppLanguage): string => {
+  const name = inviteSenderName(invite);
+  return name ? text('jam.invites.from', [name], language) : text('jam.invites.fromUnknown', [], language);
+};
+export const inviteParticipantsLabel = (invite: Pick<JamInvite, 'participantCount'>, language?: AppLanguage): string => {
+  const count = invite.participantCount;
+  if (typeof count === 'number' && Number.isFinite(count) && count > 0) {
+    return count === 1 ? text('jam.invites.participants.one', [], language) : text('jam.invites.participants.many', [count], language);
+  }
+  return text('jam.invite.banner.subtitle', [], language);
+};
+export const connectionsInviteTooltip = (invites: Array<Pick<JamInvite, 'senderName'>>, language?: AppLanguage): string => {
+  const sender = invites.length > 0 ? inviteSenderName(invites[0]) : null;
+  return sender ? text('connections.inviteHelp', [sender], language) : text('connections.inviteHelpUnknown', [], language);
 };
 
 export const initialOf = (name: string | null | undefined): string => {

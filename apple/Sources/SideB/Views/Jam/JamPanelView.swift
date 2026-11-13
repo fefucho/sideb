@@ -26,6 +26,14 @@ struct JamPanelView: View {
     private var actions: JamPanelActions {
         JamPanelActions(
             join: { link in controller.join(link: link, player: player) },
+            joinInvite: { panelInvite in
+                if let invite = controller.invites.first(where: { $0.id == panelInvite.id }) {
+                    controller.joinInvite(invite, player: player)
+                } else {
+                    controller.join(link: panelInvite.link, player: player)
+                }
+            },
+            dismissInvite: { id in controller.dismissInvite(id: id) },
             cancel: { controller.leave() },
             leave: { controller.leave() },
             choose: { id in if let candidate = controller.candidates.first(where: { $0.id == id }) { controller.choose(candidate) } },

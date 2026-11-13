@@ -231,6 +231,14 @@
     "es": "Conexiones: salida de audio y Spotify Jam",
     "en": "Connections: audio output and Spotify Jam"
   },
+  "connections.inviteHelp": {
+    "es": "Conexiones · Tenés una invitación a un Jam de %@",
+    "en": "Connections · You have a Jam invite from %@"
+  },
+  "connections.inviteHelpUnknown": {
+    "es": "Conexiones · Tenés una invitación a un Jam",
+    "en": "Connections · You have a Jam invitation"
+  },
   "connections.jam.noControl": {
     "es": "%@ no disponible: el anfitrión no te dio el control del Jam",
     "en": "%@ unavailable: the host hasn't given you control of the Jam"
@@ -1786,6 +1794,46 @@
   "jam.failure.unsupported": {
     "es": "Este tipo de Jam todavía no es compatible.",
     "en": "This kind of Jam isn't supported yet."
+  },
+  "jam.invite.banner.subtitle": {
+    "es": "Spotify Jam · Escuchar juntos en Side B",
+    "en": "Spotify Jam · Listen together in Side B"
+  },
+  "jam.invite.banner.title": {
+    "es": "%@ te invitó a un Jam",
+    "en": "%@ invited you to a Jam"
+  },
+  "jam.invite.banner.titleUnknown": {
+    "es": "Tenés una invitación a un Jam",
+    "en": "You have a Jam invitation"
+  },
+  "jam.invite.dismiss": {
+    "es": "Ignorar",
+    "en": "Dismiss"
+  },
+  "jam.invite.join": {
+    "es": "Unirse",
+    "en": "Join"
+  },
+  "jam.invites.from": {
+    "es": "Jam de %@",
+    "en": "%@'s Jam"
+  },
+  "jam.invites.fromUnknown": {
+    "es": "Invitación de Spotify Jam",
+    "en": "Spotify Jam invitation"
+  },
+  "jam.invites.participants.many": {
+    "es": "%@ personas escuchando",
+    "en": "%@ people listening"
+  },
+  "jam.invites.participants.one": {
+    "es": "1 persona escuchando",
+    "en": "1 person listening"
+  },
+  "jam.invites.section": {
+    "es": "Invitaciones activas",
+    "en": "Active invitations"
   },
   "jam.join": {
     "es": "Unirse al Jam",

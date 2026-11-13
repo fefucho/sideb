@@ -15,7 +15,7 @@ import { identities } from './queueMapping';
 import { createSync } from './sync';
 import {
   emptyJamState, JAM_EVENT, JAM_LOGIN_EVENT,
-  type JamActions, type JamMember, type JamPluginEvent, type JamPluginMember, type JamPluginTrack, type JamRuntimeStatus,
+  type JamActions, type JamInvite, type JamMember, type JamPluginEvent, type JamPluginMember, type JamPluginTrack, type JamRuntimeStatus,
   type JamScheduler, type JamTrackView, type JamViewState
 } from './types';
 
@@ -29,6 +29,9 @@ const RESULT_LIFETIME_MS = 15000;
 /// `authRequired` this many times within the window is no longer a token renewal in progress.
 const AUTH_MAX_FAILURES = 3;
 const AUTH_WINDOW_MS = 60_000;
+const BANNER_LIFETIME_MS = 10_000;
+const DISMISSED_INVITES_KEY = 'sideb.jam.dismissedInvites.v1';
+const MAX_DISMISSED_INVITES = 50;
 
 const defaultScheduler: JamScheduler = {
   setTimeout: (callback, ms) => globalThis.setTimeout(callback, ms),
@@ -60,6 +63,52 @@ export function endedKey(reason: string | null | undefined): string {
 
 const trackText = (track: JamPluginTrack) => ({ title: track.title ?? track.uri, artists: track.artists.join(', ') });
 
+function extractJamToken(link: string): string | null {
+  const trimmed = link.trim();
+  if (!trimmed) return null;
+  const marker = 'socialsession';
+  const index = trimmed.indexOf(marker);
+  if (index >= 0) {
+    let rest = trimmed.slice(index + marker.length);
+    while (rest.startsWith('/') || rest.startsWith(':')) rest = rest.slice(1);
+    const token = rest.split(/[?#/\s]/, 1)[0];
+    return token ? token : null;
+  }
+  return !/[/:?\s]/.test(trimmed) ? trimmed : null;
+}
+
+function parseInvite(event: Extract<JamPluginEvent, { type: 'inviteAvailable' }>): JamInvite | null {
+  const token = event.token?.trim() ?? '';
+  if (!token) return null;
+  const id = event.id?.trim() || token;
+  const link = event.link?.trim() || `https://open.spotify.com/socialsession/${token}`;
+  const senderName = event.senderName?.trim() || null;
+  const senderImageUrl = event.senderImageUrl?.trim() || null;
+  const sentAtMs = typeof event.sentAtMs === 'number' && Number.isFinite(event.sentAtMs) ? event.sentAtMs : null;
+  const participantCount = typeof event.participantCount === 'number' && Number.isFinite(event.participantCount) ? event.participantCount : null;
+  return { id, token, link, senderName, senderImageUrl, sentAtMs, participantCount };
+}
+
+function loadDismissedInvites(): string[] {
+  try {
+    const raw = globalThis.localStorage?.getItem(DISMISSED_INVITES_KEY);
+    if (!raw) return [];
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((item): item is string => typeof item === 'string' && item.length > 0).slice(-MAX_DISMISSED_INVITES);
+  } catch {
+    return [];
+  }
+}
+
+function saveDismissedInvites(ids: string[]): void {
+  try {
+    globalThis.localStorage?.setItem(DISMISSED_INVITES_KEY, JSON.stringify(ids));
+  } catch {
+    // Storage unavailable (tests, restricted environment).
+  }
+}
+
 export function createSession(deps: JamDeps): Jam {
   const raw = deps.rpc;
   const now = deps.now ?? (() => Date.now());
@@ -78,9 +127,40 @@ export function createSession(deps: JamDeps): Jam {
   let toastSeq = 0;
   let destroyed = false;
   let authFailures: number[] = [];
+  let activeInviteToken: string | null = null;
+  let bannerTimer: unknown = null;
+  const shownBannerIds = new Set<string>();
+  const dismissedOrder = loadDismissedInvites();
+  let dismissedIds = new Set<string>(dismissedOrder);
   const unlisten: Array<() => void | Promise<void>> = [];
   const lastToast = new Map<string, number>();
   const results = new Map<string, { handler: (ok: boolean, detail: string | null) => void; timer: unknown }>();
+
+  const clearBannerTimer = () => {
+    if (bannerTimer !== null) {
+      sched.clearTimeout(bannerTimer);
+      bannerTimer = null;
+    }
+  };
+  const showInviteBanner = (invite: JamInvite) => {
+    clearBannerTimer();
+    patch({ inviteBanner: invite });
+    const id = invite.id;
+    bannerTimer = sched.setTimeout(() => {
+      bannerTimer = null;
+      if (!destroyed && view.inviteBanner?.id === id) patch({ inviteBanner: null });
+    }, BANNER_LIFETIME_MS);
+  };
+  const markInviteDismissed = (id: string) => {
+    const existing = dismissedOrder.indexOf(id);
+    if (existing >= 0) dismissedOrder.splice(existing, 1);
+    dismissedOrder.push(id);
+    if (dismissedOrder.length > MAX_DISMISSED_INVITES) {
+      dismissedOrder.splice(0, dismissedOrder.length - MAX_DISMISSED_INVITES);
+    }
+    dismissedIds = new Set(dismissedOrder);
+    saveDismissedInvites(dismissedOrder);
+  };
 
   const phaseIs = (...phases: JamViewState['phase'][]) => phases.includes(view.phase);
   const inSession = () => phaseIs('joining', 'active', 'reconnecting');
@@ -192,6 +272,7 @@ export function createSession(deps: JamDeps): Jam {
     if (!inSession()) return;
     stopWork();
     resetData();
+    activeInviteToken = null;
     patch({
       phase, messageKey, members: [], host: null, canControl: false, hostActive: false, current: null, queue: [], paused: true,
       sync: { status: 'idle', offsetMs: null, manualOffsetMs: view.sync.manualOffsetMs }, pendingExit: null
@@ -235,7 +316,43 @@ export function createSession(deps: JamDeps): Jam {
   }
 
   function handleEvent(event: JamPluginEvent): void {
-    if (destroyed || !inSession()) return;
+    if (destroyed) return;
+    if (event.type === 'inviteAvailable') {
+      const invite = parseInvite(event);
+      if (!invite) return;
+      if (inSession() && activeInviteToken === invite.token) return;
+      if (dismissedIds.has(invite.id)) return;
+      const existingIndex = view.invites.findIndex(item => item.id === invite.id || item.token === invite.token);
+      const invites = existingIndex >= 0
+        ? view.invites.map((item, idx) => idx === existingIndex ? invite : item)
+        : [invite, ...view.invites];
+      if (view.inviteBanner?.id === invite.id) {
+        patch({ invites, inviteBanner: invite });
+      } else {
+        patch({ invites });
+      }
+      if (!shownBannerIds.has(invite.id)) {
+        shownBannerIds.add(invite.id);
+        showInviteBanner(invite);
+      }
+      return;
+    }
+    if (event.type === 'inviteExpired') {
+      const expiredId = event.id?.trim() || null;
+      const expiredToken = event.token?.trim() || null;
+      if (!expiredId && !expiredToken) return;
+      const matches = (item: JamInvite) =>
+        (expiredId !== null && item.id === expiredId) ||
+        (expiredToken !== null && item.token === expiredToken);
+      const invites = view.invites.filter(item => !matches(item));
+      const bannerMatches = view.inviteBanner !== null && matches(view.inviteBanner);
+      if (bannerMatches) clearBannerTimer();
+      if (invites.length !== view.invites.length || bannerMatches) {
+        patch({ invites, ...(bannerMatches ? { inviteBanner: null } : {}) });
+      }
+      return;
+    }
+    if (!inSession()) return;
     switch (event.type) {
       case 'joined':
         core.note(`joined (control ${event.canControl}, host active ${event.hostActive})`);
@@ -301,20 +418,34 @@ export function createSession(deps: JamDeps): Jam {
   async function refreshStatus(): Promise<void> {
     try {
       const runtime = await raw<JamRuntimeStatus>('jam_status');
-      patch({ runtime });
+      if (runtime.signedIn === false && (view.invites.length > 0 || view.inviteBanner !== null)) {
+        clearBannerTimer();
+        shownBannerIds.clear();
+        patch({ runtime, invites: [], inviteBanner: null });
+      } else {
+        patch({ runtime });
+      }
+      if (runtime.pluginAvailable && runtime.signedIn === true) {
+        void raw('jam_start_invite_watch').catch(() => {});
+      }
     } catch {
       // Keep the last known status.
     }
   }
 
-  async function join(link: string): Promise<void> {
+  async function joinInternal(link: string, knownToken: string | null): Promise<void> {
     if (inSession()) return;
     resetData();
     core.matching.reset();
+    clearBannerTimer();
+    activeInviteToken = knownToken;
+    const trimmedLink = link.trim();
+    const remainingInvites = view.invites.filter(item => !(knownToken && item.token === knownToken) && item.link !== trimmedLink);
     const token = d.token;
     patch({
       ...emptyJamState(), runtime: view.runtime, phase: 'joining',
-      sync: { status: 'idle', offsetMs: null, manualOffsetMs: view.sync.manualOffsetMs }
+      sync: { status: 'idle', offsetMs: null, manualOffsetMs: view.sync.manualOffsetMs },
+      invites: remainingInvites, inviteBanner: null
     });
     core.note('joining');
     try {
@@ -327,6 +458,10 @@ export function createSession(deps: JamDeps): Jam {
     }
   }
 
+  function join(link: string): Promise<void> {
+    return joinInternal(link, extractJamToken(link));
+  }
+
   const actions: JamActions = {
     refreshStatus,
     async openLogin(title) {
@@ -336,10 +471,37 @@ export function createSession(deps: JamDeps): Jam {
     async signOut() {
       // Signing out does not stop a running Jam: leave first.
       await endSession('idle', null);
+      clearBannerTimer();
+      shownBannerIds.clear();
+      activeInviteToken = null;
+      patch({ invites: [], inviteBanner: null });
       try { await raw('jam_spotify_sign_out'); } catch { /* already signed out */ }
       await refreshStatus();
     },
     join,
+    async joinInvite(invite) {
+      if (view.inviteBanner?.id === invite.id || view.inviteBanner?.token === invite.token) {
+        clearBannerTimer();
+        patch({ inviteBanner: null });
+      }
+      if (inSession()) return;
+      patch({ invites: view.invites.filter(item => item.id !== invite.id && item.token !== invite.token) });
+      await joinInternal(invite.link, invite.token);
+    },
+    dismissInvite(id) {
+      markInviteDismissed(id);
+      const invites = view.invites.filter(item => item.id !== id);
+      const bannerMatches = view.inviteBanner?.id === id;
+      if (bannerMatches) clearBannerTimer();
+      if (invites.length !== view.invites.length || bannerMatches) {
+        patch({ invites, ...(bannerMatches ? { inviteBanner: null } : {}) });
+      }
+    },
+    dismissInviteBanner(id) {
+      if (view.inviteBanner?.id !== id) return;
+      clearBannerTimer();
+      patch({ inviteBanner: null });
+    },
     leave: () => endSession('idle', null),
     async correctMatch(key, song) {
       if (!core.isLive()) return;
@@ -387,7 +549,7 @@ export function createSession(deps: JamDeps): Jam {
     }
   };
 
-  // Always listening; events only matter while a session is in progress.
+  // Always listening; invite events apply anytime, session events while a session is in progress.
   const subscribe = (event: string, handler: (payload: never) => void) => {
     void deps.listen<never>(event, e => handler(e.payload)).then(
       stop => { if (destroyed) void stop(); else unlisten.push(stop); },
@@ -407,6 +569,8 @@ export function createSession(deps: JamDeps): Jam {
     },
     destroy() {
       if (destroyed) return;
+      clearBannerTimer();
+      activeInviteToken = null;
       void endSession('idle', null);
       destroyed = true;
       for (const stop of unlisten.splice(0)) void stop();
