@@ -642,6 +642,9 @@ struct WindowRootView: View {
         .overlay(alignment: .top) {
             windowNavigationToolbar
         }
+        // Once, at the window root: covers the bar, the lateral panel and fullscreen alike.
+        .jamToasts()
+        .jamExitConfirmation(player: playerViewModel)
         .background {
             Button("") {
                 openNavigationSearch()

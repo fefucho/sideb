@@ -118,6 +118,46 @@ Integración en las builds (no se publica nada automáticamente al terminar un f
 - **Windows:** `windows/scripts/windows.ps1` (`verify`, `build`, `package`, `dev`) compila el `.exe` (`x86_64-pc-windows-msvc`) y deja el paquete en `windows/src-tauri/provider/spotify-canvas/` (ignorado por Git), que `bundle.resources` de `tauri.conf.json` incluye en el instalador NSIS; `build-version.mjs windows` copia el mismo paquete a `builds/windows/build-NNNN/provider/spotify-canvas/` para el zip portable. `verify` también corre los tests del proveedor.
 - **CI / release:** `macos.yml` y `windows.yml` corren fmt, clippy `-D warnings` y tests (Windows sobre MSVC) y el test del empaquetado; `release.yml` verifica el proveedor dentro del `.app` (arm64, firma, `SHA256SUMS`) y que instalador/zip contengan exactamente los archivos hasheados en `BUILD.json`. `Scripts/release-config.mjs` exige esos archivos entre los artefactos verificados de cada plataforma. Los checksums del paquete viajan en su `SHA256SUMS` y dentro de `artifactSHA256` de `BUILD.json`; los zips y el instalador siguen publicando su `*-SHA256.txt`.
 
+## Spotify Jam (`spotify-jam`, v0.2.0)
+
+Proceso de larga vida (no es un proveedor visual): une a Side B a un Jam de Spotify como invitado, refleja el estado y la cola compartidos y reenvía órdenes. No reproduce audio ni conoce YouTube Music. Usa interfaces **no oficiales** del Web Player (dealer WebSocket, `social-connect/v2`, Pathfinder) con el token del usuario; pueden cambiar sin aviso. Es un ejecutable independiente (`extensions/spotify-jam/`, su propio workspace de Cargo).
+
+Transporte: una línea JSON por mensaje, UTF-8, por stdin (host → plugin) y stdout (plugin → host). EOF en stdin equivale a `leave`. El token nunca se imprime ni se registra y los errores de red no se formatean en la salida.
+
+### stdin
+
+- `{"type":"join","credential":"<bearer>","link":"<url|token>"}`: primer mensaje. `link` es un enlace `open.spotify.com/socialsession/<token>` o el token suelto.
+- `{"type":"credential","credential":"<bearer>"}`: token renovado (también reanuda una espera de reconexión).
+- `{"type":"leave"}`.
+- `{"type":"command","action":...,"requestId":"opcional"}`:
+  - `pause`, `resume`, `next`, `previous`, `seek` (`positionMs`), `add` (`uri` `spotify:track:...`; añade al final de la cola de usuario).
+  - Edición de cola, todas con `"revision":"<queueRevision del último state>"`; si no coincide con la actual se responde `ok:false, detail:"stale"` y no se envía nada. Los índices son del `queue` emitido (0 = siguiente):
+    - `{"action":"move","from":2,"to":0,"revision":"…"}`: `to` es el índice final tras mover.
+    - `{"action":"insert","uri":"spotify:track:…","index":0,"revision":"…"}`: la pista queda en `index`; `index == queue.length` añade al final.
+    - `{"action":"remove","index":1,"revision":"…"}`.
+    - Índices fuera de rango, URI inválida o campos ausentes: `ok:false, detail:"invalid"`.
+- `{"type":"resolve","requestId":"…","title":"…","artist":"…","album":null,"durationMs":197000}`: busca en el catálogo de Spotify la pista equivalente (no es un `command`).
+
+### stdout
+
+- `joined`: `protocolVersion` (2), `members`, `canControl`, `queueOnly`, `hostDevice`, `hostActive`.
+- `state`: `track` (`uri,title,artists,album,durationMs,isrc,provider`), `positionMs`, `atLocalMs` (instante en reloj local en que `positionMs` era cierto; posición en vivo = `positionMs + (ahora − atLocalMs)` si suena), `paused`, `durationMs`, `queue` (todas las pistas siguientes, hasta 200, con la misma forma de pista), `queueRevision` (cadena, o `null` si el clúster no la trae), `previousCount`, `shuffle`, `clockOffsetMs`. Sólo se emite si cambia. Se omiten de `queue` las entradas que no son `spotify:track:`/`spotify:episode:` (delimitadores); el plugin recuerda la correspondencia con la lista cruda. Con más de 60 pistas sin metadatos en caché, se emite primero el estado con lo que hay y de nuevo cuando llega el resto.
+- `members`, `session` (`reason`), `notice` (`code`, p. ej. `NO_HOST_ACTIVE_DEVICE`), `ended` (`reason`), `error` (`code`, `retryable`).
+- `commandResult`: `action`, `ok`, `detail`, y `requestId` si el comando lo traía.
+- `resolved`: `{"type":"resolved","requestId":"…","uri":"spotify:track:…"|null,"title":…,"artists":[…],"durationMs":…}`. `uri: null` (con `title:null, artists:[], durationMs:null`) significa que no hay coincidencia segura o que la búsqueda falló. La coincidencia es conservadora (título y artista normalizados, duración a ≤45 s; sin `durationMs` no hay coincidencia) y se ejecuta en una tarea aparte (máx. 4 a la vez, 18 s de plazo), sin bloquear el estado ni otras órdenes.
+
+### Aplicar la edición de cola
+
+`move`/`insert`/`remove` se envían como `set_queue` (`next_tracks`, `prev_tracks` crudos sin tocar y `queue_revision`) por `POST /social-connect/v2/sessions/<id>/commands/from/hobs_<device>`. Las pistas movidas o insertadas llevan `provider:"queue"` y `metadata.is_queued:"true"`; las entradas no emitidas (delimitadores) conservan su posición relativa a sus vecinas, y al añadir al final la pista queda justo tras la última pista emitida.
+
+**HTTP 200 no significa aplicado.** El servicio responde 200 aunque no aplique la orden; la verdad es el siguiente `state` (si cambió `queueRevision`/`queue`) o un `notice`. El host debe tratar `commandResult.ok` sólo como «aceptado» y esperar el `state`.
+
+### Verificado y no verificado
+
+Medido en vivo (invitado con cuenta gratuita, anfitrión reproduciendo): `pause`, `resume`, `seek`, `next`, `previous` y `add` funcionan y el nuevo estado vuelve por el dealer en ~0,4 s. **No verificado contra el servicio real** (sólo pruebas unitarias con JSON sintético): `set_queue` (mover, insertar, quitar y que el servicio acepte `provider:"queue"` sin `uid` en pistas insertadas), el efecto de la revisión obsoleta, si un invitado sin permiso de control recibe otro error, el límite de 200 pistas y el emparejado de `resolve` (consulta Pathfinder `searchDesktop`, con redescubrimiento del hash si caduca) frente a catálogo real.
+
+Desarrollo: `cargo test`, `cargo clippy --all-targets -- -D warnings` y `cargo build --release --locked` dentro de `extensions/spotify-jam/`. El código de búsqueda (`src/search.rs`) es una copia adaptada del de `spotify-canvas`; no hay dependencia entre crates.
+
 ## Retirar
 
 **El usuario:** Configuración → Proveedores visuales opcionales → Desinstalar. Desactiva el proveedor, borra su ejecutable, token y caché, y no se reinstala solo.

@@ -92,6 +92,38 @@
 	<string>Undo</string>
 	<key>common.untitled</key>
 	<string>Untitled</string>
+	<key>connections.activeJam</key>
+	<string>Connections. In %@'s Jam</string>
+	<key>connections.activeJamUnknownHost</key>
+	<string>Connections. In a Spotify Jam</string>
+	<key>connections.audioOutput.help</key>
+	<string>Choose where Side B plays</string>
+	<key>connections.audioOutput.subtitle</key>
+	<string>AirPlay, Bluetooth and other devices</string>
+	<key>connections.audioOutput.title</key>
+	<string>Audio output</string>
+	<key>connections.bar.jamContext</key>
+	<string>%@'s Jam</string>
+	<key>connections.bar.jamContextUnknownHost</key>
+	<string>Spotify Jam</string>
+	<key>connections.help</key>
+	<string>Connections: audio output and Spotify Jam</string>
+	<key>connections.jam.noControl</key>
+	<string>%@ unavailable: the host hasn't given you control of the Jam</string>
+	<key>connections.jam.pauseLocal</key>
+	<string>Pause (only for you; the Jam keeps going)</string>
+	<key>connections.jam.repeatDisabled</key>
+	<string>Repeat isn't available during a Jam: the host sets the queue.</string>
+	<key>connections.jam.seekNoControl</key>
+	<string>You can't change the position: the host hasn't given you control of the Jam</string>
+	<key>connections.jam.seekSharedHelp</key>
+	<string>Change position (affects everyone in the Jam)</string>
+	<key>connections.jam.sharedControl</key>
+	<string>%@ (affects everyone in the Jam)</string>
+	<key>connections.jam.shuffleDisabled</key>
+	<string>Shuffle isn't available during a Jam: the host sets the order.</string>
+	<key>connections.title</key>
+	<string>Connections</string>
 	<key>content.clean</key>
 	<string>Confirmed clean version</string>
 	<key>content.clean_glyph</key>
@@ -744,6 +776,254 @@
 	<string>Scroll shelf right</string>
 	<key>home.shelf.previous</key>
 	<string>Scroll shelf left</string>
+	<key>jam.action.added</key>
+	<string>“%@” was added to the Jam.</string>
+	<key>jam.action.addedMany</key>
+	<string>Added %@ songs to the Jam.</string>
+	<key>jam.action.busy</key>
+	<string>The previous change is still being applied.</string>
+	<key>jam.action.inserted</key>
+	<string>“%@” will play next in the Jam.</string>
+	<key>jam.action.insertedMany</key>
+	<string>%@ songs will play next in the Jam.</string>
+	<key>jam.action.moved</key>
+	<string>“%@” was moved in the Jam queue.</string>
+	<key>jam.action.noControl</key>
+	<string>You don't have permission to change this Jam's queue.</string>
+	<key>jam.action.noSpotifyMatch</key>
+	<string>Couldn't find “%@” on Spotify.</string>
+	<key>jam.action.noSpotifyMatchMany</key>
+	<string>Couldn't find %@ songs on Spotify.</string>
+	<key>jam.action.notApplied</key>
+	<string>The change couldn't be applied to the Jam.</string>
+	<key>jam.action.notEditable</key>
+	<string>This track can't be changed in the Jam.</string>
+	<key>jam.action.notLive</key>
+	<string>The Jam isn't active.</string>
+	<key>jam.action.partialAdded</key>
+	<string>Added %@ of %@ songs to the Jam.</string>
+	<key>jam.action.playRowUnsupported</key>
+	<string>You can't jump to a queued track in a Jam.</string>
+	<key>jam.action.rejected</key>
+	<string>Spotify rejected the change.</string>
+	<key>jam.action.removeCurrentUnsupported</key>
+	<string>The track that's playing can't be removed.</string>
+	<key>jam.action.removed</key>
+	<string>“%@” was removed from the Jam queue.</string>
+	<key>jam.action.shuffleRepeatInert</key>
+	<string>The Jam controls the order: shuffle and repeat don't apply.</string>
+	<key>jam.action.stale</key>
+	<string>The host changed the queue before your change was applied. Try again.</string>
+	<key>jam.badge.help</key>
+	<string>Open the Jam panel</string>
+	<key>jam.badge.label</key>
+	<string>In %@'s Jam</string>
+	<key>jam.badge.labelNoHost</key>
+	<string>In a Jam</string>
+	<key>jam.cancel</key>
+	<string>Cancel</string>
+	<key>jam.connecting.hint</key>
+	<string>Joining the Spotify session.</string>
+	<key>jam.connecting.title</key>
+	<string>Connecting to the Jam…</string>
+	<key>jam.control.noControl</key>
+	<string>Only the host controls playback in this Jam.</string>
+	<key>jam.ended.body</key>
+	<string>Your previous queue was restored.</string>
+	<key>jam.ended.reason.connection</key>
+	<string>The connection to the Jam was lost.</string>
+	<key>jam.ended.reason.host</key>
+	<string>The host closed the Jam.</string>
+	<key>jam.ended.reason.interrupted</key>
+	<string>The Jam was interrupted.</string>
+	<key>jam.ended.reason.removed</key>
+	<string>You were removed from the Jam.</string>
+	<key>jam.ended.title</key>
+	<string>The Jam has finished</string>
+	<key>jam.exit.cancel</key>
+	<string>Stay in the Jam</string>
+	<key>jam.exit.confirm</key>
+	<string>Leave Jam and play</string>
+	<key>jam.exit.message</key>
+	<string>To play “%@”, Side B leaves the Jam and restores your previous queue.</string>
+	<key>jam.exit.messageGeneric</key>
+	<string>To play this, Side B leaves the Jam and restores your previous queue.</string>
+	<key>jam.exit.title</key>
+	<string>Leave the Jam?</string>
+	<key>jam.failure.authRequired</key>
+	<string>Spotify asked you to sign in again.</string>
+	<key>jam.failure.invalidLink</key>
+	<string>The link isn't a valid Spotify Jam invitation.</string>
+	<key>jam.failure.jamNotFound</key>
+	<string>That Jam doesn't exist or has already ended.</string>
+	<key>jam.failure.network</key>
+	<string>Couldn't reach Spotify. Check your network and try again.</string>
+	<key>jam.failure.noSession</key>
+	<string>There's no Spotify session. Sign in and try again.</string>
+	<key>jam.failure.notAllowed</key>
+	<string>Spotify didn't let you join this Jam.</string>
+	<key>jam.failure.pluginMissing</key>
+	<string>The Jam plugin is missing from this copy of Side B.</string>
+	<key>jam.failure.rateLimited</key>
+	<string>Spotify asked to wait a moment. Try again in a few minutes.</string>
+	<key>jam.failure.rejected</key>
+	<string>Spotify rejected the invitation.</string>
+	<key>jam.failure.startFailed</key>
+	<string>The Jam plugin couldn't be started.</string>
+	<key>jam.failure.title</key>
+	<string>Couldn't join the Jam</string>
+	<key>jam.failure.unavailable</key>
+	<string>The Jam service isn't available right now.</string>
+	<key>jam.failure.unknown</key>
+	<string>Something went wrong while joining the Jam.</string>
+	<key>jam.failure.unsupported</key>
+	<string>This kind of Jam isn't supported yet.</string>
+	<key>jam.join</key>
+	<string>Join Jam</string>
+	<key>jam.join.needsLink</key>
+	<string>Paste the invitation link first.</string>
+	<key>jam.leave</key>
+	<string>Leave Jam</string>
+	<key>jam.leave.help</key>
+	<string>Leave the Jam and restore your previous queue</string>
+	<key>jam.link.clear</key>
+	<string>Clear the link</string>
+	<key>jam.link.label</key>
+	<string>Invitation link</string>
+	<key>jam.link.looksWrong</key>
+	<string>That doesn't look like a Spotify Jam invitation link.</string>
+	<key>jam.link.paste</key>
+	<string>Paste</string>
+	<key>jam.link.pasteHelp</key>
+	<string>Paste the link from the clipboard</string>
+	<key>jam.link.placeholder</key>
+	<string>Paste the Jam link</string>
+	<key>jam.live.title</key>
+	<string>%@'s Jam</string>
+	<key>jam.live.titleNoHost</key>
+	<string>Spotify Jam</string>
+	<key>jam.member.guest</key>
+	<string>Guest</string>
+	<key>jam.member.host</key>
+	<string>Host</string>
+	<key>jam.member.you</key>
+	<string>You</string>
+	<key>jam.members.more</key>
+	<string>and %@ more</string>
+	<key>jam.menu.debug</key>
+	<string>Open debug panel</string>
+	<key>jam.menu.more</key>
+	<string>More Jam options</string>
+	<key>jam.menu.signOut</key>
+	<string>Sign out of Spotify</string>
+	<key>jam.menu.syncSettings</key>
+	<string>Sync settings</string>
+	<key>jam.pairing.longer</key>
+	<string>This version is %@ s longer than the Spotify one: sync may not be exact.</string>
+	<key>jam.pairing.noMatch</key>
+	<string>We couldn't find a reliable YouTube Music version.</string>
+	<key>jam.pairing.noMatchHint</key>
+	<string>Pick one of the versions or wait for the next song.</string>
+	<key>jam.pairing.searching</key>
+	<string>Looking for the YouTube Music version…</string>
+	<key>jam.pairing.shorter</key>
+	<string>This version is %@ s shorter than the Spotify one: sync may not be exact.</string>
+	<key>jam.pairing.spotify</key>
+	<string>On Spotify</string>
+	<key>jam.pairing.waiting</key>
+	<string>Waiting for something to play in the Jam.</string>
+	<key>jam.pairing.ytm</key>
+	<string>On YouTube Music</string>
+	<key>jam.panel.intro</key>
+	<string>Join a friend's Jam and listen to the same music, in sync, in Side B.</string>
+	<key>jam.panel.introHint</key>
+	<string>Side B plays the YouTube Music equivalent of each song in the Jam.</string>
+	<key>jam.panel.title</key>
+	<string>Spotify Jam</string>
+	<key>jam.participants.many</key>
+	<string>%@ participants</string>
+	<key>jam.participants.one</key>
+	<string>1 participant</string>
+	<key>jam.plugin.missing.body</key>
+	<string>This copy of Side B doesn't include the spotify-jam plugin. Reinstall the app to use Jam.</string>
+	<key>jam.plugin.missing.title</key>
+	<string>The Jam plugin is missing</string>
+	<key>jam.queue.addedByPerson</key>
+	<string>Added by a person</string>
+	<key>jam.queue.resolving</key>
+	<string>Looking it up on YouTube Music…</string>
+	<key>jam.queue.spotifySuggestion</key>
+	<string>Suggested by Spotify</string>
+	<key>jam.queue.unavailable</key>
+	<string>No equivalent on YouTube Music</string>
+	<key>jam.signin.body</key>
+	<string>Side B signs in to Spotify on its own to join a Jam. If you already connected your account for Spotify Canvas, that session is reused.</string>
+	<key>jam.signin.button</key>
+	<string>Sign in to Spotify</string>
+	<key>jam.signin.connected</key>
+	<string>Spotify session active</string>
+	<key>jam.signin.failed</key>
+	<string>The Spotify sign-in could not be completed. Try again.</string>
+	<key>jam.signin.retry</key>
+	<string>Retry sign-in</string>
+	<key>jam.signin.title</key>
+	<string>Sign in to Spotify</string>
+	<key>jam.status.adjusting</key>
+	<string>Adjusting…</string>
+	<key>jam.status.hostInactive</key>
+	<string>The host has no active device</string>
+	<key>jam.status.hostInactive.help</key>
+	<string>It resumes when playback restarts in Spotify.</string>
+	<key>jam.status.label</key>
+	<string>Sync status</string>
+	<key>jam.status.noMatch</key>
+	<string>No YouTube Music version</string>
+	<key>jam.status.paused</key>
+	<string>Jam paused</string>
+	<key>jam.status.searching</key>
+	<string>Finding version…</string>
+	<key>jam.status.synced</key>
+	<string>In sync</string>
+	<key>jam.status.waiting</key>
+	<string>Waiting for the host</string>
+	<key>jam.surface.tab</key>
+	<string>Jam</string>
+	<key>jam.sync.decrease</key>
+	<string>Subtract %@ ms</string>
+	<key>jam.sync.fine</key>
+	<string>Fine adjustment for this version</string>
+	<key>jam.sync.fineHint</key>
+	<string>Correct the offset if this version starts at a different instant than the Spotify one.</string>
+	<key>jam.sync.fineUnavailable</key>
+	<string>Available once a Jam version is playing.</string>
+	<key>jam.sync.global</key>
+	<string>Output delay</string>
+	<key>jam.sync.globalHint</key>
+	<string>Compensates AirPlay or Bluetooth latency. Applies to every song.</string>
+	<key>jam.sync.increase</key>
+	<string>Add %@ ms</string>
+	<key>jam.sync.reset</key>
+	<string>Reset</string>
+	<key>jam.sync.title</key>
+	<string>Sync</string>
+	<key>jam.sync.value</key>
+	<string>%@ ms</string>
+	<key>jam.tag.video</key>
+	<string>VIDEO</string>
+	<key>jam.toast.dismiss</key>
+	<string>Dismiss notice</string>
+	<key>jam.versions.choose</key>
+	<string>Choose another version</string>
+	<key>jam.versions.current</key>
+	<string>Current version</string>
+	<key>jam.versions.empty</key>
+	<string>No other versions are available.</string>
+	<key>jam.versions.hide</key>
+	<string>Hide versions</string>
+	<key>jam.versions.title</key>
+	<string>YouTube Music versions</string>
+	<key>jam.versions.use</key>
+	<string>Use this version</string>
 	<key>library.create_playlist</key>
 	<string>Create a playlist</string>
 	<key>library.empty.albums</key>
@@ -1725,10 +2005,18 @@ History: %@</string>
 	<string>Reconnect…</string>
 	<key>visualProvider.remove</key>
 	<string>Uninstall and delete token</string>
+	<key>visualProvider.removeKeepsSession</key>
+	<string>Uninstall (keeps the Spotify session)</string>
 	<key>visualProvider.saveToken</key>
 	<string>Save token in Keychain</string>
 	<key>visualProvider.signIn</key>
 	<string>Sign in…</string>
+	<key>visualProvider.spotifyOnlyAccount</key>
+	<string>Spotify session active (used by Spotify Jam)</string>
+	<key>visualProvider.spotifyShared</key>
+	<string>The Spotify session is shared with Spotify Jam. Signing out affects both; uninstalling the provider does not sign you out.</string>
+	<key>visualProvider.spotifySignOut</key>
+	<string>Sign out of Spotify</string>
 	<key>visualProvider.status.absent</key>
 	<string>This track has no compatible video.</string>
 	<key>visualProvider.status.authRequired</key>

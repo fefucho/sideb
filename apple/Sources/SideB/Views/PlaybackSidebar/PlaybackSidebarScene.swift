@@ -23,6 +23,8 @@ extension FullscreenNowPlayingView {
                         .frame(width: proxy.size.width, height: headerHeight)
                         .background { sidebarHeaderScrim }
                         .windowGestureRegion(.excluded)
+
+                    sidebarJamBadge(width: proxy.size.width, upperHeight: upperHeight)
                 }
                 .frame(width: proxy.size.width, height: upperHeight, alignment: .top)
 
@@ -52,6 +54,27 @@ extension FullscreenNowPlayingView {
                 .allowsHitTesting(false)
         }
         .onAppear { sidebarCloseFocused = true }
+    }
+
+    /// Overlays the top edge of the artwork card (there is no free room above it), so it neither
+    /// moves nor resizes the artwork or the immersive video. Tapping opens the Jam panel as a popover.
+    private func sidebarJamBadge(width: CGFloat, upperHeight: CGFloat) -> some View {
+        let show = viewModel.isJamSessionActive && viewModel.selectedSidebarPanel == .artwork
+            && sidebarArtworkScroll.isHeroVisible
+        return Group {
+            if show {
+                JamBadgeView(size: .compact) { sidebarJamPopoverPresented = true }
+                    .popover(isPresented: $sidebarJamPopoverPresented, arrowEdge: .bottom) {
+                        JamPanelView(player: viewModel, style: .popover)
+                    }
+                    .windowGestureRegion(.excluded)
+                    .padding(.top, JamSidebarBadgePlacement.top(width: width, height: upperHeight,
+                                                                portrait: sidebarArtworkScroll.isPortrait))
+                    .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.96, anchor: .top)))
+            }
+        }
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.22), value: show)
+        .onChange(of: show) { _, visible in if !visible { sidebarJamPopoverPresented = false } }
     }
 
     private func showsLyricsSample(panelHeight: CGFloat) -> Bool {

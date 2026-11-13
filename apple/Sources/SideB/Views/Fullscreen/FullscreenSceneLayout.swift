@@ -30,6 +30,15 @@ struct FullscreenSceneMetrics {
         contentPanelHeight = max(80, availableContentHeight - SideBControlMetrics.groupHeight - 14)
     }
 
+    /// Pill height (22pt avatars + padding) and the gap between it and the cover's top edge.
+    static let jamMarkerHeight: CGFloat = 32
+    static let jamMarkerGap: CGFloat = 10
+
+    /// The artwork block is centred in `availableContentHeight`; distance from the window top to the cover.
+    var artworkTopY: CGFloat { topPadding + max(0, (availableContentHeight - artworkBlockHeight) / 2) }
+    /// Free space above the cover once the Jam marker and its gap are placed (>= 0 means it fits).
+    var jamMarkerClearance: CGFloat { artworkTopY - Self.jamMarkerGap - Self.jamMarkerHeight }
+
     var artworkBlockHeight: CGFloat { artworkSize + metadataSpacing + metadataHeight }
 
     static func typography(artworkWidth: CGFloat) -> (title: CGFloat, subtitle: CGFloat, action: CGFloat) {

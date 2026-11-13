@@ -12,6 +12,7 @@ final class NativeQueueTrackCellView: NSTableCellView, NativeTrackCellPresenting
     private let durationLabel = NSTextField(labelWithString: "")
     private let reorderHandleImageView = NSImageView()
     private let addToQueueButton = HomeFocusTrackingButton()
+    private let jamMarker = JamRowMarkerView()
 
     private let likeButton = HomeFocusTrackingButton()
     private let dislikeButton = HomeFocusTrackingButton()
@@ -80,6 +81,7 @@ final class NativeQueueTrackCellView: NSTableCellView, NativeTrackCellPresenting
         ratedMetadata.badge.rating = .unknown
         titleLabel.clearFeatured(); subtitleLabel.clearFeatured(); onArtistDestination = nil
         artworkImageView.image = nil
+        jamMarker.apply(nil)
         isLiked = false
         isCurrentTrack = false
         isReorderable = false
@@ -129,6 +131,9 @@ final class NativeQueueTrackCellView: NSTableCellView, NativeTrackCellPresenting
         artworkImageView.setAccessibilityIdentifier("NativeQueueTrackArtwork")
         artworkImageView.setAccessibilityLabel(L10n.text("detail.track.artwork"))
         addSubview(artworkImageView)
+        // Jam rows only: who added the track. Rides the artwork corner, so rows never widen.
+        jamMarker.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(jamMarker)
 
         // 3. Título y Subtítulo
         titleLabel.font = .systemFont(ofSize: 14, weight: .medium)
@@ -303,6 +308,11 @@ final class NativeQueueTrackCellView: NSTableCellView, NativeTrackCellPresenting
             artW,
             artH,
 
+            jamMarker.widthAnchor.constraint(equalToConstant: JamRowMarkerView.size),
+            jamMarker.heightAnchor.constraint(equalToConstant: JamRowMarkerView.size),
+            jamMarker.trailingAnchor.constraint(equalTo: artworkImageView.trailingAnchor, constant: 4),
+            jamMarker.bottomAnchor.constraint(equalTo: artworkImageView.bottomAnchor, constant: 4),
+
             // Título
             titleLabel.leadingAnchor.constraint(equalTo: artworkImageView.trailingAnchor, constant: 12),
             titleLabel.bottomAnchor.constraint(equalTo: centerYAnchor, constant: -1.5),
@@ -450,6 +460,11 @@ final class NativeQueueTrackCellView: NSTableCellView, NativeTrackCellPresenting
         }
     }
 
+    /// Marks who put the track in a Jam queue; `nil` clears it. Reset by `configure`.
+    func setJamMarker(_ marker: JamRowMarker?) {
+        jamMarker.apply(marker)
+    }
+
     func setPreviousAppearance(_ previous: Bool) {
         titleLabel.alphaValue = previous ? 0.65 : 1
         subtitleLabel.alphaValue = previous ? 0.75 : 1
@@ -509,6 +524,7 @@ final class NativeQueueTrackCellView: NSTableCellView, NativeTrackCellPresenting
             updateRecommendationConstraints()
         }
         onAddToQueue = nil
+        jamMarker.apply(nil)
         setPreviousAppearance(false)
         imageFetchTask?.cancel()
         imageFetchTask = nil

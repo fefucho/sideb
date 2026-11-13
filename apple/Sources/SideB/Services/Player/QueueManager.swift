@@ -120,7 +120,20 @@ public final class QueueManager {
 
     // MARK: - Modos y Banderas
     public private(set) var isShuffle: Bool = false { didSet { stateChanged() } }
-    public var isRepeat: Bool = false { didSet { stateChanged() } }
+    public var isRepeat: Bool = false {
+        didSet {
+            if isSessionLocked, isRepeat {
+                // A session owns the order: repeat stays off.
+                isRepeat = false
+                sessionEditor?.sessionRejected(.shuffleRepeat)
+                return
+            }
+            stateChanged()
+        }
+    }
+    /// Set while a session (Spotify Jam) owns the queue; see `QueueSessionEditing`.
+    @ObservationIgnored weak var sessionEditor: (any QueueSessionEditing)?
+    public var isSessionLocked: Bool { sessionEditor != nil }
     public var isLoadingRadio: Bool = false
     public var isLoadingAutoplay: Bool = false
 
@@ -145,6 +158,7 @@ public final class QueueManager {
     /// Cambia el orden sin reemplazar la cola ni perder la identidad de la actual.
     public func setShuffle(_ enabled: Bool, seed: UInt64? = nil) {
         guard enabled != isShuffle else { return }
+        if enabled, isSessionLocked { sessionEditor?.sessionRejected(.shuffleRepeat); return }
         beginMutation(); defer { endMutation() }
         if enabled {
             isShuffle = true
@@ -327,6 +341,7 @@ public final class QueueManager {
 
     /// Añade temas recomendados de radio o automix deduplicando contra la cola y el lote.
     public func appendRadioTracks(_ tracks: [SongItemRecord], continuation: String? = nil) {
+        guard !isSessionLocked else { return }
         beginMutation(); defer { endMutation() }
         var known = Set(queue.indices.contains(currentIndex) ? queue[currentIndex...].map(\.videoId) : [])
         known.formUnion(recommendationEntries.map { $0.track.videoId }); known.formUnion(recentVideoIDs)
@@ -339,6 +354,7 @@ public final class QueueManager {
 
     /// Añade ocurrencias de playlist preservando duplicados y el orden de origen.
     public func appendPlaylistTracks(_ tracks: [SongItemRecord], nextContinuation: String? = nil) {
+        guard !isSessionLocked else { return }
         beginMutation(); defer { endMutation() }
         let endManuals = occurrenceIDs.indices.filter { $0 > currentIndex && placements[occurrenceIDs[$0]] == .end }
         let insertion = endManuals.first ?? queue.count
@@ -375,6 +391,7 @@ public final class QueueManager {
 
     public func playNext(_ tracks: [SongItemRecord]) {
         guard !tracks.isEmpty else { return }
+        if let sessionEditor { sessionEditor.sessionInsert(tracks, atUpcomingRow: 0); return }
         if queue.isEmpty {
             replaceManualQueue(with: tracks)
             return
@@ -402,6 +419,7 @@ public final class QueueManager {
 
     public func addTracksToQueue(_ tracks: [SongItemRecord]) {
         guard !tracks.isEmpty else { return }
+        if let sessionEditor { sessionEditor.sessionAppend(tracks); return }
         if queue.isEmpty {
             replaceManualQueue(with: tracks)
             return
@@ -507,6 +525,11 @@ public final class QueueManager {
     @discardableResult
     public func removeTrack(at index: Int) -> SongItemRecord? {
         guard queue.indices.contains(index) else { return nil }
+        if let sessionEditor {
+            if index > currentIndex { sessionEditor.sessionRemove(upcomingRow: index - currentIndex - 1) }
+            else { sessionEditor.sessionRejected(index == currentIndex ? .removeCurrent : .editPast) }
+            return nil
+        }
         beginMutation(); defer { endMutation() }
         let removedID = occurrenceIDs[index]
         detachDependents(of: removedID)
@@ -531,6 +554,12 @@ public final class QueueManager {
 
     public func moveTrack(from sourceIndex: Int, to destinationIndex: Int) {
         guard queue.indices.contains(sourceIndex), queue.indices.contains(destinationIndex), sourceIndex != destinationIndex else { return }
+        if let sessionEditor {
+            let from = sourceIndex - currentIndex - 1, to = destinationIndex - currentIndex - 1
+            if from >= 0, to >= 0 { sessionEditor.sessionMove(fromUpcomingRow: from, toUpcomingRow: to) }
+            else { sessionEditor.sessionRejected(.editPast) }
+            return
+        }
         beginMutation(); defer { endMutation() }
         let id = occurrenceIDs[sourceIndex]
         let activeID = currentOccurrenceID
@@ -561,12 +590,44 @@ public final class QueueManager {
             moveTrack(from: source, to: destination)
             return id
         }
+        if let sessionEditor {
+            // Copying a played entry back into the order is an insert for the session.
+            sessionEditor.sessionInsert([queue[source]], atUpcomingRow: target - currentIndex - 1)
+            return nil
+        }
         beginMutation(); defer { endMutation() }
         let track = queue[source]
         addTrackToQueue(track)
         guard let added = occurrenceIDs.last else { return nil }
         if target < queue.count - 1 { moveTrack(from: queue.count - 1, to: target) }
         return added
+    }
+
+    /// Replaces the queue with a session's view (current + upcoming) without disturbing what is
+    /// playing: occurrence identities are reused by video, so unchanged rows keep their identity
+    /// and the table does not flicker. Not intercepted by `sessionEditor`.
+    func mirrorSession(current: SongItemRecord, upcoming: [SongItemRecord], title: String) {
+        beginMutation(); defer { endMutation() }
+        var songs = [current] + upcoming
+        if queue.indices.contains(currentIndex), queue[currentIndex].videoId == current.videoId { songs[0] = queue[currentIndex] }
+        var pool: [String: [String]] = [:]
+        for (index, id) in occurrenceIDs.enumerated() where queue.indices.contains(index) { pool[queue[index].videoId, default: []].append(id) }
+        let ids = songs.map { song -> String in
+            if let reused = pool[song.videoId]?.first { pool[song.videoId]?.removeFirst(); return reused }
+            return UUID().uuidString
+        }
+        if queue != songs { queue = songs }
+        if occurrenceIDs != ids { occurrenceIDs = ids }
+        sourceRanks = Dictionary(uniqueKeysWithValues: ids.enumerated().map { ($0.element, $0.offset) })
+        nextSourceRank = ids.count
+        placements.removeAll(keepingCapacity: true)
+        recentlyInsertedOccurrenceIDs.removeAll()
+        radioCommittedIDs.removeAll()
+        recommendationEntries.removeAll()
+        if currentIndex != 0 { currentIndex = 0 }
+        visibleCount = songs.count
+        if context != .custom(title: title) { context = .custom(title: title) }
+        if contextTitle != title { contextTitle = title }
     }
 
     public func clearQueue() {

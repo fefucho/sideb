@@ -1,0 +1,478 @@
+{
+  "jam.action.notLive": {
+    "es": "El Jam no está activo.",
+    "en": "The Jam isn't active."
+  },
+  "jam.action.noControl": {
+    "es": "No tenés permiso para cambiar la cola de este Jam.",
+    "en": "You don't have permission to change this Jam's queue."
+  },
+  "jam.action.busy": {
+    "es": "Todavía se está aplicando el cambio anterior.",
+    "en": "The previous change is still being applied."
+  },
+  "jam.action.notEditable": {
+    "es": "Esta canción no se puede modificar en el Jam.",
+    "en": "This track can't be changed in the Jam."
+  },
+  "jam.action.notApplied": {
+    "es": "No se pudo aplicar el cambio en el Jam.",
+    "en": "The change couldn't be applied to the Jam."
+  },
+  "jam.action.stale": {
+    "es": "El anfitrión cambió la cola antes de aplicar tu cambio. Probá de nuevo.",
+    "en": "The host changed the queue before your change was applied. Try again."
+  },
+  "jam.action.rejected": {
+    "es": "Spotify rechazó el cambio.",
+    "en": "Spotify rejected the change."
+  },
+  "jam.action.noSpotifyMatch": {
+    "es": "No encontramos «%@» en Spotify.",
+    "en": "Couldn't find “%@” on Spotify."
+  },
+  "jam.action.noSpotifyMatchMany": {
+    "es": "No encontramos %@ canciones en Spotify.",
+    "en": "Couldn't find %@ songs on Spotify."
+  },
+  "jam.action.partialAdded": {
+    "es": "Se agregaron %@ de %@ canciones al Jam.",
+    "en": "Added %@ of %@ songs to the Jam."
+  },
+  "jam.action.added": {
+    "es": "«%@» se agregó al Jam.",
+    "en": "“%@” was added to the Jam."
+  },
+  "jam.action.inserted": {
+    "es": "«%@» sonará a continuación en el Jam.",
+    "en": "“%@” will play next in the Jam."
+  },
+  "jam.action.moved": {
+    "es": "«%@» se movió en la cola del Jam.",
+    "en": "“%@” was moved in the Jam queue."
+  },
+  "jam.action.removed": {
+    "es": "«%@» se quitó de la cola del Jam.",
+    "en": "“%@” was removed from the Jam queue."
+  },
+  "jam.action.addedMany": {
+    "es": "Se agregaron %@ canciones al Jam.",
+    "en": "Added %@ songs to the Jam."
+  },
+  "jam.action.insertedMany": {
+    "es": "%@ canciones sonarán a continuación en el Jam.",
+    "en": "%@ songs will play next in the Jam."
+  },
+  "jam.action.playRowUnsupported": {
+    "es": "En un Jam no se puede saltar a una canción de la cola.",
+    "en": "You can't jump to a queued track in a Jam."
+  },
+  "jam.action.removeCurrentUnsupported": {
+    "es": "No se puede quitar la canción que está sonando.",
+    "en": "The track that's playing can't be removed."
+  },
+  "jam.action.shuffleRepeatInert": {
+    "es": "El Jam controla el orden: aleatorio y repetir no se aplican.",
+    "en": "The Jam controls the order: shuffle and repeat don't apply."
+  },
+  "jam.panel.title": {
+    "es": "Spotify Jam",
+    "en": "Spotify Jam"
+  },
+  "jam.panel.intro": {
+    "es": "Unite al Jam de un amigo y escuchá lo mismo, sincronizado, en Side B.",
+    "en": "Join a friend's Jam and listen to the same music, in sync, in Side B."
+  },
+  "jam.panel.introHint": {
+    "es": "Side B reproduce la versión equivalente de YouTube Music de cada canción del Jam.",
+    "en": "Side B plays the YouTube Music equivalent of each song in the Jam."
+  },
+  "jam.link.label": {
+    "es": "Link de invitación",
+    "en": "Invitation link"
+  },
+  "jam.link.placeholder": {
+    "es": "Pegá el link del Jam",
+    "en": "Paste the Jam link"
+  },
+  "jam.link.paste": {
+    "es": "Pegar",
+    "en": "Paste"
+  },
+  "jam.link.pasteHelp": {
+    "es": "Pegar el link desde el portapapeles",
+    "en": "Paste the link from the clipboard"
+  },
+  "jam.link.clear": {
+    "es": "Borrar el link",
+    "en": "Clear the link"
+  },
+  "jam.link.looksWrong": {
+    "es": "No parece un link de invitación de Spotify Jam.",
+    "en": "That doesn't look like a Spotify Jam invitation link."
+  },
+  "jam.join": {
+    "es": "Unirse al Jam",
+    "en": "Join Jam"
+  },
+  "jam.join.needsLink": {
+    "es": "Pegá primero el link de invitación.",
+    "en": "Paste the invitation link first."
+  },
+  "jam.connecting.title": {
+    "es": "Conectando con el Jam…",
+    "en": "Connecting to the Jam…"
+  },
+  "jam.connecting.hint": {
+    "es": "Entrando a la sesión de Spotify.",
+    "en": "Joining the Spotify session."
+  },
+  "jam.cancel": {
+    "es": "Cancelar",
+    "en": "Cancel"
+  },
+  "jam.signin.title": {
+    "es": "Iniciá sesión en Spotify",
+    "en": "Sign in to Spotify"
+  },
+  "jam.signin.body": {
+    "es": "Side B inicia sesión en Spotify por su cuenta para entrar a un Jam. Si ya conectaste tu cuenta para Spotify Canvas, se reutiliza esa sesión.",
+    "en": "Side B signs in to Spotify on its own to join a Jam. If you already connected your account for Spotify Canvas, that session is reused."
+  },
+  "jam.signin.button": {
+    "es": "Iniciar sesión en Spotify",
+    "en": "Sign in to Spotify"
+  },
+  "jam.signin.connected": {
+    "es": "Sesión de Spotify activa",
+    "en": "Spotify session active"
+  },
+  "jam.plugin.missing.title": {
+    "es": "Falta el plugin de Jam",
+    "en": "The Jam plugin is missing"
+  },
+  "jam.plugin.missing.body": {
+    "es": "Esta copia de Side B no incluye el plugin spotify-jam. Reinstalá la app para usar Jam.",
+    "en": "This copy of Side B doesn't include the spotify-jam plugin. Reinstall the app to use Jam."
+  },
+  "jam.failure.title": {
+    "es": "No se pudo entrar al Jam",
+    "en": "Couldn't join the Jam"
+  },
+  "jam.failure.pluginMissing": {
+    "es": "Falta el plugin de Jam en esta copia de Side B.",
+    "en": "The Jam plugin is missing from this copy of Side B."
+  },
+  "jam.failure.noSession": {
+    "es": "No hay una sesión de Spotify. Iniciá sesión e intentá de nuevo.",
+    "en": "There's no Spotify session. Sign in and try again."
+  },
+  "jam.failure.startFailed": {
+    "es": "No se pudo iniciar el plugin de Jam.",
+    "en": "The Jam plugin couldn't be started."
+  },
+  "jam.failure.authRequired": {
+    "es": "Spotify pidió iniciar sesión de nuevo.",
+    "en": "Spotify asked you to sign in again."
+  },
+  "jam.failure.invalidLink": {
+    "es": "El link no es una invitación válida de Spotify Jam.",
+    "en": "The link isn't a valid Spotify Jam invitation."
+  },
+  "jam.failure.unavailable": {
+    "es": "El servicio de Jam no está disponible ahora.",
+    "en": "The Jam service isn't available right now."
+  },
+  "jam.failure.network": {
+    "es": "No hay conexión con Spotify. Revisá tu red e intentá de nuevo.",
+    "en": "Couldn't reach Spotify. Check your network and try again."
+  },
+  "jam.failure.notAllowed": {
+    "es": "Spotify no te dejó entrar a este Jam.",
+    "en": "Spotify didn't let you join this Jam."
+  },
+  "jam.failure.jamNotFound": {
+    "es": "Ese Jam no existe o ya terminó.",
+    "en": "That Jam doesn't exist or has already ended."
+  },
+  "jam.failure.rateLimited": {
+    "es": "Spotify pidió esperar un momento. Intentá de nuevo en unos minutos.",
+    "en": "Spotify asked to wait a moment. Try again in a few minutes."
+  },
+  "jam.failure.rejected": {
+    "es": "Spotify rechazó la invitación.",
+    "en": "Spotify rejected the invitation."
+  },
+  "jam.failure.unsupported": {
+    "es": "Este tipo de Jam todavía no es compatible.",
+    "en": "This kind of Jam isn't supported yet."
+  },
+  "jam.failure.unknown": {
+    "es": "Algo salió mal al entrar al Jam.",
+    "en": "Something went wrong while joining the Jam."
+  },
+  "jam.ended.title": {
+    "es": "El Jam terminó",
+    "en": "The Jam has finished"
+  },
+  "jam.ended.body": {
+    "es": "Tu cola anterior se restauró.",
+    "en": "Your previous queue was restored."
+  },
+  "jam.ended.reason.host": {
+    "es": "El anfitrión cerró el Jam.",
+    "en": "The host closed the Jam."
+  },
+  "jam.ended.reason.removed": {
+    "es": "Te quitaron del Jam.",
+    "en": "You were removed from the Jam."
+  },
+  "jam.ended.reason.connection": {
+    "es": "Se perdió la conexión con el Jam.",
+    "en": "The connection to the Jam was lost."
+  },
+  "jam.ended.reason.interrupted": {
+    "es": "El Jam se interrumpió.",
+    "en": "The Jam was interrupted."
+  },
+  "jam.live.title": {
+    "es": "Jam de %@",
+    "en": "%@'s Jam"
+  },
+  "jam.live.titleNoHost": {
+    "es": "Jam de Spotify",
+    "en": "Spotify Jam"
+  },
+  "jam.participants.one": {
+    "es": "1 participante",
+    "en": "1 participant"
+  },
+  "jam.participants.many": {
+    "es": "%@ participantes",
+    "en": "%@ participants"
+  },
+  "jam.member.host": {
+    "es": "Anfitrión",
+    "en": "Host"
+  },
+  "jam.member.you": {
+    "es": "Vos",
+    "en": "You"
+  },
+  "jam.member.guest": {
+    "es": "Invitado",
+    "en": "Guest"
+  },
+  "jam.members.more": {
+    "es": "y %@ más",
+    "en": "and %@ more"
+  },
+  "jam.pairing.spotify": {
+    "es": "En Spotify",
+    "en": "On Spotify"
+  },
+  "jam.pairing.ytm": {
+    "es": "En YouTube Music",
+    "en": "On YouTube Music"
+  },
+  "jam.pairing.searching": {
+    "es": "Buscando la versión en YouTube Music…",
+    "en": "Looking for the YouTube Music version…"
+  },
+  "jam.pairing.noMatch": {
+    "es": "No encontramos una versión confiable en YouTube Music.",
+    "en": "We couldn't find a reliable YouTube Music version."
+  },
+  "jam.pairing.noMatchHint": {
+    "es": "Elegí una de las versiones o esperá a la siguiente canción.",
+    "en": "Pick one of the versions or wait for the next song."
+  },
+  "jam.pairing.waiting": {
+    "es": "Esperando que suene algo en el Jam.",
+    "en": "Waiting for something to play in the Jam."
+  },
+  "jam.pairing.longer": {
+    "es": "Esta versión dura %@ s más que la de Spotify: la sincronía puede no ser exacta.",
+    "en": "This version is %@ s longer than the Spotify one: sync may not be exact."
+  },
+  "jam.pairing.shorter": {
+    "es": "Esta versión dura %@ s menos que la de Spotify: la sincronía puede no ser exacta.",
+    "en": "This version is %@ s shorter than the Spotify one: sync may not be exact."
+  },
+  "jam.tag.video": {
+    "es": "VIDEO",
+    "en": "VIDEO"
+  },
+  "jam.versions.choose": {
+    "es": "Elegir otra versión",
+    "en": "Choose another version"
+  },
+  "jam.versions.hide": {
+    "es": "Ocultar versiones",
+    "en": "Hide versions"
+  },
+  "jam.versions.title": {
+    "es": "Versiones en YouTube Music",
+    "en": "YouTube Music versions"
+  },
+  "jam.versions.empty": {
+    "es": "No hay otras versiones disponibles.",
+    "en": "No other versions are available."
+  },
+  "jam.versions.current": {
+    "es": "Versión actual",
+    "en": "Current version"
+  },
+  "jam.versions.use": {
+    "es": "Usar esta versión",
+    "en": "Use this version"
+  },
+  "jam.status.label": {
+    "es": "Estado de la sincronía",
+    "en": "Sync status"
+  },
+  "jam.status.synced": {
+    "es": "Sincronizado",
+    "en": "In sync"
+  },
+  "jam.status.adjusting": {
+    "es": "Ajustando…",
+    "en": "Adjusting…"
+  },
+  "jam.status.paused": {
+    "es": "Jam en pausa",
+    "en": "Jam paused"
+  },
+  "jam.status.hostInactive": {
+    "es": "El anfitrión no tiene un dispositivo activo",
+    "en": "The host has no active device"
+  },
+  "jam.status.hostInactive.help": {
+    "es": "Se retoma cuando reanude la reproducción en Spotify.",
+    "en": "It resumes when playback restarts in Spotify."
+  },
+  "jam.status.searching": {
+    "es": "Buscando versión…",
+    "en": "Finding version…"
+  },
+  "jam.status.noMatch": {
+    "es": "Sin versión en YouTube Music",
+    "en": "No YouTube Music version"
+  },
+  "jam.status.waiting": {
+    "es": "Esperando al anfitrión",
+    "en": "Waiting for the host"
+  },
+  "jam.control.noControl": {
+    "es": "Solo el anfitrión controla la reproducción en este Jam.",
+    "en": "Only the host controls playback in this Jam."
+  },
+  "jam.leave": {
+    "es": "Salir del Jam",
+    "en": "Leave Jam"
+  },
+  "jam.leave.help": {
+    "es": "Salir del Jam y restaurar tu cola anterior",
+    "en": "Leave the Jam and restore your previous queue"
+  },
+  "jam.menu.more": {
+    "es": "Más opciones del Jam",
+    "en": "More Jam options"
+  },
+  "jam.menu.syncSettings": {
+    "es": "Ajustes de sincronía",
+    "en": "Sync settings"
+  },
+  "jam.menu.debug": {
+    "es": "Abrir panel de depuración",
+    "en": "Open debug panel"
+  },
+  "jam.sync.title": {
+    "es": "Sincronía",
+    "en": "Sync"
+  },
+  "jam.sync.fine": {
+    "es": "Ajuste fino de esta versión",
+    "en": "Fine adjustment for this version"
+  },
+  "jam.sync.fineHint": {
+    "es": "Corregí el desfase si esta versión empieza en otro instante que la de Spotify.",
+    "en": "Correct the offset if this version starts at a different instant than the Spotify one."
+  },
+  "jam.sync.fineUnavailable": {
+    "es": "Disponible cuando suene una versión del Jam.",
+    "en": "Available once a Jam version is playing."
+  },
+  "jam.sync.global": {
+    "es": "Retraso de salida",
+    "en": "Output delay"
+  },
+  "jam.sync.globalHint": {
+    "es": "Compensa la latencia de AirPlay o Bluetooth. Se aplica a todas las canciones.",
+    "en": "Compensates AirPlay or Bluetooth latency. Applies to every song."
+  },
+  "jam.sync.reset": {
+    "es": "Restablecer",
+    "en": "Reset"
+  },
+  "jam.sync.value": {
+    "es": "%@ ms",
+    "en": "%@ ms"
+  },
+  "jam.sync.decrease": {
+    "es": "Restar %@ ms",
+    "en": "Subtract %@ ms"
+  },
+  "jam.sync.increase": {
+    "es": "Sumar %@ ms",
+    "en": "Add %@ ms"
+  },
+  "jam.badge.label": {
+    "es": "En el Jam de %@",
+    "en": "In %@'s Jam"
+  },
+  "jam.badge.labelNoHost": {
+    "es": "En un Jam",
+    "en": "In a Jam"
+  },
+  "jam.badge.help": {
+    "es": "Abrir el panel de Jam",
+    "en": "Open the Jam panel"
+  },
+  "jam.toast.dismiss": {
+    "es": "Cerrar aviso",
+    "en": "Dismiss notice"
+  },
+  "jam.exit.title": {
+    "es": "¿Salir del Jam?",
+    "en": "Leave the Jam?"
+  },
+  "jam.exit.message": {
+    "es": "Para reproducir «%@», Side B sale del Jam y restaura tu cola anterior.",
+    "en": "To play “%@”, Side B leaves the Jam and restores your previous queue."
+  },
+  "jam.exit.messageGeneric": {
+    "es": "Para reproducir esto, Side B sale del Jam y restaura tu cola anterior.",
+    "en": "To play this, Side B leaves the Jam and restores your previous queue."
+  },
+  "jam.exit.confirm": {
+    "es": "Salir del Jam y reproducir",
+    "en": "Leave Jam and play"
+  },
+  "jam.exit.cancel": {
+    "es": "Quedarme en el Jam",
+    "en": "Stay in the Jam"
+  },
+  "jam.signin.failed": {
+    "es": "No se pudo completar el inicio de sesión en Spotify. Probá de nuevo.",
+    "en": "The Spotify sign-in could not be completed. Try again."
+  },
+  "jam.signin.retry": {
+    "es": "Reintentar inicio de sesión",
+    "en": "Retry sign-in"
+  },
+  "jam.menu.signOut": {
+    "es": "Cerrar sesión de Spotify",
+    "en": "Sign out of Spotify"
+  }
+}

@@ -16,6 +16,8 @@ struct SavedPlaybackState: Codable {
     let isRepeat: Bool
     var order: QueueOrderSnapshot? = nil
     var radioCursorVideoID: String? = nil
+    /// Playback position of `currentTrack`; only written for a session taken at the start of a Jam.
+    var positionSeconds: Double? = nil
 
     struct Track: Codable {
         let videoId: String

@@ -22,6 +22,9 @@ struct NativeSeparatedQueueView: NSViewRepresentable {
     let loading: Bool
     let error: String?
     var viewport: PlaybackQueueViewport? = nil
+    /// Set while a Spotify Jam owns the queue: the list follows the Jam order and mixes in rows
+    /// that cannot be played from here.
+    var jam: JamQueueContext? = nil
     private var localizationRevision = L10n.revision
 
     func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
@@ -81,7 +84,7 @@ struct NativeSeparatedQueueView: NSViewRepresentable {
     }
 
     enum Row: Equatable {
-        case heading(String), committed(String), proposal(String), more, status(String), retry
+        case heading(String), committed(String), proposal(String), more, status(String), retry, jamPending(String)
         var isCommitted: Bool { if case .committed = self { return true }; return false }
         var identity: String {
             switch self {
@@ -91,6 +94,7 @@ struct NativeSeparatedQueueView: NSViewRepresentable {
             case .status(let key): return "status:" + key
             case .more: return "more"
             case .retry: return "retry"
+            case .jamPending(let id): return "jam:" + id
             }
         }
     }
@@ -102,6 +106,9 @@ struct NativeSeparatedQueueView: NSViewRepresentable {
         var rows: [Row] = []
         var committedIndices: [String:Int] = [:]
         var proposalIndices: [String:Int] = [:]
+        /// Jam entries by occurrence ID (playable rows) and by entry ID (placeholders).
+        var jamByOccurrence: [String: JamQueueEntry] = [:]
+        var jamPlaceholders: [String: (entry: JamQueueEntry, resolving: Bool)] = [:]
         var historyStart: Int?
         var followsCurrent = true
         var positioning = false
@@ -171,7 +178,7 @@ struct NativeSeparatedQueueView: NSViewRepresentable {
         func refresh(parent next: NativeSeparatedQueueView, force: Bool = false) {
             let old = parent
             parent = next
-            let changed = force || lastRevision != next.revision || lastLoading != next.loading || lastError != next.error || old.localizationRevision != next.localizationRevision
+            let changed = force || lastRevision != next.revision || lastLoading != next.loading || lastError != next.error || old.localizationRevision != next.localizationRevision || old.jam != next.jam
             guard let table else { return }
             if changed {
                 let newSession = lastQueueToken != next.manager.queueToken
@@ -211,9 +218,39 @@ struct NativeSeparatedQueueView: NSViewRepresentable {
                 }
             }
         }
+        /// Jam order with placeholders for tracks that have no playable row. No recommendations,
+        /// no "more" rows: the Jam owns the whole queue and Side B's own radio is off.
+        func buildJamRows(_ jam: JamQueueContext) {
+            let q = parent.manager
+            func add(_ index: Int) {
+                guard q.queue.indices.contains(index), q.occurrenceIDs.indices.contains(index) else { return }
+                let id = q.occurrenceIDs[index]; committedIndices[id] = index; rows.append(.committed(id))
+            }
+            if !q.queue.isEmpty || !jam.entries.isEmpty { rows.append(.heading("queue.now")) }
+            if q.currentTrack != nil { add(q.currentIndex) }
+            let first = q.currentIndex + 1
+            let last = min(q.queue.count, q.occurrenceIDs.count, first + 200)
+            let upcoming = first < last
+                ? (first..<last).map { JamQueueMerge.Occurrence(id: q.occurrenceIDs[$0], videoID: q.queue[$0].videoId) } : []
+            let entries = jam.entries.prefix(200)
+            let byID = Dictionary(entries.map { ($0.id, $0) }, uniquingKeysWith: { kept, _ in kept })
+            for item in JamQueueMerge.merge(entries: entries.map(JamQueueMerge.Entry.init), upcoming: upcoming) {
+                switch item {
+                case .occurrence(let id, let entry):
+                    guard let index = q.occurrenceIndex(id: id) else { continue }
+                    committedIndices[id] = index; rows.append(.committed(id))
+                    if let entry, let full = byID[entry.id] { jamByOccurrence[id] = full }
+                case .placeholder(let entry, let resolving):
+                    guard let full = byID[entry.id] else { continue }
+                    jamPlaceholders[entry.id] = (full, resolving); rows.append(.jamPending(entry.id))
+                }
+            }
+        }
         func buildRows() {
             let q = parent.manager
             rows = []; committedIndices = [:]; proposalIndices = [:]
+            jamByOccurrence = [:]; jamPlaceholders = [:]
+            if let jam = parent.jam { buildJamRows(jam); return }
             func add(_ index: Int) {
                 guard q.queue.indices.contains(index), q.occurrenceIDs.indices.contains(index) else { return }
                 let id = q.occurrenceIDs[index]; committedIndices[id] = index; rows.append(.committed(id))
@@ -248,12 +285,12 @@ struct NativeSeparatedQueueView: NSViewRepresentable {
         func numberOfRows(in tableView: NSTableView) -> Int { rows.count }
         func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat {
             guard rows.indices.contains(row) else { return 46 }
-            switch rows[row] { case .committed, .proposal: return 46; case .status: return 32; default: return 36 }
+            switch rows[row] { case .committed, .proposal, .jamPending: return 46; case .status: return 32; default: return 36 }
         }
         func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
             guard rows.indices.contains(row) else { return nil }
             switch rows[row] {
-            case .heading, .status:
+            case .heading, .status, .jamPending:
                 let identifier = NSUserInterfaceItemIdentifier("SeparatedQueueNoninteractiveRow")
                 let view = tableView.makeView(withIdentifier: identifier, owner: self) as? NSTableRowView ?? NSTableRowView()
                 view.identifier = identifier
@@ -264,6 +301,7 @@ struct NativeSeparatedQueueView: NSViewRepresentable {
             let view = (tableView.makeView(withIdentifier: identifier, owner: self) as? NativeTrackRowView) ?? NativeTrackRowView()
             view.identifier = identifier
             view.isHovered = false
+            view.drawsHoverBackground = parent.jam == nil
             if rows.indices.contains(row), case .committed(let id) = rows[row] {
                 view.isCurrentTrack = id == parent.manager.currentOccurrenceID
             } else { view.isCurrentTrack = false }
@@ -271,7 +309,7 @@ struct NativeSeparatedQueueView: NSViewRepresentable {
         }
         func tableView(_ tableView: NSTableView, shouldSelectRow row: Int) -> Bool {
             guard rows.indices.contains(row) else { return false }
-            switch rows[row] { case .heading, .status: return false; default: followsCurrent = false; return true }
+            switch rows[row] { case .heading, .status, .jamPending: return false; default: followsCurrent = false; return true }
         }
         func tableView(_ tableView: NSTableView, isGroupRow row: Int) -> Bool {
             guard rows.indices.contains(row) else { return false }
@@ -296,6 +334,13 @@ struct NativeSeparatedQueueView: NSViewRepresentable {
                 let cell = (tableView.makeView(withIdentifier: identifier, owner: self) as? NativeQueueTrackCellView) ?? NativeQueueTrackCellView()
                 cell.identifier = identifier
                 configure(cell, row: row)
+                return cell
+            }
+            if case .jamPending(let id) = rows[row], let placeholder = jamPlaceholders[id] {
+                let identifier = NSUserInterfaceItemIdentifier("SeparatedQueueJamPlaceholder")
+                let cell = (tableView.makeView(withIdentifier: identifier, owner: self) as? JamPlaceholderCellView) ?? JamPlaceholderCellView()
+                cell.identifier = identifier
+                cell.configure(entry: placeholder.entry, resolving: placeholder.resolving)
                 return cell
             }
             let identifier = NSUserInterfaceItemIdentifier("SeparatedQueueLabel")
@@ -323,13 +368,17 @@ struct NativeSeparatedQueueView: NSViewRepresentable {
             let active: Bool
             if case .committed(let id) = item { active = parent.player.currentTrack != nil && id == q.currentOccurrenceID } else { active = false }
             let index: Int
-            if case .committed(let id) = item { index = committedIndices[id] ?? 0 } else { index = proposalIndices[item.identity.replacingOccurrences(of: "proposal:", with: "")] ?? 0 }
+            if case .committed(let id) = item {
+                // In a Jam the rows are numbered in Jam order, so unavailable tracks leave no gap.
+                index = jamByOccurrence[id].map { JamQueueMerge.displayNumber(forEntryIndex: $0.index) - 1 } ?? committedIndices[id] ?? 0
+            } else { index = proposalIndices[item.identity.replacingOccurrences(of: "proposal:", with: "")] ?? 0 }
             let reorderable: Bool
             if case .committed = item { reorderable = true } else { reorderable = false }
             cell.configure(track: song, index: index, isCurrentTrack: active, isPlaying: active && parent.playing,
                            isLiked: parent.liked.contains(song.videoId), hideAlbum: true, showAlbumInSubtitle: true,
                            isReorderable: reorderable, rowHeight: 46)
             cell.setPreviousAppearance(item.isCommitted && index < q.currentIndex)
+            if case .committed(let id) = item { cell.setJamMarker(jamByOccurrence[id].map(JamRowMarker.init)) }
             cell.updatePlaybackDuration(active && parent.player.duration > 0 ? parent.player.formattedDuration : nil)
             cell.onArtistDestination = { [weak self] id, name in
                 self?.parent.router?.navigate(to: id.map { .artist(browseId: $0) } ?? .search(query: name))
@@ -463,8 +512,15 @@ struct NativeSeparatedQueueView: NSViewRepresentable {
             guard let data = try? JSONSerialization.data(withJSONObject: payload) else { return nil }
             let item = NSPasteboardItem(); item.setData(data, forType: Self.dragType); return item
         }
+        /// A drop "above" a Jam placeholder lands after it: placeholders are not drop targets.
+        func resolvedDropRow(_ row: Int) -> Int {
+            var row = row
+            while rows.indices.contains(row), case .jamPending = rows[row] { row += 1 }
+            return row
+        }
         func destination(_ row: Int) -> Int? {
             guard row >= 0 else { return nil }
+            let row = resolvedDropRow(row)
             if row == rows.count { return parent.manager.queue.count }
             if row > rows.count { return nil }
             switch rows[row] {
@@ -475,7 +531,7 @@ struct NativeSeparatedQueueView: NSViewRepresentable {
         }
         func tableView(_ tableView: NSTableView, validateDrop info: any NSDraggingInfo, proposedRow row: Int, proposedDropOperation dropOperation: NSTableView.DropOperation) -> NSDragOperation {
             guard destination(row) != nil else { return [] }
-            tableView.setDropRow(row, dropOperation: .above)
+            tableView.setDropRow(resolvedDropRow(row), dropOperation: .above)
             if let data = info.draggingPasteboard.data(forType: Self.dragType),
                let payload = (try? JSONSerialization.jsonObject(with: data)) as? [String:String],
                payload["kind"] == "chosen", let id = payload["id"],

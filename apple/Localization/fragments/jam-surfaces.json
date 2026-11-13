@@ -1,0 +1,7 @@
+{
+  "jam.surface.tab": { "es": "Jam", "en": "Jam" },
+  "jam.queue.addedByPerson": { "es": "Agregada por una persona", "en": "Added by a person" },
+  "jam.queue.spotifySuggestion": { "es": "Sugerida por Spotify", "en": "Suggested by Spotify" },
+  "jam.queue.unavailable": { "es": "Sin equivalente en YouTube Music", "en": "No equivalent on YouTube Music" },
+  "jam.queue.resolving": { "es": "Buscando en YouTube Music…", "en": "Looking it up on YouTube Music…" }
+}

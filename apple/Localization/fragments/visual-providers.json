@@ -102,5 +102,21 @@
   "visualProvider.authenticating": {
     "es": "Obteniendo token de sesión…",
     "en": "Obtaining session token…"
+  },
+  "visualProvider.removeKeepsSession": {
+    "es": "Desinstalar (conserva la sesión de Spotify)",
+    "en": "Uninstall (keeps the Spotify session)"
+  },
+  "visualProvider.spotifySignOut": {
+    "es": "Cerrar sesión de Spotify",
+    "en": "Sign out of Spotify"
+  },
+  "visualProvider.spotifyShared": {
+    "es": "La sesión de Spotify se comparte con Spotify Jam. Cerrarla afecta a ambos; desinstalar el proveedor no la cierra.",
+    "en": "The Spotify session is shared with Spotify Jam. Signing out affects both; uninstalling the provider does not sign you out."
+  },
+  "visualProvider.spotifyOnlyAccount": {
+    "es": "Sesión de Spotify activa (la usa Spotify Jam)",
+    "en": "Spotify session active (used by Spotify Jam)"
   }
 }

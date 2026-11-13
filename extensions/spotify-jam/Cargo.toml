@@ -1,0 +1,20 @@
+[package]
+name = "sideb-spotify-jam"
+version = "0.2.0"
+edition = "2021"
+license = "MIT"
+
+# Deliberately outside the protected core workspace and the app's dependency graph.
+[workspace]
+
+[dependencies]
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-util", "io-std", "time", "sync"] }
+tokio-tungstenite = { version = "0.24", default-features = false, features = ["connect", "rustls-tls-webpki-roots"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
+futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
+rand = "0.8"
+base64 = "0.22"
+flate2 = "1"
+unicode-normalization = "0.1"

@@ -85,7 +85,7 @@ public final class PlayerViewModel {
                 switch selectedFullscreenPanel {
                 case .lyrics: selectedSidebarPanel = .lyrics
                 case .queue: selectedSidebarPanel = .queue
-                case .recommended: selectedSidebarPanel = .artwork
+                case .recommended, .jam: selectedSidebarPanel = .artwork
                 }
             }
         }
@@ -110,6 +110,111 @@ public final class PlayerViewModel {
     public var selectedFullscreenPanel: FullscreenPanel = .queue
     public var isShowingGeniusLyrics: Bool = false
     public var queueManager: QueueManager = QueueManager()
+
+    // MARK: - Modo sesión (Spotify Jam)
+    enum JamControl { case togglePlayPause, next, previous, seek(fraction: Double) }
+    /// Presente mientras se refleja un Jam: los controles de transporte se envían al Jam en lugar de
+    /// mover el audio local, y la cola deja de extenderse con radio/recomendaciones propias.
+    var jamControl: ((JamControl) -> Void)?
+    var isJamSessionActive: Bool { jamControl != nil }
+
+    /// What happens to the user's own playback when a session ends.
+    enum JamExitRestore {
+        /// Rebuild the saved queue and load the saved track paused at the saved position.
+        case loadPaused
+        /// Rebuild the saved queue and current track without loading audio.
+        case stateOnly
+        /// Leave nothing behind (the account is being switched).
+        case discard
+    }
+
+    /// A playback request that was held back because a Jam is active. The UI asks the user and
+    /// answers with `confirmJamExit()` or `cancelJamExit()`.
+    struct PendingJamExit: Identifiable {
+        let id = UUID()
+        /// Title of what the user asked to play, for the confirmation text.
+        let subject: String?
+        fileprivate let action: @MainActor () -> Void
+    }
+    private(set) var pendingJamExit: PendingJamExit?
+    /// The user's own queue, current track and position, taken when the Jam started. While a Jam
+    /// is active this, not the mirrored Jam queue, is what gets persisted.
+    private var jamSnapshot: SavedPlaybackState?
+    private struct PendingResume { let videoID: String; let seconds: Double }
+    private var pendingResume: PendingResume?
+
+    /// Runs `action` now, or holds it as `pendingJamExit` when a Jam is active. Returns true when held.
+    private func deferForJamExit(subject: String?, _ action: @escaping @MainActor () -> Void) -> Bool {
+        guard isJamSessionActive else { return false }
+        pendingJamExit = PendingJamExit(subject: subject, action: action)
+        return true
+    }
+
+    /// Leaves the Jam (restoring the user's queue without loading audio), then runs the held request.
+    func confirmJamExit() {
+        guard let pending = pendingJamExit else { return }
+        pendingJamExit = nil
+        JamSessionController.shared.leave(restore: .stateOnly)
+        if isJamSessionActive { endJamSession(restore: .stateOnly) } // Never run the request inside a Jam.
+        pending.action()
+    }
+
+    func cancelJamExit() { pendingJamExit = nil }
+
+    /// Called by the Jam controller once it is live: snapshots the user's session, silences local
+    /// playback and hands queue control to the Jam.
+    func beginJamSession(editor: any QueueSessionEditing, control: @escaping (JamControl) -> Void) {
+        if jamSnapshot == nil {
+            var snapshot = playbackSnapshot()
+            snapshot.positionSeconds = currentTrack == nil ? nil : audioService.currentTime
+            jamSnapshot = snapshot
+        }
+        pendingJamExit = nil
+        pendingResume = nil
+        cancelInFlightRadioTasks()
+        resolveStreamTask?.cancel()
+        lyricsTask?.cancel()
+        currentPlaybackToken = UUID()
+        pendingTailSkipToken = nil
+        audioService.stop()
+        streamInfo = nil
+        isLoadingStream = false
+        queueManager.isLoadingRadio = false
+        queueManager.isLoadingAutoplay = false
+        queueManager.isRepeat = false
+        queueManager.clearQueue()
+        currentTrack = nil
+        queueManager.sessionEditor = editor
+        jamControl = control
+    }
+
+    /// Called by the Jam controller when the session is over, whatever the reason.
+    func endJamSession(restore: JamExitRestore) {
+        let snapshot = jamSnapshot
+        let wasSwitching = isSwitchingPlaybackSession
+        isSwitchingPlaybackSession = true // The cleared Jam queue must never be written as the session.
+        defer { isSwitchingPlaybackSession = wasSwitching }
+        jamSnapshot = nil
+        jamControl = nil
+        pendingJamExit = nil
+        queueManager.sessionEditor = nil
+        cancelInFlightRadioTasks()
+        resolveStreamTask?.cancel()
+        lyricsTask?.cancel()
+        currentPlaybackToken = UUID()
+        audioService.stop()
+        streamInfo = nil
+        isLoadingStream = false
+        queueManager.clearQueue()
+        currentTrack = nil
+        guard restore != .discard, let snapshot else { updateNowPlayingInfo(); return }
+        _ = restoreQueue(from: snapshot)
+        updateNowPlayingInfo()
+        if restore == .loadPaused, let track = currentTrack {
+            pendingResume = PendingResume(videoID: track.videoId, seconds: snapshot.positionSeconds ?? 0)
+            playSongNow(track)
+        }
+    }
     public var recommendedTracks: [SongItemRecord] = []
     
     // MARK: - Recomendaciones (Relacionado)
@@ -275,7 +380,8 @@ public final class PlayerViewModel {
     }
 
     private func playbackSnapshot() -> SavedPlaybackState {
-        SavedPlaybackState(
+        if let jamSnapshot { return jamSnapshot }
+        return SavedPlaybackState(
             version: SavedPlaybackState.currentVersion,
             tracks: queueManager.queue.map(SavedPlaybackState.Track.init),
             currentIndex: queueManager.currentIndex,
@@ -306,6 +412,7 @@ public final class PlayerViewModel {
         searchRecents.setAccount(identity)
         cancelSearchRecentIntent()
         if currentPlaybackIdentity != nil { flushPlaybackState() }
+        if isJamSessionActive { JamSessionController.shared.leave(restore: .discard) }
         isSwitchingPlaybackSession = true
         defer {
             isSwitchingPlaybackSession = false
@@ -350,6 +457,18 @@ public final class PlayerViewModel {
             isSwitchingPlaybackSession = false
             return
         }
+        guard restoreQueue(from: saved) else {
+            isSwitchingPlaybackSession = false
+            updateNowPlayingInfo()
+            return
+        }
+        updateNowPlayingInfo()
+        isSwitchingPlaybackSession = false
+    }
+
+    /// Rebuilds the queue, order and current track from a saved session (launch restore and Jam exit).
+    /// Returns false, leaving an empty queue, when the saved order does not validate.
+    private func restoreQueue(from saved: SavedPlaybackState) -> Bool {
         let tracks = saved.tracks.map(\.song)
         queueManager.replaceQueue(with: tracks, startingAt: saved.currentIndex,
                                   context: saved.context?.queueContext,
@@ -358,9 +477,7 @@ public final class PlayerViewModel {
         queueManager.setContextLocalizationKey(saved.context?.localizationKey, args: saved.context?.localizationArguments ?? [])
         guard queueManager.restoreOrder(saved.order, isShuffle: saved.isShuffle) else {
             queueManager.clearQueue()
-            isSwitchingPlaybackSession = false
-            updateNowPlayingInfo()
-            return
+            return false
         }
         queueManager.radioCursorVideoID = saved.radioCursorVideoID
         queueManager.isRepeat = saved.isRepeat
@@ -370,13 +487,13 @@ public final class PlayerViewModel {
             return nil
         }()
         isCurrentTrackLiked = currentTrack.map { likedVideoIds.contains($0.videoId) } ?? false
-        updateNowPlayingInfo()
-        isSwitchingPlaybackSession = false
+        return true
     }
 
     private func setupTrackEndListener() {
         self.audioService.onTrackDidEnd = { [weak self] in
-            self?.playNext(isManualSkip: false)
+            guard let self, !self.isJamSessionActive else { return }
+            self.playNext(isManualSkip: false)
         }
     }
 
@@ -518,6 +635,7 @@ public final class PlayerViewModel {
     
     /// Reproduce una canción e inicia una radio dinámica de YouTube Music (reemplazo limpio de cola).
     public func playWithRadio(_ song: SongItemRecord, albumBrowseId: String? = nil, artistBrowseId: String? = nil) {
+        if deferForJamExit(subject: song.title, { [weak self] in self?.playWithRadio(song, albumBrowseId: albumBrowseId, artistBrowseId: artistBrowseId) }) { return }
         cancelInFlightRadioTasks()
         self.currentPlaylistBrowseId = nil
         let radioTitle = L10n.text("player.radioFor", args: [song.title])
@@ -538,6 +656,7 @@ public final class PlayerViewModel {
     
     /// A radio's originating card controls that radio, even after it advances to another track.
     func activateMediaRadio(_ song: SongItemRecord) {
+        if deferForJamExit(subject: song.title, { [weak self] in self?.activateMediaRadio(song) }) { return }
         if MediaPlaybackIdentity.isRadioOrigin(videoID: song.videoId, context: queueManager.context), currentTrack != nil {
             cancelPendingMediaCollectionLoad()
             togglePlayPause()
@@ -548,6 +667,7 @@ public final class PlayerViewModel {
 
     /// Spotlight remembers the selected recording only after the accepted item starts.
     func activateSearchMediaRadio(_ song: SongItemRecord, restart: Bool = false) {
+        if deferForJamExit(subject: song.title, { [weak self] in self?.activateSearchMediaRadio(song, restart: restart) }) { return }
         cancelSearchRecentIntent()
         if !restart, currentTrack?.videoId == song.videoId, errorMessage == nil,
            isLoadingStream || audioService.isPlaying {
@@ -583,6 +703,7 @@ public final class PlayerViewModel {
     /// All cards use the same collection identity and guarded catalog loading path.
     func activateMediaCollection(id: String, kind: String) {
         guard !id.isEmpty else { return }
+        if deferForJamExit(subject: nil, { [weak self] in self?.activateMediaCollection(id: id, kind: kind) }) { return }
         if MediaPlaybackIdentity.isCollectionActive(kind: kind, id: id, context: queueManager.context), currentTrack != nil {
             cancelPendingMediaCollectionLoad()
             togglePlayPause()
@@ -624,6 +745,7 @@ public final class PlayerViewModel {
 
     private func playRecommendedCollection(browseId: String, kind: HomeFeaturedCollectionKind, shuffle: Bool) {
         guard !browseId.isEmpty, let core = rustCore else { return }
+        if deferForJamExit(subject: nil, { [weak self] in self?.playRecommendedCollection(browseId: browseId, kind: kind, shuffle: shuffle) }) { return }
         cancelInFlightRadioTasks()
         let request = recommendedCollectionRequest
         let generation = accountGeneration
@@ -680,6 +802,7 @@ public final class PlayerViewModel {
     /// Reproduce un álbum completo reemplazando la cola activa.
     public func playAlbum(browseId: String, title: String, tracks: [SongItemRecord], startingAt: Int = 0, artistBrowseId: String? = nil, shuffle: Bool = false) {
         guard !tracks.isEmpty else { return }
+        if deferForJamExit(subject: title, { [weak self] in self?.playAlbum(browseId: browseId, title: title, tracks: tracks, startingAt: startingAt, artistBrowseId: artistBrowseId, shuffle: shuffle) }) { return }
         cancelInFlightRadioTasks()
         self.currentAlbumBrowseId = browseId
         self.currentArtistBrowseId = artistBrowseId
@@ -702,6 +825,7 @@ public final class PlayerViewModel {
     /// Initial shuffle still waits for the whole catalog so every source occurrence can be selected.
     public func playPlaylist(browseId: String, title: String, tracks: [SongItemRecord], startingAt: Int = 0, continuation: String? = nil, shuffle: Bool = false) {
         guard !tracks.isEmpty else { return }
+        if deferForJamExit(subject: title, { [weak self] in self?.playPlaylist(browseId: browseId, title: title, tracks: tracks, startingAt: startingAt, continuation: continuation, shuffle: shuffle) }) { return }
         cancelInFlightRadioTasks()
         guard let continuation, !continuation.isEmpty else {
             beginPlaylist(browseId: browseId, title: title, tracks: tracks, startingAt: startingAt, shuffle: shuffle)
@@ -777,6 +901,7 @@ public final class PlayerViewModel {
 
     public func playCollection(tracks: [SongItemRecord], title: String, artistBrowseId: String? = nil, shuffle: Bool = false, startingAt: Int = 0) {
         guard !tracks.isEmpty else { return }
+        if deferForJamExit(subject: title, { [weak self] in self?.playCollection(tracks: tracks, title: title, artistBrowseId: artistBrowseId, shuffle: shuffle, startingAt: startingAt) }) { return }
         cancelInFlightRadioTasks()
         currentAlbumBrowseId = nil
         currentPlaylistBrowseId = nil
@@ -791,6 +916,7 @@ public final class PlayerViewModel {
     /// Execute the exact provider watch destination, including radio/shuffle params.
     func activateProviderSearchAction(_ action: SearchActionRecord, title: String, source: BrowseCardRecord? = nil) {
         guard let core = rustCore, action.videoId != nil || action.playlistId != nil else { return }
+        if deferForJamExit(subject: title, { [weak self] in self?.activateProviderSearchAction(action, title: title, source: source) }) { return }
         cancelInFlightRadioTasks()
         let token = UUID()
         currentRadioToken = token
@@ -836,6 +962,7 @@ public final class PlayerViewModel {
         fallbackTracks: [SongItemRecord] = []
     ) {
         guard let core = rustCore else { return }
+        if deferForJamExit(subject: title, { [weak self] in self?.startRadioForCollection(id: id, title: title, prefix: prefix, directRadioId: directRadioId, fallbackTracks: fallbackTracks) }) { return }
         let radioPid: String
         if let direct = directRadioId, !direct.isEmpty {
             radioPid = direct
@@ -889,6 +1016,12 @@ public final class PlayerViewModel {
     /// Explicit choices made while stopped resume at the new occurrence, retaining previous songs.
     private func enqueueChosenTracks(_ tracks: [SongItemRecord], next: Bool) {
         guard !tracks.isEmpty else { return }
+        if isJamSessionActive {
+            // The Jam owns the queue: the manager hands the request to it (resolve on Spotify, then
+            // insert/add); nothing is added locally.
+            if next { queueManager.playNext(tracks) } else { queueManager.addTracksToQueue(tracks) }
+            return
+        }
         if currentTrack == nil, queueManager.queue.isEmpty, tracks.count == 1 {
             playWithRadio(tracks[0])
             return
@@ -906,6 +1039,7 @@ public final class PlayerViewModel {
     public func addToQueue(tracks: [SongItemRecord]) { enqueueChosenTracks(tracks, next: false) }
 
     public func enqueueQueueRecommendation(id: String, sessionID: UUID, next: Bool) {
+        guard !isJamSessionActive else { return }
         guard queueManager.recommendationSessionID == sessionID,
               queueManager.recommendationEntries.contains(where: { $0.id == id }) else { return }
         queueManager.enqueueRecommendation(id: id, next: next)
@@ -1018,6 +1152,7 @@ public final class PlayerViewModel {
                     playbackID: token
                 )
                 self.applyPendingLyricSeek(playbackID: token, videoID: song.videoId)
+                self.applyPendingResume(videoID: song.videoId)
                 self.rememberCurrentTrackDuration(self.audioService.duration)
                 self.genius.playbackStarted(identity: token)
                 self.updateNowPlayingInfo()
@@ -1026,6 +1161,7 @@ public final class PlayerViewModel {
                 self.failSearchRecentIntent()
                 self.pendingLyricSeek = nil
                 self.isLoadingStream = false
+                self.pendingResume = nil
                 self.errorDescriptor = AppMessage(key: "player.error.resolveStream", args: [error.localizedDescription])
                 print("[PlayerViewModel] ❌ Error: \(error)")
             }
@@ -1041,6 +1177,7 @@ public final class PlayerViewModel {
     
     /// Compatibilidad hacia atrás: si `addToQueue` es true, inicia una radio limpia; si no, reproduce de inmediato.
     public func playSong(_ song: SongItemRecord, addToQueue: Bool = true, albumBrowseId: String? = nil, artistBrowseId: String? = nil) {
+        if deferForJamExit(subject: song.title, { [weak self] in self?.playSong(song, addToQueue: addToQueue, albumBrowseId: albumBrowseId, artistBrowseId: artistBrowseId) }) { return }
         if addToQueue {
             playWithRadio(song, albumBrowseId: albumBrowseId, artistBrowseId: artistBrowseId)
         } else {
@@ -1049,6 +1186,7 @@ public final class PlayerViewModel {
     }
 
     public func playNext(isManualSkip: Bool = true) {
+        if let jamControl { if isManualSkip { jamControl(.next) }; return }
         if currentTrack == nil, let selected = queueManager.currentTrack {
             playSongNow(selected, deferStreamResolution: isManualSkip)
             checkAutomixTrigger()
@@ -1080,6 +1218,7 @@ public final class PlayerViewModel {
     }
 
     public func playPrevious() {
+        if let jamControl { jamControl(.previous); return }
         if let prev = queueManager.previousTrack() {
             playSongNow(prev, deferStreamResolution: true)
         }
@@ -1095,6 +1234,8 @@ public final class PlayerViewModel {
     }
 
     public func playQueueIndex(_ index: Int) {
+        // The Jam cannot jump to an arbitrary row: say so instead of silently doing nothing.
+        guard !isJamSessionActive else { queueManager.sessionEditor?.sessionRejected(.playRow); return }
         if let track = queueManager.selectTrack(at: index) {
             playSongNow(track, deferStreamResolution: true)
             checkAutomixTrigger()
@@ -1230,6 +1371,10 @@ public final class PlayerViewModel {
 
     public func removeQueueTrack(at index: Int) {
         guard index >= 0, index < queueManager.queue.count else { return }
+        if isJamSessionActive {
+            _ = queueManager.removeTrack(at: index) // Routed to the Jam; the current row is refused.
+            return
+        }
         if index == queueManager.currentIndex {
             if let next = queueManager.advanceAfterRemovingCurrent() {
                 playSongNow(next)
@@ -1401,6 +1546,7 @@ public final class PlayerViewModel {
 
     /// Consulta la radio de YouTube Music y puebla la cola Up Next de forma dinámica.
     public func fetchRadio(for track: SongItemRecord) {
+        guard !isJamSessionActive else { return }
         guard let core = rustCore else { return }
 
         radioTask?.cancel()
@@ -1605,6 +1751,7 @@ public final class PlayerViewModel {
     /// Si la cola activa es una playlist con continuación disponible, carga la siguiente página de la misma playlist.
     /// Si no, o si es radio, extiende vía Automix.
     public func checkAutomixTrigger() {
+        guard !isJamSessionActive else { return }
         guard queueManager.isNearTail else { return }
 
         if providerActionQueueToken == queueManager.queueToken,
@@ -1629,6 +1776,7 @@ public final class PlayerViewModel {
 
     /// Extiende la cola activa solicitando la siguiente página de la playlist actual.
     public func extendPlaylistIfNeeded() {
+        guard !isJamSessionActive else { return }
         if providerActionQueueToken == queueManager.queueToken { extendProviderActionIfNeeded(); return }
         guard let core = rustCore, !isLoadingPlaylistContinuation else { return }
         guard case .playlist = queueManager.context,
@@ -1676,6 +1824,7 @@ public final class PlayerViewModel {
 
     /// `/next` continuations from provider buttons must never be sent to `/browse`.
     func extendProviderActionIfNeeded() {
+        guard !isJamSessionActive else { return }
         guard let core = rustCore, providerActionQueueToken == queueManager.queueToken,
               !isLoadingPlaylistContinuation, !queueManager.isLoadingAutoplay, let continuation = queueManager.continuationToken ?? queueManager.radioContinuationToken,
               !providerActionContinuations.contains(continuation) else { return }
@@ -1721,6 +1870,7 @@ public final class PlayerViewModel {
     }
 
     public func playQueueRecommendation(id: String, sessionID: UUID) {
+        if deferForJamExit(subject: nil, { [weak self] in self?.playQueueRecommendation(id: id, sessionID: sessionID) }) { return }
         guard sessionID == queueManager.recommendationSessionID,
               let track = queueManager.playRecommendation(id: id, advanceThrough: QueuePreferences.selection(in: HomeAppearance.preferences) == .advance) else { return }
         playSongNow(track, deferStreamResolution: true)
@@ -1728,6 +1878,7 @@ public final class PlayerViewModel {
     }
 
     public func extendRadioIfNeeded() {
+        guard !isJamSessionActive else { return }
         if providerActionQueueToken == queueManager.queueToken,
            (queueManager.continuationToken != nil || queueManager.radioContinuationToken != nil) {
             extendProviderActionIfNeeded(); return
@@ -1788,6 +1939,7 @@ public final class PlayerViewModel {
 
 
     public func togglePlayPause() {
+        if let jamControl { jamControl(.togglePlayPause); return }
         if pendingTailSkipToken != nil {
             pendingTailSkipToken = nil
             audioService.pause()
@@ -1813,6 +1965,7 @@ public final class PlayerViewModel {
     }
 
     public func seek(toFraction fraction: Double) {
+        if let jamControl { jamControl(.seek(fraction: fraction)); return }
         audioService.seek(toFraction: fraction)
     }
 
@@ -1831,6 +1984,16 @@ public final class PlayerViewModel {
         pendingLyricSeek = PendingLyricSeek(playbackID: currentPlaybackToken, sessionID: accountGeneration,
                                            videoID: track.videoId, seconds: seconds)
         return true
+    }
+
+    /// After leaving a Jam the user's track is loaded but must stay paused at the saved position.
+    private func applyPendingResume(videoID: String) {
+        guard let resume = pendingResume else { return }
+        pendingResume = nil
+        guard resume.videoID == videoID, !isJamSessionActive else { return }
+        if resume.seconds > 1 { audioService.seek(toSeconds: resume.seconds) }
+        audioService.pause()
+        updateNowPlayingPlaybackRate()
     }
 
     private func applyPendingLyricSeek(playbackID: UUID, videoID: String) {

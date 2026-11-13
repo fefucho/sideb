@@ -22,24 +22,23 @@ final class VisualProviderHost {
     private(set) var provisioning: Task<Void, Never>?
     private let preferences: UserDefaults
     private let root: URL
-    private let credentials: any VisualProviderCredentials
-    private var cachedCredential: String?
-    private var credentialReadAttempted = false
+    /// The Spotify login, shared with the Jam. Used only while the installed provider's auth targets Spotify.
+    private let spotifySession: CredentialSession
+    /// Token of a provider whose login is not Spotify's (or that has no login descriptor). Never holds Spotify's.
+    private let ownSession: CredentialSession
     private var authBlocked = false
     private var backoffUntil = Date.distantPast
-    private let tokenSource: any VisualProviderTokenSource
-    private var recoveryTask: Task<String?, Never>?
     private var backgroundRecovery: Task<Void, Never>?
-    /// The last token the provider refused. A "new" token equal to it is not a recovery.
-    private var rejectedCredential: String?
-    private var nextProactiveRefresh = Date.distantPast
     private var lastForegroundRetry = Date.distantPast
-    private static let savedAtKey = "sideb.visualProvider.credentialSavedAt.v1"
-    /// Web Player tokens last about an hour; renew quietly before that instead of failing a request first.
-    private static let maxCredentialAge: TimeInterval = 50 * 60
+    private static let ownSavedAtKey = "sideb.visualProvider.otherCredentialSavedAt.v1"
     private(set) var manifest: VisualProviderManifest?
     private(set) var revision: UInt64 = 0
-    private(set) var hasCredential = false
+    /// The session that serves the installed provider: Spotify's only when its auth is Spotify's.
+    private var activeSession: CredentialSession { SpotifySession.matches(manifest?.auth) ? spotifySession : ownSession }
+    /// Whether the installed provider has a credential (it can be the one shared with the Jam).
+    var hasCredential: Bool { manifest != nil && activeSession.hasCredential }
+    /// The installed provider shares the Spotify session, so signing out affects the Jam too.
+    var usesSpotifySession: Bool { manifest != nil && SpotifySession.matches(manifest?.auth) }
     private(set) var statusKey = "visualProvider.status.idle"
     private var jobs: [String: VisualProviderJob] = [:]
     var enabled: Bool {
@@ -51,18 +50,24 @@ final class VisualProviderHost {
     }
     var identitySalt: String? { enabled && manifest != nil && hasCredential ? "\(manifest!.id):\(revision)" : nil }
 
-    init(root: URL? = nil, preferences: UserDefaults = HomeAppearance.preferences, credentials: (any VisualProviderCredentials)? = nil, tokenSource: (any VisualProviderTokenSource)? = nil, bundledPackage: URL? = nil) {
+    init(root: URL? = nil, preferences: UserDefaults = HomeAppearance.preferences, credentials: (any VisualProviderCredentials)? = nil, tokenSource: (any VisualProviderTokenSource)? = nil, spotifySession: CredentialSession? = nil, bundledPackage: URL? = nil) {
         self.bundledPackage = bundledPackage
         self.root = root ?? HomeLabConfiguration.appSupportURL.appendingPathComponent("VisualProviders", isDirectory: true)
         self.preferences = preferences
-        self.credentials = credentials ?? KeychainVisualProviderCredentials()
-        self.tokenSource = tokenSource ?? WebViewVisualProviderTokenSource()
+        self.spotifySession = spotifySession ?? SpotifySession.shared
+        self.ownSession = CredentialSession(credentials: credentials ?? KeychainVisualProviderCredentials(account: KeychainVisualProviderCredentials.otherProviderAccount),
+                                            tokenSource: tokenSource ?? WebViewVisualProviderTokenSource(),
+                                            preferences: preferences, savedAtKey: Self.ownSavedAtKey)
         enabled = preferences.bool(forKey: Self.enabledKey)
         manifest = try? Self.readManifest(at: self.root.appendingPathComponent("Installed", isDirectory: true))
         if manifest == nil { enabled = false }
-        if manifest != nil {
-            hasCredential = self.credentials.exists
-            if !hasCredential { statusKey = "visualProvider.status.tokenRequired" }
+        if manifest != nil, !hasCredential { statusKey = "visualProvider.status.tokenRequired" }
+        for session in [self.spotifySession, self.ownSession] {
+            session.subscribe { [weak self, weak session] event in
+                guard let self, let session else { return false }
+                MainActor.assumeIsolated { self.sessionEvent(event, from: session) }
+                return true
+            }
         }
         NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.retryAfterReturningToApp() }
@@ -149,12 +154,8 @@ final class VisualProviderHost {
             if fm.fileExists(atPath: destination.path) { try fm.removeItem(at: destination) }
             try fm.moveItem(at: staging, to: destination)
         }.value
-        if !isUpgrade {
-            try credentials.delete()
-            cachedCredential = nil
-            credentialReadAttempted = true
-            hasCredential = false
-        }
+        // Another provider never inherits a token. The shared Spotify login is not the provider's to wipe.
+        if !isUpgrade { try await ownSession.signOut() }
         manifest = next
         revision &+= 1
         statusKey = hasCredential ? "visualProvider.status.idle" : "visualProvider.status.tokenRequired"
@@ -185,12 +186,10 @@ final class VisualProviderHost {
         if let id = manifest?.id ?? bundledPackage.flatMap({ try? Self.readManifest(at: $0).id }) { setRemoved(id, true) }
         enabled = false
         invalidate()
-        recoveryTask?.cancel(); recoveryTask = nil
-        preferences.removeObject(forKey: Self.savedAtKey)
-        try credentials.delete()
-        cachedCredential = nil
-        credentialReadAttempted = true
-        manifest = nil; hasCredential = false
+        // The Spotify login is shared with the Jam: removing Canvas never signs the user out of Spotify.
+        // Only a provider-private token goes away with its provider.
+        if !usesSpotifySession { try await ownSession.signOut() }
+        manifest = nil
         let destination = installed
         let cache = mediaCacheRoot
         try await Task.detached(priority: .utility) {
@@ -209,6 +208,26 @@ final class VisualProviderHost {
         backoffUntil = .distantPast
         backgroundRecovery?.cancel(); backgroundRecovery = nil
         revision &+= 1
+    }
+
+    /// Reacts to the session that serves the installed provider changing, whoever changed it (Settings, the Jam panel).
+    private func sessionEvent(_ event: CredentialSession.Event, from session: CredentialSession) {
+        guard session === activeSession else { return }
+        switch event {
+        case .signedIn:
+            invalidate()
+            statusKey = "visualProvider.status.idle"
+        case .signedOut:
+            invalidate()
+            statusKey = manifest == nil ? "visualProvider.status.idle" : "visualProvider.status.tokenRequired"
+        case .renewed:
+            // Silent renewal must not detach running players; only a provider that was blocked re-queries.
+            let wasBlocked = authBlocked
+            authBlocked = false
+            backgroundRecovery?.cancel(); backgroundRecovery = nil
+            statusKey = "visualProvider.status.idle"
+            if wasBlocked { revision &+= 1 }
+        }
     }
     func release(_ requestID: String) {
         guard let job = jobs.removeValue(forKey: requestID) else { return }
@@ -231,13 +250,9 @@ final class VisualProviderHost {
 
     private func prepare(track: SongItemRecord, duration: UInt64?, requestID: String, isRetry: Bool) async throws -> AnimatedArtworkAsset? {
         guard enabled, !authBlocked, backoffUntil < Date(), let manifest, hasCredential, jobs.count < 2 else { return nil }
-        if !credentialReadAttempted {
-            cachedCredential = credentials.read()
-            credentialReadAttempted = true
-            if cachedCredential == nil { hasCredential = false }
-        }
-        await refreshIfStale()
-        guard let credential = cachedCredential else { return nil }
+        let session = activeSession
+        if !authBlocked { await session.refreshIfStale(auth: manifest.auth) }
+        guard let credential = session.currentCredential() else { return nil }
 
         let providerCache = mediaCacheRoot.appendingPathComponent(manifest.id, isDirectory: true)
         let key = cacheKey(for: track)
@@ -279,7 +294,7 @@ final class VisualProviderHost {
             let reply = try JSONDecoder().decode(VisualProviderReply.self, from: data)
             try reply.validate(requestID: requestID)
             if reply.status == "authRequired" {
-                rejectedCredential = credential
+                session.noteRejected(credential)
                 if !isRetry, manifest.auth?.type == "webview" {
                     // The provider refused this token: fetch another in the background and retry once.
                     release(requestID)
@@ -409,64 +424,23 @@ final class VisualProviderHost {
             (0.55...0.58).contains(size.width / max(1, size.height)) && fps.isFinite && fps > 0 && fps <= 60.1
     }
 
+    /// Stores a token the user pasted or the login window produced, in the session that serves the provider.
     func saveCredential(_ value: String) throws {
-        let token = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !token.isEmpty, token.utf8.count <= 8192, token.utf8.allSatisfy({ $0 >= 32 && $0 < 127 }) else { throw VisualProviderFailure.credential }
-        invalidate()
-        try credentials.save(token)
-        cachedCredential = token
-        credentialReadAttempted = true
-        rejectedCredential = nil
-        preferences.set(Date(), forKey: Self.savedAtKey)
-        hasCredential = true; revision &+= 1; statusKey = "visualProvider.status.idle"
+        try activeSession.save(value)
+    }
+
+    /// Signs out of Spotify for every feature that shares the session (Canvas and the Jam).
+    func signOutOfSpotify() async throws {
+        try await spotifySession.signOut()
     }
 
     // MARK: Autonomous credential recovery
 
-    /// Replaces the stored token with one that is not the rejected one. Unlike `saveCredential` it does
-    /// not tear down running players: only consumers that were waiting on a working session are re-run.
-    private func storeRecovered(_ token: String) throws {
-        guard !token.isEmpty, token.utf8.count <= 8192, token.utf8.allSatisfy({ $0 >= 32 && $0 < 127 }) else { throw VisualProviderFailure.credential }
-        let hadWorkingSession = hasCredential && !authBlocked
-        try credentials.save(token)
-        cachedCredential = token
-        credentialReadAttempted = true
-        rejectedCredential = nil
-        preferences.set(Date(), forKey: Self.savedAtKey)
-        hasCredential = true
-        authBlocked = false
-        backgroundRecovery?.cancel(); backgroundRecovery = nil
-        statusKey = "visualProvider.status.idle"
-        if !hadWorkingSession { revision &+= 1 }
-    }
-
-    /// One recovery at a time: concurrent requests share the same web view attempt.
+    /// One recovery at a time (the session shares a single web view attempt between concurrent requests).
     @discardableResult
     func recoverCredential() async -> String? {
         guard let manifest, let auth = manifest.auth, auth.type == "webview" else { return nil }
-        if let running = recoveryTask { return await running.value }
-        let rejected = rejectedCredential
-        let providerID = manifest.id
-        let source = tokenSource
-        let task = Task { @MainActor [weak self] () -> String? in
-            let token = await source.acquire(auth: auth, rejecting: rejected)
-            guard let self else { return nil }
-            self.recoveryTask = nil
-            guard !Task.isCancelled, let token, token != rejected, self.manifest?.id == providerID,
-                  (try? self.storeRecovered(token)) != nil else { return nil }
-            return token
-        }
-        recoveryTask = task
-        return await task.value
-    }
-
-    private func refreshIfStale() async {
-        guard manifest?.auth != nil, hasCredential, !authBlocked, Date() >= nextProactiveRefresh,
-              let savedAt = preferences.object(forKey: Self.savedAtKey) as? Date,
-              Date().timeIntervalSince(savedAt) > Self.maxCredentialAge else { return }
-        // If this fails the current token may still work; ask again later rather than on every track.
-        nextProactiveRefresh = Date().addingTimeInterval(300)
-        _ = await recoverCredential()
+        return await activeSession.recover(auth: auth)
     }
 
     /// While the session stays rejected keep looking for a working token, with growing pauses.

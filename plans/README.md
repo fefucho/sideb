@@ -1,5 +1,7 @@
 # Planes generales
 
+- [PLAN-023: Escuchar juntos — Spotify Jam como invitado](PLAN-023-spotify-jam.md) — implementado en Mac en la rama `feature/listen-together` (FIX-343); validación manual de la versión final y Windows (PAR-062) pendientes.
+
 - [Release 1.4.0 Mac/Windows](RELEASE-1.4.0.md) — preparada, no publicada: versión 1.4.0/build 22 y notas listas; paridad Windows de [PLAN-023](../windows/plans/PLAN-023-paridad-1.4.0.md) (FIX-302…309) verificada sólo en frontend; verify/build en PC, QA y publicación pendientes.
 
 - [PLAN-022: Proveedores visuales opcionales](PLAN-022-optional-visual-providers.md) — host genérico Mac y Spotify separado; Apple primero, alternativa sólo lateral. Desactivado por defecto; QA Spotify real y port Windows pendientes.

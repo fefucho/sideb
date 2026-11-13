@@ -1181,6 +1181,9 @@ final class NativeTrackSectionHeaderCellView: NSTableCellView {
 // MARK: - Native Track Row View (Zero-Desync Hover)
 
 final class NativeTrackRowView: NSTableRowView {
+    /// Off while rows cannot be played by clicking (a Jam): hover must not suggest it.
+    var drawsHoverBackground = true
+
     var isCurrentTrack: Bool = false {
         didSet {
             if oldValue != isCurrentTrack {
@@ -1215,7 +1218,7 @@ final class NativeTrackRowView: NSTableRowView {
             context.setStrokeColor(NSColor.sidebActiveRowBorder.cgColor)
             context.setLineWidth(AppTheme.cardBorderWidth)
             context.strokePath()
-        } else if isHovered {
+        } else if isHovered && drawsHoverBackground {
             context.addPath(path)
             context.setFillColor(NSColor.white.withAlphaComponent(0.045).cgColor)
             context.fillPath()

@@ -543,7 +543,7 @@ import SideBCore
     let player = sidebarTestPlayer(directory, preferences: prefs)
     player.togglePlaybackSidebar(.queue)
     let playbackID = player.experimentalLyricsPlaybackIdentity
-    for (fullscreen, lateral) in [(FullscreenPanel.lyrics, PlaybackSidebarPanel.lyrics), (.recommended, .artwork), (.queue, .queue)] {
+    for (fullscreen, lateral) in [(FullscreenPanel.lyrics, PlaybackSidebarPanel.lyrics), (.recommended, .artwork), (.jam, .artwork), (.queue, .queue)] {
         player.isFullscreenPresented = true
         player.selectedFullscreenPanel = fullscreen
         player.dismissFullscreen()

@@ -14,6 +14,9 @@ struct PlayerBarView: View {
     var sidebarLyricsPreview: ((CGFloat) -> AnyView)?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    /// Live Spotify Jam state (observed through the controller).
+    private var jam: ConnectionsJamState { ConnectionsJamState.current() }
+
     @AppStorage(SidebarBottomContentPreferences.preferenceKey, store: HomeAppearance.preferences)
     private var sidebarBottomContentRaw = SidebarBottomContent.queue.rawValue
 
@@ -56,6 +59,7 @@ struct PlayerBarView: View {
             }
             Spacer(minLength: 10)
             PlayerBarProgressView(viewModel: viewModel, horizontalInset: 0, isStacked: true)
+                .modifier(JamSeekGate(jam: jam))
             if viewModel.selectedSidebarPanel == .artwork && !sidebarIsPortrait {
                 Color.clear
                     .frame(height: PlaybackSidebarLayout.progressToTransportSpacing(for: sidebarHeight ?? 628))
@@ -96,7 +100,7 @@ struct PlayerBarView: View {
                     .tint(.white)
                     .accessibilityLabel(L10n.text("player.showVolume"))
                     .windowGestureRegion(.volumeCapsule)
-                AirPlayButton()
+                ConnectionsButton(player: viewModel)
             }
             .foregroundStyle(.white.opacity(0.8))
             .frame(height: 32)
@@ -116,6 +120,7 @@ struct PlayerBarView: View {
                 // MARK: - 1. Barra de Progreso Superior (Diseño Foto 3 con Playhead Vertical)
                 if viewModel.currentTrack != nil {
                     PlayerBarProgressView(viewModel: viewModel)
+                        .modifier(JamSeekGate(jam: jam))
                 }
 
                 // MARK: - 2. Fila Principal de Controles
@@ -151,7 +156,8 @@ struct PlayerBarView: View {
 
     // MARK: - 2. Controles de Transporte (Izquierda - Sin rebordes, botones más amplios y proporcionados)
     private func transportControlsSection(isCompact: Bool) -> some View {
-        HStack(spacing: isSidebar ? 17 : (isCompact ? 4 : 10)) {
+        let jam = self.jam
+        return HStack(spacing: isSidebar ? 17 : (isCompact ? 4 : 10)) {
             // Shuffle
             Button {
                 viewModel.queueManager.toggleShuffle()
@@ -163,7 +169,9 @@ struct PlayerBarView: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .help(L10n.text(viewModel.queueManager.isShuffle ? "player.shuffle.disable" : "player.shuffle.enable"))
+            .disabled(!jam.shuffleRepeatEnabled)
+            .opacity(jam.shuffleRepeatEnabled ? 1 : 0.45)
+            .help(jam.shuffleRepeatEnabled ? L10n.text(viewModel.queueManager.isShuffle ? "player.shuffle.disable" : "player.shuffle.enable") : L10n.text("connections.jam.shuffleDisabled"))
             .accessibilityLabel(L10n.text(viewModel.queueManager.isShuffle ? "player.shuffle.disable" : "player.shuffle.enable"))
 
             // Anterior
@@ -181,8 +189,8 @@ struct PlayerBarView: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .disabled(viewModel.currentTrack == nil)
-            .help(L10n.text("player.previous"))
+            .disabled(viewModel.currentTrack == nil || !jam.nextPreviousSeekEnabled)
+            .help(jam.sharedControlHelp(L10n.text("player.previous")) ?? L10n.text("player.previous"))
             .accessibilityLabel(L10n.text("player.previous"))
 
             // Play / Pause Principal (Limpio, directo, tamaño prominente)
@@ -222,7 +230,7 @@ struct PlayerBarView: View {
             }
             .buttonStyle(.plain)
             .disabled(viewModel.currentTrack == nil)
-            .help(L10n.text(viewModel.errorMessage != nil ? "player.retryPlayback" : (viewModel.isPlaying ? "player.pause" : "player.play")))
+            .help(jam.isLive && viewModel.errorMessage == nil && viewModel.isPlaying ? L10n.text("connections.jam.pauseLocal") : L10n.text(viewModel.errorMessage != nil ? "player.retryPlayback" : (viewModel.isPlaying ? "player.pause" : "player.play")))
             .accessibilityLabel(L10n.text(viewModel.errorMessage != nil ? "player.retryPlayback" : (viewModel.isPlaying ? "player.pause" : "player.play")))
 
             // Siguiente
@@ -236,8 +244,8 @@ struct PlayerBarView: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .disabled(!viewModel.queueManager.hasNext)
-            .help(L10n.text("player.next"))
+            .disabled(!viewModel.queueManager.hasNext || !jam.nextPreviousSeekEnabled)
+            .help(jam.sharedControlHelp(L10n.text("player.next")) ?? L10n.text("player.next"))
             .accessibilityLabel(L10n.text("player.next"))
 
             // Repeat
@@ -251,7 +259,9 @@ struct PlayerBarView: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .help(L10n.text(viewModel.queueManager.isRepeat ? "player.repeat.disable" : "player.repeat.enable"))
+            .disabled(!jam.shuffleRepeatEnabled)
+            .opacity(jam.shuffleRepeatEnabled ? 1 : 0.45)
+            .help(jam.shuffleRepeatEnabled ? L10n.text(viewModel.queueManager.isRepeat ? "player.repeat.disable" : "player.repeat.enable") : L10n.text("connections.jam.repeatDisabled"))
             .accessibilityLabel(L10n.text(viewModel.queueManager.isRepeat ? "player.repeat.disable" : "player.repeat.enable"))
         }
     }
@@ -347,7 +357,8 @@ struct PlayerBarView: View {
                                         .lineLimit(1)
                                 }
 
-                                if let track = viewModel.currentTrack, let album = track.displayAlbum, !album.isEmpty {
+                                // While a Jam is live the context line names the Jam instead of the album (no spare width).
+                                if !jam.isLive, let track = viewModel.currentTrack, let album = track.displayAlbum, !album.isEmpty {
                                     Text("•")
                                         .font(.system(size: 10))
                                         .foregroundStyle(.secondary.opacity(0.50))
@@ -364,6 +375,10 @@ struct PlayerBarView: View {
                                     .onHover { isHoveringAlbum = $0 }
                                     .help(L10n.text("player.viewAlbum", args: [album]))
                                     .accessibilityLabel(L10n.text("player.viewAlbum", args: [album]))
+                                }
+
+                                if jam.isLive {
+                                    JamContextLabel(jam: jam)
                                 }
 
                             }
@@ -459,8 +474,8 @@ struct PlayerBarView: View {
                 .opacity(isVolumeExpanded ? 0 : 1)
                 .allowsHitTesting(!isVolumeExpanded)
 
-            // (c) AirPlay (100% nativo y sin rebordes)
-            AirPlayButton()
+            // (c) Conexiones (AirPlay / Spotify Jam)
+            ConnectionsButton(player: viewModel)
                 .opacity(isVolumeExpanded ? 0 : 1)
                 .allowsHitTesting(!isVolumeExpanded)
 
@@ -715,4 +730,38 @@ struct PlayerBarView: View {
     }
 
     private var volumeIcon: String { PlayerVolumePresentation.icon(volume: viewModel.volume) }
+}
+
+
+/// Disables the scrubber when the Jam owner has not granted control, and explains why.
+private struct JamSeekGate: ViewModifier {
+    let jam: ConnectionsJamState
+
+    func body(content: Content) -> some View {
+        if jam.isLive {
+            content
+                .disabled(!jam.nextPreviousSeekEnabled)
+                .help(jam.canControl ? L10n.text("connections.jam.seekSharedHelp") : L10n.text("connections.jam.seekNoControl"))
+        } else {
+            content
+        }
+    }
+}
+
+/// "• Jam de <host>" appended to the bar's context line while a Jam is live.
+private struct JamContextLabel: View {
+    let jam: ConnectionsJamState
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Text("•")
+                .font(.system(size: 10))
+                .foregroundStyle(.secondary.opacity(0.50))
+            Text(jam.contextLabel)
+                .font(.system(size: 11.5, weight: .semibold))
+                .foregroundStyle(Color.sidebAccentHighlight)
+                .lineLimit(1)
+        }
+        .accessibilityElement(children: .combine)
+    }
 }

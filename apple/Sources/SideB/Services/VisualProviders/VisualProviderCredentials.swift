@@ -8,12 +8,18 @@ import Security
     func delete() throws
 }
 
-/// A separate namespace with no plaintext or YTM-session fallback.
+/// A separate namespace with no plaintext or YTM-session fallback. The default account is the one
+/// item that has always held the Spotify session (see `SpotifySession`); never rename it.
 @MainActor final class KeychainVisualProviderCredentials: VisualProviderCredentials {
+    nonisolated static let spotifyAccount = "visual-provider"
+    /// Token of a provider whose login is not Spotify's. It never shares the Spotify item.
+    nonisolated static let otherProviderAccount = "visual-provider.other"
+    private let account: String
+    init(account: String = KeychainVisualProviderCredentials.spotifyAccount) { self.account = account }
     private var query: [String: Any] {
         [kSecClass as String:kSecClassGenericPassword,
          kSecAttrService as String:"\(HomeLabConfiguration.enabled ? "com.fefucho.SideB.HomeLab" : "com.fefucho.SideB").visual-provider",
-         kSecAttrAccount as String:"visual-provider"]
+         kSecAttrAccount as String:account]
     }
     var exists: Bool {
         var q = query; q[kSecReturnAttributes as String] = true

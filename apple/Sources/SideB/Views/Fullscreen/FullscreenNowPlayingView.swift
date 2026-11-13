@@ -8,6 +8,8 @@ public enum FullscreenPanel: String, CaseIterable, Identifiable {
     case queue = "Cola"
     case lyrics = "Letras"
     case recommended = "Relacionado"
+    /// Spotify Jam: always offered, so a Jam can be joined from here.
+    case jam = "Jam"
 
     public var id: String { self.rawValue }
     var title: String {
@@ -15,14 +17,19 @@ public enum FullscreenPanel: String, CaseIterable, Identifiable {
         case .queue: L10n.text("queue.title")
         case .lyrics: L10n.text("fullscreen.lyrics")
         case .recommended: L10n.text("fullscreen.related")
+        case .jam: L10n.text("jam.surface.tab")
         }
     }
 
-    public var icon: String {
+    public var icon: String { symbol(jamLive: false) }
+
+    /// The Jam entry swaps to a filled "broadcasting" glyph while a Jam is live.
+    func symbol(jamLive: Bool) -> String {
         switch self {
         case .queue: return "list.bullet"
         case .lyrics: return "quote.bubble"
         case .recommended: return "music.note.list"
+        case .jam: return jamLive ? "person.2.wave.2.fill" : "person.2.wave.2"
         }
     }
 }
@@ -101,6 +108,8 @@ struct FullscreenNowPlayingView: View, Animatable {
     @State private var queueViewport = PlaybackQueueViewport()
     @State var sidebarPalette = PlaybackSidebarPalette.neutral
     @State var sidebarArtworkScroll = SidebarArtworkScrollState()
+    /// The Jam panel opened from the lateral badge.
+    @State var sidebarJamPopoverPresented = false
 
     var animatableData: CGFloat {
         get { sidebarProgress }
@@ -203,6 +212,9 @@ struct FullscreenNowPlayingView: View, Animatable {
                         .windowGestureRegion(.excluded)
                 }
                 .frame(width: layout.artworkSize, height: layout.artworkBlockHeight)
+                // The marker hangs above the cover, centred on it, without taking layout space,
+                // so the artwork never moves or resizes when a Jam starts or ends.
+                .overlay(alignment: .top) { fullscreenJamBadge(layout) }
                 .frame(width: layout.leftWidth, height: layout.availableContentHeight, alignment: .center)
 
                 VStack(alignment: .center, spacing: 14) {
@@ -225,6 +237,24 @@ struct FullscreenNowPlayingView: View, Animatable {
         // Only the shared sidebar progress interpolates this scene's geometry.
         .transaction { if geometry.isTransitioning { $0.animation = nil } }
         .compositingGroup()
+    }
+
+    /// "In <host>'s Jam" pill above the cover, horizontally centred on it. The block is centred in
+    /// the column, so the cover starts at `FullscreenSceneMetrics.artworkTopY` (>= 60pt even in the
+    /// smallest layout), which always holds the pill and its gap (`jamMarkerClearance`).
+    private func fullscreenJamBadge(_ layout: FullscreenSceneMetrics) -> some View {
+        let live = viewModel.isJamSessionActive
+        return Group {
+            if live {
+                JamBadgeView(size: .regular) { selectedPanel = .jam }
+                    .frame(width: layout.leftWidth)
+                    .frame(height: FullscreenSceneMetrics.jamMarkerHeight)
+                    .offset(y: -(FullscreenSceneMetrics.jamMarkerHeight + FullscreenSceneMetrics.jamMarkerGap))
+                    .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.96, anchor: .bottom)))
+                    .windowGestureRegion(.excluded)
+            }
+        }
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.22), value: live)
     }
 
     // MARK: - Módulo Artwork (1:1 Cuadrado en Fullscreen con Play/Pause en click y oscurecimiento en hover)
@@ -573,7 +603,9 @@ struct FullscreenNowPlayingView: View, Animatable {
     // MARK: - Selector de Pestañas Cápsula (Centrado en su columna, estilo Apple Music / sideb OLD)
     private var compactTabBar: some View {
         SideBSegmentedControl(
-            segments: FullscreenPanel.allCases.map { SideBControlSegment(id: $0, title: $0.title, symbol: $0.icon) },
+            segments: FullscreenPanel.allCases.map {
+                SideBControlSegment(id: $0, title: $0.title, symbol: $0.symbol(jamLive: viewModel.isJamSessionActive))
+            },
             selection: selectedPanel
         ) { panel in
             selectedPanel = panel
@@ -593,6 +625,8 @@ struct FullscreenNowPlayingView: View, Animatable {
                 lyricsPanel(height: height)
             case .recommended:
                 recommendedPanel(height: height)
+            case .jam:
+                jamPanel(height: height)
             }
         }
         .frame(maxWidth: .infinity)
@@ -602,10 +636,11 @@ struct FullscreenNowPlayingView: View, Animatable {
     // MARK: - Contenido: Cola de Reproducción (120 FPS, transparente, sin columnas innecesarias)
     @ViewBuilder
     func queuePanel(height: CGFloat) -> some View {
+        let jam = JamQueueContext.current(for: viewModel)
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
-                Image(systemName: viewModel.queueManager.context?.iconName ?? "music.note.list")
-                Text(localizedQueueContextTitle).lineLimit(1)
+                Image(systemName: jam == nil ? viewModel.queueManager.context?.iconName ?? "music.note.list" : JamQueueContext.symbol)
+                Text(jam?.title ?? localizedQueueContextTitle).lineLimit(1)
                 Spacer(minLength: 4)
                 if viewModel.isLoadingPlaylistContinuation { ProgressView().controlSize(.small) }
             }
@@ -616,9 +651,16 @@ struct FullscreenNowPlayingView: View, Animatable {
                 player: viewModel, router: router, liked: viewModel.likedVideoIds,
                 playing: viewModel.isPlaying,
                 loading: viewModel.queueManager.isLoadingRadio || viewModel.queueManager.isLoadingAutoplay,
-                error: viewModel.queueRecommendationError, viewport: queueViewport)
+                error: viewModel.queueRecommendationError, viewport: queueViewport, jam: jam)
         }
         .frame(height: height)
+    }
+
+    // MARK: - Contenido: Spotify Jam
+    private func jamPanel(height: CGFloat) -> some View {
+        JamPanelView(player: viewModel, style: .fullscreen)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .frame(height: height)
     }
 
     // MARK: - Contenido: Letras Sincronizadas

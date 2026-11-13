@@ -1,0 +1,18 @@
+{
+  "connections.title": { "es": "Conexiones", "en": "Connections" },
+  "connections.help": { "es": "Conexiones: salida de audio y Spotify Jam", "en": "Connections: audio output and Spotify Jam" },
+  "connections.activeJam": { "es": "Conexiones. En el Jam de %@", "en": "Connections. In %@'s Jam" },
+  "connections.activeJamUnknownHost": { "es": "Conexiones. En un Jam de Spotify", "en": "Connections. In a Spotify Jam" },
+  "connections.audioOutput.title": { "es": "Salida de audio", "en": "Audio output" },
+  "connections.audioOutput.subtitle": { "es": "AirPlay, Bluetooth y otros dispositivos", "en": "AirPlay, Bluetooth and other devices" },
+  "connections.audioOutput.help": { "es": "Elegí dónde suena Side B", "en": "Choose where Side B plays" },
+  "connections.bar.jamContext": { "es": "Jam de %@", "en": "%@'s Jam" },
+  "connections.bar.jamContextUnknownHost": { "es": "Jam de Spotify", "en": "Spotify Jam" },
+  "connections.jam.shuffleDisabled": { "es": "La reproducción aleatoria no está disponible durante un Jam: el orden lo define el anfitrión.", "en": "Shuffle isn't available during a Jam: the host sets the order." },
+  "connections.jam.repeatDisabled": { "es": "Repetir no está disponible durante un Jam: la cola la define el anfitrión.", "en": "Repeat isn't available during a Jam: the host sets the queue." },
+  "connections.jam.sharedControl": { "es": "%@ (afecta a todos en el Jam)", "en": "%@ (affects everyone in the Jam)" },
+  "connections.jam.noControl": { "es": "%@ no disponible: el anfitrión no te dio el control del Jam", "en": "%@ unavailable: the host hasn't given you control of the Jam" },
+  "connections.jam.pauseLocal": { "es": "Pausar (sólo para vos; el Jam sigue)", "en": "Pause (only for you; the Jam keeps going)" },
+  "connections.jam.seekSharedHelp": { "es": "Mover la posición (afecta a todos en el Jam)", "en": "Change position (affects everyone in the Jam)" },
+  "connections.jam.seekNoControl": { "es": "No podés mover la posición: el anfitrión no te dio el control del Jam", "en": "You can't change the position: the host hasn't given you control of the Jam" }
+}

@@ -116,6 +116,24 @@ else
     echo "ℹ️  Sin extensions/spotify-canvas: la app se empaqueta sin proveedor visual."
 fi
 
+# Plugin de sesión opcional (Spotify Jam, PLAN-023): ejecutable separado que la app lanza sólo cuando el
+# usuario se une a un Jam. Si se retira extensions/spotify-jam del código fuente, la app se compila igual.
+JAM_SRC="$SCRIPT_DIR/../extensions/spotify-jam"
+if [ -f "$JAM_SRC/Cargo.toml" ]; then
+    echo "📦 Compilando plugin de sesión Spotify Jam (macOS arm64)..."
+    cargo build --release --locked --target aarch64-apple-darwin \
+        --manifest-path "$JAM_SRC/Cargo.toml" --target-dir "$JAM_SRC/target"
+    JAM_DEST="$RESOURCES_DIR/SessionProviders/spotify-jam"
+    mkdir -p "$JAM_DEST"
+    cp "$JAM_SRC/target/aarch64-apple-darwin/release/sideb-spotify-jam" "$JAM_DEST/sideb-spotify-jam"
+    cp "$JAM_SRC/LICENSE" "$JAM_DEST/LICENSE"
+    codesign --force -s - "$JAM_DEST/sideb-spotify-jam"
+    codesign --verify --strict "$JAM_DEST/sideb-spotify-jam"
+    echo "🎧 Plugin de sesión incluido: $JAM_DEST"
+else
+    echo "ℹ️  Sin extensions/spotify-jam: la app se empaqueta sin Spotify Jam."
+fi
+
 # Creamos un Info.plist básico
 cat > "$APP_DIR/Contents/Info.plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
