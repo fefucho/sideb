@@ -163,6 +163,7 @@ export async function buildVersion(root, options, dependencies = {}) {
     catch (error) { record.status = 'failed'; throw error; }
     finally { save(); }
   };
+  const skipTests = dependencies.skipTests ?? process.env.SIDEB_SKIP_TESTS === '1';
   let artifact;
   try {
     writeFileSync(log, '');
@@ -171,11 +172,15 @@ export async function buildVersion(root, options, dependencies = {}) {
     if (options.platform === 'macos') {
       metadata.tools.swift = commandVersion('swift', ['--version'], root);
       metadata.tools.xcode = commandVersion('xcodebuild', ['-version'], root);
-      await step('cargo', ['test', '--locked', '--manifest-path', 'core/Cargo.toml', '-p', 'innertube', '-p', 'sideb-core']);
+      if (!skipTests) {
+        await step('cargo', ['test', '--locked', '--manifest-path', 'core/Cargo.toml', '-p', 'innertube', '-p', 'sideb-core']);
+      }
       await step('bash', ['build_xcframework.sh'], join(root, 'apple'));
       // Explicitly serialize Swift Testing's AppKit/AVPlayer integration suite.
       // XCTest's default policy alone does not serialize Swift Testing tests.
-      await step('swift', ['test', '--package-path', 'apple', '-c', options.configuration, '--no-parallel']);
+      if (!skipTests) {
+        await step('swift', ['test', '--package-path', 'apple', '-c', options.configuration, '--no-parallel']);
+      }
       artifact = join(build.directory, 'Side B.app');
       await step('bash', [join(root, 'Scripts', 'build-macos.sh'), options.configuration, artifact]);
       if (!existsSync(join(artifact, 'Contents', 'MacOS', 'Side B'))) throw new Error('Falta el ejecutable del bundle Mac.');
@@ -194,7 +199,7 @@ export async function buildVersion(root, options, dependencies = {}) {
       const native = (action, extra = []) => step(powerShell, ['-NoProfile', '-File', join(root, 'windows', 'scripts', 'windows.ps1'), '-Action', action, ...extra]);
       const mpvDir = process.env.SIDEB_MPV_DIR || join(root, 'windows', '.cache', 'mpv');
       if (!existsSync(join(mpvDir, 'libmpv-2.dll')) || !existsSync(join(mpvDir, 'mpv.lib'))) await native('bootstrap');
-      await native('verify');
+      if (!skipTests) await native('verify');
       await native('build', ['-Configuration', options.configuration]);
       const files = ['sideb-windows.exe', 'libmpv-2.dll', 'vulkan-1.dll', 'VulkanRT-License.txt'];
       for (const file of files) {

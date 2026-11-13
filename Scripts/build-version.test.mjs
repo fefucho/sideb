@@ -234,3 +234,30 @@ test('Mac requires the factory-installed provider inside the bundle when its sou
   const result = await buildVersion(root, parseArguments(['macos']), { ...deps, execute: bundle(true) });
   assert.match(result.metadata.artifactSHA256['Side B.app/Contents/Resources/VisualProviders/spotify-canvas/sideb-spotify-canvas'], /^[a-f0-9]{64}$/);
 });
+
+test('skipTests skips test suites on Mac and Windows while keeping build and artifact hashing', async t => {
+  const macRoot = fixture(t), macCalls = [];
+  await buildVersion(macRoot, parseArguments(['macos']), {
+    host: 'darwin', architecture: 'arm64', snapshot, skipTests: true,
+    execute: async (command, args) => {
+      macCalls.push(command);
+      if (command === 'bash' && args[0].endsWith('build-macos.sh')) {
+        mkdirSync(join(args[2], 'Contents', 'MacOS'), { recursive: true });
+        writeFileSync(join(args[2], 'Contents', 'MacOS', 'Side B'), 'binary');
+      }
+    },
+  });
+  assert.deepEqual(macCalls, ['bash', 'bash']);
+
+  const winRoot = fixture(t), winActions = [];
+  await buildVersion(winRoot, parseArguments(['windows']), {
+    host: 'win32', architecture: 'x64', powerShell: 'mock-powershell', snapshot, skipTests: true,
+    execute: async (_command, args) => {
+      const action = args[args.indexOf('-Action') + 1];
+      winActions.push(action);
+      if (action === 'build') nativeArtifacts(winRoot, 'release');
+    },
+  });
+  assert.deepEqual(winActions, ['bootstrap', 'build']);
+});
+

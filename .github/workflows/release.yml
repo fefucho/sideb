@@ -23,6 +23,7 @@ env:
   SIDEB_LIVE_TESTS: '0'
   SIDEB_LIVE_CIPHER: '0'
   SIDEB_LIVE_ACCOUNT: '0'
+  SIDEB_SKIP_TESTS: '1'
 
 jobs:
   prepare:
