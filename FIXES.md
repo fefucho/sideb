@@ -4,9 +4,20 @@ Memoria de cambios de Side B para investigar problemas y regresiones. Buscar aqu
 
 Tags de ámbito: `[Apple]`, `[Windows]`, `[Compartido]`. Core y herramientas comunes usan Compartido, detallando el componente. El tag indica dónde se hizo el cambio; no demuestra que ambas plataformas hayan sido verificadas. Estados, fechas, componentes y relaciones se conservan dentro de cada entrada.
 
-Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-345**. Los IDs repetidos FIX-285/286/287 (2026-11-02) se desambiguaron renumerando las entradas de proveedor visual como FIX-310/311/312; FIX-285/286/287 conservan las de Inicio y recomendaciones laterales. Se conservaron los FIX/FEAT históricos. Dos números antiguos repetidos se distinguen como `FIX-027-2` y `FIX-028-2`, anotando el ID original; al citar FIX-027/028 comprobar título y entrada exacta.
+Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-346**. Los IDs repetidos FIX-285/286/287 (2026-11-02) se desambiguaron renumerando las entradas de proveedor visual como FIX-310/311/312; FIX-285/286/287 conservan las de Inicio y recomendaciones laterales. Se conservaron los FIX/FEAT históricos. Dos números antiguos repetidos se distinguen como `FIX-027-2` y `FIX-028-2`, anotando el ID original; al citar FIX-027/028 comprobar título y entrada exacta.
 
 ## Cambios recientes
+
+<a id="fix-345"></a>
+### [FIX-345] [Apple] - Actualización de capturas del README e incorporación de vistas de Spotify Jam
+
+- Fecha: 2026-11-13 (America/Montevideo).
+- Componente / estado: README público y galería documental en `docs/screenshots/`; guardado en commit local sobre `main`.
+- Problema / causa: las capturas publicadas en [FIX-226](#fix-226) correspondían a la UI del 2026-10-19 y no reflejaban la barra inferior nueva, las tarjetas actuales de Inicio ni la integración de Spotify Jam como invitado ([FIX-343](#fix-343)).
+- Cambio / motivo: se reemplazan byte a byte cinco capturas macOS existentes (`3248×2122`: Inicio con barra lateral, Inicio expandido, detalle de álbum con panel lateral, cola en fullscreen y letras sincronizadas), se conserva `macos-genius-annotations.png` al no incluirse captura nueva para esa vista, y se agregan dos vistas nuevas de Spotify Jam (`macos-fullscreen-jam.png` de `3248×2122` y `macos-jam-connections.png` de `1296×1300`). Se ajustan las descripciones correspondientes en `README.md` y el índice en `docs/screenshots/README.md`.
+- Archivos: `README.md`, `docs/screenshots/README.md`, `docs/screenshots/{macos-home-sidebar,macos-fullscreen-queue,macos-synced-lyrics,macos-album-detail,macos-home-wide,macos-fullscreen-jam,macos-jam-connections}.png`, `FIXES.md`.
+- Verificación / límites: copia exacta verificada por SHA-256 y dimensiones (`3248×2122` y `1296×1300`); revisión por OCR del contenido visible y enlaces relativos en `README.md` y `docs/screenshots/README.md`. Sin cambios de código ni nuevas builds o tests; no se ejecuta `git push`.
+- Paridad: documentación y galería rotuladas explícitamente para macOS; no modifica código de aplicación ni cierra paridad Windows. Relacionados: [FIX-226](#fix-226), [FIX-343](#fix-343).
 
 <a id="fix-344"></a>
 ### [FIX-344] [Windows] - Escuchar juntos: Spotify Jam como invitado en Windows (paridad con FIX-343)

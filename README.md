@@ -46,7 +46,7 @@ These screenshots show the native macOS app. Click an image to see it at full re
 
 **Home and your collection · macOS**
 
-Speed Dial, album recommendations and your saved playlists, with navigation and your collection in the sidebar.
+Speed Dial, mood filters and your saved collection in the sidebar, with the compact floating player bar below.
 
 [![Home and your collection in Side B for macOS](docs/screenshots/macos-home-sidebar.png)](docs/screenshots/macos-home-sidebar.png)
 
@@ -70,7 +70,7 @@ Open an annotation beside the lyrics to explore the story behind a song.
 
 **Album details · macOS**
 
-Browse an album, search its track list and keep playback controls within reach.
+Browse an album, search its track list and keep the side player and playback controls within reach.
 
 [![Album details in Side B for macOS](docs/screenshots/macos-album-detail.png)](docs/screenshots/macos-album-detail.png)
 
@@ -79,6 +79,18 @@ Browse an album, search its track list and keep playback controls within reach.
 Collapse the sidebar to give Home more space while keeping navigation and the floating player available.
 
 [![More room for your music in Side B for macOS](docs/screenshots/macos-home-wide.png)](docs/screenshots/macos-home-wide.png)
+
+**Spotify Jam (guest mode) · macOS**
+
+Listen in sync with a friend's Spotify Jam from YouTube Music, with a live session badge and shared Jam queue in fullscreen.
+
+[![Spotify Jam in fullscreen in Side B for macOS](docs/screenshots/macos-fullscreen-jam.png)](docs/screenshots/macos-fullscreen-jam.png)
+
+**Connections and Spotify Jam · macOS**
+
+Switch audio output or paste a Spotify Jam link directly from the Connections menu in the bottom player bar.
+
+[![Connections and Spotify Jam popover in Side B for macOS](docs/screenshots/macos-jam-connections.png)](docs/screenshots/macos-jam-connections.png)
 
 ## Download
 

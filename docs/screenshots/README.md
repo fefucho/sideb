@@ -8,7 +8,7 @@ Suggested names: `macos-home.png`, `macos-fullscreen.png`, `windows-home.png`, `
 
 ## Published gallery
 
-Six native macOS screenshots supplied by the project owner on 2026-10-19 are included in the root README. PNG files are copied byte for byte from the supplied captures, retaining their original 3248×2122 resolution and proportions. The captions describe the visible UI; these images are not Windows screenshots or QA browser fixtures.
+Eight native macOS screenshots supplied by the project owner are included in the root README: seven refreshed/added on 2026-11-13 (`3248×2122` full-window captures plus the `1296×1300` Connections popover capture) and `macos-genius-annotations.png` retained from 2026-10-19 (`3248×2122`). PNG files are copied byte for byte from the supplied captures, retaining their original resolutions and proportions. The captions describe the visible UI; these images are not Windows screenshots or QA browser fixtures.
 
 | File | View |
 |---|---|
@@ -18,3 +18,5 @@ Six native macOS screenshots supplied by the project owner on 2026-10-19 are inc
 | [macos-genius-annotations.png](macos-genius-annotations.png) | Genius annotations · macOS |
 | [macos-album-detail.png](macos-album-detail.png) | Album details · macOS |
 | [macos-home-wide.png](macos-home-wide.png) | More room for your music · macOS |
+| [macos-fullscreen-jam.png](macos-fullscreen-jam.png) | Spotify Jam (guest mode) · macOS |
+| [macos-jam-connections.png](macos-jam-connections.png) | Connections and Spotify Jam · macOS |
