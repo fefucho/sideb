@@ -8,8 +8,19 @@ public enum FullscreenPanel: String, CaseIterable, Identifiable {
     case queue = "Cola"
     case lyrics = "Letras"
     case recommended = "Relacionado"
-    /// Spotify Jam: always offered, so a Jam can be joined from here.
+    /// Spotify Jam: offered only while a Jam is active (joining is done from Connections).
     case jam = "Jam"
+
+    /// Tabs shown in the fullscreen switcher: «Jam» only with an active Jam; the rest always,
+    /// including «Related», which stays usable during a Jam.
+    static func visible(jamLive: Bool) -> [FullscreenPanel] {
+        allCases.filter { $0 != .jam || jamLive }
+    }
+
+    /// The panel to render: a stale «Jam» selection without an active Jam falls back to the queue.
+    func effective(jamLive: Bool) -> FullscreenPanel {
+        self == .jam && !jamLive ? .queue : self
+    }
 
     public var id: String { self.rawValue }
     var title: String {
@@ -612,10 +623,10 @@ struct FullscreenNowPlayingView: View, Animatable {
     // MARK: - Selector de Pestañas Cápsula (Centrado en su columna, estilo Apple Music / sideb OLD)
     private var compactTabBar: some View {
         SideBSegmentedControl(
-            segments: FullscreenPanel.allCases.map {
+            segments: FullscreenPanel.visible(jamLive: viewModel.isJamSessionActive).map {
                 SideBControlSegment(id: $0, title: $0.title, symbol: $0.symbol(jamLive: viewModel.isJamSessionActive))
             },
-            selection: selectedPanel
+            selection: selectedPanel.effective(jamLive: viewModel.isJamSessionActive)
         ) { panel in
             selectedPanel = panel
             if panel == .recommended, let track = viewModel.currentTrack {
@@ -627,7 +638,7 @@ struct FullscreenNowPlayingView: View, Animatable {
     // MARK: - Panel de Contenido (Sin tarjeta gris ni borde, flotando directo sobre el fondo)
     private func contentPanelView(height: CGFloat) -> some View {
         ZStack {
-            switch selectedPanel {
+            switch selectedPanel.effective(jamLive: viewModel.isJamSessionActive) {
             case .queue:
                 queuePanel(height: height)
             case .lyrics:

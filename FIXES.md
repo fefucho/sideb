@@ -4,9 +4,21 @@ Memoria de cambios de Side B para investigar problemas y regresiones. Buscar aqu
 
 Tags de ámbito: `[Apple]`, `[Windows]`, `[Compartido]`. Core y herramientas comunes usan Compartido, detallando el componente. El tag indica dónde se hizo el cambio; no demuestra que ambas plataformas hayan sido verificadas. Estados, fechas, componentes y relaciones se conservan dentro de cada entrada.
 
-Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-359**. Los IDs repetidos FIX-285/286/287 (2026-11-02) se desambiguaron renumerando las entradas de proveedor visual como FIX-310/311/312; FIX-285/286/287 conservan las de Inicio y recomendaciones laterales. Se conservaron los FIX/FEAT históricos. Dos números antiguos repetidos se distinguen como `FIX-27-2` y `FIX-28-2`, anotando el ID original; al citar FIX-27/28 comprobar título y entrada exacta.
+Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-360**. Los IDs repetidos FIX-285/286/287 (2026-11-02) se desambiguaron renumerando las entradas de proveedor visual como FIX-310/311/312; FIX-285/286/287 conservan las de Inicio y recomendaciones laterales. Se conservaron los FIX/FEAT históricos. Dos números antiguos repetidos se distinguen como `FIX-27-2` y `FIX-28-2`, anotando el ID original; al citar FIX-27/28 comprobar título y entrada exacta.
 
 ## Cambios recientes
+
+<a id="fix-359"></a>
+### [FIX-359] [Apple] - Pantalla completa: pestaña «Jam» sólo con un Jam activo; «Relacionado» sigue usable durante un Jam
+
+- Fecha: 2026-11-14 (America/Montevideo).
+- Componente: `apple/Sources/SideB/Views/Fullscreen/FullscreenNowPlayingView.swift` (`FullscreenPanel.visible(jamLive:)`, `effective(jamLive:)`, selector y panel de contenido), `ViewModels/PlayerViewModel.swift` (`endJamSession`).
+- Problema / causa: en Mac `FullscreenPanel.allCases` mostraba siempre «Jam» junto a Cola/Letras/Relacionado, aunque no hubiera un Jam activo; Windows lo oculta ([FIX-346](#fix-346)) porque unirse se hace desde el botón Conexiones de la barra (también presente en Mac: `ConnectionsButton` en `PlayerBarView`).
+- Cambio / motivo: el selector ofrece «Jam» sólo con `isJamSessionActive`; una selección obsoleta de `.jam` sin Jam activo se muestra como `.queue` y `endJamSession` la restablece a `.queue` para que otro Jam no reabra en esa pestaña. La insignia sobre la carátula y su acceso al panel durante un Jam no cambian. [FIX-347](#fix-347): se comprobó que en Mac «Relacionado» y las recomendaciones laterales no están condicionados por el Jam (ni la pestaña, ni `fetchRecommendations`, ni la barra lateral), así que no hizo falta cambio.
+- Archivos: los citados y `apple/Tests/SideBTests/JamSurfacesTests.swift` (`panelEntry`: visibilidad con/sin Jam, Relacionado siempre, caída a cola).
+- Pruebas / límites: `swift test --filter JamSurfacesTests`: la prueba nueva pasa; falla `The badge overlays the artwork card…` (`tall >= 58 + inset`), que ya fallaba antes de este cambio (comprobado con `git stash`). `swift build` correcto. Sin comprobación visual ni con un Jam real; durante «Conectando…»/fallo la pestaña no aparece (igual que Windows): el estado se ve en el popover de Conexiones.
+- Antecedentes: [FIX-343](#fix-343), [FIX-346](#fix-346), [FIX-347](#fix-347) (Windows).
+- Paridad: [PAR-062](PARIDAD.md).
 
 <a id="fix-358"></a>
 ### [FIX-358] [Apple] - Spotify Jam: unirse con el enlace corto `spotify.link`

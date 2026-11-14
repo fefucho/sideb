@@ -196,6 +196,7 @@ public final class PlayerViewModel {
         defer { isSwitchingPlaybackSession = wasSwitching }
         jamSnapshot = nil
         jamControl = nil
+        if selectedFullscreenPanel == .jam { selectedFullscreenPanel = .queue } // The tab only exists during a Jam.
         pendingJamExit = nil
         queueManager.sessionEditor = nil
         cancelInFlightRadioTasks()

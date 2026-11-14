@@ -90,9 +90,17 @@ struct JamSurfacesTests {
         #expect(JamDuration.text(milliseconds: 0) == nil)
     }
 
-    @Test("The Jam entry is part of the fullscreen switcher and flips its glyph when live")
+    @Test("The Jam entry shows only with an active Jam, Related stays, and a stale selection falls back")
     func panelEntry() {
         #expect(FullscreenPanel.allCases.contains(.jam))
+        #expect(!FullscreenPanel.visible(jamLive: false).contains(.jam))
+        #expect(FullscreenPanel.visible(jamLive: true).contains(.jam))
+        for live in [false, true] {
+            #expect(FullscreenPanel.visible(jamLive: live).contains(.recommended))
+            #expect(FullscreenPanel.recommended.effective(jamLive: live) == .recommended)
+        }
+        #expect(FullscreenPanel.jam.effective(jamLive: false) == .queue)
+        #expect(FullscreenPanel.jam.effective(jamLive: true) == .jam)
         #expect(FullscreenPanel.jam.symbol(jamLive: true) != FullscreenPanel.jam.symbol(jamLive: false))
         #expect(FullscreenPanel.queue.symbol(jamLive: true) == FullscreenPanel.queue.symbol(jamLive: false))
     }
