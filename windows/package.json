@@ -1,6 +1,6 @@
 {
   "name": "sideb-windows",
-  "version": "1.5.2",
+  "version": "1.5.3",
   "description": "Side B Windows - Native Music Client",
   "license": "GPL-3.0-or-later",
   "packageManager": "pnpm@12.6.0",
