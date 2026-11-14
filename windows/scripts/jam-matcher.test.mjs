@@ -64,3 +64,13 @@ test('realistic rows match confidently', () => {
     assert.equal(result.song.videoId, ytm.videoId);
   }
 });
+
+test('acceptBest takes the top result even when it is not confident; an empty search is still no match', () => {
+  const spotify = {uri: 'u', title: 'STARS', artists: ['Someone'], album: null, durationMs: 200000, isrc: null, provider: null};
+  const weak = rankCandidates(spotify, [song('a', 'Other Song', 'Nobody', '5:00')]);
+  assert.equal(lookupResult({ok: true, ranked: weak}).kind, 'noMatch');
+  const taken = lookupResult({ok: true, ranked: weak}, null, true);
+  assert.equal(taken.kind, 'matched');
+  assert.equal(taken.song.videoId, 'a');
+  assert.equal(lookupResult({ok: true, ranked: []}, null, true).kind, 'noMatch');
+});

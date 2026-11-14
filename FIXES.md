@@ -9,7 +9,7 @@ Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-357**. Lo
 ## Cambios recientes
 
 <a id="fix-356"></a>
-### [FIX-356] [Apple] - panel derecho Ahora suena redimensionable (rama `ui/native-sidebar`, no integrado)
+### [FIX-356] [Apple] - Panel derecho Ahora suena redimensionable (rama `ui/native-sidebar`, no integrado)
 
 - Fecha: 2026-11-14 (America/Montevideo). Componente: `PlaybackSidebarLayout`, `PlaybackSidebarResizeHandle` (nuevo), `FullscreenCanvas`, `SideBApp`.
 - Cambio: el ancho del panel deja de ser la constante 380 y pasa a ser estado (rango 340-520, ideal 380) guardado en `sideb.playbackSidebar.width.v1` (clamp al leer; se persiste al soltar). Asa de 8 pt en el borde izquierdo (cursor `columnResize`, sin animar durante el arrastre, doble clic = 380, flechas izquierda/derecha +-16 pt con foco, `accessibilityAdjustableAction`, textos `playbackSidebar.resize*`). `contentReserve` acepta `panelWidth`; `effectiveWidth` reduce el ancho si la ventana se achica para dejar siempre 480 pt de página (el valor guardado no se pierde); bajo 340 disponibles no hay reserva y el panel se superpone como antes. `playbackTrailingInset` del toolbar y la reserva de `SideBApp` usan el ancho dinámico; el ancho de la columna de detalle se mide (corrige que `leftReserve: 0` ignoraba la sidebar nativa de FIX-355).
@@ -20,7 +20,7 @@ Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-357**. Lo
 - Límites: no se verificó visualmente el contenido en 340 y 520 (cabecera, cola, letras, recomendaciones, volumen), ni la superposición del asa con los botones de cabecera, ni el rendimiento durante el arrastre; `showsUpcoming` no depende del ancho. Fixes relacionados: [FIX-355](#fix-355), FIX-351. Paridad: PAR-046.
 
 <a id="fix-355"></a>
-### [FIX-355] [Apple] - sidebar nativa redimensionable con `NavigationSplitView` (rama `ui/native-sidebar`, no integrado)
+### [FIX-355] [Apple] - Sidebar nativa redimensionable con `NavigationSplitView` (rama `ui/native-sidebar`, no integrado)
 
 - Fecha: 2026-11-14 (America/Montevideo). Prototipo para evaluar en rama; no es un cambio definitivo.
 - Componente: `SideBApp.windowContent` (ahora `NavigationSplitView`), `SidebarView`, `WindowConfigurator`, `WindowNavigationToolbarView`.
@@ -78,6 +78,30 @@ Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-357**. Lo
 - Archivos: `apple/Sources/SideB/Models/PlaybackPresentation.swift`, `apple/Sources/SideB/Views/PlaybackSidebar/NowPlayingSidebarArtwork.swift`, `apple/Sources/SideB/Views/Components/PlayerBarView.swift`, pruebas `NowPlayingSidebarArtworkTests`, `PlaybackSidebarTests`, `NativeSidebarRecommendationsTests`, `FIXES.md`, `PARIDAD.md`.
 - Pruebas / límites: pruebas de geometría actualizadas y nuevas (portada 372 pt, huecos); sin validación visual manual ni build numerada todavía: falta comparar contra el mockup a 875 pt de alto. Las medidas del mockup son aproximadas (±1 pt) y se normalizaron a 23/28 pt.
 - Fixes relacionados: [FIX-291](#fix-291) (distancia progreso-transporte, sustituida aquí), [FIX-282](#fix-282) (metadata fija junto a la portada), [FIX-290](#fix-290) (muestra de letras). No se atribuye regresión a esos fixes. Paridad: PAR-046.
+
+<a id="fix-350"></a>
+### [FIX-350] [Windows] - Spotify Jam: filas «Sin equivalente en YouTube Music» cuando el plugin aún no trae los metadatos
+
+- Fecha: 2026-11-14 (America/Montevideo).
+- Componente: `windows/src/lib/jam/matching.ts` (`pump`); el plugin y `core/` no cambian.
+- Problema / causa: en un Jam de 77 canciones las primeras ~19 filas salían «Sin equivalente en YouTube Music» y no se recuperaban. El registro del panel de depuración lo mostró: `match: spotify:track:… -> no confident equivalent (0 candidates, best -)` todas en el mismo segundo del ingreso, y la pista actual como `jam track: spotify:track:… - ` (sin título). Con más de 60 pistas sin metadatos en caché el plugin emite un primer `state` con `title: null` y otro cuando llegan (`extensions/README.md`). `search()` devolvía `{ok:true, ranked:[]}` para una pista sin título, `lookupResult` lo trataba como búsqueda completada sin candidatos y `matches` guardaba `unavailable` para toda la sesión; el siguiente `state` con título nunca lo reevaluaba. Las filas con título (de la 20 en adelante) sí emparejaban (puntaje 4,0–7,0). Comprobado además contra YouTube Music que las canciones afectadas existen con la duración de Spotify.
+- Cambio / motivo: `pump` ya no inicia búsqueda ni marca como resuelta una pista sin título: queda `pending` («Buscando…») y se reintenta sola con el siguiente `state`, que ya llama a `pump`. Las pistas sin título se pasan al planificador como «resueltas» para no alterar las posiciones de la ventana rápida (15 primeras). Un fallo real de búsqueda sigue con reintentos y backoff (FIX-343). A pedido del usuario («la mayoría de las veces la primera opción es correcta»), el emparejado además toma siempre el mejor candidato aunque no llegue al puntaje confiable (`lookupResult(…, acceptBest)`): «sin equivalente» queda sólo para una búsqueda sin ningún resultado, y el registro marca `low confidence` cuando el puntaje es bajo. Riesgo asumido: una versión equivocada (otra duración) desincroniza el audio; se corrige a mano con «elegir otra versión».
+- Archivos: `windows/src/lib/jam/matching.ts`, `windows/src/lib/jam/matcher.ts`, `windows/scripts/jam-session.test.mjs` (primer estado sin títulos, segundo con títulos), `windows/scripts/jam-matcher.test.mjs` (`acceptBest`).
+- Pruebas / límites: la prueba nueva falla sin el cambio y pasa con él; `node --test scripts/jam-*.test.mjs` 77/77; `svelte-check` 0 errores. Compilado con el build rápido de release (sin `verify`) y publicado en 1.5.2 por pedido; no se probó con el Jam real: falta validar en la app que las filas pasen de «Buscando…» a emparejadas. Una pista cuyos metadatos nunca lleguen queda en «Buscando…».
+- Anteriores relacionados: [FIX-343](#fix-343) y [FIX-347](#fix-347) (emparejado perezoso y Jam en Windows).
+- Paridad: [PAR-065](PARIDAD.md). Mac tiene el mismo defecto (`JamSessionController.ranking(for:)`: `guard track.title != nil else { return .success([]) }`).
+
+<a id="fix-349"></a>
+### [FIX-349] [Windows] - Spotify Jam: aceptar enlaces cortos `spotify.link` al unirse
+
+- Fecha: 2026-11-14 (America/Montevideo).
+- Componente: `windows/src-tauri/src/jam/mod.rs` (`JamRuntime::join`); el plugin `extensions/spotify-jam` no cambia.
+- Problema / causa: el enlace de invitación que genera la app de Spotify al compartir (`https://spotify.link/<id>`) no se podía pegar en Side B. `jam_token` (plugin) sólo extrae el token de `open.spotify.com/socialsession/<token>`, `spotify:socialsession:<token>` o un token suelto, y una prueba fija el rechazo de `spotify.link`. El enlace corto no contiene el token: redirige a `spotify.app.link` (Branch), cuya página HTML trae el enlace real `open.spotify.com/socialsession/<token>`. Era una limitación declarada en [PLAN-023](plans/PLAN-023-spotify-jam.md) (`Falta la variante corta spotify.link`), no una regresión.
+- Cambio / motivo: antes de lanzar el plugin, `join` detecta un enlace https de `spotify.link` / `spotify.app.link` (`short_link_url`), lo resuelve con un GET anónimo (`resolve_short_link`) y pasa al plugin el enlace canónico. Sin credenciales de Spotify, redirecciones limitadas a esos hosts y a `open.spotify.com` (máx. 5), 15 s de timeout y 512 KiB de cuerpo. El token se busca primero en la URL final y después en el HTML (`socialsession_token_in`, 16–40 alfanuméricos). Si no se obtiene, error `JAM_START_FAILED` con el mensaje de pegar el enlace `open.spotify.com/socialsession/…`. Se resuelve en el host y no en el plugin para no darle red al plugin ni tocar `core/`.
+- Archivos: `windows/src-tauri/src/jam/mod.rs`, `FIXES.md`, `PARIDAD.md`.
+- Pruebas / límites: comprobado a mano con `curl` que el enlace real redirige a `spotify.app.link` y que el HTML contiene `open.spotify.com/socialsession/<token>`. Compilado con `windows.ps1 -Action build -Configuration release` por pedido, sin `verify` ni pruebas nuevas; sin prueba manual de unirse a un Jam real con el enlace corto. Depende de que Branch siga incrustando el enlace en la página; si cambia, vuelve a fallar con el mensaje de respaldo.
+- Antecedentes: [FIX-343](#fix-343) (Jam como invitado), [PLAN-023](plans/PLAN-023-spotify-jam.md).
+- Paridad: [PAR-064](PARIDAD.md).
 
 <a id="fix-348"></a>
 ### [FIX-348] [Windows] - Paridad de recomendaciones con macOS (Relacionado, panel lateral y Automix de cola)
