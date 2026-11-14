@@ -155,7 +155,11 @@ struct WindowRootView: View {
     private var useSolidHomeBackground = false
 
     // Estado de Navegación y Shell específico por ventana
-    @State private var isSidebarExpanded: Bool = true
+    // PROTOTIPO ui/native-sidebar: la visibilidad la gobierna NavigationSplitView.
+    @State private var columnVisibility: NavigationSplitViewVisibility = .all
+    @State private var sidebarVisibilityBeforeFullscreen: NavigationSplitViewVisibility?
+    @AppStorage("native.sidebar.width", store: HomeAppearance.preferences) private var persistedSidebarWidth: Double = 252
+    @State private var initialSidebarWidth: CGFloat = 0
     @State private var titlebarHeight: CGFloat = 0
     @State private var navigationHeaderWidth: CGFloat = 620
     @State private var router = NavigationRouter()
@@ -204,10 +208,12 @@ struct WindowRootView: View {
         titlebarHeight + ShellLayout.navigationContentSpacing
     }
 
+    private var isSidebarExpanded: Bool { columnVisibility != .detailOnly }
+
     private var sidebarBinding: Binding<Bool> {
         Binding(get: { isSidebarExpanded }, set: { expanded in
             withAnimation(NavPresentation.animation(reduceMotion: reduceMotion)) {
-                isSidebarExpanded = expanded
+                columnVisibility = expanded ? .all : .detailOnly
             }
         })
     }
@@ -408,20 +414,70 @@ struct WindowRootView: View {
 
     private var playbackContentReserve: CGFloat {
         PlaybackSidebarLayout.contentReserve(windowWidth: navigationHeaderWidth,
-            leftReserve: ShellLayout.sidebarReserveWidth(expanded: isSidebarExpanded),
+            leftReserve: 0, // la sidebar nativa es columna hermana: el detalle ya no reserva ancho
             presented: playerViewModel.isPlaybackSidebarPresented)
     }
 
     private var windowContent: some View {
+        NavigationSplitView(columnVisibility: $columnVisibility) {
+            nativeSidebar
+                .navigationSplitViewColumnWidth(min: 200, ideal: initialSidebarWidth > 0 ? initialSidebarWidth : CGFloat(persistedSidebarWidth), max: 360)
+        } detail: {
+            detailContent
+                .ignoresSafeArea(.container, edges: .top)
+        }
+        .navigationSplitViewStyle(.balanced)
+        .onAppear { if initialSidebarWidth == 0 { initialSidebarWidth = CGFloat(persistedSidebarWidth) } }
+        .onChange(of: playerViewModel.isFullscreenPresented) { _, presented in
+            // La sidebar nativa vive en su propia columna: para que el fullscreen cubra toda la ventana se colapsa y se restaura.
+            if presented {
+                sidebarVisibilityBeforeFullscreen = columnVisibility
+                withAnimation(NavPresentation.animation(reduceMotion: reduceMotion)) { columnVisibility = .detailOnly }
+            } else if let previous = sidebarVisibilityBeforeFullscreen {
+                sidebarVisibilityBeforeFullscreen = nil
+                withAnimation(NavPresentation.animation(reduceMotion: reduceMotion)) { columnVisibility = previous }
+            }
+        }
+    }
+
+    private var nativeSidebar: some View {
+        SidebarView(
+            isExpanded: sidebarBinding,
+            titlebarHeight: titlebarHeight,
+            router: router,
+            accountViewModel: accountViewModel,
+            libraryViewModel: libraryViewModel,
+            rustCore: rustCore,
+            cookieStorage: cookieStorage,
+            playerViewModel: playerViewModel,
+            isSearchPresented: isSpotlightPresented,
+            onOpenSearch: openSearch,
+            onNavigate: navigateMain,
+            onOpenLogin: { showLoginSheet = true },
+            onLogout: {
+                switchPersonalSession(to: "guest")
+                libraryViewModel.clear()
+                homeViewModel.prepareSession(identity: cookieStorage.homeCacheIdentity())
+                homeSessionRevision &+= 1
+                router.navigate(to: .home)
+            }
+        )
+        .windowGestureRegion(.excluded, active: isSidebarExpanded)
+        .ignoresSafeArea(.container, edges: .top)
+        .background {
+            GeometryReader { proxy in
+                Color.clear.onChange(of: proxy.size.width) { _, width in
+                    if width > 0, abs(Double(width) - persistedSidebarWidth) > 0.5 { persistedSidebarWidth = Double(width) }
+                }
+            }
+        }
+    }
+
+    private var detailContent: some View {
         ZStack {
             // Pages are the bottom content layer. Their fading backgrounds must
             // not cover the fullscreen backdrop on only one side of the window.
             HStack(alignment: .top, spacing: 0) {
-                // Reserve the same width as the floating sidebar overlay.
-                Color.clear
-                    .frame(width: ShellLayout.sidebarReserveWidth(expanded: isSidebarExpanded))
-                    .allowsHitTesting(false)
-
                 // MARK: - Navegador de páginas
                 ZStack(alignment: .bottom) {
                     // Capa 1: Navegador de Páginas
@@ -515,6 +571,7 @@ struct WindowRootView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .clipped()
                 // Sibling panel of the floating sidebars; the panels already provide the 6 pt gutter when present.
+                // Sidebar nativa: el borde izquierdo ya no linda con un panel flotante propio; se conserva el inset solo si esta colapsada.
                 .contentEdgeFrame(leadingInset: isSidebarExpanded ? 0 : ShellLayout.contentFrameInset,
                                   trailingInset: playbackContentReserve > 0 ? 0 : ShellLayout.contentFrameInset)
             }
@@ -558,7 +615,7 @@ struct WindowRootView: View {
                 .zIndex(1)
 
             FullscreenCanvas(viewModel: playerViewModel,
-                             isSidebarExpanded: sidebarBinding, router: router)
+                             isSidebarExpanded: .constant(false), router: router)
                 .overlay(alignment: .top) {
                     FullscreenDismissGestureIndicatorView(presentation: gesturePresentation)
                         .padding(.top, titlebarHeight + 12)
@@ -567,56 +624,13 @@ struct WindowRootView: View {
                 .modifier(FullscreenGestureMotion(presentation: gesturePresentation))
                 .zIndex(2)
 
-            // Separate overlays preserve one continuous background behind both
-            // sidebar and content throughout fullscreen's presentation.
-            HStack(alignment: .top, spacing: 0) {
-                SidebarView(
-                    isExpanded: sidebarBinding,
-                    titlebarHeight: titlebarHeight,
-                    router: router,
-                    accountViewModel: accountViewModel,
-                    libraryViewModel: libraryViewModel,
-                    rustCore: rustCore,
-                    cookieStorage: cookieStorage,
-                    playerViewModel: playerViewModel,
-                    isSearchPresented: isSpotlightPresented,
-                    onOpenSearch: openSearch,
-                    onNavigate: navigateMain,
-                    onOpenLogin: {
-                        showLoginSheet = true
-                    },
-                    onLogout: {
-                        switchPersonalSession(to: "guest")
-                        libraryViewModel.clear()
-                        homeViewModel.prepareSession(identity: cookieStorage.homeCacheIdentity())
-                        homeSessionRevision &+= 1
-                        router.navigate(to: .home)
-                    }
-                )
-                // Resolve the moving surface as a unit before passing its
-                // position to the fixed-width sidebar's controls.
-                .geometryGroup()
-                .windowGestureRegion(.excluded, active: isSidebarExpanded)
-                .padding(ShellLayout.sidebarInset)
-                .offset(x: isSidebarExpanded || reduceMotion ? 0 : -ShellLayout.sidebarReserveWidth(expanded: true))
-                .opacity(reduceMotion ? (isSidebarExpanded ? 1 : 0) : 1)
-                .allowsHitTesting(isSidebarExpanded)
-                .accessibilityHidden(!isSidebarExpanded)
-                .zIndex(50)
-                Spacer(minLength: 0)
-            }
-            .allowsHitTesting(isSidebarExpanded)
-            .zIndex(3)
-
             PlaybackBarShell(viewModel: playerViewModel) {
                 PlayerBarView(viewModel: playerViewModel, router: router)
             }
-            .padding(.leading, ShellLayout.sidebarReserveWidth(expanded: isSidebarExpanded))
             .zIndex(4)
 
             NavigationGestureIndicatorView(presentation: gesturePresentation)
-                .padding(.leading, ShellLayout.sidebarReserveWidth(expanded: isSidebarExpanded))
-                .padding(.top, titlebarHeight)
+                    .padding(.top, titlebarHeight)
                 .zIndex(4.5)
 
             if isSpotlightPresented {
@@ -632,8 +646,7 @@ struct WindowRootView: View {
                 .id(homeSessionRevision)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .clipped()
-                .padding(.leading, ShellLayout.sidebarReserveWidth(expanded: isSidebarExpanded))
-                .zIndex(5)
+                    .zIndex(5)
             }
         }
     }
@@ -757,13 +770,7 @@ struct WindowRootView: View {
         }
         .preferredColorScheme(.dark)
         .tint(.white)
-        .toolbar {
-            ToolbarItem(placement: .navigation) {
-                SidebarToolbarToggle(isExpanded: sidebarBinding)
-                    .frame(height: ShellLayout.toolbarHostHeight)
-            }
-            .compatToolbarBackgroundHidden()
-        }
+        // El boton de sidebar lo aporta NavigationSplitView (SidebarToolbarToggle propio retirado en este prototipo).
 
 
         .scrollIndicators(.hidden, axes: .horizontal)

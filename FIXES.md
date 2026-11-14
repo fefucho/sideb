@@ -4,9 +4,21 @@ Memoria de cambios de Side B para investigar problemas y regresiones. Buscar aqu
 
 Tags de ámbito: `[Apple]`, `[Windows]`, `[Compartido]`. Core y herramientas comunes usan Compartido, detallando el componente. El tag indica dónde se hizo el cambio; no demuestra que ambas plataformas hayan sido verificadas. Estados, fechas, componentes y relaciones se conservan dentro de cada entrada.
 
-Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-353**. Los IDs repetidos FIX-285/286/287 (2026-11-02) se desambiguaron renumerando las entradas de proveedor visual como FIX-310/311/312; FIX-285/286/287 conservan las de Inicio y recomendaciones laterales. Se conservaron los FIX/FEAT históricos. Dos números antiguos repetidos se distinguen como `FIX-027-2` y `FIX-028-2`, anotando el ID original; al citar FIX-027/028 comprobar título y entrada exacta.
+Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-354**. Los IDs repetidos FIX-285/286/287 (2026-11-02) se desambiguaron renumerando las entradas de proveedor visual como FIX-310/311/312; FIX-285/286/287 conservan las de Inicio y recomendaciones laterales. Se conservaron los FIX/FEAT históricos. Dos números antiguos repetidos se distinguen como `FIX-027-2` y `FIX-028-2`, anotando el ID original; al citar FIX-027/028 comprobar título y entrada exacta.
 
 ## Cambios recientes
+
+<a id="fix-353"></a>
+### [FIX-353] [Apple] - PROTOTIPO experimental: sidebar nativa redimensionable con `NavigationSplitView` (rama `ui/native-sidebar`, no integrado)
+
+- Fecha: 2026-11-14 (America/Montevideo). Prototipo para evaluar en rama; no es un cambio definitivo.
+- Componente: `SideBApp.windowContent` (ahora `NavigationSplitView`), `SidebarView`, `WindowConfigurator`, `WindowNavigationToolbarView`.
+- Cambio: la sidebar deja de ser un overlay flotante con ancho fijo (`sidebarReserveWidth`) y pasa a ser la columna lateral de un `NavigationSplitView` (ancho `navigationSplitViewColumnWidth` min 200 / ideal 252 / max 360, se arrastra el borde). Material/Liquid Glass nativo de la columna (se retiran `compatGlass`, borde y sombra propios). El detalle conserva las capas actuales (páginas, marco de contenido, barra de reproducción, Spotlight, fullscreen, ajustes). `isSidebarExpanded` pasa a derivarse de `columnVisibility`; el botón de sidebar es el nativo (se retira el `SidebarToolbarToggle` propio del toolbar, el fichero queda sin uso). Los botones de ventana quedan en su posición nativa (se desactiva `alignControls`). El fullscreen colapsa la sidebar y la restaura al salir. El ancho elegido se guarda en `native.sidebar.width` (preferencias de `HomeAppearance`) y se usa como ancho ideal al abrir.
+- Conservado: navegación, colecciones list/grid, cuenta/login/logout, búsqueda Spotlight, atajos y menú «Mostrar/ocultar sidebar» (vía `menuContext.sidebar`), etiquetas de accesibilidad (vistas reutilizadas), `contentEdgeFrame` y ajuste «Borde del contenido» (sin inset izquierdo con sidebar expandida, como antes).
+- Pendiente / límites conocidos: sin validación visual manual (solo compila y se empaqueta). Cuadrícula de portadas de colecciones usa ancho fijo (`ShellLayout.sidebarWidth - 52`) y no escala con el ancho; el persistido del ancho es aproximado (ideal solo se aplica al abrir; no hay autosave de `NSSplitView`); la barra superior AppKit (cápsulas) sigue siendo overlay de ventana completa y solo aparece con sidebar colapsada; el fullscreen no anima el desplazamiento por la sidebar (se colapsa); Spotlight y barra de reproducción se centran sobre el detalle; fondo ambiental de Inicio/colección corre detrás de toda la ventana y puede notarse bajo el material de la sidebar; `titlebarHeight` y safe area del toolbar nativo no verificados; panel de Ahora suena lateral no reprobado con sidebar ancha. `ShellLayout.sidebarReserveWidth` y pruebas asociadas se conservan sin uso en la app. Paridad: PAR-046 (Windows evaluación aparte).
+- Archivos: `apple/Sources/SideB/SideBApp.swift`, `apple/Sources/SideB/Views/Sidebar/SidebarView.swift`, `apple/Sources/SideB/UI/WindowConfigurator.swift`, `apple/Sources/SideB/Views/Components/WindowNavigationToolbarView.swift`.
+- Pruebas: `swift build` correcto; sin validación visual manual.
+- Fixes relacionados: [FIX-352](#fix-352). Paridad: PAR-046.
 
 <a id="fix-352"></a>
 ### [FIX-352] [Apple] - Variante «marco + desvanecimiento + borde configurable»: el contenido deja de cortarse contra las sidebars (rama `ui/edge-frame-fade-shadow`)

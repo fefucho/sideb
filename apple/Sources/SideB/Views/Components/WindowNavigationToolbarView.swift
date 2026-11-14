@@ -691,7 +691,7 @@ final class NativeNavigationHeader: NSView {
             windowTop = convert(NSPoint(x: content.bounds.midX, y: top), from: content).y
             let y = content.isFlipped ? top + ShellLayout.navigationRowCenter : top - ShellLayout.navigationRowCenter
             center = convert(NSPoint(x: content.bounds.midX, y: y), from: content)
-            leading = convert(NSPoint(x: content.bounds.minX + ShellLayout.sidebarReserveWidth(expanded: true) + 18,
+            leading = convert(NSPoint(x: content.bounds.minX + 18,
                                       y: top), from: content).x
             trailing = convert(NSPoint(x: content.bounds.maxX - 18 - playbackTrailingInset, y: top), from: content).x
         }

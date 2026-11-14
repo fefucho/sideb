@@ -184,7 +184,8 @@ final class WindowConfigurationView: NSView {
         if window.titleVisibility != .hidden { window.titleVisibility = .hidden }
         if window.toolbar?.showsBaselineSeparator == true { window.toolbar?.showsBaselineSeparator = false }
         if window.toolbarStyle != .unifiedCompact { window.toolbarStyle = .unifiedCompact }
-        alignControls(in: window, contentView: contentView)
+        // Sidebar nativa: los botones de ventana quedan en su posicion nativa (ya no se reubican sobre un panel flotante).
+        restoreControls()
         reportTitlebarHeight(in: window, contentView: contentView)
         let width = contentView.bounds.width
         if width > 0, reportedContentWidth.map({ abs($0 - width) > 0.5 }) ?? true {

@@ -45,12 +45,8 @@ struct SidebarView: View {
             .padding(.horizontal, 8)
             .padding(.bottom, 12)
         }
-        .frame(width: ShellLayout.sidebarWidth)
-        .frame(maxHeight: .infinity, alignment: .top)
-        .compatGlass(in: RoundedRectangle(cornerRadius: ShellLayout.sidebarCornerRadius, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: ShellLayout.sidebarCornerRadius, style: .continuous)
-            .strokeBorder(.white.opacity(0.10), lineWidth: 0.5))
-        .shadow(color: .black.opacity(isExpanded ? 0.18 : 0), radius: 12, x: 0, y: 4)
+        // Prototipo sidebar nativa: ancho lo decide NavigationSplitView; el material/Liquid Glass es el de la columna.
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 
     // MARK: - Navegación Segura (Cierre de Fullscreen)
