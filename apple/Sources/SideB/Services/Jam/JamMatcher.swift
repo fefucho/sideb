@@ -10,7 +10,8 @@ enum JamMatcher {
         /// YouTube Music duration minus Spotify duration, in seconds.
         let durationDelta: Double?
         var id: String { song.videoId }
-        var isConfident: Bool { score >= 4 }
+        static let confidentScore = 4.0
+        var isConfident: Bool { score >= Self.confidentScore }
     }
 
     static func query(for track: JamTrack) -> String {

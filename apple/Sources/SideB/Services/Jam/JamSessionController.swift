@@ -519,14 +519,21 @@ final class JamSessionController {
         let queueChanged = newQueue != queue
         queue = newQueue
         queueRevision = event.queueRevision
-        if event.track?.uri != spotifyTrack?.uri {
+        // The plugin may report the current track without its title first and bring it later.
+        let titleArrived = event.track != nil && event.track?.uri == spotifyTrack?.uri
+            && spotifyTrack?.title == nil && event.track?.title != nil
+        if titleArrived, let track = event.track {
+            spotifyTrack = track
+            note("Canción del Jam: \(track.displayTitle) — \(track.displayArtists)")
+            resolveCurrent(track)
+        } else if event.track?.uri != spotifyTrack?.uri {
             spotifyTrack = event.track
             candidates = []
             matched = nil
             driftMs = nil
             if let track = event.track {
                 note("Canción del Jam: \(track.displayTitle) — \(track.displayArtists)")
-                resolveCurrent(track)
+                if track.title != nil { resolveCurrent(track) } // else: wait for the title (next state)
             } else {
                 player?.audioService.pause()
             }
@@ -541,7 +548,8 @@ final class JamSessionController {
     /// candidates"; only a completed search yields a (possibly empty) ranking.
     func ranking(for track: JamTrack) async -> Result<[JamMatcher.Candidate], Error> {
         if let known = rankings[track.uri] { return .success(known) }
-        guard track.title != nil else { return .success([]) }
+        // Without a title there is nothing to search: that is not "no candidates".
+        guard track.title != nil else { return .failure(JamLookupError.awaitingMetadata) }
         guard let core = player?.rustCore else { return .failure(JamLookupError.coreNotReady) }
         let found: [SongItemRecord]
         do {
@@ -574,11 +582,14 @@ final class JamSessionController {
             }
             let ranked = (try? search.get()) ?? []
             candidates = ranked
-            guard let best = ranked.first, best.isConfident || overrides[track.uri] == best.song.videoId else {
-                note("Sin equivalente confiable en YouTube Music (\(ranked.count) candidatos)")
+            // The best result is taken even with low confidence; "no equivalent" only when the
+            // search returned nothing (the user can still pick another version).
+            guard let best = ranked.first else {
+                note("Sin equivalente en YouTube Music (búsqueda sin resultados)")
                 player?.audioService.pause()
                 return
             }
+            if !best.isConfident { note("Equivalente de confianza baja: se toma el mejor resultado") }
             play(best)
         }
     }
@@ -639,4 +650,4 @@ final class JamSessionController {
     }
 }
 
-enum JamLookupError: Error { case coreNotReady }
+enum JamLookupError: Error { case coreNotReady, awaitingMetadata }

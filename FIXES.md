@@ -4,9 +4,21 @@ Memoria de cambios de Side B para investigar problemas y regresiones. Buscar aqu
 
 Tags de ámbito: `[Apple]`, `[Windows]`, `[Compartido]`. Core y herramientas comunes usan Compartido, detallando el componente. El tag indica dónde se hizo el cambio; no demuestra que ambas plataformas hayan sido verificadas. Estados, fechas, componentes y relaciones se conservan dentro de cada entrada.
 
-Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-357**. Los IDs repetidos FIX-285/286/287 (2026-11-02) se desambiguaron renumerando las entradas de proveedor visual como FIX-310/311/312; FIX-285/286/287 conservan las de Inicio y recomendaciones laterales. Se conservaron los FIX/FEAT históricos. Dos números antiguos repetidos se distinguen como `FIX-27-2` y `FIX-28-2`, anotando el ID original; al citar FIX-27/28 comprobar título y entrada exacta.
+Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-358**. Los IDs repetidos FIX-285/286/287 (2026-11-02) se desambiguaron renumerando las entradas de proveedor visual como FIX-310/311/312; FIX-285/286/287 conservan las de Inicio y recomendaciones laterales. Se conservaron los FIX/FEAT históricos. Dos números antiguos repetidos se distinguen como `FIX-27-2` y `FIX-28-2`, anotando el ID original; al citar FIX-27/28 comprobar título y entrada exacta.
 
 ## Cambios recientes
+
+<a id="fix-357"></a>
+### [FIX-357] [Apple] - Spotify Jam: pistas sin metadatos ya no quedan «Sin equivalente» y se toma el mejor resultado
+
+- Fecha: 2026-11-14 (America/Montevideo).
+- Componente: `apple/Sources/SideB/Services/Jam/` (`JamSessionController.swift`, `JamSessionController+Queue.swift`, `JamQueueMatching.swift`, `JamMatcher.swift`); sin cambios en `core/` ni en el plugin.
+- Problema / causa: con más de 60 pistas sin caché el plugin emite un primer `state` con `title: null` y otro cuando llegan los títulos. `ranking(for:)` devolvía `.success([])` para una pista sin título; `JamLookup` lo trataba como búsqueda completada sin candidatos y `startLookup` fijaba `.unavailable` para toda la sesión. Mismo defecto que Windows ([FIX-350](#fix-350)).
+- Cambio / motivo: `ranking(for:)` ya no responde «sin candidatos» sin título (devuelve `JamLookupError.awaitingMetadata`, nunca un resultado). `pumpMatches` pasa al planificador las pistas sin título como «resueltas» (`JamMatchPlanner.awaitingMetadata`), así no se buscan, no se fijan `.unavailable`, la fila queda «Buscando…» y no se alteran las posiciones de la ventana rápida; el siguiente `state` con título las reevalúa. La pista actual sin título espera y se resuelve al llegar el título (`titleArrived`). Como en Windows, `JamLookup.result(..., acceptBest: true)` toma el mejor candidato aunque no sea «confiable» (puntaje < 4; se anota «confianza baja» en el registro) y la pista actual reproduce el mejor resultado; «sin equivalente» sólo si la búsqueda devuelve cero resultados. Se conserva [FIX-343](#fix-343): un fallo o cancelación deja la fila resolviendo con reintento y espera creciente; 15 primeras enseguida y el resto a ritmo bajo. Riesgo asumido: una versión equivocada puede desincronizar; se corrige con «elegir otra versión».
+- Archivos: los citados y `apple/Tests/SideBTests/JamQueueMatchingTests.swift` (suite `JamMetadataTests`: sin título → pendiente; llegan títulos → se busca; baja confianza → se toma; cero resultados → noMatch).
+- Pruebas / límites: `swift test --filter "JamLookupResultTests|JamMatchPlannerTests|JamMetadataTests|JamMatcherTests"` aprobadas (las 9 previas y las 3 nuevas). Sin validar contra un Jam real; la suite completa no se ejecuta (un test ajeno la cuelga). Una pista cuyos metadatos nunca lleguen queda en «Buscando…».
+- Antecedentes: [FIX-343](#fix-343), [FIX-350](#fix-350) (Windows).
+- Paridad: [PAR-065](PARIDAD.md).
 
 <a id="fix-356"></a>
 ### [FIX-356] [Apple] - Panel derecho Ahora suena redimensionable (rama `ui/native-sidebar`, no integrado)

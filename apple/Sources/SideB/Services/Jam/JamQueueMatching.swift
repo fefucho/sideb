@@ -12,13 +12,16 @@ enum JamLookupResult {
 
 enum JamLookup {
     /// Decides what a finished search means. A thrown error (cancellation included) is never a
-    /// "no match"; an empty successful result is.
-    static func result(of search: Result<[JamMatcher.Candidate], Error>, override: String?) -> JamLookupResult {
+    /// "no match"; an empty successful result is. With `acceptBest` the top result is taken even
+    /// when it is not confident (the first option is usually right and the user can pick another
+    /// version): "no match" then only means the search returned nothing at all.
+    static func result(of search: Result<[JamMatcher.Candidate], Error>, override: String?,
+                       acceptBest: Bool = false) -> JamLookupResult {
         switch search {
         case .failure(let error):
             return .failed(error is CancellationError ? "cancelled" : String(describing: error))
         case .success(let ranked):
-            if let best = ranked.first, best.isConfident || override == best.song.videoId {
+            if let best = ranked.first, best.isConfident || acceptBest || override == best.song.videoId {
                 return .matched(best.song, score: best.score)
             }
             return .noMatch(candidateCount: ranked.count, bestScore: ranked.first?.score)
@@ -40,6 +43,11 @@ enum JamMatchPlanner {
         [2, 5, 15, 30, 60][min(max(attempt, 1), 5) - 1]
     }
 
+    /// URIs of tracks the plugin reported without a title yet (first `state` of a big, uncached Jam).
+    static func awaitingMetadata(_ tracks: [JamTrack]) -> Set<String> {
+        Set(tracks.filter { $0.title == nil }.map(\.uri))
+    }
+
     struct Plan: Equatable {
         var start: [String] = []
         /// True when one of `start` is beyond the eager window.
@@ -48,6 +56,9 @@ enum JamMatchPlanner {
         var wakeAfter: TimeInterval?
     }
 
+    /// `settled` should include tracks still waiting for their metadata (no title yet): they have
+    /// nothing to search for and must stay "resolving", never "unavailable", until a later state
+    /// brings the title.
     static func plan(queue: [String], settled: Set<String>, inFlight: Set<String>, attempts: [String: Int],
                      retryAt: [String: Date], lastBackgroundStart: Date, now: Date) -> Plan {
         var plan = Plan()

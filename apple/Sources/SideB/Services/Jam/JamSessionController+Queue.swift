@@ -54,7 +54,7 @@ extension JamSessionController {
     func pumpMatches() {
         guard phase == .live else { return }
         let plan = JamMatchPlanner.plan(
-            queue: queue.map(\.uri), settled: Set(matchStates.keys), inFlight: resolveInFlight,
+            queue: queue.map(\.uri), settled: Set(matchStates.keys).union(JamMatchPlanner.awaitingMetadata(queue)), inFlight: resolveInFlight,
             attempts: lookupAttempts, retryAt: lookupRetryAt, lastBackgroundStart: lastBackgroundLookup, now: Date())
         if plan.startsBackground { lastBackgroundLookup = Date() }
         let byURI = Dictionary(queue.map { ($0.uri, $0) }, uniquingKeysWith: { first, _ in first })
@@ -85,14 +85,15 @@ extension JamSessionController {
             self.resolveInFlight.remove(track.uri)
             self.lookupTasks[track.uri] = nil
             let label = "\(track.displayTitle) — \(track.displayArtists)"
-            switch JamLookup.result(of: search, override: self.overrides[track.uri]) {
+            switch JamLookup.result(of: search, override: self.overrides[track.uri], acceptBest: true) {
             case .matched(let song, let score):
                 self.matchStates[track.uri] = .matched(song)
-                self.note("Cola · \(label) → \(song.title) — \(song.artists) (puntaje \(String(format: "%.1f", score)))")
+                let low = score < JamMatcher.Candidate.confidentScore ? ", confianza baja" : ""
+                self.note("Cola · \(label) → \(song.title) — \(song.artists) (puntaje \(String(format: "%.1f", score))\(low))")
             case .noMatch(let count, let best):
                 self.matchStates[track.uri] = .unavailable
                 let top = best.map { String(format: "%.1f", $0) } ?? "–"
-                self.note("Cola · \(label) → sin equivalente confiable (\(count) candidatos, mejor puntaje \(top))")
+                self.note("Cola · \(label) → sin equivalente, búsqueda sin resultados (\(count) candidatos, mejor puntaje \(top))")
             case .failed(let reason):
                 let attempt = self.lookupAttempts[track.uri, default: 0] + 1
                 self.lookupAttempts[track.uri] = attempt

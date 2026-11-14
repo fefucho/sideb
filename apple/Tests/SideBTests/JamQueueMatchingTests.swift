@@ -120,3 +120,48 @@ struct JamMatchPlannerTests {
         #expect(JamMatchPlanner.backoff(afterAttempt: 1) < JamMatchPlanner.backoff(afterAttempt: 4))
     }
 }
+
+@Suite("Jam: pistas sin metadatos y mejor resultado")
+struct JamMetadataTests {
+    private let now = Date(timeIntervalSince1970: 1_000_000)
+    private func jamTrack(_ uri: String, title: String?) -> JamTrack {
+        JamTrack(uri: uri, title: title, artists: title == nil ? [] : ["A"], album: nil, durationMs: 180_000, isrc: nil, provider: nil)
+    }
+    private func plan(_ tracks: [JamTrack], settled: Set<String> = []) -> JamMatchPlanner.Plan {
+        JamMatchPlanner.plan(queue: tracks.map(\.uri), settled: settled.union(JamMatchPlanner.awaitingMetadata(tracks)),
+                             inFlight: [], attempts: [:], retryAt: [:], lastBackgroundStart: .distantPast, now: now)
+    }
+
+    @Test("Una pista sin título queda pendiente: no se busca ni se fija .unavailable")
+    func untitledStaysPending() {
+        let tracks = [jamTrack("a", title: nil), jamTrack("b", title: "B")]
+        #expect(JamMatchPlanner.awaitingMetadata(tracks) == ["a"])
+        #expect(plan(tracks).start == ["b"])
+        // Nothing was settled for "a": the row is still resolving.
+        #expect(plan([jamTrack("a", title: nil)]).start.isEmpty)
+    }
+
+    @Test("Cuando llegan los títulos la pista se busca")
+    func titleArrivalResolves() {
+        #expect(plan([jamTrack("a", title: nil)]).start.isEmpty)
+        #expect(plan([jamTrack("a", title: "Sorry")]).start == ["a"])
+    }
+
+    @Test("Resultado de baja confianza se toma con acceptBest; sin resultados es noMatch")
+    func bestResult() {
+        let t = JamTrack(uri: "u", title: "Sorry", artists: ["Justin Bieber"], album: nil, durationMs: 200786, isrc: nil, provider: nil)
+        let ranked = JamMatcher.rank(track: t, candidates: [song("x", "Other", "Someone", "1:00")])
+        #expect(ranked.first?.isConfident == false)
+        guard case .matched(let found, _) = JamLookup.result(of: .success(ranked), override: nil, acceptBest: true) else {
+            Issue.record("expected low-confidence match"); return
+        }
+        #expect(found.videoId == "x")
+        guard case .noMatch(let count, _) = JamLookup.result(of: .success([]), override: nil, acceptBest: true) else {
+            Issue.record("expected noMatch"); return
+        }
+        #expect(count == 0)
+        guard case .failed = JamLookup.result(of: .failure(JamLookupError.awaitingMetadata), override: nil, acceptBest: true) else {
+            Issue.record("expected failed"); return
+        }
+    }
+}
