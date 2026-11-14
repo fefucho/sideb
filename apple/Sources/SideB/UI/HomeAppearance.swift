@@ -34,7 +34,7 @@ enum HomeAlbumCardStyle: String, CaseIterable {
 enum ContentBorderStyle: String, CaseIterable, Identifiable {
     case none, subtle, strong
     var id: String { rawValue }
-    static let `default`: Self = .subtle
+    static let `default`: Self = .none
 
     static func resolve(_ raw: String?) -> Self { raw.flatMap(Self.init(rawValue:)) ?? .default }
 

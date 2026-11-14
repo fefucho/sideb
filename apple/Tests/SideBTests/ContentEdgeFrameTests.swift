@@ -16,8 +16,8 @@ struct ContentEdgeFrameTests {
     }
 
     @Test func contentBorderStyleResolvesWithSubtleDefaultAndNeverDimsInHighContrast() {
-        #expect(ContentBorderStyle.resolve(nil) == .subtle)
-        #expect(ContentBorderStyle.resolve("garbage") == .subtle)
+        #expect(ContentBorderStyle.resolve(nil) == .none)
+        #expect(ContentBorderStyle.resolve("garbage") == .none)
         #expect(ContentBorderStyle.resolve("none") == .none)
         #expect(ContentBorderStyle.none.strokeOpacity(highContrast: true) == 0)
         for style in [ContentBorderStyle.subtle, .strong] {

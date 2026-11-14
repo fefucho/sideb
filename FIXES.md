@@ -19,6 +19,7 @@ Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-354**. Lo
 - Archivos: `apple/Sources/SideB/SideBApp.swift`, `apple/Sources/SideB/Views/Sidebar/SidebarView.swift`, `apple/Sources/SideB/UI/WindowConfigurator.swift`, `apple/Sources/SideB/Views/Components/WindowNavigationToolbarView.swift`.
 - Pruebas: `swift build` correcto; sin validación visual manual.
 - Fixes relacionados: [FIX-352](#fix-352). Paridad: PAR-046.
+- Ajuste posterior (2026-11-14): el borde del contenido pasa a **«Sin borde» por defecto** (`ContentBorderStyle.default = .none`) porque, con la sidebar nativa, sólo el panel derecho Ahora suena conserva su borde fijo de 0,5 pt (`PlaybackSidebarScene`, sin cambios). El ajuste «Borde del contenido» sigue disponible (Sutil / Marcado); quien ya eligió un valor lo conserva. No se cambió `main`, que mantiene «Sutil» por defecto.
 
 <a id="fix-352"></a>
 ### [FIX-352] [Apple] - Variante «marco + desvanecimiento + borde configurable»: el contenido deja de cortarse contra las sidebars (rama `ui/edge-frame-fade-shadow`)
