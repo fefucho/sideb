@@ -160,6 +160,9 @@ struct WindowRootView: View {
     @State private var sidebarVisibilityBeforeFullscreen: NavigationSplitViewVisibility?
     @AppStorage("native.sidebar.width", store: HomeAppearance.preferences) private var persistedSidebarWidth: Double = 252
     @State private var initialSidebarWidth: CGFloat = 0
+    // Panel derecho Ahora suena redimensionable (FIX-354).
+    @State private var storedPlaybackPanelWidth: CGFloat = PlaybackSidebarLayout.storedWidth(in: HomeAppearance.preferences)
+    @State private var detailWidth: CGFloat = 0
     @State private var titlebarHeight: CGFloat = 0
     @State private var navigationHeaderWidth: CGFloat = 620
     @State private var router = NavigationRouter()
@@ -250,7 +253,7 @@ struct WindowRootView: View {
                     isHistoryDisabled: isSpotlightPresented || playerViewModel.isFullscreenPresented,
                     showsHistory: !playerViewModel.isFullscreenPresented,
                     viewportWidth: navigationHeaderWidth,
-                    playbackTrailingInset: playerViewModel.isPlaybackSidebarPresented ? PlaybackSidebarLayout.reserve : 0,
+                    playbackTrailingInset: playerViewModel.isPlaybackSidebarPresented ? PlaybackSidebarLayout.reserve(forWidth: playbackPanelWidth) : 0,
                     isHomeSettingsPresented: isHomeSettingsPresented && canPresentHomeSettings,
                     onHistoryFrameChanged: { frame in
                         if abs(homeToolbarBottom - frame.maxY) > 0.5 { homeToolbarBottom = frame.maxY }
@@ -412,10 +415,31 @@ struct WindowRootView: View {
         DispatchQueue.main.async { AppMenuBarOrganizer.normalize() }
     }
 
+    /// Ancho de la columna de detalle (la sidebar nativa es hermana, no reserva); antes de medirse se usa el de ventana.
+    private var playbackAvailableWindowWidth: CGFloat { detailWidth > 0 ? detailWidth : navigationHeaderWidth }
+
+    private var playbackPanelMaximum: CGFloat {
+        PlaybackSidebarLayout.availableWidth(windowWidth: playbackAvailableWindowWidth, leftReserve: 0)
+    }
+
+    private var playbackPanelWidth: CGFloat {
+        PlaybackSidebarLayout.effectiveWidth(stored: storedPlaybackPanelWidth,
+                                             windowWidth: playbackAvailableWindowWidth, leftReserve: 0)
+    }
+
     private var playbackContentReserve: CGFloat {
-        PlaybackSidebarLayout.contentReserve(windowWidth: navigationHeaderWidth,
+        PlaybackSidebarLayout.contentReserve(windowWidth: playbackAvailableWindowWidth,
             leftReserve: 0, // la sidebar nativa es columna hermana: el detalle ya no reserva ancho
-            presented: playerViewModel.isPlaybackSidebarPresented)
+            presented: playerViewModel.isPlaybackSidebarPresented, panelWidth: playbackPanelWidth)
+    }
+
+    private func resizePlaybackPanel(to width: CGFloat, commit: Bool) {
+        let value = PlaybackSidebarLayout.clampWidth(width)
+        // Sin animacion: el ancho sigue al cursor en vivo.
+        var transaction = Transaction(animation: nil)
+        transaction.disablesAnimations = true
+        withTransaction(transaction) { storedPlaybackPanelWidth = value }
+        if commit { HomeAppearance.preferences.set(Double(value), forKey: PlaybackSidebarLayout.widthPreferenceKey) }
     }
 
     private var windowContent: some View {
@@ -425,6 +449,7 @@ struct WindowRootView: View {
         } detail: {
             detailContent
                 .ignoresSafeArea(.container, edges: .top)
+                .onGeometryChange(for: CGFloat.self) { ($0.size.width / 8).rounded(.down) * 8 } action: { detailWidth = $0 }
         }
         .navigationSplitViewStyle(.balanced)
         .onAppear { if initialSidebarWidth == 0 { initialSidebarWidth = CGFloat(persistedSidebarWidth) } }
@@ -615,7 +640,9 @@ struct WindowRootView: View {
                 .zIndex(1)
 
             FullscreenCanvas(viewModel: playerViewModel,
-                             isSidebarExpanded: .constant(false), router: router)
+                             isSidebarExpanded: .constant(false), router: router,
+                             lateralWidth: playbackPanelWidth, lateralMaximum: playbackPanelMaximum,
+                             onResizeLateral: { resizePlaybackPanel(to: $0, commit: $1) })
                 .overlay(alignment: .top) {
                     FullscreenDismissGestureIndicatorView(presentation: gesturePresentation)
                         .padding(.top, titlebarHeight + 12)

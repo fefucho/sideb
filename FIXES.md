@@ -4,9 +4,17 @@ Memoria de cambios de Side B para investigar problemas y regresiones. Buscar aqu
 
 Tags de ámbito: `[Apple]`, `[Windows]`, `[Compartido]`. Core y herramientas comunes usan Compartido, detallando el componente. El tag indica dónde se hizo el cambio; no demuestra que ambas plataformas hayan sido verificadas. Estados, fechas, componentes y relaciones se conservan dentro de cada entrada.
 
-Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-354**. Los IDs repetidos FIX-285/286/287 (2026-11-02) se desambiguaron renumerando las entradas de proveedor visual como FIX-310/311/312; FIX-285/286/287 conservan las de Inicio y recomendaciones laterales. Se conservaron los FIX/FEAT históricos. Dos números antiguos repetidos se distinguen como `FIX-027-2` y `FIX-028-2`, anotando el ID original; al citar FIX-027/028 comprobar título y entrada exacta.
+Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-355**. Los IDs repetidos FIX-285/286/287 (2026-11-02) se desambiguaron renumerando las entradas de proveedor visual como FIX-310/311/312; FIX-285/286/287 conservan las de Inicio y recomendaciones laterales. Se conservaron los FIX/FEAT históricos. Dos números antiguos repetidos se distinguen como `FIX-027-2` y `FIX-028-2`, anotando el ID original; al citar FIX-027/028 comprobar título y entrada exacta.
 
 ## Cambios recientes
+
+<a id="fix-354"></a>
+### [FIX-354] [Apple] - PROTOTIPO: panel derecho Ahora suena redimensionable (rama `ui/native-sidebar`, no integrado)
+
+- Fecha: 2026-11-14 (America/Montevideo). Componente: `PlaybackSidebarLayout`, `PlaybackSidebarResizeHandle` (nuevo), `FullscreenCanvas`, `SideBApp`.
+- Cambio: el ancho del panel deja de ser la constante 380 y pasa a ser estado (rango 340-520, ideal 380) guardado en `sideb.playbackSidebar.width.v1` (clamp al leer; se persiste al soltar). Asa de 8 pt en el borde izquierdo (cursor `columnResize`, sin animar durante el arrastre, doble clic = 380, flechas izquierda/derecha +-16 pt con foco, `accessibilityAdjustableAction`, textos `playbackSidebar.resize*`). `contentReserve` acepta `panelWidth`; `effectiveWidth` reduce el ancho si la ventana se achica para dejar siempre 480 pt de página (el valor guardado no se pierde); bajo 340 disponibles no hay reserva y el panel se superpone como antes. `playbackTrailingInset` del toolbar y la reserva de `SideBApp` usan el ancho dinámico; el ancho de la columna de detalle se mide (corrige que `leftReserve: 0` ignoraba la sidebar nativa de FIX-353).
+- Pruebas: `swift build`; `PlaybackSidebarResizeTests` (clamp, persistencia, ventana angosta, geometría de carátula/pie en 340/380/450/520) y suites existentes de PlaybackSidebar, NowPlayingSidebarArtwork, NativeSidebarRecommendations, VolumeScroll y WindowGestureShellRouting aprobadas. Sin validación visual manual.
+- Límites: no se verificó visualmente el contenido en 340 y 520 (cabecera, cola, letras, recomendaciones, volumen), ni la superposición del asa con los botones de cabecera, ni el rendimiento durante el arrastre; `showsUpcoming` no depende del ancho. Fixes relacionados: [FIX-353](#fix-353), FIX-349. Paridad: PAR-046.
 
 <a id="fix-353"></a>
 ### [FIX-353] [Apple] - PROTOTIPO experimental: sidebar nativa redimensionable con `NavigationSplitView` (rama `ui/native-sidebar`, no integrado)

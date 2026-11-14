@@ -1461,6 +1461,12 @@ History: %@</string>
 	<string>Open playback sidebar</string>
 	<key>playbackSidebar.position</key>
 	<string>Playback position</string>
+	<key>playbackSidebar.resize</key>
+	<string>Playback sidebar width</string>
+	<key>playbackSidebar.resize.hint</key>
+	<string>Drag to change the width; double-click resets it. With the keyboard, use the arrow keys.</string>
+	<key>playbackSidebar.resize.value</key>
+	<string>%@ points</string>
 	<key>playbackSidebar.synced</key>
 	<string>Synced</string>
 	<key>playbackSidebar.upNext</key>

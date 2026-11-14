@@ -7,11 +7,20 @@ struct FullscreenCanvas: View {
     @Bindable var viewModel: PlayerViewModel
     @Binding var isSidebarExpanded: Bool
     let router: NavigationRouter?
+    /// Ancho del panel lateral (dinamico) y limite superior que admite la ventana.
+    var lateralWidth: CGFloat = PlaybackSidebarLayout.width
+    var lateralMaximum: CGFloat = PlaybackSidebarLayout.maximumWidth
+    var onResizeLateral: ((CGFloat, Bool) -> Void)?
 
     @State private var retainedMode: PlaybackPresentation?
     @State private var surfaceVisible = false
 
-    init(viewModel: PlayerViewModel, isSidebarExpanded: Binding<Bool>, router: NavigationRouter?) {
+    init(viewModel: PlayerViewModel, isSidebarExpanded: Binding<Bool>, router: NavigationRouter?,
+         lateralWidth: CGFloat = PlaybackSidebarLayout.width, lateralMaximum: CGFloat = PlaybackSidebarLayout.maximumWidth,
+         onResizeLateral: ((CGFloat, Bool) -> Void)? = nil) {
+        self.lateralWidth = lateralWidth
+        self.lateralMaximum = lateralMaximum
+        self.onResizeLateral = onResizeLateral
         self.viewModel = viewModel
         _isSidebarExpanded = isSidebarExpanded
         self.router = router
@@ -23,7 +32,7 @@ struct FullscreenCanvas: View {
     var body: some View {
         GeometryReader { proxy in
             let lateral = retainedMode == .sidebar
-            let width = lateral ? PlaybackSidebarLayout.width : proxy.size.width
+            let width = lateral ? min(lateralWidth, max(0, proxy.size.width - PlaybackSidebarLayout.inset * 2)) : proxy.size.width
             let height = lateral ? max(0, proxy.size.height - PlaybackSidebarLayout.inset * 2) : proxy.size.height
             ZStack(alignment: .trailing) {
                 if let retainedMode {
@@ -32,6 +41,12 @@ struct FullscreenCanvas: View {
                         sidebarProgress: isSidebarExpanded ? 1 : 0, router: router,
                         presentationMode: retainedMode)
                         .frame(width: width, height: height)
+                        .overlay(alignment: .leading) {
+                            if lateral, let onResizeLateral {
+                                PlaybackSidebarResizeHandle(width: width, maximum: lateralMaximum, onResize: onResizeLateral)
+                                    .padding(.vertical, 20) // no tapa las esquinas redondeadas
+                            }
+                        }
                         .padding(.trailing, lateral ? PlaybackSidebarLayout.inset : 0)
                         .offset(x: !surfaceVisible && lateral && !reduceMotion ? 24 : 0,
                                 y: !surfaceVisible && !lateral && !reduceMotion ? 24 : 0)

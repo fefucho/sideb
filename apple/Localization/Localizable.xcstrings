@@ -12442,6 +12442,57 @@
         }
       }
     },
+    "playbackSidebar.resize": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ancho del reproductor lateral"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Playback sidebar width"
+          }
+        }
+      }
+    },
+    "playbackSidebar.resize.hint": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Arrastra para cambiar el ancho; doble clic lo restablece. Con el teclado, usa las flechas."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Drag to change the width; double-click resets it. With the keyboard, use the arrow keys."
+          }
+        }
+      }
+    },
+    "playbackSidebar.resize.value": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ puntos"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ points"
+          }
+        }
+      }
+    },
     "playbackSidebar.synced": {
       "extractionState": "manual",
       "localizations": {

@@ -57,9 +57,34 @@ public struct PlaybackPresentationState: Equatable {
 }
 
 struct PlaybackSidebarLayout {
+    /// Ancho por defecto (y ideal) del panel; el real es redimensionable entre `minimumWidth` y `maximumWidth`.
     static let width: CGFloat = 380
+    static let minimumWidth: CGFloat = 340
+    static let maximumWidth: CGFloat = 520
+    static let keyboardStep: CGFloat = 16
+    static let widthPreferenceKey = "sideb.playbackSidebar.width.v1"
+    /// Pagina util minima que debe quedar junto al panel (si no, el panel se superpone como antes).
+    static let minimumContentWidth: CGFloat = 480
     static let inset: CGFloat = 6
     static let reserve = width + inset * 2
+    static func reserve(forWidth width: CGFloat) -> CGFloat { width + inset * 2 }
+
+    static func clampWidth(_ value: CGFloat) -> CGFloat {
+        guard value.isFinite else { return width }
+        return min(maximumWidth, max(minimumWidth, value))
+    }
+    static func storedWidth(in defaults: UserDefaults) -> CGFloat {
+        guard defaults.object(forKey: widthPreferenceKey) != nil else { return width }
+        return clampWidth(CGFloat(defaults.double(forKey: widthPreferenceKey)))
+    }
+    /// Ancho maximo que cabe dejando `minimumContentWidth` de pagina; nunca baja de `minimumWidth` (entonces se superpone).
+    static func availableWidth(windowWidth: CGFloat, leftReserve: CGFloat) -> CGFloat {
+        max(minimumWidth, min(maximumWidth, windowWidth - leftReserve - inset * 2 - minimumContentWidth))
+    }
+    /// Ancho efectivo: el guardado, reducido si la ventana es angosta (el valor guardado no se pierde).
+    static func effectiveWidth(stored: CGFloat, windowWidth: CGFloat, leftReserve: CGFloat) -> CGFloat {
+        min(clampWidth(stored), availableWidth(windowWidth: windowWidth, leftReserve: leftReserve))
+    }
     static let metadataHeight: CGFloat = 68
     /// Header band that stays above the cover (the cover starts just inside it).
     static let coverTop: CGFloat = 56
@@ -95,7 +120,10 @@ struct PlaybackSidebarLayout {
         let idealHero = coverTop + max(0, width - coverInset * 2) + metadataSpacing + metadataHeight
         return max(minimum, panelHeight - idealHero)
     }
-    static func contentReserve(windowWidth: CGFloat, leftReserve: CGFloat, presented: Bool) -> CGFloat {
-        presented && windowWidth - leftReserve - reserve >= 480 ? reserve : 0
+    /// Reserva de contenido: con `panelWidth` omitido usa el ancho por defecto. Si ni el ancho minimo deja
+    /// `minimumContentWidth` de pagina, no se reserva (el panel se superpone).
+    static func contentReserve(windowWidth: CGFloat, leftReserve: CGFloat, presented: Bool, panelWidth: CGFloat = Self.width) -> CGFloat {
+        let reserve = reserve(forWidth: panelWidth)
+        return presented && windowWidth - leftReserve - reserve >= minimumContentWidth ? reserve : 0
     }
 }
