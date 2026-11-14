@@ -514,6 +514,9 @@ struct WindowRootView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .clipped()
+                // Sibling panel of the floating sidebars; the panels already provide the 6 pt gutter when present.
+                .contentEdgeFrame(leadingInset: isSidebarExpanded ? 0 : ShellLayout.contentFrameInset,
+                                  trailingInset: playbackContentReserve > 0 ? 0 : ShellLayout.contentFrameInset)
             }
             .padding(.trailing, playbackContentReserve)
             .zIndex(0)

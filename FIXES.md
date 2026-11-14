@@ -4,9 +4,20 @@ Memoria de cambios de Side B para investigar problemas y regresiones. Buscar aqu
 
 Tags de ámbito: `[Apple]`, `[Windows]`, `[Compartido]`. Core y herramientas comunes usan Compartido, detallando el componente. El tag indica dónde se hizo el cambio; no demuestra que ambas plataformas hayan sido verificadas. Estados, fechas, componentes y relaciones se conservan dentro de cada entrada.
 
-Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-352**. Los IDs repetidos FIX-285/286/287 (2026-11-02) se desambiguaron renumerando las entradas de proveedor visual como FIX-310/311/312; FIX-285/286/287 conservan las de Inicio y recomendaciones laterales. Se conservaron los FIX/FEAT históricos. Dos números antiguos repetidos se distinguen como `FIX-027-2` y `FIX-028-2`, anotando el ID original; al citar FIX-027/028 comprobar título y entrada exacta.
+Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-353**. Los IDs repetidos FIX-285/286/287 (2026-11-02) se desambiguaron renumerando las entradas de proveedor visual como FIX-310/311/312; FIX-285/286/287 conservan las de Inicio y recomendaciones laterales. Se conservaron los FIX/FEAT históricos. Dos números antiguos repetidos se distinguen como `FIX-027-2` y `FIX-028-2`, anotando el ID original; al citar FIX-027/028 comprobar título y entrada exacta.
 
 ## Cambios recientes
+
+<a id="fix-352"></a>
+### [FIX-352] [Apple] - Variante «marco + desvanecimiento + sombra»: el contenido deja de cortarse contra las sidebars (rama `ui/edge-frame-fade-shadow`)
+
+- Fecha: 2026-11-14 (America/Montevideo). Variante experimental: existe otra, `ui/edge-snap-fade`, con el mismo ID; sólo una se integrará.
+- Componente: `ContentEdgeFrame` (nuevo, `UI/`), `ShellLayout`, `SideBApp.windowContent`.
+- Problema / causa: el área de páginas era un rectángulo con `.clipped()`. Entre el borde de cada sidebar flotante y el recorte quedaba una franja gris de 6 pt y las tarjetas de los carruseles se cortaban «de la nada» contra los bordes izquierdo y derecho (peor con tarjetas a medio mostrar).
+- Cambio / motivo: el área de páginas se presenta como un tercer panel hermano de las sidebars: esquinas de 10 pt (`contentCornerRadius = sidebarCornerRadius`) y margen exterior de 6 pt (`contentFrameInset`), borde de 0,5 pt como los paneles, **máscara de opacidad** de 28 pt en los bordes izquierdo/derecho (una sola pasada de composición; no se apilan blurs, que a 120 Hz serían caros) y una sombra interior de 14 pt al 22 % junto a cada panel para que se lea como «el contenido pasa por debajo». Las sidebars ya aportan el hueco de 6 pt cuando están presentes; si no, el marco añade 6 pt a ese lado. Reducir transparencia / Aumentar contraste quitan el desvanecimiento y la sombra y refuerzan el borde.
+- Archivos: `apple/Sources/SideB/UI/ContentEdgeFrame.swift`, `apple/Sources/SideB/UI/ShellLayout.swift`, `apple/Sources/SideB/SideBApp.swift`, `apple/Tests/SideBTests/ContentEdgeFrameTests.swift`, `FIXES.md`, `PARIDAD.md`.
+- Pruebas / límites: compila; 65 pruebas focalizadas aprobadas (geometría del desvanecimiento y coherencia radio/margen). Sin validación visual ni Instruments: falta confirmar que el margen vertical de 6 pt y el recorte redondeado no choquen con el toolbar flotante ni el fondo ambiental de Inicio, y medir el scroll a 120 Hz con la máscara. Constantes ajustables en `ShellLayout` (`contentEdgeFade`, `contentEdgeShadow`, `contentEdgeShadowWidth`, `contentFrameInset`). Windows no portado.
+- Fixes relacionados: [FIX-284](#fix-284), [FIX-349](#fix-349), [FIX-350](#fix-350). Paridad: PAR-046.
 
 <a id="fix-351"></a>
 ### [FIX-351] [Windows] - Paridad de FIX-349/350: portada a todo el ancho, distancias iguales y fondo por capas con modo inmersivo
