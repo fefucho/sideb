@@ -37,7 +37,7 @@ enum JamSyncStatus: Equatable {
 
 /// Why a join failed: host-side reasons plus the plugin's own error codes.
 enum JamFailureKind: String, CaseIterable {
-    case pluginMissing, noSession, startFailed, authRequired, invalidLink, unavailable
+    case pluginMissing, noSession, startFailed, shortLink, authRequired, invalidLink, unavailable
     case network, notAllowed, jamNotFound, rateLimited, rejected, unsupported, unknown
 
     init(reason: String) { self = JamFailureKind(rawValue: reason) ?? .unknown }

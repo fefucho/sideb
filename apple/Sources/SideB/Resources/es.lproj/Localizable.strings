@@ -880,6 +880,8 @@
 	<string>Spotify pidió esperar un momento. Intentá de nuevo en unos minutos.</string>
 	<key>jam.failure.rejected</key>
 	<string>Spotify rechazó la invitación.</string>
+	<key>jam.failure.shortLink</key>
+	<string>No se pudo abrir el enlace corto. Pegá el enlace que empieza con open.spotify.com/socialsession/.</string>
 	<key>jam.failure.startFailed</key>
 	<string>No se pudo iniciar el plugin de Jam.</string>
 	<key>jam.failure.title</key>

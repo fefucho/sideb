@@ -7546,6 +7546,23 @@
         }
       }
     },
+    "jam.failure.shortLink": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No se pudo abrir el enlace corto. Pegá el enlace que empieza con open.spotify.com/socialsession/."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't open the short link. Paste the link that starts with open.spotify.com/socialsession/."
+          }
+        }
+      }
+    },
     "jam.failure.startFailed": {
       "extractionState": "manual",
       "localizations": {

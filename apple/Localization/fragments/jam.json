@@ -171,6 +171,10 @@
     "es": "No se pudo iniciar el plugin de Jam.",
     "en": "The Jam plugin couldn't be started."
   },
+  "jam.failure.shortLink": {
+    "es": "No se pudo abrir el enlace corto. Pegá el enlace que empieza con open.spotify.com/socialsession/.",
+    "en": "Couldn't open the short link. Paste the link that starts with open.spotify.com/socialsession/."
+  },
   "jam.failure.authRequired": {
     "es": "Spotify pidió iniciar sesión de nuevo.",
     "en": "Spotify asked you to sign in again."

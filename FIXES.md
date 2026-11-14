@@ -4,9 +4,21 @@ Memoria de cambios de Side B para investigar problemas y regresiones. Buscar aqu
 
 Tags de ámbito: `[Apple]`, `[Windows]`, `[Compartido]`. Core y herramientas comunes usan Compartido, detallando el componente. El tag indica dónde se hizo el cambio; no demuestra que ambas plataformas hayan sido verificadas. Estados, fechas, componentes y relaciones se conservan dentro de cada entrada.
 
-Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-358**. Los IDs repetidos FIX-285/286/287 (2026-11-02) se desambiguaron renumerando las entradas de proveedor visual como FIX-310/311/312; FIX-285/286/287 conservan las de Inicio y recomendaciones laterales. Se conservaron los FIX/FEAT históricos. Dos números antiguos repetidos se distinguen como `FIX-27-2` y `FIX-28-2`, anotando el ID original; al citar FIX-27/28 comprobar título y entrada exacta.
+Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-359**. Los IDs repetidos FIX-285/286/287 (2026-11-02) se desambiguaron renumerando las entradas de proveedor visual como FIX-310/311/312; FIX-285/286/287 conservan las de Inicio y recomendaciones laterales. Se conservaron los FIX/FEAT históricos. Dos números antiguos repetidos se distinguen como `FIX-27-2` y `FIX-28-2`, anotando el ID original; al citar FIX-27/28 comprobar título y entrada exacta.
 
 ## Cambios recientes
+
+<a id="fix-358"></a>
+### [FIX-358] [Apple] - Spotify Jam: unirse con el enlace corto `spotify.link`
+
+- Fecha: 2026-11-14 (America/Montevideo).
+- Componente: `apple/Sources/SideB/Services/Jam/JamShortLink.swift` (nuevo), `JamSessionController.swift` (`joinInternal`), `Views/Jam/JamPanelModel.swift` (`JamFailureKind.shortLink`), `apple/Localization/fragments/jam.json`; sin cambios en `core/` ni en el plugin.
+- Problema / causa: `extractJamToken` y el plugin sólo aceptan `open.spotify.com/socialsession/<token>`, `spotify:socialsession:<token>` o un token suelto; el enlace corto que comparte la app de Spotify (`https://spotify.link/<id>`) no lleva el token (redirige a `spotify.app.link`, cuya página HTML trae el enlace real) y el plugin lo rechazaba. Mismo caso que [FIX-349](#fix-349) en Windows.
+- Cambio / motivo: `joinInternal` detecta un enlace https de `spotify.link` / `spotify.app.link` (`JamShortLink.shortURL`) y, con la fila en «Conectando…», lo resuelve con `JamShortLinkResolver` antes de lanzar el plugin: GET anónimo con sesión URLSession efímera (sin cookies, caché ni credenciales de Spotify), tiempo límite de 15 s, máx. 5 redirecciones que sólo siguen a hosts cortos de Spotify u `open.spotify.com` (https), cuerpo limitado a 512 KiB. El token se busca primero en la URL final (sólo si su host es de Spotify) y luego en el HTML (`open.spotify.com/socialsession/<token>`, 16-40 alfanuméricos); al plugin se le pasa siempre el enlace canónico reconstruido, nunca texto arbitrario de la página. Si no se resuelve, fase de fallo `shortLink` con mensaje localizado de pegar el enlace `open.spotify.com/socialsession/…`. El resolvedor es inyectable (`JamSessionController.shortLinkResolver`, protocolo `JamShortLinkResolving`).
+- Archivos: los citados, `apple/Tests/SideBTests/JamShortLinkTests.swift`, `Localizable.xcstrings` y `*.lproj/Localizable.strings` regenerados.
+- Pruebas / límites: `swift test --filter "JamShortLinkTests|JamInviteTests"` aprobadas (14); `sync-localizations.mjs --check` aprobado. Pruebas sólo de la lógica pura y un resolvedor falso: sin red real y sin unirse a un Jam real con el enlace corto; depende de que Branch siga incrustando el enlace en la página. Nota: `JamSurfacesTests` («The badge overlays the artwork card…») falla en esta rama por una expectativa de layout ajena a este cambio.
+- Antecedentes: [FIX-343](#fix-343), [FIX-349](#fix-349) (Windows).
+- Paridad: [PAR-064](PARIDAD.md).
 
 <a id="fix-357"></a>
 ### [FIX-357] [Apple] - Spotify Jam: pistas sin metadatos ya no quedan «Sin equivalente» y se toma el mejor resultado

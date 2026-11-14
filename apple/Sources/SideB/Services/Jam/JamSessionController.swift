@@ -22,7 +22,11 @@ final class JamSessionController {
         static let pluginMissing = "pluginMissing"
         static let noSession = "noSession"
         static let startFailed = "startFailed"
+        static let shortLink = "shortLink"
     }
+
+    /// Resolves `spotify.link` short invites; replaced by tests so no real network is used.
+    @ObservationIgnored var shortLinkResolver: any JamShortLinkResolving = JamShortLinkResolver()
 
     private(set) var phase: Phase = .idle
     private(set) var members: [JamMember] = []
@@ -154,7 +158,8 @@ final class JamSessionController {
             return
         }
         self.player = player
-        let resolvedToken = knownToken ?? Self.extractJamToken(from: link)
+        let shortURL = JamShortLink.shortURL(from: link)
+        let resolvedToken = knownToken ?? (shortURL == nil ? Self.extractJamToken(from: link) : nil)
         activeJamToken = resolvedToken
         if let resolvedToken {
             invites.removeAll { $0.token == resolvedToken }
@@ -167,6 +172,20 @@ final class JamSessionController {
         let token = sessionToken
         note("Conectando…")
         Task {
+            // A short link carries no token: resolve it to the canonical link first (anonymous request).
+            var link = link
+            if let shortURL {
+                note("Resolviendo enlace corto…")
+                guard let canonical = await shortLinkResolver.resolve(shortURL) else {
+                    guard token == sessionToken, phase == .connecting else { return }
+                    activeJamToken = nil
+                    phase = .failed(Failure.shortLink)
+                    return
+                }
+                guard token == sessionToken, phase == .connecting else { return }
+                link = canonical
+                activeJamToken = Self.extractJamToken(from: canonical)
+            }
             let manual = manualCredential?.trimmingCharacters(in: .whitespacesAndNewlines)
             let credential: String?
             if let manual, !manual.isEmpty { credential = manual } else { credential = await SpotifySession.shared.credential() }
