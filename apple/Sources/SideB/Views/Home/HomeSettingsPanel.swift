@@ -155,6 +155,15 @@ struct HomeSettingsPanel: View {
                     .accessibilityIdentifier("content-border-picker")
                     Text(L10n.text("settings.contentBorder.hint"))
                         .font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    Toggle(L10n.text("settings.exponentialVolume"), isOn: Binding(
+                        get: { AudioPlayerService.shared.exponentialVolume },
+                        set: { AudioPlayerService.shared.exponentialVolume = $0 }
+                    ))
+                        .toggleStyle(.checkbox)
+                        .font(.system(size: 12))
+                        .accessibilityIdentifier("exponential-volume-toggle")
+                    Text(L10n.text("settings.exponentialVolume.hint"))
+                        .font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     Toggle(L10n.text("settings.animatedArtwork"), isOn: $animatedArtworkEnabled)
                         .toggleStyle(.checkbox)
                         .font(.system(size: 12))

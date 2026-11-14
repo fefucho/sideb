@@ -4,9 +4,21 @@ Memoria de cambios de Side B para investigar problemas y regresiones. Buscar aqu
 
 Tags de ámbito: `[Apple]`, `[Windows]`, `[Compartido]`. Core y herramientas comunes usan Compartido, detallando el componente. El tag indica dónde se hizo el cambio; no demuestra que ambas plataformas hayan sido verificadas. Estados, fechas, componentes y relaciones se conservan dentro de cada entrada.
 
-Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-360**. Los IDs repetidos FIX-285/286/287 (2026-11-02) se desambiguaron renumerando las entradas de proveedor visual como FIX-310/311/312; FIX-285/286/287 conservan las de Inicio y recomendaciones laterales. Se conservaron los FIX/FEAT históricos. Dos números antiguos repetidos se distinguen como `FIX-27-2` y `FIX-28-2`, anotando el ID original; al citar FIX-27/28 comprobar título y entrada exacta.
+Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-361**. Los IDs repetidos FIX-285/286/287 (2026-11-02) se desambiguaron renumerando las entradas de proveedor visual como FIX-310/311/312; FIX-285/286/287 conservan las de Inicio y recomendaciones laterales. Se conservaron los FIX/FEAT históricos. Dos números antiguos repetidos se distinguen como `FIX-27-2` y `FIX-28-2`, anotando el ID original; al citar FIX-27/28 comprobar título y entrada exacta.
 
 ## Cambios recientes
+
+<a id="fix-360"></a>
+### [FIX-360] [Apple] - Volumen exponencial opcional (paridad con Windows FIX-143)
+
+- Fecha: 2026-11-14 (America/Montevideo).
+- Componente: `apple/Sources/SideB/Services/Player/AudioPlayerService.swift` (`exponentialVolume`, `outputVolume(forSlider:exponential:)`), `Views/Home/HomeSettingsPanel.swift` (casilla), `apple/Localization/fragments/volume-scroll.json`; sin cambios en `core/`.
+- Problema / causa: Windows ofrece una opción, apagada por defecto, para tener más rango en volumen bajo ([FIX-143](#fix-143)); Mac no. En Mac `AVPlayer.volume` es amplitud lineal 0-1 aplicada directamente desde el deslizador.
+- Evaluación y cambio: se trasladó porque es pequeño y no toca el flujo de reproducción. Con la opción activa, la ganancia aplicada al `AVPlayer` es `v · 10^(−30(1−v)/20)` (misma atenuación adicional de hasta 30 dB que Windows: −15 dB al 50 %, 0 sigue en silencio, 1 sigue en máximo). El valor del deslizador, el porcentaje mostrado, el silencio/restauración y el volumen guardado no cambian: sólo la ganancia hacia el reproductor. Preferencia `<prefijo>.exponentialVolume` (UserDefaults, global de la app, no por cuenta como en Windows; apagada por defecto), casilla en Configuración con texto ES/EN y pista. No hay normalización de stream en Mac que conservar. La base de Windows ya incluye una curva perceptual de 60 dB del core que Mac (lineal) no tiene, así que los valores absolutos no son idénticos entre plataformas; sólo la atenuación extra es la misma.
+- Archivos: los citados, `apple/Tests/SideBTests/ExponentialVolumeTests.swift` (curva: extremos, −15 dB al 50 %, monotonía; persistencia y arranque con la opción; el deslizador no cambia), `Localizable.xcstrings` y `*.lproj/Localizable.strings` regenerados.
+- Pruebas / límites: `swift test --filter "ExponentialVolumeTests|VolumeScroll|AudioPlayerSeek|DetailViewModel"` aprobadas; `sync-localizations.mjs --check` aprobado; `swift build` correcto. Sin escucha física ni comprobación visual del ajuste.
+- Antecedentes: [FIX-143](#fix-143), [PLAN-007](windows/plans/PLAN-007-exponential-volume.md), [FIX-197](#fix-197).
+- Paridad: [PAR-024](PARIDAD.md).
 
 <a id="fix-359"></a>
 ### [FIX-359] [Apple] - Pantalla completa: pestaña «Jam» sólo con un Jam activo; «Relacionado» sigue usable durante un Jam

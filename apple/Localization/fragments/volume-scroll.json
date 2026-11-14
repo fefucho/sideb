@@ -2,5 +2,7 @@
   "player.volume": { "es": "Volumen", "en": "Volume" },
   "player.volumePercentage": { "es": "%@ %%", "en": "%@%%" },
   "player.volumeValue": { "es": "Volumen: %@", "en": "Volume: %@" },
-  "player.volumeScrollHelp": { "es": "Volumen: %@. Desplázate para ajustar un punto porcentual.", "en": "Volume: %@. Scroll to adjust by one percentage point." }
+  "player.volumeScrollHelp": { "es": "Volumen: %@. Desplázate para ajustar un punto porcentual.", "en": "Volume: %@. Scroll to adjust by one percentage point." },
+  "settings.exponentialVolume": { "es": "Volumen exponencial (más rango en volumen bajo)", "en": "Exponential volume (more range at low volume)" },
+  "settings.exponentialVolume.hint": { "es": "Atenúa hasta 30 dB los volúmenes bajos para afinar equipos con salida fuerte. El porcentaje, el silencio y el máximo no cambian.", "en": "Attenuates low volumes by up to 30 dB to fine-tune loud outputs. The percentage, mute and maximum are unchanged." }
 }

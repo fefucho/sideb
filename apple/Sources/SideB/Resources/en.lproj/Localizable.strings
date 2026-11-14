@@ -1831,6 +1831,10 @@ History: %@</string>
 	<string>Drag to reorder %@; you can also use Move up and Move down</string>
 	<key>settings.enableSource</key>
 	<string>Enable a source to show featured collections of this type.</string>
+	<key>settings.exponentialVolume</key>
+	<string>Exponential volume (more range at low volume)</string>
+	<key>settings.exponentialVolume.hint</key>
+	<string>Attenuates low volumes by up to 30 dB to fine-tune loud outputs. The percentage, mute and maximum are unchanged.</string>
 	<key>settings.featured</key>
 	<string>Featured</string>
 	<key>settings.featuredKind</key>

@@ -15587,6 +15587,40 @@
         }
       }
     },
+    "settings.exponentialVolume": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Volumen exponencial (más rango en volumen bajo)"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Exponential volume (more range at low volume)"
+          }
+        }
+      }
+    },
+    "settings.exponentialVolume.hint": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Atenúa hasta 30 dB los volúmenes bajos para afinar equipos con salida fuerte. El porcentaje, el silencio y el máximo no cambian."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Attenuates low volumes by up to 30 dB to fine-tune loud outputs. The percentage, mute and maximum are unchanged."
+          }
+        }
+      }
+    },
     "settings.featured": {
       "extractionState": "manual",
       "localizations": {

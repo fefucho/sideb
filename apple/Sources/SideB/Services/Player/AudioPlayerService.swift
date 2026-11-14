@@ -29,9 +29,32 @@ public final class AudioPlayerService {
                 preferences.set(previousVolume, forKey: previousVolumeKey)
             }
             storedVolume = effective
-            player.volume = effective
+            player.volume = outputVolume
             preferences.set(effective, forKey: volumeKey)
         }
+    }
+
+    /// Optional exponential volume (Windows FIX-143 / PAR-024): off by default. The slider value,
+    /// percentage, mute and maximum are unchanged; only the gain applied to the player changes.
+    public var exponentialVolume: Bool {
+        get { storedExponentialVolume }
+        set {
+            guard newValue != storedExponentialVolume else { return }
+            storedExponentialVolume = newValue
+            preferences.set(newValue, forKey: exponentialVolumeKey)
+            player.volume = outputVolume
+        }
+    }
+    private var storedExponentialVolume = false
+    private var exponentialVolumeKey: String { "\(preferencePrefix).exponentialVolume" }
+    private var outputVolume: Float { Self.outputVolume(forSlider: storedVolume, exponential: storedExponentialVolume) }
+
+    /// Extra attenuation of up to 30 dB, as in Windows: gain = 10^(-30 (1 - v) / 20). 0 stays silent
+    /// and 1 stays at full scale; linear (unchanged) when `exponential` is false.
+    static func outputVolume(forSlider volume: Float, exponential: Bool) -> Float {
+        let v = min(1, max(0, volume))
+        guard exponential, v > 0 else { return v }
+        return v * Float(pow(10.0, -30.0 * Double(1 - v) / 20.0))
     }
     private var previousVolume: Float = 0.75
     private let preferences: UserDefaults
@@ -113,7 +136,8 @@ public final class AudioPlayerService {
             let value = saved.floatValue
             if value.isFinite && value > 0 { previousVolume = min(1, value) }
         }
-        player.volume = volume
+        storedExponentialVolume = preferences.bool(forKey: exponentialVolumeKey)
+        player.volume = outputVolume
     }
 
     deinit {

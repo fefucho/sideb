@@ -1831,6 +1831,10 @@ Historial: %@</string>
 	<string>Arrastrar para ordenar %@; también podés usar Subir y Bajar</string>
 	<key>settings.enableSource</key>
 	<string>Activá una fuente para mostrar destacados de este tipo.</string>
+	<key>settings.exponentialVolume</key>
+	<string>Volumen exponencial (más rango en volumen bajo)</string>
+	<key>settings.exponentialVolume.hint</key>
+	<string>Atenúa hasta 30 dB los volúmenes bajos para afinar equipos con salida fuerte. El porcentaje, el silencio y el máximo no cambian.</string>
 	<key>settings.featured</key>
 	<string>Destacados</string>
 	<key>settings.featuredKind</key>
