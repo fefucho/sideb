@@ -65,7 +65,7 @@ struct PlaybackSidebarResizeTests {
         #expect(!model.isResizing)
         let reserveBefore = PlaybackSidebarLayout.contentReserve(windowWidth: 1400, leftReserve: 0, presented: true, panelWidth: 380)
         for width in stride(from: CGFloat(380), through: 500, by: 7.4) { model.update(width) }
-        #expect(model.isResizing && model.liveWidth == 500)
+        #expect(model.isResizing && model.liveWidth == 498)
         // La reserva de la pagina se calcula con el ancho guardado (no el vivo) y nada se persiste por tick.
         #expect(PlaybackSidebarLayout.contentReserve(windowWidth: 1400, leftReserve: 0, presented: true, panelWidth: 380) == reserveBefore)
         #expect(defaults.object(forKey: PlaybackSidebarLayout.widthPreferenceKey) == nil)
