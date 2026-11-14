@@ -499,7 +499,8 @@ struct WindowRootView: View {
         .ignoresSafeArea(.container, edges: .top)
         .background {
             GeometryReader { proxy in
-                Color.clear.onChange(of: proxy.size.width) { _, width in
+                // `initial: true`: sin esto el ancho sólo se medía al cambiar y el toolbar quedaba con inset 0 hasta arrastrar la sidebar.
+                Color.clear.onChange(of: proxy.size.width, initial: true) { _, width in
                     sidebarInset.report(columnWidth: width)
                     guard width >= 200 else { return }
                     // Persistencia diferida: una sola escritura al terminar de arrastrar.

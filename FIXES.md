@@ -33,6 +33,7 @@ Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-355**. Lo
 - Pruebas: `swift build` correcto; sin validación visual manual.
 - Fixes relacionados: [FIX-352](#fix-352). Paridad: PAR-046.
 - Ajuste posterior (2026-11-14): el borde del contenido pasa a **«Sin borde» por defecto** (`ContentBorderStyle.default = .none`) porque, con la sidebar nativa, sólo el panel derecho Ahora suena conserva su borde fijo de 0,5 pt (`PlaybackSidebarScene`, sin cambios). El ajuste «Borde del contenido» sigue disponible (Sutil / Marcado); quien ya eligió un valor lo conserva. No se cambió `main`, que mantiene «Sutil» por defecto.
+- Ajuste posterior (2026-11-14, buscador sobre la sidebar, corrección): la primera versión no resolvía el caso al abrir la app: `NavigationSidebarInsetModel.report(columnWidth:)` se alimentaba con `onChange(of: proxy.size.width)` sin `initial: true`, así que el ancho de la columna sólo se medía cuando cambiaba y el toolbar conservaba inset 0 hasta que el usuario arrastraba la sidebar. Se añade `initial: true`. Sin validación visual; sin prueba automatizada para este cableado de vista.
 
 <a id="fix-352"></a>
 ### [FIX-352] [Apple] - Variante «marco + desvanecimiento + borde configurable»: el contenido deja de cortarse contra las sidebars (rama `ui/edge-frame-fade-shadow`)
