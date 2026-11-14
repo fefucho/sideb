@@ -14,6 +14,19 @@ import SideBCore
         return 0.2126 * linear(color.red) + 0.7152 * linear(color.green) + 0.0722 * linear(color.blue)
     }
 
+    @Test func glowIsLivelierThanSurfaceButKeepsWhiteTextLegible() {
+        let samples = [HomeAmbientRGB(red: 0.30, green: 0.05, blue: 0.05), HomeAmbientRGB(red: 0.05, green: 0.10, blue: 0.30),
+                       HomeAmbientRGB(red: 0.14, green: 0.14, blue: 0.14), HomeAmbientRGB(red: 0.5, green: 0.5, blue: 0.0)]
+        for sample in samples {
+            let glow = PlaybackSidebarPalette.glow(sample, saturationBoost: 1.45, lift: 2.1, maxLuminance: 0.17)
+            #expect(Self.relativeLuminance(glow) <= 0.17 + 0.001)
+            // White text contrast >= 4.5:1
+            #expect(1.05 / (Self.relativeLuminance(glow) + 0.05) >= 4.5)
+        }
+        let red = PlaybackSidebarPalette.glow(samples[0], saturationBoost: 1.45, lift: 2.1, maxLuminance: 0.17)
+        #expect(red.red > samples[0].red && red.red > red.green * 2)
+    }
+
     @Test func syntheticArtworkWithRedTopAndBlueBottomYieldsReddishPrimaryAndBluishSecondary() {
         let side = 24
         // 24 rows * 24 cols. Band is ~22% -> 5 rows.

@@ -10,7 +10,25 @@ export const sidebarLayout = {
   inset: 6,
   headerHeight: 58,
   metadataHeight: 68,
-  metadataSpacing: 16,
+  /** The cover starts just inside the header band (macOS `coverTop`). */
+  coverTop: 56,
+  /** The cover spans the panel minus this inset per side; text and controls keep `contentInset`. */
+  coverInset: 4,
+  contentInset: 20,
+  /** One vertical rhythm of the artwork panel, measured between visible glyph/shape edges (FIX-349). */
+  gap: 23,
+  /** Progress bar spacing, measured from the bar itself and not from the time labels around it. */
+  progressGap: 28,
+  /** Cover → title text; the title glyphs sit ~6 px below the metadata frame top. */
+  metadataSpacing: 17,
+  /** Lyrics/queue footers keep their own metadata spacing. */
+  footerMetadataSpacing: 16,
+  /** Metadata frame leaves ~20 px under the artist line: progress top = progressGap - 20. */
+  progressTopGap: 8,
+  /** Time labels are 13 px tall, 9 px under the 5 px bar: bar bottom → play top = progressGap + 1. */
+  progressToTransportGap: 7,
+  /** Volume glyphs sit ~8 px inside their 32 px row. */
+  volumeRowSlack: 8,
   /** Height reserved by "Up next" or the lyrics sample, including its 16/12 px margins. */
   upcomingBlockHeight: 134,
   /** Panel height from which the area under the transport is shown (queue or lyrics sample). */
@@ -28,14 +46,15 @@ function controlsHeight(panelHeight: number): number {
 /** Height of the fixed footer (progress + transport + volume [+ metadata] [+ upcoming]). */
 export function sidebarFooterHeight(panelHeight: number, panel: SidebarPanel = 'lyrics', isPortrait = false, width: number = sidebarLayout.width): number {
   const minimum = controlsHeight(panelHeight)
-    + (panel === 'artwork' ? 0 : sidebarLayout.metadataHeight + sidebarLayout.metadataSpacing)
+    + (panel === 'artwork' ? 0 : sidebarLayout.metadataHeight + sidebarLayout.footerMetadataSpacing)
     + (showsUpcoming(panelHeight, panel, isPortrait) ? sidebarLayout.upcomingBlockHeight : 0);
   if (panel !== 'artwork' || isPortrait) return minimum;
-  const idealHero = sidebarLayout.headerHeight + 12 + Math.max(0, width - 40) + sidebarLayout.metadataSpacing + sidebarLayout.metadataHeight;
+  const idealHero = sidebarLayout.coverTop + Math.max(0, width - sidebarLayout.coverInset * 2) + sidebarLayout.metadataSpacing + sidebarLayout.metadataHeight;
   return Math.max(minimum, panelHeight - idealHero);
 }
-export function progressToTransportSpacing(panelHeight: number): number {
-  return 10 + Math.max(0, controlsHeight(panelHeight) - 194) / 4;
+/** Fixed (no longer height dependent): bar bottom → play top is `progressGap + 1` including the time labels. */
+export function progressToTransportSpacing(_panelHeight?: number): number {
+  return sidebarLayout.progressToTransportGap;
 }
 
 export interface SidebarArtworkGeometry {
@@ -47,14 +66,13 @@ export interface SidebarArtworkGeometry {
 export function sidebarArtworkGeometry(widthPx: number, heightPx: number, portrait: boolean): SidebarArtworkGeometry {
   const width = Math.max(0, Number.isFinite(widthPx) ? widthPx : 0);
   const height = Math.max(0, Number.isFinite(heightPx) ? heightPx : 0);
-  const { headerHeight: header, metadataHeight, metadataSpacing } = sidebarLayout;
-  const cardSide = Math.max(0, Math.min(width - 40, height - header - 12 - metadataSpacing - metadataHeight));
-  const blockHeight = cardSide + metadataSpacing + metadataHeight;
-  const cardTop = header + Math.min(12, Math.max(0, height - header - blockHeight));
+  const { headerHeight: header, metadataHeight, metadataSpacing, coverTop, coverInset, contentInset } = sidebarLayout;
+  const cardTop = coverTop;
+  const cardSide = Math.max(0, Math.min(width - coverInset * 2, height - cardTop - metadataSpacing - metadataHeight));
   const metadataTop = portrait ? Math.max(header, height - 16 - metadataHeight) : cardTop + cardSide + metadataSpacing;
   return {
     width, height, portrait,
-    metadataWidth: portrait ? Math.max(0, width - 40) : cardSide,
+    metadataWidth: portrait ? Math.max(0, width - contentInset * 2) : Math.min(Math.max(0, width - contentInset * 2), cardSide),
     cardSide, cardTop, metadataTop,
     videoWidth: portrait ? width : cardSide,
     videoHeight: portrait ? height : cardSide,

@@ -45,6 +45,8 @@ final class SidebarArtworkScrollState {
     @ObservationIgnored var lastRequestedRecommendationKey: RecommendedRequestState.Key?
 
     var isPortrait = false
+    /// Palette sampled from the ready portrait video frame; drives the immersive panel background.
+    var videoPalette: PlaybackSidebarPalette?
     @ObservationIgnored var quantizedProgress: CGFloat = 0
     var isHeroMotionActive = true
     var isHeroVisible: Bool = true
@@ -124,6 +126,7 @@ struct NowPlayingSidebarArtworkHost: View {
             scrollProgress: state.isHeroMotionActive ? 0 : 1,
             onPortraitChanged: { state.isPortrait = $0 }
         )
+        .onVideoPaletteChanged { if state.videoPalette != $0 { state.videoPalette = $0 } }
         .frame(width: width, height: height)
         .clipped()
     }

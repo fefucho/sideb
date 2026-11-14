@@ -131,15 +131,24 @@ struct FullscreenNowPlayingView: View, Animatable {
         "\(viewModel.mediaSessionIdentity.uuidString)|\(viewModel.currentTrack?.videoId ?? "")|\(viewModel.currentTrack?.thumbnail ?? "")"
     }
 
+    /// Immersive portrait video → palette of the video; otherwise the cover palette.
+    var sidebarIsImmersive: Bool {
+        viewModel.selectedSidebarPanel == .artwork && sidebarArtworkScroll.isPortrait && sidebarArtworkScroll.videoPalette != nil
+    }
+
+    var sidebarDisplayPalette: PlaybackSidebarPalette {
+        sidebarIsImmersive ? (sidebarArtworkScroll.videoPalette ?? sidebarPalette) : sidebarPalette
+    }
+
     var sidebarTint: Color {
-        sidebarPalette.surfaceColor(
+        sidebarDisplayPalette.surfaceColor(
             reduceTransparency: reduceTransparency,
             increasedContrast: contrast == .increased
         )
     }
 
     var sidebarBottomTint: Color {
-        sidebarPalette.bottomSurfaceColor(
+        sidebarDisplayPalette.bottomSurfaceColor(
             reduceTransparency: reduceTransparency,
             increasedContrast: contrast == .increased
         )

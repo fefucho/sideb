@@ -134,7 +134,7 @@ struct NativeSidebarRecommendationsTests {
     #expect(PlaybackSidebarLayout.footerHeight(for: 988) > 300)
     #expect(PlaybackSidebarLayout.footerHeight(for: 1800) == 324)
     #expect(PlaybackSidebarLayout.footerHeight(for: 628, panel: .artwork) == 200)
-    #expect(1800 - PlaybackSidebarLayout.footerHeight(for: 1800, panel: .artwork) == 494)
+    #expect(1800 - PlaybackSidebarLayout.footerHeight(for: 1800, panel: .artwork) == 513)
     #expect(PlaybackSidebarLayout.footerHeight(for: 1800, panel: .artwork, isPortrait: true) == 240)
 }
 

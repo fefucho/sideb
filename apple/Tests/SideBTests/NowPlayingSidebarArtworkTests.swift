@@ -12,23 +12,29 @@ struct NowPlayingSidebarArtworkTests {
         for width: CGFloat in [350, 380, 420] {
             for height: CGFloat in [260, 380, 600] {
                 let layout = SidebarArtworkLayout(width: width, height: height, portrait: false)
-                #expect(layout.cardSide <= width - 40)
-                #expect(layout.cardTop >= 58)
-                #expect(layout.cardTop <= 70)
+                #expect(layout.cardSide <= width - 8)
+                #expect(layout.cardTop == PlaybackSidebarLayout.coverTop)
                 #expect(layout.cardTop + layout.cardSide <= height)
-                #expect(layout.metadataTop - (layout.cardTop + layout.cardSide) == 16)
+                #expect(layout.metadataTop - (layout.cardTop + layout.cardSide) == PlaybackSidebarLayout.metadataSpacing)
                 #expect(layout.metadataTop + PlaybackSidebarLayout.metadataHeight <= height)
-                #expect(layout.metadataWidth == layout.cardSide)
+                #expect(layout.metadataWidth == min(width - 40, layout.cardSide))
                 #expect(layout.videoWidth == layout.cardSide && layout.videoHeight == layout.cardSide)
             }
         }
+    }
+    @Test("Cover spans the panel width minus a 4 pt inset when there is room")
+    func coverUsesFullWidthWhenTall() {
+        let layout = SidebarArtworkLayout(width: 380, height: 875 - 362, portrait: false)
+        #expect(layout.cardSide == 372)
+        #expect(layout.metadataWidth == 340)
+        #expect(abs(layout.metadataTop - (56 + 372 + 17)) < 0.01)
     }
     @Test("Ready portrait occupies the whole hero from its top; poster remains square")
     func portraitUsesAvailableViewport() {
         let layout = SidebarArtworkLayout(width: 380, height: 600, portrait: true)
         #expect(layout.videoTop == 0)
         #expect(layout.videoWidth == 380 && layout.videoHeight == 600)
-        #expect(layout.cardSide == 340)
+        #expect(layout.cardSide == 372)
     }
 
     @Test("ImageURLHelper provides 300px thumbnail for static blur layer and 96px for compact thumbnails")

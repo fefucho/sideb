@@ -149,11 +149,45 @@ export function rgbCss(color: Rgb, alpha = 1): string {
   return alpha >= 1 ? `rgb(${byte(color.red)} ${byte(color.green)} ${byte(color.blue)})`
     : `rgb(${byte(color.red)} ${byte(color.green)} ${byte(color.blue)} / ${Math.round(alpha * 1000) / 1000})`;
 }
-export interface SidebarPaletteCss { top: string; bottom: string; background: string }
-/** CSS for the continuous top→bottom surface over the `#121214` base used by `PlaybackSidebarBackground`. */
-export function sidebarPaletteCss(palette: SidebarPalette, options: PaletteSurfaceOptions = {}): SidebarPaletteCss {
+/**
+ * Livelier, more saturated version of a palette colour for the soft glows (Mac `glowColor`, FIX-350).
+ * Luminance stays capped so white text remains legible wherever the glow reaches.
+ */
+export function glowColorOf(color: Rgb, chromatic: boolean, options: PaletteSurfaceOptions = {}): Rgb {
+  if (options.reduceTransparency || options.increasedContrast) return scale(color, 0.78);
+  const saturationBoost = chromatic ? 1.45 : 1, lift = chromatic ? 2.1 : 1.55;
+  const luma = 0.2126 * color.red + 0.7152 * color.green + 0.0722 * color.blue;
+  const boosted = (v: number) => Math.max(0, Math.min(1, (luma + (v - luma) * saturationBoost) * lift));
+  return clampedForWhiteForeground({ red: boosted(color.red), green: boosted(color.green), blue: boosted(color.blue) }, 0.17);
+}
+/** Layered-surface strengths: the cover version and the immersive one (a portrait video fades into the panel). */
+export function sidebarSurfaceLayers(immersive: boolean) {
+  return immersive
+    ? { glowAlpha: 0.40, glowY: 20, glow2Alpha: 0.55, shadeAlpha: 0.12 }
+    : { glowAlpha: 0.70, glowY: 30, glow2Alpha: 0.45, shadeAlpha: 0.26 };
+}
+export interface SidebarPaletteCss {
+  top: string; bottom: string; glow: string; glow2: string;
+  /** Flat fallback (reduced transparency / high contrast): no glows, no shade. */
+  background: string;
+  /** False when the user asked for reduced transparency or more contrast: only `background` applies. */
+  layered: boolean;
+  glowAlpha: number; glowY: number; glow2Alpha: number; shadeAlpha: number;
+}
+/**
+ * CSS for the continuous top→bottom surface over the `#121214` base used by `PlaybackSidebarBackground`, plus the
+ * glow colours/strengths of the layered version (glow behind the cover, counter-glow with the second colour, shade).
+ */
+export function sidebarPaletteCss(palette: SidebarPalette, options: PaletteSurfaceOptions = {}, immersive = false): SidebarPaletteCss {
   const top = rgbCss(sidebarTopSurface(palette, options)), bottom = rgbCss(sidebarBottomSurface(palette, options));
-  return { top, bottom, background: `linear-gradient(180deg, ${top}, ${bottom}), rgb(18 18 20)` };
+  return {
+    top, bottom,
+    glow: rgbCss(glowColorOf(palette.primary, palette.isChromatic, options)),
+    glow2: rgbCss(glowColorOf(palette.secondary, palette.isChromatic, options)),
+    background: `linear-gradient(180deg, ${top}, ${bottom}), rgb(18 18 20)`,
+    layered: !(options.reduceTransparency || options.increasedContrast),
+    ...sidebarSurfaceLayers(immersive),
+  };
 }
 
 const paletteSide = 24;
@@ -172,6 +206,32 @@ export async function loadCoverPixels(url: string): Promise<Uint8ClampedArray | 
     context.drawImage(image, 0, 0, paletteSide, paletteSide);
     return context.getImageData(0, 0, paletteSide, paletteSide).data;
   } catch { return null; }
+}
+
+/**
+ * 24×24 RGBA samples of a video's first frame, read from a separate hidden element so the visible one is never touched.
+ * `null` when the frame cannot be read (no CORS on the asset origin → tainted canvas, decode error, timeout): the panel
+ * then keeps the cover palette.
+ */
+export async function loadVideoFramePixels(url: string, timeoutMs = 4000): Promise<Uint8ClampedArray | null> {
+  if (typeof document === 'undefined') return null;
+  const video = document.createElement('video');
+  try {
+    video.crossOrigin = 'anonymous'; video.muted = true; video.preload = 'auto'; video.playsInline = true;
+    const loaded = new Promise<void>((resolve, reject) => {
+      video.addEventListener('loadeddata', () => resolve(), { once: true });
+      video.addEventListener('error', () => reject(new Error('video')), { once: true });
+    });
+    video.src = url;
+    await Promise.race([loaded, new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), timeoutMs))]);
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = paletteSide;
+    const context = canvas.getContext('2d', { willReadFrequently: true });
+    if (!context) return null;
+    context.drawImage(video, 0, 0, paletteSide, paletteSide);
+    return context.getImageData(0, 0, paletteSide, paletteSide).data; // throws SecurityError if tainted
+  } catch { return null; }
+  finally { video.removeAttribute('src'); video.load(); }
 }
 
 /**

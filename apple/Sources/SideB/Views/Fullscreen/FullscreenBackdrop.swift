@@ -148,6 +148,25 @@ struct PlaybackSidebarPalette: Sendable, Equatable {
         return Color(red: rgb.red, green: rgb.green, blue: rgb.blue)
     }
 
+    /// Livelier, more saturated version of the cover colour for the soft glow behind the artwork.
+    /// Luminance stays capped so white text remains legible wherever the glow reaches.
+    func glowColor(of rgb: HomeAmbientRGB? = nil, reduceTransparency: Bool = false, increasedContrast: Bool = false) -> Color {
+        let source = rgb ?? primary
+        if reduceTransparency || increasedContrast {
+            return Color(red: source.red * 0.78, green: source.green * 0.78, blue: source.blue * 0.78)
+        }
+        let rgb = Self.glow(source, saturationBoost: isChromatic ? 1.45 : 1.0, lift: isChromatic ? 2.1 : 1.55, maxLuminance: 0.17)
+        return Color(red: rgb.red, green: rgb.green, blue: rgb.blue)
+    }
+
+    static func glow(_ color: HomeAmbientRGB, saturationBoost: Double, lift: Double, maxLuminance: Double) -> HomeAmbientRGB {
+        let luma = 0.2126 * color.red + 0.7152 * color.green + 0.0722 * color.blue
+        func boosted(_ value: Double) -> Double { max(0, min(1, (luma + (value - luma) * saturationBoost) * lift)) }
+        return clampedForWhiteForeground(
+            HomeAmbientRGB(red: boosted(color.red), green: boosted(color.green), blue: boosted(color.blue)),
+            maxLuminance: maxLuminance)
+    }
+
     func secondaryColor(reduceTransparency: Bool = false, increasedContrast: Bool = false) -> Color {
         let factor: Double = (reduceTransparency || increasedContrast) ? 0.75 : 1.0
         return Color(
@@ -387,8 +406,12 @@ struct PlaybackSidebarPalette: Sendable, Equatable {
 }
 
 /// Shared tinted surface behind the playback sidebar, synchronized with the hero tint.
+/// Layers: cover-coloured vertical gradient, a soft glow behind the artwork, a secondary glow
+/// low on the opposite side for depth, and a darkening toward the controls. In `immersive` mode
+/// (ready portrait video) the palette comes from the video itself so the video bleeds into the panel.
 struct PlaybackSidebarBackground: View {
     let palette: PlaybackSidebarPalette
+    var immersive = false
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.colorSchemeContrast) private var contrast
 
@@ -396,15 +419,30 @@ struct PlaybackSidebarBackground: View {
         let increasedContrast = contrast == .increased
         let topColor = palette.surfaceColor(reduceTransparency: reduceTransparency, increasedContrast: increasedContrast)
         let bottomColor = palette.bottomSurfaceColor(reduceTransparency: reduceTransparency, increasedContrast: increasedContrast)
+        let simple = reduceTransparency || increasedContrast
+        let glow = palette.glowColor(reduceTransparency: reduceTransparency, increasedContrast: increasedContrast)
+        let glow2 = palette.glowColor(of: palette.secondary, reduceTransparency: reduceTransparency, increasedContrast: increasedContrast)
 
-        ZStack {
-            Color(red: 0.07, green: 0.07, blue: 0.08)
-
-            LinearGradient(
-                colors: [topColor, bottomColor],
-                startPoint: .top,
-                endPoint: .bottom
-            )
+        GeometryReader { proxy in
+            let reach = max(proxy.size.width, proxy.size.height * 0.55)
+            ZStack {
+                Color(red: 0.07, green: 0.07, blue: 0.08)
+                LinearGradient(colors: [topColor, bottomColor], startPoint: .top, endPoint: .bottom)
+                if !simple {
+                    // Light spilling from behind the cover (or from the video's top in immersive mode).
+                    RadialGradient(colors: [glow.opacity(immersive ? 0.40 : 0.70), glow.opacity(0.0)],
+                                   center: UnitPoint(x: 0.5, y: immersive ? 0.20 : 0.30),
+                                   startRadius: 0, endRadius: reach * 1.05)
+                    // Counter-glow with the cover's second colour, low and off-centre.
+                    RadialGradient(colors: [glow2.opacity(immersive ? 0.55 : 0.45), glow2.opacity(0.0)],
+                                   center: UnitPoint(x: 0.12, y: 0.96),
+                                   startRadius: 0, endRadius: reach * 0.95)
+                    // Keeps the transport area calm and legible; lighter when a video fades into it.
+                    LinearGradient(stops: [.init(color: .clear, location: 0.55),
+                                           .init(color: .black.opacity(immersive ? 0.12 : 0.26), location: 1)],
+                                   startPoint: .top, endPoint: .bottom)
+                }
+            }
         }
         .allowsHitTesting(false)
         .accessibilityHidden(true)

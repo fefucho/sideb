@@ -26,13 +26,14 @@ test('sidebar bottom content defaults to the queue like macOS, validates storage
 
 test('cover geometry keeps the square card and the immersive portrait video as macOS',()=>{
  const card=layout.sidebarArtworkGeometry(380,628,false);
- assert.equal(card.cardSide,340);assert.equal(card.cardTop,58+Math.min(12,628-58-(340+16+68)));
- assert.equal(card.metadataTop,card.cardTop+card.cardSide+16);assert.equal(card.metadataWidth,card.cardSide);
- assert.deepEqual([card.videoWidth,card.videoHeight,card.videoTop],[340,340,card.cardTop]);
+ assert.equal(card.cardSide,372,'cover spans the panel minus 4 px per side (FIX-349)');assert.equal(card.cardTop,56);
+ assert.equal(card.metadataTop,card.cardTop+card.cardSide+17);assert.equal(card.metadataWidth,340,'text keeps the 20 px margin');
+ assert.deepEqual([card.videoWidth,card.videoHeight,card.videoTop],[372,372,card.cardTop]);
+ const shrunk=layout.sidebarArtworkGeometry(380,420,false);assert.equal(shrunk.metadataWidth,Math.min(340,shrunk.cardSide),'metadata aligns with a shrunk card');
  const portrait=layout.sidebarArtworkGeometry(380,628,true);
  assert.deepEqual([portrait.videoWidth,portrait.videoHeight,portrait.videoTop,portrait.metadataWidth],[380,628,0,340]);
  assert.equal(portrait.metadataTop,628-16-68,'metadata anchors to the bottom over the faded video');
- const short=layout.sidebarArtworkGeometry(380,420,false);assert.equal(short.cardSide,420-58-12-16-68,'low panels shrink the card before anything else');
+ const short=layout.sidebarArtworkGeometry(380,420,false);assert.equal(short.cardSide,420-56-17-68,'low panels shrink the card before anything else');
  assert.equal(layout.sidebarArtworkGeometry(NaN,-5,false).cardSide,0);
 });
 
@@ -76,7 +77,11 @@ test('footer and upcoming visibility follow the macOS thresholds',()=>{
  assert.equal(layout.sidebarFooterHeight(628,'lyrics'),Math.min(240,Math.max(200,628*.24))+68+16);
  assert.equal(layout.sidebarFooterHeight(900,'artwork',true),Math.min(240,Math.max(200,900*.24)));
  assert.ok(layout.sidebarFooterHeight(900,'artwork',false)>=Math.min(240,Math.max(200,900*.24))+134);
- assert.equal(layout.progressToTransportSpacing(628),10+Math.max(0,Math.min(240,Math.max(200,628*.24))-194)/4);
+ assert.equal(layout.progressToTransportSpacing(628),layout.sidebarLayout.progressToTransportGap,'fixed, no longer height dependent');
+ assert.equal(1800-layout.sidebarFooterHeight(1800,'artwork'),56+372+17+68,'ideal hero height with the full-width cover');
+ assert.equal(layout.sidebarLayout.metadataSpacing+6,layout.sidebarLayout.gap,'cover → title glyph gap');
+ assert.equal(layout.sidebarLayout.progressTopGap+20,layout.sidebarLayout.progressGap,'artist glyph → bar top is measured from the bar');
+ assert.equal(9+13+layout.sidebarLayout.progressToTransportGap,layout.sidebarLayout.progressGap+1,'bar bottom → play top = progressGap + 1 with the time labels');
 });
 
 const entry=(entryId,queueIndex,extra={})=>({entryId,queueIndex,videoId:'v'+entryId,title:'T'+entryId,artists:'A',thumbnail:null,duration:60,...extra});

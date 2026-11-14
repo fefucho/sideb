@@ -32,7 +32,7 @@
   interface Props {
     track: PlaybackTrackDto | null; session: number; isPlaying: boolean; flipped: boolean; enabled?: boolean; audioDuration?: number | null;
     preferTall?: boolean; suspended?: boolean; prepareWhilePaused?: boolean; presented?: boolean; bottomFade?: number;
-    onFirstFrame?: (size: { width: number; height: number }) => void; onFrameUnavailable?: () => void;
+    onFirstFrame?: (size: { width: number; height: number; url?: string }) => void; onFrameUnavailable?: () => void;
   }
   let { track, session, isPlaying, flipped, enabled = true, audioDuration, preferTall = false, suspended = false, prepareWhilePaused = false, presented = true, bottomFade = 0, onFirstFrame, onFrameUnavailable }: Props = $props();
   let video = $state<HTMLVideoElement>();
@@ -156,7 +156,7 @@
   });
   $effect(() => {
     if (!source || !ready || !video) return;
-    const size = { width: video.videoWidth, height: video.videoHeight };
+    const size = { width: video.videoWidth, height: video.videoHeight, url: source.url };
     untrack(() => { frameReported = true; onFirstFrame?.(size); });
   });
 

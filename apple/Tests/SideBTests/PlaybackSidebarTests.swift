@@ -39,14 +39,14 @@ import SideBCore
         leftReserve: ShellLayout.sidebarReserveWidth(expanded: true), presented: true) == 0)
 }
 
-@Test func playbackSidebarProgressToTransportSpacingMatchesPortraitDistance() {
-    for height in [CGFloat(640), 788, 840, 968, 1000, 1200] {
-        let spacing = PlaybackSidebarLayout.progressToTransportSpacing(for: height)
-        #expect(spacing >= 10 && spacing <= 22)
-        if height == 968 {
-            #expect(abs(spacing - 19.58) <= 0.1)
-        }
-    }
+@Test func playbackSidebarArtworkPanelUsesEqualGapsAndBarBasedProgressSpacing() {
+    // Bar bottom -> play top: 9.5 pt bar offset below the view top, 32 pt progress view, then the transport gap.
+    let barBottomToPlay = (32 - 9.5) + PlaybackSidebarLayout.progressToTransportGap
+    #expect(barBottomToPlay == PlaybackSidebarLayout.progressGap + 1)
+    // Artist glyph bottom (48 pt in the 68 pt metadata frame) -> bar top.
+    let artistToBar = (PlaybackSidebarLayout.metadataHeight - 48) + PlaybackSidebarLayout.progressTopOffset + 4.5
+    #expect(artistToBar == PlaybackSidebarLayout.progressGap)
+    #expect(PlaybackSidebarLayout.metadataSpacing + 6 == PlaybackSidebarLayout.gap)
 }
 
 @MainActor private func sidebarTestPlayer(_ directory: URL, preferences: UserDefaults) -> PlayerViewModel {
@@ -592,7 +592,7 @@ import SideBCore
         }
     }
     let footer = PlaybackSidebarLayout.footerHeight(for: 988, panel: .artwork)
-    #expect(abs((988 - footer) - (58 + 12 + 340 + 16 + 68)) < 1)
+    #expect(abs((988 - footer) - (56 + 372 + 17 + 68)) < 1)
     #expect(footer > PlaybackSidebarLayout.footerHeight(for: 988, panel: .artwork, isPortrait: true))
 }
 

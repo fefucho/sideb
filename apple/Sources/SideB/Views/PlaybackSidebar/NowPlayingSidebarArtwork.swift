@@ -12,6 +12,7 @@ public struct NowPlayingSidebarArtwork: View {
     public let isHeroVisible: Bool
     public let scrollProgress: CGFloat
     public var onPortraitChanged: (Bool) -> Void
+    var onVideoPaletteChanged: (PlaybackSidebarPalette?) -> Void = { _ in }
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @State private var failedOriginalURL: URL?
@@ -24,6 +25,12 @@ public struct NowPlayingSidebarArtwork: View {
         self.onPortraitChanged = onPortraitChanged
         self.viewModel = viewModel; self.height = height; self.tint = tint
         self.bottomTint = bottomTint ?? tint; self.isHeroVisible = isHeroVisible; self.scrollProgress = scrollProgress
+    }
+    /// Reports the palette sampled from the ready portrait video (nil when there is none).
+    func onVideoPaletteChanged(_ handler: @escaping (PlaybackSidebarPalette?) -> Void) -> Self {
+        var copy = self
+        copy.onVideoPaletteChanged = handler
+        return copy
     }
     private var track: SongItemRecord? { viewModel.currentTrack }
     private var originalURL: URL? { ImageURLHelper.originalArtworkURL(from: track?.thumbnail) }
@@ -62,9 +69,13 @@ public struct NowPlayingSidebarArtwork: View {
                     onFrameUnavailable: {
                         readyVideoSize = nil
                         videoPreview = nil
+                        onVideoPaletteChanged(nil)
                     },
                     onFirstFrame: { readyVideoSize = $0 },
-                    onPreviewResolved: { videoPreview = $0 }
+                    onPreviewResolved: { image in
+                        videoPreview = image
+                        resolveVideoPalette(from: image)
+                    }
                 )
                 .frame(width: metrics.videoWidth, height: metrics.videoHeight)
                 .offset(y: metrics.videoTop)
@@ -78,16 +89,31 @@ public struct NowPlayingSidebarArtwork: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(track.map { "\(L10n.text("detail.track.artwork")): \($0.title) — \($0.displayArtist)" } ?? L10n.text("player.noPlayback"))
         .accessibilityAddTraits(.isImage)
-        .onChange(of: isTall, initial: true) { _, portrait in onPortraitChanged(portrait) }
+        .onChange(of: isTall, initial: true) { _, portrait in
+            onPortraitChanged(portrait)
+            if !portrait { onVideoPaletteChanged(nil) }
+        }
         .onChange(of: track?.videoId) { _, _ in
             failedOriginalURL = nil
             failedMaxQualityURL = nil
             readyVideoSize = nil
             videoPreview = nil
+            onVideoPaletteChanged(nil)
         }
         .onChange(of: viewModel.mediaSessionIdentity) { _, _ in
             readyVideoSize = nil
             videoPreview = nil
+            onVideoPaletteChanged(nil)
+        }
+    }
+
+    /// Samples top/bottom bands of the video frame off the main thread (24x24 grid, like covers).
+    private func resolveVideoPalette(from image: NSImage) {
+        var rect = CGRect(origin: .zero, size: image.size)
+        guard let cgImage = image.cgImage(forProposedRect: &rect, context: nil, hints: nil) else { return }
+        Task { @MainActor in
+            let palette = await Task.detached(priority: .utility) { PlaybackSidebarPalette.from(cgImage: cgImage) }.value
+            onVideoPaletteChanged(palette)
         }
     }
 
@@ -133,14 +159,15 @@ struct SidebarArtworkLayout: Equatable {
     init(width: CGFloat, height: CGFloat, portrait: Bool) {
         self.width = max(0, width); self.height = max(0, height); self.portrait = portrait
     }
-    var metadataWidth: CGFloat { portrait ? max(0, width - 40) : cardSide }
+    var metadataWidth: CGFloat {
+        let content = max(0, width - PlaybackSidebarLayout.contentInset * 2)
+        return portrait ? content : min(content, cardSide)
+    }
     var cardSide: CGFloat {
-        max(0, min(width - 40, height - 58 - 12 - PlaybackSidebarLayout.metadataSpacing - PlaybackSidebarLayout.metadataHeight))
+        max(0, min(width - PlaybackSidebarLayout.coverInset * 2,
+                   height - cardTop - PlaybackSidebarLayout.metadataSpacing - PlaybackSidebarLayout.metadataHeight))
     }
-    var cardTop: CGFloat {
-        let blockHeight = cardSide + PlaybackSidebarLayout.metadataSpacing + PlaybackSidebarLayout.metadataHeight
-        return 58 + min(12, max(0, height - 58 - blockHeight))
-    }
+    var cardTop: CGFloat { PlaybackSidebarLayout.coverTop }
     var metadataTop: CGFloat {
         portrait ? max(58, height - 16 - PlaybackSidebarLayout.metadataHeight)
             : cardTop + cardSide + PlaybackSidebarLayout.metadataSpacing

@@ -206,7 +206,7 @@
 {/snippet}
 
 {#if variant === 'sidebar'}
-<div class="sidebar-controls" role="group" aria-label={$t('windows.ui.audioPlayer')}>
+<div class="sidebar-controls" class:hero={sidebarSpacing !== null} role="group" aria-label={$t('windows.ui.audioPlayer')}>
   {#if sidebarLead}{@render sidebarLead()}{/if}
   <div class="side-top" aria-hidden="true"></div>
   <div class="side-progress">
@@ -585,6 +585,15 @@
   .side-transport .spinner { width: 28px; height: 28px; border-width: 3px; }
   .side-tail { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; padding: 16px 0 12px; }
   .side-flex { flex: 1 1 8px; min-height: 8px; }
+  /* Artwork panel with the square cover (FIX-349): fixed, equal gaps (23 px; 28 px measured from the progress bar)
+     instead of flexible spacers. Metadata frame leaves 20 px under the artist line, so 8 px puts the bar 28 px below it. */
+  .sidebar-controls.hero { padding: 0 20px 15px; }
+  .sidebar-controls.hero .side-top { flex-basis: 8px; }
+  .sidebar-controls.hero .side-progress { gap: 9px; }
+  .sidebar-controls.hero .side-times { height: 13px; line-height: 13px; }
+  .sidebar-controls.hero .side-times .time { line-height: 13px; }
+  .sidebar-controls.hero .side-tail { padding: 23px 0 15px; }
+  .sidebar-controls.hero .side-flex { flex: 1 1 15px; min-height: 15px; }
   .side-volume { display: flex; flex: none; align-items: center; gap: 12px; height: 32px; color: rgb(255 255 255 / 80%); }
   .side-mute { width: 28px; height: 28px; flex: 0 0 28px; color: inherit; }
   .side-volume-slider { flex: 1; height: 4px; border-radius: 999px; background: linear-gradient(to right, #fff 0 var(--fill), rgb(255 255 255 / 20%) var(--fill) 100%); }

@@ -26,7 +26,7 @@
   import { animatedArtworkAlbumKey } from '$lib/artwork/policy';
   import { artworkCandidates, cardArtworkCandidates, nextArtworkUrl } from '$lib/images/artwork';
   import { heroScroll, sidebarLayout, sidebarArtworkGeometry, sidebarArtworkPresentation, sidebarMotionSuspended, type VideoSize } from '$lib/player/sidebarLayout';
-  import { SidebarPaletteController, neutralSidebarPalette, rgbCss, sidebarTopSurface, type SidebarPalette } from '$lib/player/sidebarPalette';
+  import { SidebarPaletteController, loadVideoFramePixels, neutralSidebarPalette, paletteFromRgba, rgbCss, sidebarTopSurface, type SidebarPalette } from '$lib/player/sidebarPalette';
   import { sidebarFeedTop } from '$lib/player/sidebarRecommendations';
   import { readable } from 'svelte/store';
   import { emptyJamState } from '$lib/jam/types';
@@ -45,8 +45,10 @@
     palette?: SidebarPalette;
     metadata?: Snippet;
     onPortraitChange?: (portrait: boolean) => void;
+    /** Palette sampled from the ready portrait video frame (null when none/unreadable): drives the immersive panel surface. */
+    onVideoPalette?: (palette: SidebarPalette | null) => void;
   }
-  let { session, playback, scrollOffset = 0, presented = true, active = true, palette, metadata, onPortraitChange }: Props = $props();
+  let { session, playback, scrollOffset = 0, presented = true, active = true, palette, metadata, onPortraitChange, onVideoPalette }: Props = $props();
 
   let width = $state(0), height = $state(0);
   let reducedMotion = $state(false), reducedTransparency = $state(false);
@@ -91,6 +93,19 @@
   });
   const tint = $derived(rgbCss(sidebarTopSurface(palette ?? ownPalette, { reduceTransparency: reducedTransparency }), 0.28));
 
+  // Portrait video → palette of the video itself (same 24×24 top/bottom band sampling as covers), so it bleeds into the panel.
+  let videoPalette = $state<{ key: string; palette: SidebarPalette } | null>(null);
+  async function sampleVideo(url: string, key: string) {
+    const pixels = await loadVideoFramePixels(url);
+    if (key !== geometryKey) return;
+    videoPalette = pixels ? { key, palette: paletteFromRgba(pixels, 24) } : null;
+  }
+  let videoPaletteReported: SidebarPalette | null = null;
+  $effect(() => {
+    const next = presentation.tall && videoPalette?.key === geometryKey ? videoPalette.palette : null;
+    untrack(() => { if (next !== videoPaletteReported) { videoPaletteReported = next; onVideoPalette?.(next); } });
+  });
+
   let portraitReported = false;
   $effect(() => {
     const portrait = presentation.tall;
@@ -134,7 +149,7 @@
     <AnimatedArtwork {track} {session} audioDuration={playback.duration}
       isPlaying={playback.isPlaying && !playback.isLoading} flipped={false}
       preferTall prepareWhilePaused {suspended} {presented} enabled={!reducedMotion} bottomFade={presentation.tall ? 0.32 : 0}
-      onFirstFrame={size => { ready = { ...size, key: geometryKey }; }} onFrameUnavailable={() => { ready = null; }} />
+      onFirstFrame={size => { ready = { width: size.width, height: size.height, key: geometryKey }; if (size.height > size.width && size.url) void sampleVideo(size.url, geometryKey); }} onFrameUnavailable={() => { ready = null; videoPalette = null; }} />
   </div>
 
   {#if jamBadgeShown && jamUi}

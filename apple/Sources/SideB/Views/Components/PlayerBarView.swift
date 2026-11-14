@@ -52,18 +52,25 @@ struct PlayerBarView: View {
         }
     }
 
+    /// Artwork panel with the square cover: fixed, equal gaps instead of flexible spacers.
+    private var usesHeroGaps: Bool { viewModel.selectedSidebarPanel == .artwork && !sidebarIsPortrait }
+
     private var sidebarControls: some View {
         VStack(spacing: 0) {
             if viewModel.selectedSidebarPanel != .artwork {
                 SidebarTrackMetadata(viewModel: viewModel, router: router)
                 Spacer(minLength: 16)
             }
-            Spacer(minLength: 10)
+            if usesHeroGaps {
+                Color.clear.frame(height: PlaybackSidebarLayout.progressTopOffset).accessibilityHidden(true)
+            } else {
+                Spacer(minLength: 10)
+            }
             PlayerBarProgressView(viewModel: viewModel, horizontalInset: 0, isStacked: true)
                 .modifier(JamSeekGate(jam: jam))
-            if viewModel.selectedSidebarPanel == .artwork && !sidebarIsPortrait {
+            if usesHeroGaps {
                 Color.clear
-                    .frame(height: PlaybackSidebarLayout.progressToTransportSpacing(for: sidebarHeight ?? 628))
+                    .frame(height: PlaybackSidebarLayout.progressToTransportGap)
                     .accessibilityHidden(true)
             } else {
                 Spacer(minLength: 10)
@@ -82,11 +89,11 @@ struct PlayerBarView: View {
                             .frame(height: 122)
                     }
                 }
-                .padding(.top, 16)
-                .padding(.bottom, 12)
+                .padding(.top, PlaybackSidebarLayout.gap)
+                .padding(.bottom, PlaybackSidebarLayout.gap - PlaybackSidebarLayout.volumeRowSlack)
                 .transition(reduceMotion ? .opacity : .opacity.combined(with: .offset(y: 8)))
             } else {
-                Spacer(minLength: 8)
+                Spacer(minLength: usesHeroGaps ? PlaybackSidebarLayout.gap - PlaybackSidebarLayout.volumeRowSlack : 8)
             }
             if sidebarBottomContent != .lyrics || !PlaybackSidebarLayout.showsUpcoming(for: sidebarHeight ?? 628, panel: viewModel.selectedSidebarPanel, isPortrait: sidebarIsPortrait) {
                 Spacer(minLength: 0)
@@ -106,8 +113,9 @@ struct PlayerBarView: View {
             .foregroundStyle(.white.opacity(0.8))
             .frame(height: 32)
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 12)
+        .padding(.horizontal, PlaybackSidebarLayout.contentInset)
+        .padding(.top, usesHeroGaps ? 0 : 12)
+        .padding(.bottom, usesHeroGaps ? PlaybackSidebarLayout.gap - PlaybackSidebarLayout.volumeRowSlack : 12)
         .frame(height: PlaybackSidebarLayout.footerHeight(
             for: sidebarHeight ?? 628, panel: viewModel.selectedSidebarPanel, isPortrait: sidebarIsPortrait, width: sidebarWidth
         ))

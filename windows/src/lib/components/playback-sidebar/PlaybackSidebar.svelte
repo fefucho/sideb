@@ -6,7 +6,7 @@
   import type { PlaybackStateDto } from '$lib/types';
   import type { LyricsState } from '$lib/player/lyrics';
   import { sidebarLyricsPreviewEnabled } from '$lib/player/sidebarPreferences';
-  import { SidebarPaletteController, neutralSidebarPalette, sidebarPaletteCss } from '$lib/player/sidebarPalette';
+  import { SidebarPaletteController, neutralSidebarPalette, sidebarPaletteCss, type SidebarPalette } from '$lib/player/sidebarPalette';
   import {
     SIDEBAR, footerHeight, panelSurface, progressToTransportSpacing, showsUpcoming, sidebarWidth, surfaceTransform,
     type SidebarPanel,
@@ -61,7 +61,11 @@
   let reduceTransparency = $state(false), increasedContrast = $state(false);
   const paletteController = new SidebarPaletteController(next => { palette = next; });
   $effect(() => { void paletteController.update(playback.currentTrack?.thumbnail ?? null); });
-  const surfaceCss = $derived(sidebarPaletteCss(palette, { reduceTransparency, increasedContrast }));
+  // Ready portrait video (Ahora suena only): the surface takes the video's palette so it fades into the panel (FIX-350).
+  let videoPalette = $state<SidebarPalette | null>(null);
+  const immersive = $derived(panel === 'artwork' && isPortrait && videoPalette !== null);
+  const displayPalette = $derived(immersive && videoPalette ? videoPalette : palette);
+  const surfaceCss = $derived(sidebarPaletteCss(displayPalette, { reduceTransparency, increasedContrast }, immersive));
   // The hero and its recommendation feed share one scroll owner (the feed); the offset fades/suspends the hero.
   let feedOffset = $state(0), heroHeight = $state(0);
   const occurrence = $derived(playback.queue.items[playback.queue.currentIndex ?? -1]?.entryId ?? null);
@@ -86,7 +90,9 @@
 <aside bind:clientHeight={height} id="playback-sidebar" class="playback-sidebar"
   aria-label={$t('windows.playbackSidebar.region')} inert={!interactive} aria-hidden={interactive ? undefined : 'true'}
   style:width={`${panelWidth}px`} style:opacity={surface.opacity} style:transform={surfaceTransform(surface)}
-  data-panel={panel} style:--sidebar-surface={surfaceCss.background} style:--sidebar-top={surfaceCss.top}>
+  data-panel={panel} class:layered={surfaceCss.layered} style:--sidebar-surface={surfaceCss.background} style:--sidebar-top={surfaceCss.top}
+  style:--sb-top={surfaceCss.top} style:--sb-bottom={surfaceCss.bottom} style:--sb-glow={surfaceCss.glow} style:--sb-glow2={surfaceCss.glow2}
+  style:--sb-glow-a={surfaceCss.glowAlpha} style:--sb-glow-y={`${surfaceCss.glowY}%`} style:--sb-glow2-a={surfaceCss.glow2Alpha} style:--sb-shade-a={surfaceCss.shadeAlpha}>
 
   <header class="header" style:height={`${SIDEBAR.headerHeight}px`} data-volume-excluded>
     <button bind:this={closeButton} type="button" class="icon-button" onclick={onClose}
@@ -127,8 +133,8 @@
       <div class="queue-host">{@render queueBody()}</div>
     {:else}
       <div class="artwork-area" bind:clientHeight={heroHeight}>
-        <SidebarArtwork {session} {playback} scrollOffset={feedOffset} presented={interactive} active={panel === 'artwork'} {palette}
-          onPortraitChange={portrait => isPortrait = portrait}>
+        <SidebarArtwork {session} {playback} scrollOffset={feedOffset} presented={interactive} active={panel === 'artwork'} palette={displayPalette}
+          onPortraitChange={portrait => isPortrait = portrait} onVideoPalette={next => videoPalette = next}>
           {#snippet metadata()}<SidebarTrackMetadata {session} {playback} {...metadataProps} />{/snippet}
         </SidebarArtwork>
         <SidebarRecommendations {session} {playback} {heroHeight} initialOffset={feedOffset} occurrenceId={occurrence}
@@ -156,6 +162,15 @@
 </aside>
 
 <style>
+  /* Registered so the cover/video palette change fades like the Mac surface (0.6 s) instead of snapping. */
+  @property --sb-top { syntax: '<color>'; inherits: true; initial-value: #121214; }
+  @property --sb-bottom { syntax: '<color>'; inherits: true; initial-value: #121214; }
+  @property --sb-glow { syntax: '<color>'; inherits: true; initial-value: #121214; }
+  @property --sb-glow2 { syntax: '<color>'; inherits: true; initial-value: #121214; }
+  @property --sb-glow-a { syntax: '<number>'; inherits: true; initial-value: 0.7; }
+  @property --sb-glow-y { syntax: '<percentage>'; inherits: true; initial-value: 30%; }
+  @property --sb-glow2-a { syntax: '<number>'; inherits: true; initial-value: 0.45; }
+  @property --sb-shade-a { syntax: '<number>'; inherits: true; initial-value: 0.26; }
   .playback-sidebar {
     position: fixed;
     z-index: 70;
@@ -174,6 +189,19 @@
     isolation: isolate;
     user-select: none;
   }
+  /* Layers (top first): shade toward the controls, counter-glow low-left with the second colour, glow behind the cover,
+     the cover-coloured vertical gradient and the dark base. Radii follow Mac (~panel width, ~55 % of the height). */
+  .playback-sidebar.layered {
+    background:
+      linear-gradient(to bottom, transparent 55%, rgb(0 0 0 / var(--sb-shade-a)) 100%),
+      radial-gradient(114% 49% at 12% 96%, color-mix(in srgb, var(--sb-glow2) calc(var(--sb-glow2-a) * 100%), transparent), transparent),
+      radial-gradient(126% 55% at 50% var(--sb-glow-y), color-mix(in srgb, var(--sb-glow) calc(var(--sb-glow-a) * 100%), transparent), transparent),
+      linear-gradient(180deg, var(--sb-top), var(--sb-bottom)),
+      rgb(18 18 20);
+    transition: --sb-top .6s ease-in-out, --sb-bottom .6s ease-in-out, --sb-glow .6s ease-in-out, --sb-glow2 .6s ease-in-out,
+      --sb-glow-a .6s ease-in-out, --sb-glow-y .6s ease-in-out, --sb-glow2-a .6s ease-in-out, --sb-shade-a .6s ease-in-out;
+  }
+  @media (prefers-reduced-motion: reduce) { .playback-sidebar.layered { transition: none; } }
   .header { position: absolute; z-index: 3; top: 0; left: 0; right: 0; box-sizing: border-box; display: flex; align-items: center; gap: 6px; padding: 0 12px; background: linear-gradient(to bottom, rgb(0 0 0 / 22%), transparent); }
   .playback-sidebar[data-panel='artwork'] .header { background: linear-gradient(to bottom, rgb(0 0 0 / 34%), transparent); }
   /* Labels never fit in 350-420 px next to the two header buttons: the shared control collapses to icons (name and tooltip stay). */
@@ -199,6 +227,6 @@
     .header, .playback-sidebar[data-panel='artwork'] .header { background: var(--sidebar-top, #1b1b1e); }
   }
   @media (forced-colors: active) {
-    .playback-sidebar { color: CanvasText; background: Canvas; border: 1px solid CanvasText; box-shadow: none; }
+    .playback-sidebar, .playback-sidebar.layered { color: CanvasText; background: Canvas; border: 1px solid CanvasText; box-shadow: none; }
   }
 </style>

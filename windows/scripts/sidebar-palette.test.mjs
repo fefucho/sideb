@@ -55,6 +55,13 @@ test('sidebar surface is a vertical gradient (top→bottom) over the #121214 bas
  assert.match(css.background,/^linear-gradient\(180deg, rgb\(\d+ \d+ \d+\), rgb\(\d+ \d+ \d+\)\), rgb\(18 18 20\)$/);
  assert.notEqual(css.top,css.bottom,'top and bottom are distinct, not one flat block');
  const calm=P.sidebarPaletteCss(palette,{reduceTransparency:true});assert.notEqual(calm.top,css.top);
+ assert.ok(css.layered&&!calm.layered,'glows only when transparency is allowed');
+ const lum=c=>{const l=v=>v<=.04045?v/12.92:((v+.055)/1.055)**2.4;return .2126*l(c.red)+.7152*l(c.green)+.0722*l(c.blue)};
+ for(const sample of [{red:.30,green:.05,blue:.05},{red:.05,green:.10,blue:.30},{red:.14,green:.14,blue:.14},{red:.5,green:.5,blue:0}]){
+  const glow=P.glowColorOf(sample,true);assert.ok(lum(glow)<=.171,'glow keeps white text legible');assert.ok(1.05/(lum(glow)+.05)>=4.5);
+ }
+ const red=P.glowColorOf({red:.30,green:.05,blue:.05},true);assert.ok(red.red>.30&&red.red>red.green*2,'glow is livelier than the surface');
+ assert.ok(P.sidebarSurfaceLayers(true).glowAlpha<P.sidebarSurfaceLayers(false).glowAlpha&&P.sidebarSurfaceLayers(true).shadeAlpha<P.sidebarSurfaceLayers(false).shadeAlpha,'immersive is lighter at the bottom');
  assert.equal(P.rgbCss({red:1.4,green:-.2,blue:.5}),'rgb(255 0 128)');assert.equal(P.rgbCss({red:.5,green:.5,blue:.5},.28),'rgb(128 128 128 / 0.28)');
 });
 test('palette controller: a newer cover supersedes a slower older one and an unreadable cover resets to neutral',async()=>{

@@ -61,7 +61,26 @@ struct PlaybackSidebarLayout {
     static let inset: CGFloat = 6
     static let reserve = width + inset * 2
     static let metadataHeight: CGFloat = 68
-    static let metadataSpacing: CGFloat = 16
+    /// Header band that stays above the cover (the cover starts just inside it).
+    static let coverTop: CGFloat = 56
+    /// The cover uses almost the full panel width; text and controls keep `contentInset`.
+    static let coverInset: CGFloat = 4
+    static let contentInset: CGFloat = 20
+    /// Single vertical rhythm of the artwork panel (cover → title, transport → lyrics → volume → edge),
+    /// measured between visible glyph/shape edges rather than between layout frames.
+    static let gap: CGFloat = 23
+    /// Progress bar spacing, measured from the bar itself (not from the time labels around it).
+    static let progressGap: CGFloat = 28
+    /// Cover → title text; title glyphs sit ~6 pt below the metadata frame top.
+    static let metadataSpacing: CGFloat = gap - 6
+    /// Lyrics/queue footers keep their own metadata spacing.
+    static let footerMetadataSpacing: CGFloat = 16
+    /// Metadata frame leaves ~20 pt under the artist line; the bar is 4.5 pt below its view top.
+    static let progressTopOffset: CGFloat = progressGap - 20 - 4.5
+    /// Time labels (22.5 pt below the bar) leave the bar-bottom → play-top distance at `progressGap + 1`.
+    static let progressToTransportGap: CGFloat = 6.5
+    /// Volume glyphs sit 8 pt inside their 32 pt row.
+    static let volumeRowSlack: CGFloat = 8
     static let footerHeight: CGFloat = 284
     static let lyricsFontSize: CGFloat = 28
     static let lyricsPreviewFontSize: CGFloat = 26
@@ -70,17 +89,13 @@ struct PlaybackSidebarLayout {
     }
     static func footerHeight(for panelHeight: CGFloat, panel: PlaybackSidebarPanel = .lyrics, isPortrait: Bool = false, width: CGFloat = Self.width) -> CGFloat {
         let controls = min(240, max(200, panelHeight * 0.24))
-        let minimum = controls + (panel == .artwork ? 0 : metadataHeight + metadataSpacing)
+        let minimum = controls + (panel == .artwork ? 0 : metadataHeight + footerMetadataSpacing)
             + (showsUpcoming(for: panelHeight, panel: panel, isPortrait: isPortrait) ? 134 : 0)
         guard panel == .artwork, !isPortrait else { return minimum }
-        let idealHero = 58 + 12 + max(0, width - 40) + metadataSpacing + metadataHeight
+        let idealHero = coverTop + max(0, width - coverInset * 2) + metadataSpacing + metadataHeight
         return max(minimum, panelHeight - idealHero)
     }
     static func contentReserve(windowWidth: CGFloat, leftReserve: CGFloat, presented: Bool) -> CGFloat {
         presented && windowWidth - leftReserve - reserve >= 480 ? reserve : 0
-    }
-    static func progressToTransportSpacing(for panelHeight: CGFloat) -> CGFloat {
-        let controls = min(240, max(200, panelHeight * 0.24))
-        return 10 + max(0, controls - 194) / 4
     }
 }

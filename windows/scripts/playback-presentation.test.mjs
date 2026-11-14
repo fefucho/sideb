@@ -111,7 +111,7 @@ test('panel leaves the Windows titlebar clear and the footer keeps controls visi
   assert.equal(P.showsUpcoming(900, 'queue'), false);
   assert.equal(P.showsUpcoming(900, 'artwork', true), false, 'portrait never shows the up-next block');
   assert.equal(P.footerHeight(1000, 'artwork', true), 240, 'portrait footer is just the controls');
-  assert.ok(P.progressToTransportSpacing(1000) >= 10);
+  assert.equal(P.progressToTransportSpacing(1000), 7, 'fixed gap (FIX-349)');
 });
 
 test('bottom bar keeps symmetric room for the outer trigger', () => {

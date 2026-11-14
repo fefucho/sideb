@@ -4,9 +4,42 @@ Memoria de cambios de Side B para investigar problemas y regresiones. Buscar aqu
 
 Tags de ámbito: `[Apple]`, `[Windows]`, `[Compartido]`. Core y herramientas comunes usan Compartido, detallando el componente. El tag indica dónde se hizo el cambio; no demuestra que ambas plataformas hayan sido verificadas. Estados, fechas, componentes y relaciones se conservan dentro de cada entrada.
 
-Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-349**. Los IDs repetidos FIX-285/286/287 (2026-11-02) se desambiguaron renumerando las entradas de proveedor visual como FIX-310/311/312; FIX-285/286/287 conservan las de Inicio y recomendaciones laterales. Se conservaron los FIX/FEAT históricos. Dos números antiguos repetidos se distinguen como `FIX-027-2` y `FIX-028-2`, anotando el ID original; al citar FIX-027/028 comprobar título y entrada exacta.
+Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-352**. Los IDs repetidos FIX-285/286/287 (2026-11-02) se desambiguaron renumerando las entradas de proveedor visual como FIX-310/311/312; FIX-285/286/287 conservan las de Inicio y recomendaciones laterales. Se conservaron los FIX/FEAT históricos. Dos números antiguos repetidos se distinguen como `FIX-027-2` y `FIX-028-2`, anotando el ID original; al citar FIX-027/028 comprobar título y entrada exacta.
 
 ## Cambios recientes
+
+<a id="fix-351"></a>
+### [FIX-351] [Windows] - Paridad de FIX-349/350: portada a todo el ancho, distancias iguales y fondo por capas con modo inmersivo
+
+- Fecha: 2026-11-14 (America/Montevideo).
+- Componente: `sidebarLayout.ts`, `sidebarPalette.ts`, `PlaybackSidebar.svelte`, `SidebarArtwork.svelte`, `AnimatedArtwork.svelte` (sólo expone la URL en `onFirstFrame`) y el pie vertical de `PlayerBar.svelte`.
+- Problema / causa: el panel Ahora suena de Windows seguía con la portada de 340 px, espacios flexibles desiguales y el degradado plano de dos colores que Mac cambió en [FIX-349](#fix-349) y [FIX-350](#fix-350).
+- Cambio / motivo: mismas medidas en px CSS: portada = ancho − 4 px por lado desde y=56, texto y controles a 20 px, ritmo de 23 px y 28 px medido desde la barra de progreso. El pie del modo portada cuadrada (`.sidebar-controls.hero`) usa huecos fijos (8 px sobre la barra, etiquetas de 13 px y 7 px hasta el play, cola con 23/15 px) y `footerHeight` usa la altura ideal 513 px; `progressToTransportSpacing` es constante. Fondo por capas (degradado, glow tras la portada, contraglow con el segundo color y sombra hacia los controles) con `glowColorOf` (luminancia ≤ 0,17); los colores se registran con `@property` para fundirse en 0,6 s. Con video vertical listo el panel toma la paleta del fotograma, muestreado en un `<video crossOrigin>` oculto aparte del visible; si el origen `asset:` no envía CORS o el canvas queda contaminado, falla en silencio y se mantiene la paleta de la carátula. Reducir transparencia / alto contraste y `forced-colors` conservan el fondo plano.
+- Archivos: los citados, `windows/scripts/{sidebar-state,playback-presentation,sidebar-palette}.test.mjs`, `FIXES.md`, `PARIDAD.md`.
+- Pruebas / límites: `svelte-check` 0 errores; `node --test scripts/*.test.mjs` 736 aprobadas/4 omitidas/0 fallos (geometría, huecos, legibilidad del glow). Verificado en Mac: sin WebView2 ni render real, así que la intensidad visual, `@property` en WebView2 y sobre todo el muestreo del video (depende de CORS del protocolo `asset:`) siguen pendientes de QA física. `pnpm` no está en este entorno: se usó `svelte-check` y `node --test` directos.
+- Fixes relacionados: [FIX-349](#fix-349), [FIX-350](#fix-350), FIX-304/305. Paridad: PAR-046.
+
+<a id="fix-350"></a>
+### [FIX-350] [Apple] - Fondo del panel Ahora suena con brillo de carátula y modo inmersivo para video vertical
+
+- Fecha: 2026-11-14 (America/Montevideo).
+- Componente: `PlaybackSidebarBackground` / `PlaybackSidebarPalette` (`FullscreenBackdrop.swift`), `NowPlayingSidebarArtwork`, `SidebarArtworkScrollState`, `PlaybackSidebarScene`.
+- Problema / causa: el fondo era un degradado vertical de dos colores muy oscuros (luminancia máx. 0,115/0,075), plano y poco ligado a la carátula; con video vertical seguía usando la paleta de la carátula aunque el video terminaba desvaneciéndose en otro color.
+- Cambio / motivo: capas de fondo: degradado superior→inferior (sin cambios), resplandor radial saturado detrás de la portada (`glowColor`, luminancia ≤ 0,17 para conservar ≥4,5:1 con texto blanco), contraglow con el segundo color abajo a la izquierda y oscurecimiento suave hacia los controles. Con video vertical listo en el panel Ahora suena, la paleta se muestrea del fotograma del video (mismo muestreo de bandas superior/inferior de 24×24) y el fondo cambia a esa paleta con fundido de 0,6 s, con menos oscurecimiento inferior, para que el video se funda con el panel. Reducir transparencia / Aumentar contraste desactivan los resplandores. Letras/Cola usan la paleta de la carátula.
+- Archivos: los citados más `PlaybackSidebarPaletteEdgeTests.swift`.
+- Pruebas / límites: nueva prueba de legibilidad del glow; 69 pruebas focalizadas aprobadas. Sin validación visual manual ni con video real; intensidades (0,70/0,45 de opacidad, lift 2,1) son valores iniciales a ajustar a ojo. Windows no portado.
+- Fixes relacionados: [FIX-349](#fix-349), [FIX-282](#fix-282). Paridad: PAR-046.
+
+<a id="fix-349"></a>
+### [FIX-349] [Apple] - Panel lateral Ahora suena: portada a todo el ancho y distancias verticales iguales
+
+- Fecha: 2026-11-14 (America/Montevideo).
+- Componente: `PlaybackSidebarLayout`, `SidebarArtworkLayout` y pie `PlayerBarView` (modo `isSidebar`) del panel Ahora suena.
+- Problema / causa: la portada cuadrada quedaba con 20 pt de margen (340 pt) y las distancias entre portada, título, barra de progreso, transporte, muestra de letras y volumen salían de `Spacer`s flexibles y paddings distintos (16/10/12 pt y `progressToTransportSpacing` variable), por lo que se veían desiguales. Mockup del usuario (Photoshop), medido sobre la captura (1,58 px/pt).
+- Cambio / motivo: la portada usa el ancho del panel menos 4 pt por lado (372 pt a 380 pt) y arranca en y=56; título, créditos y controles conservan 20 pt de margen (`metadataWidth = min(ancho-40, portada)`). Ritmo único `gap = 23 pt` medido entre bordes visibles (portada→título, transporte→letras, letras→volumen, volumen→borde) y `progressGap = 28 pt` medido desde la barra de progreso (créditos→barra y barra→transporte), no desde los números de las esquinas. En el pie se reemplazan los `Spacer`s del modo portada cuadrada por huecos fijos (`progressTopOffset`, `progressToTransportGap`); `footerHeight` usa la nueva altura ideal de la portada (513 pt). Letras/Cola, retrato inmersivo y alturas cortas (la portada se reduce primero) conservan su comportamiento; `footerMetadataSpacing` mantiene 16 pt para esos pies. Se elimina `progressToTransportSpacing(for:)`.
+- Archivos: `apple/Sources/SideB/Models/PlaybackPresentation.swift`, `apple/Sources/SideB/Views/PlaybackSidebar/NowPlayingSidebarArtwork.swift`, `apple/Sources/SideB/Views/Components/PlayerBarView.swift`, pruebas `NowPlayingSidebarArtworkTests`, `PlaybackSidebarTests`, `NativeSidebarRecommendationsTests`, `FIXES.md`, `PARIDAD.md`.
+- Pruebas / límites: pruebas de geometría actualizadas y nuevas (portada 372 pt, huecos); sin validación visual manual ni build numerada todavía: falta comparar contra el mockup a 875 pt de alto. Las medidas del mockup son aproximadas (±1 pt) y se normalizaron a 23/28 pt.
+- Fixes relacionados: [FIX-291](#fix-291) (distancia progreso-transporte, sustituida aquí), [FIX-282](#fix-282) (metadata fija junto a la portada), [FIX-290](#fix-290) (muestra de letras). No se atribuye regresión a esos fixes. Paridad: PAR-046.
 
 <a id="fix-348"></a>
 ### [FIX-348] [Windows] - Paridad de recomendaciones con macOS (Relacionado, panel lateral y Automix de cola)
