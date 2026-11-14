@@ -163,6 +163,7 @@ struct WindowRootView: View {
     // Panel derecho Ahora suena redimensionable (FIX-354).
     @State private var storedPlaybackPanelWidth: CGFloat = PlaybackSidebarLayout.storedWidth(in: HomeAppearance.preferences)
     @State private var detailWidth: CGFloat = 0
+    @State private var panelResize = PlaybackPanelResizeModel()
     @State private var titlebarHeight: CGFloat = 0
     @State private var navigationHeaderWidth: CGFloat = 620
     @State private var router = NavigationRouter()
@@ -642,7 +643,7 @@ struct WindowRootView: View {
             FullscreenCanvas(viewModel: playerViewModel,
                              isSidebarExpanded: .constant(false), router: router,
                              lateralWidth: playbackPanelWidth, lateralMaximum: playbackPanelMaximum,
-                             onResizeLateral: { resizePlaybackPanel(to: $0, commit: $1) })
+                             onResizeLateral: { resizePlaybackPanel(to: $0, commit: $1) }, resizeModel: panelResize)
                 .overlay(alignment: .top) {
                     FullscreenDismissGestureIndicatorView(presentation: gesturePresentation)
                         .padding(.top, titlebarHeight + 12)

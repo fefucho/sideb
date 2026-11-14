@@ -56,12 +56,24 @@ public struct PlaybackPresentationState: Equatable {
     }
 }
 
-/// Estado puro del arrastre del asa: NO toca el ancho real ni la reserva; solo calcula la posicion objetivo de la guia.
+/// Ancho vivo del panel durante el arrastre. Lo lee SOLO `FullscreenCanvas` (la raiz de la ventana no lo observa), de modo
+/// que cada tick re-evalua el panel y no toda la ventana; la reserva de la pagina se aplica una vez al soltar.
+@MainActor @Observable final class PlaybackPanelResizeModel {
+    var liveWidth: CGFloat?
+    var isResizing: Bool { liveWidth != nil }
+    /// Coalesce: ignora cambios sub-punto para no re-evaluar con el mismo ancho visible.
+    func update(_ width: CGFloat) {
+        let rounded = width.rounded()
+        if liveWidth != rounded { liveWidth = rounded }
+    }
+}
+
+/// Calculo puro del ancho objetivo de un arrastre (clamp 340-520 y limite por ventana).
 struct PlaybackSidebarResizeDrag: Equatable {
     let startWidth: CGFloat
     let maximum: CGFloat
 
-    /// Ancho objetivo (clamp 340-520 y limite por ventana) para un desplazamiento horizontal del cursor.
+    /// Ancho objetivo para un desplazamiento horizontal del cursor.
     func target(translation: CGFloat) -> CGFloat {
         let upper = max(PlaybackSidebarLayout.minimumWidth, min(PlaybackSidebarLayout.maximumWidth, maximum))
         return min(upper, max(PlaybackSidebarLayout.minimumWidth, startWidth - translation))

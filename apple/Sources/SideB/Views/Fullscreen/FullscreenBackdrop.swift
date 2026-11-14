@@ -11,13 +11,15 @@ struct FullscreenCanvas: View {
     var lateralWidth: CGFloat = PlaybackSidebarLayout.width
     var lateralMaximum: CGFloat = PlaybackSidebarLayout.maximumWidth
     var onResizeLateral: ((CGFloat, Bool) -> Void)?
+    var resizeModel: PlaybackPanelResizeModel?
 
     @State private var retainedMode: PlaybackPresentation?
     @State private var surfaceVisible = false
 
     init(viewModel: PlayerViewModel, isSidebarExpanded: Binding<Bool>, router: NavigationRouter?,
          lateralWidth: CGFloat = PlaybackSidebarLayout.width, lateralMaximum: CGFloat = PlaybackSidebarLayout.maximumWidth,
-         onResizeLateral: ((CGFloat, Bool) -> Void)? = nil) {
+         onResizeLateral: ((CGFloat, Bool) -> Void)? = nil, resizeModel: PlaybackPanelResizeModel? = nil) {
+        self.resizeModel = resizeModel
         self.lateralWidth = lateralWidth
         self.lateralMaximum = lateralMaximum
         self.onResizeLateral = onResizeLateral
@@ -32,7 +34,7 @@ struct FullscreenCanvas: View {
     var body: some View {
         GeometryReader { proxy in
             let lateral = retainedMode == .sidebar
-            let width = lateral ? min(lateralWidth, max(0, proxy.size.width - PlaybackSidebarLayout.inset * 2)) : proxy.size.width
+            let width = lateral ? min(resizeModel?.liveWidth ?? lateralWidth, max(0, proxy.size.width - PlaybackSidebarLayout.inset * 2)) : proxy.size.width
             let height = lateral ? max(0, proxy.size.height - PlaybackSidebarLayout.inset * 2) : proxy.size.height
             ZStack(alignment: .trailing) {
                 if let retainedMode {
@@ -43,7 +45,7 @@ struct FullscreenCanvas: View {
                         .frame(width: width, height: height)
                         .overlay(alignment: .leading) {
                             if lateral, let onResizeLateral {
-                                PlaybackSidebarResizeHandle(width: width, maximum: lateralMaximum, onResize: onResizeLateral)
+                                PlaybackSidebarResizeHandle(width: width, maximum: lateralMaximum, resize: resizeModel ?? PlaybackPanelResizeModel(), onResize: onResizeLateral)
                                     .padding(.vertical, 20) // no tapa las esquinas redondeadas
                             }
                         }

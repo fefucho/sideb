@@ -41,20 +41,36 @@ struct PlaybackSidebarResizeTests {
         #expect(PlaybackSidebarLayout.contentReserve(windowWidth: 1400, leftReserve: 0, presented: true) == PlaybackSidebarLayout.reserve)
     }
 
-    @Test func dragGuideNeverChangesWidthAndClampsTarget() {
+    @Test func dragTargetClampsAndNeverTouchesPersistedWidthOrReserve() {
         let drag = PlaybackSidebarResizeDrag(startWidth: 380, maximum: 468)
         // Arrastrar a la izquierda agranda, hasta el limite por ventana (468), nunca mas de 520.
         #expect(drag.target(translation: -50) == 430)
         #expect(drag.target(translation: -400) == 468)
         #expect(drag.target(translation: 400) == 340)
         #expect(PlaybackSidebarResizeDrag(startWidth: 380, maximum: 9000).target(translation: -900) == 520)
-        // La guia es un valor puro: el ancho guardado y la reserva no dependen de ella.
+        // El objetivo es un valor puro: el ancho guardado y la reserva no dependen de ella.
         let suite = "sideb.test.drag.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
         defer { defaults.removePersistentDomain(forName: suite) }
         _ = drag.target(translation: -80)
         #expect(defaults.object(forKey: PlaybackSidebarLayout.widthPreferenceKey) == nil)
         #expect(PlaybackSidebarLayout.contentReserve(windowWidth: 1400, leftReserve: 0, presented: true, panelWidth: 380) == 392)
+    }
+
+    @MainActor @Test func liveWidthModelCoalescesAndDoesNotTouchReserveOrPreferences() {
+        let suite = "sideb.test.live.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let model = PlaybackPanelResizeModel()
+        #expect(!model.isResizing)
+        let reserveBefore = PlaybackSidebarLayout.contentReserve(windowWidth: 1400, leftReserve: 0, presented: true, panelWidth: 380)
+        for width in stride(from: CGFloat(380), through: 500, by: 7.4) { model.update(width) }
+        #expect(model.isResizing && model.liveWidth == 500)
+        // La reserva de la pagina se calcula con el ancho guardado (no el vivo) y nada se persiste por tick.
+        #expect(PlaybackSidebarLayout.contentReserve(windowWidth: 1400, leftReserve: 0, presented: true, panelWidth: 380) == reserveBefore)
+        #expect(defaults.object(forKey: PlaybackSidebarLayout.widthPreferenceKey) == nil)
+        model.liveWidth = nil
+        #expect(!model.isResizing)
     }
 
     @Test func imageRequestSizeIsQuantizedSoIntermediateWidthsShareOneLoad() {

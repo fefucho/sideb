@@ -1,16 +1,15 @@
 import SwiftUI
 
-/// Asa de arrastre del borde izquierdo del panel Ahora suena (estilo NSSplitView sin "live resize").
-/// Durante el arrastre NO cambia el ancho real ni la reserva (eso recomponia toda la ventana en cada tick): solo se
-/// mueve una guia fina, con estado local a esta vista. El ancho se aplica y persiste UNA vez al soltar.
-/// Doble clic y flechas (+-16 pt) aplican el ancho de inmediato.
+/// Asa de arrastre del borde izquierdo del panel Ahora suena. El ancho cambia EN VIVO con el cursor, pero solo el panel
+/// lo observa (`PlaybackPanelResizeModel`); la reserva de la pagina y UserDefaults se actualizan una vez al soltar.
+/// Doble clic y flechas (+-16 pt) aplican el ancho de inmediato. Sin guia ni anillo de foco del sistema.
 struct PlaybackSidebarResizeHandle: View {
     let width: CGFloat
     let maximum: CGFloat
-    /// Siempre es un ancho final (se aplica y se persiste).
+    let resize: PlaybackPanelResizeModel
+    /// Siempre es un ancho final (se aplica a la pagina y se persiste).
     let onResize: (CGFloat, Bool) -> Void
     @State private var drag: PlaybackSidebarResizeDrag?
-    @State private var guideWidth: CGFloat?
     @State private var hovering = false
     @FocusState private var focused: Bool
 
@@ -22,14 +21,13 @@ struct PlaybackSidebarResizeHandle: View {
         Color.clear
             .frame(width: 8)
             .contentShape(Rectangle())
-            // Guia neutra (sin color de acento): linea de 2 pt en la posicion objetivo; tambien hover y foco de teclado.
+            // Hover/foco de teclado neutros (sin color de acento).
             .overlay(alignment: .leading) {
-                let active = guideWidth != nil
-                if active || hovering || focused {
+                if resize.isResizing || hovering || focused {
                     RoundedRectangle(cornerRadius: 1, style: .continuous)
-                        .fill(.white.opacity(active ? 0.4 : 0.25))
+                        .fill(.white.opacity(resize.isResizing ? 0.3 : 0.2))
                         .frame(width: 2)
-                        .offset(x: -((guideWidth ?? width) - width) + 3)
+                        .padding(.leading, 3)
                         .allowsHitTesting(false)
                         .accessibilityHidden(true)
                 }
@@ -43,17 +41,21 @@ struct PlaybackSidebarResizeHandle: View {
                     if drag == nil { drag = state }
                     var transaction = Transaction(animation: nil)
                     transaction.disablesAnimations = true
-                    withTransaction(transaction) { guideWidth = state.target(translation: value.translation.width) }
+                    withTransaction(transaction) { resize.update(state.target(translation: value.translation.width)) }
                 }
                 .onEnded { value in
                     let state = drag ?? PlaybackSidebarResizeDrag(startWidth: width, maximum: maximum)
                     drag = nil
-                    guideWidth = nil
-                    onResize(state.target(translation: value.translation.width), true)
+                    var transaction = Transaction(animation: nil)
+                    transaction.disablesAnimations = true
+                    withTransaction(transaction) {
+                        onResize(state.target(translation: value.translation.width), true)
+                        resize.liveWidth = nil
+                    }
                 })
             .onTapGesture(count: 2) { onResize(PlaybackSidebarLayout.width, true) }
             .focusable()
-            .focusEffectDisabled() // sin anillo azul del sistema; el foco de teclado se indica con la linea neutra
+            .focusEffectDisabled()
             .focused($focused)
             .onKeyPress(.leftArrow) { onResize(clamped(width + PlaybackSidebarLayout.keyboardStep), true); return .handled }
             .onKeyPress(.rightArrow) { onResize(clamped(width - PlaybackSidebarLayout.keyboardStep), true); return .handled }
