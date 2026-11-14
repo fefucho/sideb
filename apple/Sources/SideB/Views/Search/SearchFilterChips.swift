@@ -6,6 +6,8 @@ import SideBCore
 struct SearchFilterChips: View {
     let chips: [SearchChipRecord]
     var gestureRegionActive = true
+    /// Margen de pagina a anular a la izquierda (se repone dentro del contenido del scroll).
+    var leadingBleed: CGFloat = 0
     let onSelect: (SearchChipRecord) -> Void
     @State private var overflow = SearchFilterChipOverflow()
 
@@ -18,7 +20,9 @@ struct SearchFilterChips: View {
                         .accessibilityAddTraits(chip.selected ? .isSelected : [])
                 }
             }.padding(.vertical, 4)
+            .padding(.leading, leadingBleed)
         }
+        .padding(.leading, -leadingBleed)
         .scrollClipDisabled()
         .modifier(SearchFilterScrollEdges())
         .onScrollGeometryChange(for: SearchFilterChipOverflow.self) { geometry in
@@ -27,8 +31,7 @@ struct SearchFilterChips: View {
         } action: { _, value in overflow = value }
         .mask {
             HStack(spacing: 0) {
-                LinearGradient(colors: [overflow.leading ? .clear : .white, .white],
-                    startPoint: .leading, endPoint: .trailing).frame(width: 24)
+                // Sin desvanecimiento a la izquierda: las categorias se cortan en seco contra la sidebar.
                 Rectangle().fill(.white)
                 LinearGradient(colors: [.white, overflow.trailing ? .clear : .white],
                     startPoint: .leading, endPoint: .trailing).frame(width: 24)

@@ -246,7 +246,8 @@ final class HomeFeaturedRailView: NSView, NSCollectionViewDataSource, NSCollecti
         let leading = max(0, model.leadingInset), trailing = max(0, model.trailingInset)
         let row = HomeCollectionRowLayout(width: bounds.width, leadingInset: leading, trailingInset: trailing)
         guard row.cardWidth > 0 else { return }
-        let clipLeading = leading > 0 ? Self.edgeClip : 0
+        // Sidebar nativa: sin recorte a la izquierda; el margen de reposo vive en el inset del contenido y las tarjetas se cortan contra el borde.
+        let clipLeading: CGFloat = 0
         let clipTrailing = trailing > 0 ? Self.edgeClip : 0
         let frame = NSRect(x: clipLeading, y: 0, width: bounds.width - clipLeading - clipTrailing, height: bounds.height)
         let size = NSSize(width: row.cardWidth, height: HomeCollectionCardMetrics.cardHeight(cardWidth: row.cardWidth))

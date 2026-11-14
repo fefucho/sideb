@@ -7,6 +7,16 @@ enum ContentEdgeFrameMetrics {
         guard width > 0, fade > 0 else { return 0 }
         return min(0.5, fade / width)
     }
+
+    /// Fracciones de desvanecimiento (izquierda, derecha). Con la sidebar nativa expandida (`flushLeading`) el borde
+    /// izquierdo es un corte recto y limpio, sin desvanecimiento; el derecho se conserva.
+    static func fadeFractions(width: CGFloat, fade: CGFloat, flushLeading: Bool) -> (leading: CGFloat, trailing: CGFloat) {
+        let fraction = fadeFraction(width: width, fade: fade)
+        return (flushLeading ? 0 : fraction, fraction)
+    }
+
+    /// Esquinas izquierdas rectas cuando el contenido lindera con la sidebar nativa.
+    static func leadingCornerRadius(_ radius: CGFloat, flushLeading: Bool) -> CGFloat { flushLeading ? 0 : radius }
 }
 
 /// Presents the page area as a sibling panel of the floating sidebars instead of a bare clipped rectangle:
@@ -23,17 +33,22 @@ struct ContentEdgeFrame: ViewModifier {
     func body(content: Content) -> some View {
         let radius = ShellLayout.contentCornerRadius
         let simple = reduceTransparency || contrast == .increased
-        let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
+        // leadingInset == 0 significa sidebar nativa expandida: el contenido se corta recto contra su borde.
+        let flush = leadingInset == 0
+        let left = ContentEdgeFrameMetrics.leadingCornerRadius(radius, flushLeading: flush)
+        let shape = UnevenRoundedRectangle(topLeadingRadius: left, bottomLeadingRadius: left,
+                                           bottomTrailingRadius: radius, topTrailingRadius: radius, style: .continuous)
         content
             .mask {
                 GeometryReader { proxy in
-                    let fraction = simple ? 0 : ContentEdgeFrameMetrics.fadeFraction(width: proxy.size.width, fade: ShellLayout.contentEdgeFade)
+                    let fractions = simple ? (leading: CGFloat(0), trailing: CGFloat(0))
+                        : ContentEdgeFrameMetrics.fadeFractions(width: proxy.size.width, fade: ShellLayout.contentEdgeFade, flushLeading: flush)
                     shape.fill(
                         LinearGradient(stops: [
-                            .init(color: .black.opacity(fraction > 0 ? 0 : 1), location: 0),
-                            .init(color: .black, location: fraction),
-                            .init(color: .black, location: 1 - fraction),
-                            .init(color: .black.opacity(fraction > 0 ? 0 : 1), location: 1)
+                            .init(color: .black.opacity(fractions.leading > 0 ? 0 : 1), location: 0),
+                            .init(color: .black, location: fractions.leading),
+                            .init(color: .black, location: 1 - fractions.trailing),
+                            .init(color: .black.opacity(fractions.trailing > 0 ? 0 : 1), location: 1)
                         ], startPoint: .leading, endPoint: .trailing)
                     )
                 }
@@ -50,6 +65,10 @@ struct ContentEdgeFrame: ViewModifier {
 }
 
 extension View {
+    /// Extiende el viewport de un scroll horizontal hasta el borde izquierdo del detalle (contra la sidebar nativa)
+    /// anulando el margen de la pagina; ese margen debe reponerse como padding inicial DENTRO del contenido.
+    func leadingBleed(_ inset: CGFloat) -> some View { padding(.leading, -inset) }
+
     func contentEdgeFrame(leadingInset: CGFloat = 0, trailingInset: CGFloat = 0) -> some View {
         modifier(ContentEdgeFrame(leadingInset: leadingInset, trailingInset: trailingInset))
     }

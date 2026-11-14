@@ -387,7 +387,9 @@ private extension LibraryView {
                     }
                 }
                 .padding(.vertical, 4)
+                .padding(.leading, 38.4)
             }
+            .leadingBleed(38.4)
             .scrollIndicators(.hidden)
             .windowGestureRegion(.horizontalContent, active: pageIsActive && !playerViewModel.isFullscreenPresented)
             .frame(height: SideBControlMetrics.categoryHeight + 8)
@@ -397,7 +399,7 @@ private extension LibraryView {
                     .fixedSize()
             }
         }
-        .padding(.horizontal, 38.4)
+        .padding(.trailing, 38.4)
         .padding(.bottom, 16)
     }
 
@@ -594,7 +596,9 @@ private extension LibraryView {
                     }
                 }
                 .padding(.vertical, 4)
+                .padding(.leading, 38.4)
             }
+            .leadingBleed(38.4)
             .scrollIndicators(.hidden)
             .windowGestureRegion(.horizontalContent, active: pageIsActive && !playerViewModel.isFullscreenPresented)
         }

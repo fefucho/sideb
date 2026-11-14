@@ -103,7 +103,9 @@ struct ExploreView: View {
                     .accessibilityAddTraits(route.selectedTab == tab ? .isSelected : [])
                 }
             }.padding(.vertical, 4)
+            .padding(.leading, 28)
         }
+        .leadingBleed(28) // la página aporta 28 pt de margen: pasa al contenido del scroll para que las pestañas se corten contra la sidebar
         .windowGestureRegion(.horizontalContent, active: !playerViewModel.isFullscreenPresented)
     }
 

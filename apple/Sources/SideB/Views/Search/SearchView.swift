@@ -317,6 +317,7 @@ struct SearchView: View {
     private var filterChipsBar: some View {
         SearchFilterChips(chips: searchViewModel.providerPage?.chips ?? [],
             gestureRegionActive: !playerViewModel.isFullscreenPresented,
+            leadingBleed: usesProviderViewport ? 0 : (trackErrorBlock == nil ? 38.4 : 14.4),
             onSelect: { searchViewModel.selectProviderChip($0, core: rustCore) })
     }
 
@@ -608,7 +609,9 @@ struct SearchView: View {
                     }
                 }
                 .padding(.vertical, 4)
+                .padding(.leading, 38.4)
             }
+            .leadingBleed(38.4)
             .windowGestureRegion(.horizontalContent, active: !playerViewModel.isFullscreenPresented)
         }
     }

@@ -10,6 +10,16 @@ struct ContentEdgeFrameTests {
         #expect(ContentEdgeFrameMetrics.fadeFraction(width: 40, fade: 28) == 0.5)
     }
 
+    @Test func flushLeadingEdgeHasNoFadeNorRoundedCornersButTrailingKeepsFade() {
+        let flush = ContentEdgeFrameMetrics.fadeFractions(width: 700, fade: 28, flushLeading: true)
+        #expect(flush.leading == 0)
+        #expect(abs(flush.trailing - 0.04) < 0.0001)
+        let framed = ContentEdgeFrameMetrics.fadeFractions(width: 700, fade: 28, flushLeading: false)
+        #expect(framed.leading == framed.trailing && framed.leading > 0)
+        #expect(ContentEdgeFrameMetrics.leadingCornerRadius(10, flushLeading: true) == 0)
+        #expect(ContentEdgeFrameMetrics.leadingCornerRadius(10, flushLeading: false) == 10)
+    }
+
     @Test func contentFrameMatchesThePanelRadiusAndInset() {
         #expect(ShellLayout.contentCornerRadius == ShellLayout.sidebarCornerRadius)
         #expect(ShellLayout.contentFrameInset == ShellLayout.sidebarInset)
