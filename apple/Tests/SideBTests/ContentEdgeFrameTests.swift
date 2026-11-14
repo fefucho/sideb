@@ -14,4 +14,15 @@ struct ContentEdgeFrameTests {
         #expect(ShellLayout.contentCornerRadius == ShellLayout.sidebarCornerRadius)
         #expect(ShellLayout.contentFrameInset == ShellLayout.sidebarInset)
     }
+
+    @Test func contentBorderStyleResolvesWithSubtleDefaultAndNeverDimsInHighContrast() {
+        #expect(ContentBorderStyle.resolve(nil) == .subtle)
+        #expect(ContentBorderStyle.resolve("garbage") == .subtle)
+        #expect(ContentBorderStyle.resolve("none") == .none)
+        #expect(ContentBorderStyle.none.strokeOpacity(highContrast: true) == 0)
+        for style in [ContentBorderStyle.subtle, .strong] {
+            #expect(style.strokeOpacity(highContrast: true) > style.strokeOpacity(highContrast: false))
+        }
+        #expect(ContentBorderStyle.strong.strokeOpacity(highContrast: false) > ContentBorderStyle.subtle.strokeOpacity(highContrast: false))
+    }
 }

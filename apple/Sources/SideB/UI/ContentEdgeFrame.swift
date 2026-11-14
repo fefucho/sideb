@@ -10,14 +10,15 @@ enum ContentEdgeFrameMetrics {
 }
 
 /// Presents the page area as a sibling panel of the floating sidebars instead of a bare clipped rectangle:
-/// rounded corners and a hairline border like the panels, a soft alpha fade on the left/right edges so shelves
-/// that bleed to the edge dissolve instead of being cut, and a faint inner shadow that reads as "content passes
-/// under the panel". The fade is an alpha mask (one compositing pass), never a stack of blurs.
+/// rounded corners, an optional hairline border (user setting, `ContentBorderStyle`) and a soft alpha fade on the
+/// left/right edges so shelves that bleed to the edge dissolve instead of being cut. The fade is an alpha mask
+/// (one compositing pass), never a stack of blurs. There is deliberately no inner shadow: it made the page look sunken.
 struct ContentEdgeFrame: ViewModifier {
     var leadingInset: CGFloat = 0
     var trailingInset: CGFloat = 0
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.colorSchemeContrast) private var contrast
+    @AppStorage(HomeAppearance.contentBorderKey, store: HomeAppearance.preferences) private var borderRaw = ContentBorderStyle.default.rawValue
 
     func body(content: Content) -> some View {
         let radius = ShellLayout.contentCornerRadius
@@ -38,22 +39,9 @@ struct ContentEdgeFrame: ViewModifier {
                 }
             }
             .overlay {
-                ZStack {
-                    if !simple {
-                        // Inner edge shadow: darkens only the last few points next to each panel.
-                        HStack(spacing: 0) {
-                            LinearGradient(colors: [.black.opacity(ShellLayout.contentEdgeShadow), .clear], startPoint: .leading, endPoint: .trailing)
-                                .frame(width: ShellLayout.contentEdgeShadowWidth)
-                            Spacer(minLength: 0)
-                            LinearGradient(colors: [.clear, .black.opacity(ShellLayout.contentEdgeShadow)], startPoint: .leading, endPoint: .trailing)
-                                .frame(width: ShellLayout.contentEdgeShadowWidth)
-                        }
-                        .clipShape(shape)
-                    }
-                    shape.strokeBorder(.white.opacity(simple ? 0.22 : 0.08), lineWidth: 0.5)
-                }
-                .allowsHitTesting(false)
-                .accessibilityHidden(true)
+                shape.strokeBorder(.white.opacity(ContentBorderStyle.resolve(borderRaw).strokeOpacity(highContrast: simple)), lineWidth: 0.5)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
             }
             .padding(.vertical, ShellLayout.contentFrameInset)
             .padding(.leading, leadingInset)

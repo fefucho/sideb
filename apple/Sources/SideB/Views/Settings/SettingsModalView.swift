@@ -125,6 +125,9 @@ struct SettingsModalView: View {
     @AppStorage(SidebarStyle.preferenceKey, store: HomeAppearance.preferences)
     private var sidebarStyleRawValue = SidebarStyle.collection.rawValue
 
+    @AppStorage(HomeAppearance.contentBorderKey, store: HomeAppearance.preferences)
+    private var contentBorderRaw = ContentBorderStyle.default.rawValue
+
     @AppStorage(HomeAppearance.animatedArtworkKey, store: HomeAppearance.preferences)
     private var animatedArtworkEnabled = true
 
@@ -466,6 +469,21 @@ struct SettingsModalView: View {
                     Picker(L10n.text("settings.homeBackground"), selection: $useSolidHomeBackground) {
                         Text(L10n.text("settings.homeBackground.ambient")).tag(false)
                         Text(L10n.text("settings.homeBackground.solid")).tag(true)
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.menu)
+                    .fixedSize()
+                }
+
+                SettingsRow(
+                    title: L10n.text("settings.contentBorder"),
+                    subtitle: L10n.text("settings.contentBorder.hint")
+                ) {
+                    Picker(L10n.text("settings.contentBorder"), selection: Binding(
+                        get: { ContentBorderStyle.resolve(contentBorderRaw).rawValue },
+                        set: { contentBorderRaw = $0 }
+                    )) {
+                        ForEach(ContentBorderStyle.allCases) { style in Text(style.title).tag(style.rawValue) }
                     }
                     .labelsHidden()
                     .pickerStyle(.menu)

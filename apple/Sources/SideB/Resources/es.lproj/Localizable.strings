@@ -1805,6 +1805,16 @@ Historial: %@</string>
 	<string>Proveedores visuales</string>
 	<key>settings.close</key>
 	<string>Cerrar configuración</string>
+	<key>settings.contentBorder</key>
+	<string>Borde del contenido</string>
+	<key>settings.contentBorder.hint</key>
+	<string>Línea fina alrededor del área de páginas, entre las barras laterales.</string>
+	<key>settings.contentBorder.none</key>
+	<string>Sin borde</string>
+	<key>settings.contentBorder.strong</key>
+	<string>Marcado</string>
+	<key>settings.contentBorder.subtle</key>
+	<string>Sutil</string>
 	<key>settings.down</key>
 	<string>Bajar %@</string>
 	<key>settings.drag</key>

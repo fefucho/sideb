@@ -1805,6 +1805,16 @@ History: %@</string>
 	<string>Visual Providers</string>
 	<key>settings.close</key>
 	<string>Close settings</string>
+	<key>settings.contentBorder</key>
+	<string>Content border</string>
+	<key>settings.contentBorder.hint</key>
+	<string>Thin line around the page area, between the sidebars.</string>
+	<key>settings.contentBorder.none</key>
+	<string>None</string>
+	<key>settings.contentBorder.strong</key>
+	<string>Strong</string>
+	<key>settings.contentBorder.subtle</key>
+	<string>Subtle</string>
 	<key>settings.down</key>
 	<string>Move %@ down</string>
 	<key>settings.drag</key>

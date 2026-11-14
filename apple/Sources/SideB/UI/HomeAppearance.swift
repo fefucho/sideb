@@ -5,6 +5,7 @@ enum HomeAppearance {
     static let solidBackgroundKey = "sideb.home.solidBackground.v1"
     static let animatedArtworkKey = "sideb.artwork.animated.v1"
     static let albumCardStyleKey = "sideb.home.albumCardStyle.v1"
+    static let contentBorderKey = "sideb.content.border.v1"
 
     static let preferences: UserDefaults = {
         let testing = ProcessInfo.processInfo.arguments.contains { $0.contains(".xctest") }
@@ -27,4 +28,24 @@ enum HomeAlbumCardStyle: String, CaseIterable {
         guard let raw = HomeAppearance.preferences.string(forKey: HomeAppearance.albumCardStyleKey) else { return .tinted }
         return Self(rawValue: raw) ?? .tinted
     }
+}
+
+/// Hairline around the page area (the frame between the floating sidebars). Installation-wide.
+enum ContentBorderStyle: String, CaseIterable, Identifiable {
+    case none, subtle, strong
+    var id: String { rawValue }
+    static let `default`: Self = .subtle
+
+    static func resolve(_ raw: String?) -> Self { raw.flatMap(Self.init(rawValue:)) ?? .default }
+
+    /// White opacity of the 0.5 pt stroke. Increased contrast / reduced transparency never lowers a visible border.
+    func strokeOpacity(highContrast: Bool) -> Double {
+        switch self {
+        case .none: return 0
+        case .subtle: return highContrast ? 0.22 : 0.08
+        case .strong: return highContrast ? 0.34 : 0.18
+        }
+    }
+
+    var title: String { L10n.text("settings.contentBorder.\(rawValue)") }
 }

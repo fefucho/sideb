@@ -30,5 +30,25 @@
   "settings.albumCardStyle.hint": {
     "es": "Elegí cómo se ve el panel de texto de las tarjetas destacadas de Inicio.",
     "en": "Choose how the text panel of Home's featured cards looks."
+  },
+  "settings.contentBorder": {
+    "es": "Borde del contenido",
+    "en": "Content border"
+  },
+  "settings.contentBorder.none": {
+    "es": "Sin borde",
+    "en": "None"
+  },
+  "settings.contentBorder.subtle": {
+    "es": "Sutil",
+    "en": "Subtle"
+  },
+  "settings.contentBorder.strong": {
+    "es": "Marcado",
+    "en": "Strong"
+  },
+  "settings.contentBorder.hint": {
+    "es": "Línea fina alrededor del área de páginas, entre las barras laterales.",
+    "en": "Thin line around the page area, between the sidebars."
   }
 }

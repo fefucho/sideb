@@ -20,6 +20,8 @@ struct HomeSettingsPanel: View {
     private var useSolidHomeBackground = false
     @AppStorage(SidebarStyle.preferenceKey, store: HomeAppearance.preferences)
     private var sidebarStyleRawValue = SidebarStyle.collection.rawValue
+    @AppStorage(HomeAppearance.contentBorderKey, store: HomeAppearance.preferences)
+    private var contentBorderRaw = ContentBorderStyle.default.rawValue
     @AppStorage(HomeAppearance.animatedArtworkKey, store: HomeAppearance.preferences)
     private var animatedArtworkEnabled = true
     @AppStorage(QueuePreferences.selectionKey, store: HomeAppearance.preferences)
@@ -142,6 +144,16 @@ struct HomeSettingsPanel: View {
                     .focused($focusedControl, equals: .homeBackground)
                     .accessibilityIdentifier("home-background-picker")
                     Text(L10n.text("settings.homeBackground.hint"))
+                        .font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    Picker(L10n.text("settings.contentBorder"), selection: Binding(
+                        get: { ContentBorderStyle.resolve(contentBorderRaw).rawValue },
+                        set: { contentBorderRaw = $0 }
+                    )) {
+                        ForEach(ContentBorderStyle.allCases) { style in Text(style.title).tag(style.rawValue) }
+                    }
+                    .pickerStyle(.menu)
+                    .accessibilityIdentifier("content-border-picker")
+                    Text(L10n.text("settings.contentBorder.hint"))
                         .font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     Toggle(L10n.text("settings.animatedArtwork"), isOn: $animatedArtworkEnabled)
                         .toggleStyle(.checkbox)

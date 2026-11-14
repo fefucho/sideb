@@ -9,10 +9,8 @@ enum ShellLayout {
     /// The page area is a third panel next to the floating sidebars: same radius and outer inset.
     static let contentCornerRadius: CGFloat = sidebarCornerRadius
     static let contentFrameInset: CGFloat = sidebarInset
-    /// Alpha fade (pt) on the left/right edges of the page area, and the faint inner shadow beside each panel.
+    /// Alpha fade (pt) on the left/right edges of the page area.
     static let contentEdgeFade: CGFloat = 28
-    static let contentEdgeShadow: Double = 0.22
-    static let contentEdgeShadowWidth: CGFloat = 14
     static let navigationTopInset: CGFloat = 18
     static let navigationBottomInset: CGFloat = 18
     static let navigationContentSpacing: CGFloat = 8
