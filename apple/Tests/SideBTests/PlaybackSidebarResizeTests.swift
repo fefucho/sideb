@@ -41,6 +41,28 @@ struct PlaybackSidebarResizeTests {
         #expect(PlaybackSidebarLayout.contentReserve(windowWidth: 1400, leftReserve: 0, presented: true) == PlaybackSidebarLayout.reserve)
     }
 
+    @Test func dragGuideNeverChangesWidthAndClampsTarget() {
+        let drag = PlaybackSidebarResizeDrag(startWidth: 380, maximum: 468)
+        // Arrastrar a la izquierda agranda, hasta el limite por ventana (468), nunca mas de 520.
+        #expect(drag.target(translation: -50) == 430)
+        #expect(drag.target(translation: -400) == 468)
+        #expect(drag.target(translation: 400) == 340)
+        #expect(PlaybackSidebarResizeDrag(startWidth: 380, maximum: 9000).target(translation: -900) == 520)
+        // La guia es un valor puro: el ancho guardado y la reserva no dependen de ella.
+        let suite = "sideb.test.drag.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        _ = drag.target(translation: -80)
+        #expect(defaults.object(forKey: PlaybackSidebarLayout.widthPreferenceKey) == nil)
+        #expect(PlaybackSidebarLayout.contentReserve(windowWidth: 1400, leftReserve: 0, presented: true, panelWidth: 380) == 392)
+    }
+
+    @Test func imageRequestSizeIsQuantizedSoIntermediateWidthsShareOneLoad() {
+        let sizes = Set(stride(from: CGFloat(300), to: 330, by: 3).map { PlaybackSidebarResizeDrag.quantizedImageSide($0).width })
+        #expect(sizes.count <= 2)
+        #expect(PlaybackSidebarResizeDrag.quantizedImageSide(332).width == 384)
+    }
+
     @Test func artworkAndFooterGeometryHoldsAcrossTheWholeRange() {
         for width: CGFloat in [340, 380, 450, 520] {
             for height: CGFloat in [628, 840, 988, 1400] {

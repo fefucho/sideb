@@ -56,6 +56,24 @@ public struct PlaybackPresentationState: Equatable {
     }
 }
 
+/// Estado puro del arrastre del asa: NO toca el ancho real ni la reserva; solo calcula la posicion objetivo de la guia.
+struct PlaybackSidebarResizeDrag: Equatable {
+    let startWidth: CGFloat
+    let maximum: CGFloat
+
+    /// Ancho objetivo (clamp 340-520 y limite por ventana) para un desplazamiento horizontal del cursor.
+    func target(translation: CGFloat) -> CGFloat {
+        let upper = max(PlaybackSidebarLayout.minimumWidth, min(PlaybackSidebarLayout.maximumWidth, maximum))
+        return min(upper, max(PlaybackSidebarLayout.minimumWidth, startWidth - translation))
+    }
+
+    /// Lado de la peticion de imagen redondeado hacia arriba a pasos de 64 pt: evita recargar por anchos intermedios.
+    static func quantizedImageSide(_ side: CGFloat) -> CGSize {
+        let q = max(64, (side / 64).rounded(.up) * 64)
+        return CGSize(width: q, height: q)
+    }
+}
+
 struct PlaybackSidebarLayout {
     /// Ancho por defecto (y ideal) del panel; el real es redimensionable entre `minimumWidth` y `maximumWidth`.
     static let width: CGFloat = 380

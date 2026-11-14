@@ -119,7 +119,7 @@ public struct NowPlayingSidebarArtwork: View {
 
     @ViewBuilder private func poster(side: CGFloat) -> some View {
         if let artworkURL {
-            CachedAsyncImage(url: artworkURL, targetSize: CGSize(width: side, height: side), onFailure: {
+            CachedAsyncImage(url: artworkURL, targetSize: PlaybackSidebarResizeDrag.quantizedImageSide(side), onFailure: {
                 if artworkURL == originalURL { failedOriginalURL = originalURL }
                 else if artworkURL == maxQualityURL { failedMaxQualityURL = maxQualityURL }
             }) { image in image.resizable().aspectRatio(contentMode: .fill) } placeholder: { placeholder }
