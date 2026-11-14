@@ -1775,6 +1775,10 @@
     "es": "Spotify rechazó la invitación.",
     "en": "Spotify rejected the invitation."
   },
+  "jam.failure.shortLink": {
+    "es": "No se pudo abrir el enlace corto. Pegá el enlace que empieza con open.spotify.com/socialsession/.",
+    "en": "Couldn't open the short link. Paste the link that starts with open.spotify.com/socialsession/."
+  },
   "jam.failure.startFailed": {
     "es": "No se pudo iniciar el plugin de Jam.",
     "en": "The Jam plugin couldn't be started."
@@ -2927,6 +2931,18 @@
     "es": "Posición de reproducción",
     "en": "Playback position"
   },
+  "playbackSidebar.resize": {
+    "es": "Ancho del reproductor lateral",
+    "en": "Playback sidebar width"
+  },
+  "playbackSidebar.resize.hint": {
+    "es": "Arrastra para cambiar el ancho; doble clic lo restablece. Con el teclado, usa las flechas.",
+    "en": "Drag to change the width; double-click resets it. With the keyboard, use the arrow keys."
+  },
+  "playbackSidebar.resize.value": {
+    "es": "%@ puntos",
+    "en": "%@ points"
+  },
   "playbackSidebar.synced": {
     "es": "Sincronizadas",
     "en": "Synced"
@@ -3615,6 +3631,26 @@
     "es": "Cerrar configuración",
     "en": "Close settings"
   },
+  "settings.contentBorder": {
+    "es": "Borde del contenido",
+    "en": "Content border"
+  },
+  "settings.contentBorder.hint": {
+    "es": "Línea fina alrededor del área de páginas, entre las barras laterales.",
+    "en": "Thin line around the page area, between the sidebars."
+  },
+  "settings.contentBorder.none": {
+    "es": "Sin borde",
+    "en": "None"
+  },
+  "settings.contentBorder.strong": {
+    "es": "Marcado",
+    "en": "Strong"
+  },
+  "settings.contentBorder.subtle": {
+    "es": "Sutil",
+    "en": "Subtle"
+  },
   "settings.down": {
     "es": "Bajar %@",
     "en": "Move %@ down"
@@ -3630,6 +3666,14 @@
   "settings.enableSource": {
     "es": "Activá una fuente para mostrar destacados de este tipo.",
     "en": "Enable a source to show featured collections of this type."
+  },
+  "settings.exponentialVolume": {
+    "es": "Volumen exponencial (más rango en volumen bajo)",
+    "en": "Exponential volume (more range at low volume)"
+  },
+  "settings.exponentialVolume.hint": {
+    "es": "Atenúa hasta 30 dB los volúmenes bajos para afinar equipos con salida fuerte. El porcentaje, el silencio y el máximo no cambian.",
+    "en": "Attenuates low volumes by up to 30 dB to fine-tune loud outputs. The percentage, mute and maximum are unchanged."
   },
   "settings.featured": {
     "es": "Destacados",
