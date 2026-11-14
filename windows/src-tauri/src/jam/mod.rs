@@ -116,6 +116,75 @@ pub fn clean_link(link: &str) -> Option<String> {
     .then(|| link.to_owned())
 }
 
+const SHORT_LINK_HOSTS: [&str; 2] = ["spotify.link", "spotify.app.link"];
+const SHORT_LINK_MAX_BYTES: usize = 512 * 1024;
+const SHORT_LINK_UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
+
+/// `Some(url)` only for an https `spotify.link` / `spotify.app.link` invite (what the Spotify app's
+/// "share" sheet produces); anything else is left to the plugin's own parser.
+pub fn short_link_url(link: &str) -> Option<reqwest::Url> {
+    let url = reqwest::Url::parse(link.trim()).ok()?;
+    let host_ok = url
+        .host_str()
+        .is_some_and(|host| SHORT_LINK_HOSTS.contains(&host.to_ascii_lowercase().as_str()));
+    (url.scheme() == "https" && host_ok && url.username().is_empty() && url.password().is_none())
+        .then_some(url)
+}
+
+/// The join token of the first `open.spotify.com/socialsession/<token>` in a page or URL.
+pub fn socialsession_token_in(text: &str) -> Option<String> {
+    const MARK: &str = "open.spotify.com/socialsession/";
+    let mut rest = text;
+    while let Some(at) = rest.find(MARK) {
+        let after = &rest[at + MARK.len()..];
+        let token: String = after.chars().take_while(char::is_ascii_alphanumeric).collect();
+        if (16..=40).contains(&token.len()) {
+            return Some(token);
+        }
+        rest = after;
+    }
+    None
+}
+
+/// Short invite → canonical `open.spotify.com/socialsession/<token>` link. The short link goes through
+/// Branch (`spotify.app.link`), whose landing page carries the real link in its HTML. Anonymous GET:
+/// no Spotify credentials, redirects limited to Spotify hosts, bounded time and size.
+async fn resolve_short_link(url: reqwest::Url) -> Option<String> {
+    let policy = reqwest::redirect::Policy::custom(|attempt| {
+        let allowed = attempt.url().scheme() == "https"
+            && attempt.url().host_str().is_some_and(|host| {
+                SHORT_LINK_HOSTS.contains(&host) || host == "open.spotify.com"
+            });
+        if attempt.previous().len() >= 5 || !allowed {
+            attempt.stop()
+        } else {
+            attempt.follow()
+        }
+    });
+    let client = reqwest::Client::builder()
+        .redirect(policy)
+        .timeout(Duration::from_secs(15))
+        .user_agent(SHORT_LINK_UA)
+        .build()
+        .ok()?;
+    let mut response = client.get(url).send().await.ok()?;
+    if let Some(token) = socialsession_token_in(response.url().as_str()) {
+        return Some(format!("https://open.spotify.com/socialsession/{token}"));
+    }
+    if !response.status().is_success() {
+        return None;
+    }
+    let mut body = Vec::new();
+    while let Some(chunk) = response.chunk().await.ok()? {
+        body.extend_from_slice(&chunk);
+        if body.len() > SHORT_LINK_MAX_BYTES {
+            break;
+        }
+    }
+    let token = socialsession_token_in(&String::from_utf8_lossy(&body))?;
+    Some(format!("https://open.spotify.com/socialsession/{token}"))
+}
+
 /// The only messages the frontend may write: `command` and `resolve`. `join`, `credential` and
 /// `leave` belong to the runtime. Returns the line to write (without the newline).
 pub fn outgoing_line(message: &Value) -> Option<String> {
@@ -382,6 +451,15 @@ impl JamRuntime {
     pub async fn join(self: &Arc<Self>, link: String) -> Result<(), CommandError> {
         let link = clean_link(&link)
             .ok_or_else(|| error("JAM_START_FAILED", "El enlace del Jam no es válido."))?;
+        let link = match short_link_url(&link) {
+            Some(url) => resolve_short_link(url).await.ok_or_else(|| {
+                error(
+                    "JAM_START_FAILED",
+                    "No se pudo abrir el enlace corto del Jam. Pegá el enlace open.spotify.com/socialsession/….",
+                )
+            })?,
+            None => link,
+        };
         let epoch = lock(&self.inner).leave_epoch;
         let _serial = self.join_lock.lock().await;
         let exe = resolve_plugin(&self.app).ok_or_else(|| {

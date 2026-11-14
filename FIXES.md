@@ -4,9 +4,21 @@ Memoria de cambios de Side B para investigar problemas y regresiones. Buscar aqu
 
 Tags de ámbito: `[Apple]`, `[Windows]`, `[Compartido]`. Core y herramientas comunes usan Compartido, detallando el componente. El tag indica dónde se hizo el cambio; no demuestra que ambas plataformas hayan sido verificadas. Estados, fechas, componentes y relaciones se conservan dentro de cada entrada.
 
-Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-349**. Los IDs repetidos FIX-285/286/287 (2026-11-02) se desambiguaron renumerando las entradas de proveedor visual como FIX-310/311/312; FIX-285/286/287 conservan las de Inicio y recomendaciones laterales. Se conservaron los FIX/FEAT históricos. Dos números antiguos repetidos se distinguen como `FIX-027-2` y `FIX-028-2`, anotando el ID original; al citar FIX-027/028 comprobar título y entrada exacta.
+Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-350**. Los IDs repetidos FIX-285/286/287 (2026-11-02) se desambiguaron renumerando las entradas de proveedor visual como FIX-310/311/312; FIX-285/286/287 conservan las de Inicio y recomendaciones laterales. Se conservaron los FIX/FEAT históricos. Dos números antiguos repetidos se distinguen como `FIX-027-2` y `FIX-028-2`, anotando el ID original; al citar FIX-027/028 comprobar título y entrada exacta.
 
 ## Cambios recientes
+
+<a id="fix-349"></a>
+### [FIX-349] [Windows] - Spotify Jam: aceptar enlaces cortos `spotify.link` al unirse
+
+- Fecha: 2026-11-14 (America/Montevideo).
+- Componente: `windows/src-tauri/src/jam/mod.rs` (`JamRuntime::join`); el plugin `extensions/spotify-jam` no cambia.
+- Problema / causa: el enlace de invitación que genera la app de Spotify al compartir (`https://spotify.link/<id>`) no se podía pegar en Side B. `jam_token` (plugin) sólo extrae el token de `open.spotify.com/socialsession/<token>`, `spotify:socialsession:<token>` o un token suelto, y una prueba fija el rechazo de `spotify.link`. El enlace corto no contiene el token: redirige a `spotify.app.link` (Branch), cuya página HTML trae el enlace real `open.spotify.com/socialsession/<token>`. Era una limitación declarada en [PLAN-023](plans/PLAN-023-spotify-jam.md) (`Falta la variante corta spotify.link`), no una regresión.
+- Cambio / motivo: antes de lanzar el plugin, `join` detecta un enlace https de `spotify.link` / `spotify.app.link` (`short_link_url`), lo resuelve con un GET anónimo (`resolve_short_link`) y pasa al plugin el enlace canónico. Sin credenciales de Spotify, redirecciones limitadas a esos hosts y a `open.spotify.com` (máx. 5), 15 s de timeout y 512 KiB de cuerpo. El token se busca primero en la URL final y después en el HTML (`socialsession_token_in`, 16–40 alfanuméricos). Si no se obtiene, error `JAM_START_FAILED` con el mensaje de pegar el enlace `open.spotify.com/socialsession/…`. Se resuelve en el host y no en el plugin para no darle red al plugin ni tocar `core/`.
+- Archivos: `windows/src-tauri/src/jam/mod.rs`, `FIXES.md`, `PARIDAD.md`.
+- Pruebas / límites: comprobado a mano con `curl` que el enlace real redirige a `spotify.app.link` y que el HTML contiene `open.spotify.com/socialsession/<token>`. Compilado con `windows.ps1 -Action build -Configuration release` por pedido, sin `verify` ni pruebas nuevas; sin prueba manual de unirse a un Jam real con el enlace corto. Depende de que Branch siga incrustando el enlace en la página; si cambia, vuelve a fallar con el mensaje de respaldo.
+- Antecedentes: [FIX-343](#fix-343) (Jam como invitado), [PLAN-023](plans/PLAN-023-spotify-jam.md).
+- Paridad: [PAR-064](PARIDAD.md).
 
 <a id="fix-348"></a>
 ### [FIX-348] [Windows] - Paridad de recomendaciones con macOS (Relacionado, panel lateral y Automix de cola)
