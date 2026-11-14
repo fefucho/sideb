@@ -26,7 +26,7 @@ test('sidebar bottom content defaults to the queue like macOS, validates storage
 
 test('cover geometry keeps the square card and the immersive portrait video as macOS',()=>{
  const card=layout.sidebarArtworkGeometry(380,628,false);
- assert.equal(card.cardSide,372,'cover spans the panel minus 4 px per side (FIX-349)');assert.equal(card.cardTop,56);
+ assert.equal(card.cardSide,372,'cover spans the panel minus 4 px per side (FIX-351)');assert.equal(card.cardTop,56);
  assert.equal(card.metadataTop,card.cardTop+card.cardSide+17);assert.equal(card.metadataWidth,340,'text keeps the 20 px margin');
  assert.deepEqual([card.videoWidth,card.videoHeight,card.videoTop],[372,372,card.cardTop]);
  const shrunk=layout.sidebarArtworkGeometry(380,420,false);assert.equal(shrunk.metadataWidth,Math.min(340,shrunk.cardSide),'metadata aligns with a shrunk card');

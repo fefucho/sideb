@@ -150,7 +150,7 @@ export function rgbCss(color: Rgb, alpha = 1): string {
     : `rgb(${byte(color.red)} ${byte(color.green)} ${byte(color.blue)} / ${Math.round(alpha * 1000) / 1000})`;
 }
 /**
- * Livelier, more saturated version of a palette colour for the soft glows (Mac `glowColor`, FIX-350).
+ * Livelier, more saturated version of a palette colour for the soft glows (Mac `glowColor`, FIX-352).
  * Luminance stays capped so white text remains legible wherever the glow reaches.
  */
 export function glowColorOf(color: Rgb, chromatic: boolean, options: PaletteSurfaceOptions = {}): Rgb {

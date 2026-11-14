@@ -4,23 +4,23 @@ Memoria de cambios de Side B para investigar problemas y regresiones. Buscar aqu
 
 Tags de ámbito: `[Apple]`, `[Windows]`, `[Compartido]`. Core y herramientas comunes usan Compartido, detallando el componente. El tag indica dónde se hizo el cambio; no demuestra que ambas plataformas hayan sido verificadas. Estados, fechas, componentes y relaciones se conservan dentro de cada entrada.
 
-Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-355**. Los IDs repetidos FIX-285/286/287 (2026-11-02) se desambiguaron renumerando las entradas de proveedor visual como FIX-310/311/312; FIX-285/286/287 conservan las de Inicio y recomendaciones laterales. Se conservaron los FIX/FEAT históricos. Dos números antiguos repetidos se distinguen como `FIX-027-2` y `FIX-028-2`, anotando el ID original; al citar FIX-027/028 comprobar título y entrada exacta.
+Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-357**. Los IDs repetidos FIX-285/286/287 (2026-11-02) se desambiguaron renumerando las entradas de proveedor visual como FIX-310/311/312; FIX-285/286/287 conservan las de Inicio y recomendaciones laterales. Se conservaron los FIX/FEAT históricos. Dos números antiguos repetidos se distinguen como `FIX-27-2` y `FIX-28-2`, anotando el ID original; al citar FIX-27/28 comprobar título y entrada exacta.
 
 ## Cambios recientes
 
-<a id="fix-354"></a>
-### [FIX-354] [Apple] - PROTOTIPO: panel derecho Ahora suena redimensionable (rama `ui/native-sidebar`, no integrado)
+<a id="fix-356"></a>
+### [FIX-356] [Apple] - panel derecho Ahora suena redimensionable (rama `ui/native-sidebar`, no integrado)
 
 - Fecha: 2026-11-14 (America/Montevideo). Componente: `PlaybackSidebarLayout`, `PlaybackSidebarResizeHandle` (nuevo), `FullscreenCanvas`, `SideBApp`.
-- Cambio: el ancho del panel deja de ser la constante 380 y pasa a ser estado (rango 340-520, ideal 380) guardado en `sideb.playbackSidebar.width.v1` (clamp al leer; se persiste al soltar). Asa de 8 pt en el borde izquierdo (cursor `columnResize`, sin animar durante el arrastre, doble clic = 380, flechas izquierda/derecha +-16 pt con foco, `accessibilityAdjustableAction`, textos `playbackSidebar.resize*`). `contentReserve` acepta `panelWidth`; `effectiveWidth` reduce el ancho si la ventana se achica para dejar siempre 480 pt de página (el valor guardado no se pierde); bajo 340 disponibles no hay reserva y el panel se superpone como antes. `playbackTrailingInset` del toolbar y la reserva de `SideBApp` usan el ancho dinámico; el ancho de la columna de detalle se mide (corrige que `leftReserve: 0` ignoraba la sidebar nativa de FIX-353).
+- Cambio: el ancho del panel deja de ser la constante 380 y pasa a ser estado (rango 340-520, ideal 380) guardado en `sideb.playbackSidebar.width.v1` (clamp al leer; se persiste al soltar). Asa de 8 pt en el borde izquierdo (cursor `columnResize`, sin animar durante el arrastre, doble clic = 380, flechas izquierda/derecha +-16 pt con foco, `accessibilityAdjustableAction`, textos `playbackSidebar.resize*`). `contentReserve` acepta `panelWidth`; `effectiveWidth` reduce el ancho si la ventana se achica para dejar siempre 480 pt de página (el valor guardado no se pierde); bajo 340 disponibles no hay reserva y el panel se superpone como antes. `playbackTrailingInset` del toolbar y la reserva de `SideBApp` usan el ancho dinámico; el ancho de la columna de detalle se mide (corrige que `leftReserve: 0` ignoraba la sidebar nativa de FIX-355).
 - Pruebas: `swift build`; `PlaybackSidebarResizeTests` (clamp, persistencia, ventana angosta, geometría de carátula/pie en 340/380/450/520) y suites existentes de PlaybackSidebar, NowPlayingSidebarArtwork, NativeSidebarRecommendations, VolumeScroll y WindowGestureShellRouting aprobadas. Sin validación visual manual.
 - Ajuste posterior: lag y azul. Causas confirmadas por lectura de código (sin Instruments): (1) el ancho vivo vivía en `@State` de `WindowRootView`, así que cada tick del arrastre reevaluaba toda la ventana, recalculaba `playbackContentReserve` (relayout de página, rieles y máscara de `ContentEdgeFrame`) y reconstruía el panel (carátula, cola, recomendaciones, letras); además la carátula pedía `CachedAsyncImage` con `targetSize` igual al lado intermedio (recarga por ancho). (2) El azul era el anillo de foco del sistema del asa `.focusable()`. Cambio: el arrastre ya no cambia el ancho real ni la reserva (estilo NSSplitView sin live resize): el estado del gesto es local al asa y solo mueve una guía neutra de 2 pt (blanco 0,4; hover/foco 0,25; clamp 340–520 y límite de ventana, `PlaybackSidebarResizeDrag`); el ancho se aplica y persiste UNA vez al soltar, sin animación. Teclado (±16) y doble clic aplican de inmediato. `.focusEffectDisabled()` quita el anillo azul (foco de teclado = línea neutra), el asa queda excluida de `windowGestureRegion` y `targetSize` de la carátula se cuantiza a pasos de 64 pt. No se suspendió karaoke/vídeo durante el arrastre porque ya no se recompone durante el mismo. Sin validación visual ni Instruments.
 - Ajuste posterior 2: el diferido y la guía gris se descartan (rechazados por el usuario); el ancho vuelve a ser en vivo con el cursor, sin guía ni salto al soltar. Se conserva: sin anillo azul, asa fuera del arrastre de ventana, hover neutro, teclado ±16, doble clic = 380, `targetSize` cuantizado y persistencia solo al soltar. Costo en vivo reducido por arquitectura: el ancho vivo vive en `PlaybackPanelResizeModel` (`@Observable`) que lee SOLO `FullscreenCanvas`; `WindowRootView` no lo observa, así que cada tick re-evalúa el panel y no toda la ventana, y la reserva de la página (`playbackContentReserve`), el inset del toolbar y `UserDefaults` se actualizan una sola vez al soltar (la página conserva su ancho inicial mientras el panel se superpone o deja un hueco momentáneo; sin animación). Eventos coalescidos a puntos enteros. Medición (`PlaybackSidebarResizeBenchmarkTests`, build debug, `NSHostingView` del panel en modo lateral con pista de relleno, 120 ticks entre 340 y 520): base del bucle sin cambiar ancho 5,2 ms (mayormente la espera del runloop del arnés); mediana por tick 6,4 ms, p95 10,2 ms, máximo 19,8 ms; es decir, ~1,2 ms por tick sobre la base solo para el panel. NO se midió la página Inicio ni el panel con cola/letras/recomendaciones reales (requieren datos del core) ni se perfiló con Instruments; el costo anterior de recomponer la ventana entera por tick se infiere por lectura de código, no por número. Sin pausar vídeo/karaoke durante el arrastre ni quitar la sombra (su forma estática cambia de tamaño por tick y se re-rasteriza: candidata si aún hay lag).
 - Ajuste posterior 3: (1) Ancho de los items = ancho de la carátula: `PlaybackSidebarLayout.itemsWidth(panelWidth:panelHeight:panel:isPortrait:)` (carátula cuadrada: `min(panelWidth-40, cardSide)`, con `cardSide` de `SidebarArtworkLayout` y hero = `panelHeight - footerHeight`; suelo práctico 240 pt) rige el padding horizontal del pie en `PlayerBarView` (progreso, transporte, muestra de letras/cola, volumen); la metadata ya usaba `min(width-40, cardSide)`. Lyrics/Cola/retrato no cambian. Probado en 340/380/450/520 × 600/700/875/1000. (2) Se eliminó todo indicador visual del asa (línea de hover/foco/arrastre): queda la zona invisible de 8 pt con cursor, accesibilidad y teclado. (3) Sombra y hueco en vivo: la sombra pasó a `PlaybackPanelShadow` (capa CA con `shadowPath` explícito actualizado en `layout()`, sin acciones implícitas, sin pase offscreen de SwiftUI); la página sigue el borde del panel en vivo con `PlaybackPageReserve` (modificador que lee el modelo; el contenido de la página no se reconstruye) a ≤1 actualización por fotograma (`pageWidth`), el panel a frecuencia completa; al soltar `finish()` aplica el ancho final sin salto. El fondo ambiente de la ventana queda tras la franja si la página va un fotograma por detrás. Mediciones (debug, arnés `PlaybackSidebarResizeBenchmarkTests`, 120 ticks 340↔520, Inicio real con feed sintético de 4 secciones sin imágenes, sin `Instruments`): relayout de la PÁGINA al cambiar la reserva: base 2,6 ms, mediana 4,2–4,5 ms, p95 6,7–6,8 ms (< 8 ms → se aplica en vivo); PANEL: antes (sombra SwiftUI) mediana 5,7 ms, p95 8,3 ms; después (sombra CA) mediana 6,5 ms, p95 11,1 ms con base 5,2–5,3 ms del arnés: la diferencia está en el ruido del arnés y NO demuestra mejora, porque el arnés no mide el coste de GPU/render server de la sombra. Sin validación visual: fluidez real a 60/120 Hz, imágenes de tarjetas al cambiar el tamaño de ítem de los rieles, el inset del toolbar superior (sigue el ancho guardado, no el vivo), y posibles parpadeos de la franja entre página y panel.
-- Límites: no se verificó visualmente el contenido en 340 y 520 (cabecera, cola, letras, recomendaciones, volumen), ni la superposición del asa con los botones de cabecera, ni el rendimiento durante el arrastre; `showsUpcoming` no depende del ancho. Fixes relacionados: [FIX-353](#fix-353), FIX-349. Paridad: PAR-046.
+- Límites: no se verificó visualmente el contenido en 340 y 520 (cabecera, cola, letras, recomendaciones, volumen), ni la superposición del asa con los botones de cabecera, ni el rendimiento durante el arrastre; `showsUpcoming` no depende del ancho. Fixes relacionados: [FIX-355](#fix-355), FIX-351. Paridad: PAR-046.
 
-<a id="fix-353"></a>
-### [FIX-353] [Apple] - PROTOTIPO experimental: sidebar nativa redimensionable con `NavigationSplitView` (rama `ui/native-sidebar`, no integrado)
+<a id="fix-355"></a>
+### [FIX-355] [Apple] - sidebar nativa redimensionable con `NavigationSplitView` (rama `ui/native-sidebar`, no integrado)
 
 - Fecha: 2026-11-14 (America/Montevideo). Prototipo para evaluar en rama; no es un cambio definitivo.
 - Componente: `SideBApp.windowContent` (ahora `NavigationSplitView`), `SidebarView`, `WindowConfigurator`, `WindowNavigationToolbarView`.
@@ -31,12 +31,12 @@ Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-355**. Lo
 - Ajuste posterior (contenido «escondido» bajo la sidebar nativa, lado izquierdo): `ContentEdgeFrame` ya no desvanece ni redondea el borde izquierdo cuando la sidebar está expandida (`leadingInset == 0`): corte recto; el derecho se conserva; con la sidebar colapsada queda como antes. La sombra del lado izquierdo, si se ve, viene del material nativo de la columna y no es removible desde la app. Rieles/scrolls horizontales sin hueco a la izquierda (margen de reposo movido al contenido, nuevo `View.leadingBleed`): rail de colecciones de Inicio (`edgeClip` izquierdo retirado; el derecho se mantiene), pestañas de Explorar, categorías y rieles de Biblioteca, rieles de «Todo» en Búsqueda clásica y chips de filtro de Búsqueda (también sin desvanecimiento izquierdo). Ya a sangre: chips de Inicio, filas del feed de Inicio, detalle de álbum, perfil de artista. Pendiente / no aplicable: acciones y carrusel de resultados del proveedor (`ProviderSearchViewport` inserta la tabla 28 pt por lado: requiere rehacer su geometría) y chips en ese modo; fullscreen y panel Ahora suena excluidos. Sin validación visual manual.
 - Archivos: `apple/Sources/SideB/SideBApp.swift`, `apple/Sources/SideB/Views/Sidebar/SidebarView.swift`, `apple/Sources/SideB/UI/WindowConfigurator.swift`, `apple/Sources/SideB/Views/Components/WindowNavigationToolbarView.swift`.
 - Pruebas: `swift build` correcto; sin validación visual manual.
-- Fixes relacionados: [FIX-352](#fix-352). Paridad: PAR-046.
+- Fixes relacionados: [FIX-354](#fix-354). Paridad: PAR-046.
 - Ajuste posterior (2026-11-14): el borde del contenido pasa a **«Sin borde» por defecto** (`ContentBorderStyle.default = .none`) porque, con la sidebar nativa, sólo el panel derecho Ahora suena conserva su borde fijo de 0,5 pt (`PlaybackSidebarScene`, sin cambios). El ajuste «Borde del contenido» sigue disponible (Sutil / Marcado); quien ya eligió un valor lo conserva. No se cambió `main`, que mantiene «Sutil» por defecto.
 - Ajuste posterior (2026-11-14, buscador sobre la sidebar, corrección): la primera versión no resolvía el caso al abrir la app: `NavigationSidebarInsetModel.report(columnWidth:)` se alimentaba con `onChange(of: proxy.size.width)` sin `initial: true`, así que el ancho de la columna sólo se medía cuando cambiaba y el toolbar conservaba inset 0 hasta que el usuario arrastraba la sidebar. Se añade `initial: true`. Sin validación visual; sin prueba automatizada para este cableado de vista.
 
-<a id="fix-352"></a>
-### [FIX-352] [Apple] - Variante «marco + desvanecimiento + borde configurable»: el contenido deja de cortarse contra las sidebars (rama `ui/edge-frame-fade-shadow`)
+<a id="fix-354"></a>
+### [FIX-354] [Apple] - Variante «marco + desvanecimiento + borde configurable»: el contenido deja de cortarse contra las sidebars (rama `ui/edge-frame-fade-shadow`)
 
 - Fecha: 2026-11-14 (America/Montevideo). Variante elegida por el usuario tras compararla con `ui/edge-snap-fade` (encaje + desvanecimiento en carruseles), que no se integra. Validada visualmente por el usuario en Mac («quedó perfecto»).
 - Componente: `ContentEdgeFrame` (nuevo, `UI/`), `ShellLayout`, `SideBApp.windowContent`.
@@ -44,21 +44,21 @@ Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-355**. Lo
 - Cambio / motivo: el área de páginas se presenta como un tercer panel hermano de las sidebars: esquinas de 10 pt (`contentCornerRadius = sidebarCornerRadius`) y margen exterior de 6 pt (`contentFrameInset`), borde de 0,5 pt como los paneles, **máscara de opacidad** de 28 pt en los bordes izquierdo/derecho (una sola pasada de composición; no se apilan blurs, que a 120 Hz serían caros). Tras probar la primera build se **quitó la sombra interior** (hacía que la página pareciera «metida para adentro») y el **borde pasó a ser un ajuste** (`ContentBorderStyle`, clave `sideb.content.border.v1`): Sin borde / Sutil (predeterminado, 8 %) / Marcado (18 %), en el modal de Configuración y en el panel de Inicio. Las sidebars ya aportan el hueco de 6 pt cuando están presentes; si no, el marco añade 6 pt a ese lado. Reducir transparencia / Aumentar contraste quitan el desvanecimiento y la sombra y refuerzan el borde.
 - Archivos: `apple/Sources/SideB/UI/ContentEdgeFrame.swift`, `apple/Sources/SideB/UI/ShellLayout.swift`, `apple/Sources/SideB/UI/HomeAppearance.swift`, `apple/Sources/SideB/Views/Settings/SettingsModalView.swift`, `apple/Sources/SideB/Views/Home/HomeSettingsPanel.swift`, `apple/Localization/fragments/home-appearance.json` (+ catálogo y recursos derivados), `apple/Sources/SideB/SideBApp.swift`, `apple/Tests/SideBTests/ContentEdgeFrameTests.swift`, `FIXES.md`, `PARIDAD.md`.
 - Pruebas / límites: compila; 65 pruebas focalizadas aprobadas (geometría del desvanecimiento y coherencia radio/margen). Sin validación visual ni Instruments: falta confirmar que el margen vertical de 6 pt y el recorte redondeado no choquen con el toolbar flotante ni el fondo ambiental de Inicio, y medir el scroll a 120 Hz con la máscara. Constantes ajustables en `ShellLayout` (`contentEdgeFade`, `contentFrameInset`). Windows no portado: no se hará 1:1 (ventana distinta); se diseñará un sistema específico, ver PAR-046.
-- Fixes relacionados: [FIX-284](#fix-284), [FIX-349](#fix-349), [FIX-350](#fix-350). Paridad: PAR-046.
+- Fixes relacionados: [FIX-284](#fix-284), [FIX-351](#fix-351), [FIX-352](#fix-352). Paridad: PAR-046.
 
-<a id="fix-351"></a>
-### [FIX-351] [Windows] - Paridad de FIX-349/350: portada a todo el ancho, distancias iguales y fondo por capas con modo inmersivo
+<a id="fix-353"></a>
+### [FIX-353] [Windows] - Paridad de FIX-351/352: portada a todo el ancho, distancias iguales y fondo por capas con modo inmersivo
 
 - Fecha: 2026-11-14 (America/Montevideo).
 - Componente: `sidebarLayout.ts`, `sidebarPalette.ts`, `PlaybackSidebar.svelte`, `SidebarArtwork.svelte`, `AnimatedArtwork.svelte` (sólo expone la URL en `onFirstFrame`) y el pie vertical de `PlayerBar.svelte`.
-- Problema / causa: el panel Ahora suena de Windows seguía con la portada de 340 px, espacios flexibles desiguales y el degradado plano de dos colores que Mac cambió en [FIX-349](#fix-349) y [FIX-350](#fix-350).
+- Problema / causa: el panel Ahora suena de Windows seguía con la portada de 340 px, espacios flexibles desiguales y el degradado plano de dos colores que Mac cambió en [FIX-351](#fix-351) y [FIX-352](#fix-352).
 - Cambio / motivo: mismas medidas en px CSS: portada = ancho − 4 px por lado desde y=56, texto y controles a 20 px, ritmo de 23 px y 28 px medido desde la barra de progreso. El pie del modo portada cuadrada (`.sidebar-controls.hero`) usa huecos fijos (8 px sobre la barra, etiquetas de 13 px y 7 px hasta el play, cola con 23/15 px) y `footerHeight` usa la altura ideal 513 px; `progressToTransportSpacing` es constante. Fondo por capas (degradado, glow tras la portada, contraglow con el segundo color y sombra hacia los controles) con `glowColorOf` (luminancia ≤ 0,17); los colores se registran con `@property` para fundirse en 0,6 s. Con video vertical listo el panel toma la paleta del fotograma, muestreado en un `<video crossOrigin>` oculto aparte del visible; si el origen `asset:` no envía CORS o el canvas queda contaminado, falla en silencio y se mantiene la paleta de la carátula. Reducir transparencia / alto contraste y `forced-colors` conservan el fondo plano.
 - Archivos: los citados, `windows/scripts/{sidebar-state,playback-presentation,sidebar-palette}.test.mjs`, `FIXES.md`, `PARIDAD.md`.
 - Pruebas / límites: `svelte-check` 0 errores; `node --test scripts/*.test.mjs` 736 aprobadas/4 omitidas/0 fallos (geometría, huecos, legibilidad del glow). Verificado en Mac: sin WebView2 ni render real, así que la intensidad visual, `@property` en WebView2 y sobre todo el muestreo del video (depende de CORS del protocolo `asset:`) siguen pendientes de QA física. `pnpm` no está en este entorno: se usó `svelte-check` y `node --test` directos.
-- Fixes relacionados: [FIX-349](#fix-349), [FIX-350](#fix-350), FIX-304/305. Paridad: PAR-046.
+- Fixes relacionados: [FIX-351](#fix-351), [FIX-352](#fix-352), FIX-304/305. Paridad: PAR-046.
 
-<a id="fix-350"></a>
-### [FIX-350] [Apple] - Fondo del panel Ahora suena con brillo de carátula y modo inmersivo para video vertical
+<a id="fix-352"></a>
+### [FIX-352] [Apple] - Fondo del panel Ahora suena con brillo de carátula y modo inmersivo para video vertical
 
 - Fecha: 2026-11-14 (America/Montevideo).
 - Componente: `PlaybackSidebarBackground` / `PlaybackSidebarPalette` (`FullscreenBackdrop.swift`), `NowPlayingSidebarArtwork`, `SidebarArtworkScrollState`, `PlaybackSidebarScene`.
@@ -66,10 +66,10 @@ Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-355**. Lo
 - Cambio / motivo: capas de fondo: degradado superior→inferior (sin cambios), resplandor radial saturado detrás de la portada (`glowColor`, luminancia ≤ 0,17 para conservar ≥4,5:1 con texto blanco), contraglow con el segundo color abajo a la izquierda y oscurecimiento suave hacia los controles. Con video vertical listo en el panel Ahora suena, la paleta se muestrea del fotograma del video (mismo muestreo de bandas superior/inferior de 24×24) y el fondo cambia a esa paleta con fundido de 0,6 s, con menos oscurecimiento inferior, para que el video se funda con el panel. Reducir transparencia / Aumentar contraste desactivan los resplandores. Letras/Cola usan la paleta de la carátula.
 - Archivos: los citados más `PlaybackSidebarPaletteEdgeTests.swift`.
 - Pruebas / límites: nueva prueba de legibilidad del glow; 69 pruebas focalizadas aprobadas. Sin validación visual manual ni con video real; intensidades (0,70/0,45 de opacidad, lift 2,1) son valores iniciales a ajustar a ojo. Windows no portado.
-- Fixes relacionados: [FIX-349](#fix-349), [FIX-282](#fix-282). Paridad: PAR-046.
+- Fixes relacionados: [FIX-351](#fix-351), [FIX-282](#fix-282). Paridad: PAR-046.
 
-<a id="fix-349"></a>
-### [FIX-349] [Apple] - Panel lateral Ahora suena: portada a todo el ancho y distancias verticales iguales
+<a id="fix-351"></a>
+### [FIX-351] [Apple] - Panel lateral Ahora suena: portada a todo el ancho y distancias verticales iguales
 
 - Fecha: 2026-11-14 (America/Montevideo).
 - Componente: `PlaybackSidebarLayout`, `SidebarArtworkLayout` y pie `PlayerBarView` (modo `isSidebar`) del panel Ahora suena.
@@ -489,7 +489,7 @@ Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-355**. Lo
 - Archivos: `windows/src/lib/appearance/preferences.ts`, `windows/src/lib/components/home/{HomeSettings,HomeAmbient,HomeBackground}.svelte`, `windows/src/lib/components/sidebar/Sidebar.svelte`, `windows/src/lib/i18n/windows.json`, `windows/src/routes/+page.svelte`, `windows/scripts/sidebar-appearance.test.mjs`.
 - Verificación: subagente, antes de FIX-325: check 455 archivos 0/0, 513 pruebas aprobadas, build. Integrador, conjunto con FIX-325: check 458 archivos 0/0, 514 aprobadas/0 fallos, build. Dos pruebas nuevas en `sidebar-appearance` (decodificación con default, válidos, inválidos y JSON viejo; sidebar montada refleja el modo con los mismos botones). Fixture Edge headless en `windows/.cache/plan024-d1/`: Inicio y álbum, sólido/flotante, expandida/contraída, 1100×720 y 1440×900, más popover de cuenta en ambos anchos; revisadas por el integrador.
 - Límites: sólo navegador con datos sintéticos. El modo sólido se comparó a ojo, no píxel a píxel. No probados en pantalla `prefers-reduced-transparency` ni `forced-colors`. Fullscreen del reproductor con panel flotante sin capturar: puede quedar un corte entre el panel y el fondo fullscreen. La franja de 6 px sobre y a la izquierda del panel no arrastra la ventana. Costo de `backdrop-filter` a alto completo sin medir en WebView2.
-- Antecedentes: [FIX-095](#fix-095) (fondo detrás de sidebar en Mac), [FIX-115-2](#fix-115-2) (ambiente de Inicio en Windows), [FIX-219](#fix-219) (ambiente de colección detrás), [FIX-224](#fix-224) (Apariencia).
+- Antecedentes: [FIX-95](#fix-95) (fondo detrás de sidebar en Mac), [FIX-115-2](#fix-115-2) (ambiente de Inicio en Windows), [FIX-219](#fix-219) (ambiente de colección detrás), [FIX-224](#fix-224) (Apariencia).
 - Paridad: [PAR-008](PARIDAD.md) pasa a parcial: el ambiente de Inicio/colección continúa tras la sidebar flotante; el fondo de **fullscreen** tras la sidebar sigue sin portar. [PAR-036](PARIDAD.md) anota la opción. Mac ya es flotante sin preferencia: no hay port hacia Apple.
 - Investigación asociada (no fix): prototipo Mica de la decisión D5, registrado en la etapa 5 de PLAN-025; recomendación de no adoptarlo.
 - Renumeración 2026-11-10: registrado como FIX-271 sobre `main` d0b5549 en la copia `Side-B-main`; renumerado al integrarlo sobre la 1.4.0 (FIX-322, segunda tanda). Las cifras de pruebas de esta entrada son de aquella copia.
@@ -505,7 +505,7 @@ Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-355**. Lo
 - Problema: la sesión guardada deja de servir cada tanto y la app pide iniciar sesión; el popup entra solo, sin pedir contraseña.
 - Causa: el inicio de sesión ocurre en WebView2 (Edge 157), donde Chromium trae activas las Device Bound Session Credentials (DBSC). Google registra la sesión atada a una clave del navegador y las cookies `__Secure-1PSIDTS`, `__Secure-3PSIDTS`, `__Secure-1PSIDRTS` y `__Secure-3PSIDRTS` pasan a ser de vida corta: sólo se renuevan firmando con esa clave en `accounts.google.com/RotateBoundCookies` y `accounts.youtube.com/RotateRelyingSession`. La app copia las cookies de `youtube.com` al core Rust, que sólo sabe absorber los `Set-Cookie` de sus propias respuestas y no tiene la clave. Su copia vence y YouTube la rechaza. El popup «loguea solo» porque WebView2 sí puede renovar.
 - Evidencia de la causa: en el perfil de la app (`%LOCALAPPDATA%\com.fefucho.sideb.windows\EBWebView\Default\Network\Device Bound Sessions`) hay dos sesiones registradas, `https://google.com` y `https://youtube.com`, con esas cuatro cookies y esos dos endpoints. Se leyeron sólo claves, nombres de cookie y URLs; ningún valor. La app instalada llevaba abierta desde el 2026-11-09 21:16 y el 2026-11-10 a las 16:33:43 se reescribió `youtube-session.dpapi`, o sea un reinicio de sesión con la app en marcha. El rechazo de YouTube no se observó en vivo y no se midió cuánto dura una cookie atada.
-- Agravante encontrado en el código: `restore` trataba cualquier fallo de `get_account_info` como sesión rota, incluidos cortes de red, y no reintentaba. Con la app abierta nada detectaba el rechazo: los pedidos empezaban a fallar y el core, ante un Inicio rechazado, descarta la cookie y sirve el feed anónimo con la cuenta todavía marcada como lista (FIX-010).
+- Agravante encontrado en el código: `restore` trataba cualquier fallo de `get_account_info` como sesión rota, incluidos cortes de red, y no reintentaba. Con la app abierta nada detectaba el rechazo: los pedidos empezaban a fallar y el core, ante un Inicio rechazado, descarta la cookie y sirve el feed anónimo con la cuenta todavía marcada como lista (FIX-10).
 - Cambio 1, inicios sin atar: todas las ventanas WebView2 se crean con `--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection,DeviceBoundSessions --autoplay-policy=no-user-gesture-required`. Los tres primeros flags y el de autoplay son los que wry pasa por defecto y se pierden al declarar argumentos propios; `DeviceBoundSessions` es el único agregado. La ventana principal lo declara en `tauri.conf.json` y las de acceso en `WEBVIEW_BROWSER_ARGS`. Deben coincidir porque comparten carpeta de datos y WebView2 rechaza crear un segundo entorno con argumentos distintos; una prueba compara ambos.
 - Cambio 2, renovación silenciosa: `silent_session_cookies` abre la misma URL de acceso en una ventana oculta (`sideb-session-renewal`, sin barra de tareas ni foco), espera hasta 25 s a que cargue `music.youtube.com` con sesión, exporta las cookies y la destruye. Es lo que el usuario hacía a mano con el botón. Se usa en dos lugares:
   - Al arrancar: `restore` valida la sesión guardada y, si YouTube la rechaza, renueva antes de mostrar error.
@@ -515,7 +515,7 @@ Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-355**. Lo
 - Motivo de la combinación: desactivar DBSC ataca la causa y evita renovar cada vez que vence una cookie atada. La renovación silenciosa cubre a quien ya tiene una sesión atada y el caso de que Google ignore el flag o cambie el esquema.
 - Refactor asociado: `open_login` y la renovación comparten `create_session_window` y `wait_for_session_cookies`. La espera ahora corta sola cuando otro inicio, cierre o cancelación la reemplaza, sin depender de que se cierre la ventana. El mensaje «No se pudo preparar el acceso» (URL fija imposible de parsear) se unifica con «No se pudo abrir la ventana de acceso».
 - Archivos: `windows/src-tauri/src/session.rs`, `windows/src-tauri/src/lib.rs` (arranque de `watch_health` junto a `watch_rotations`), `windows/src-tauri/tauri.conf.json`. `core/`, `apple/` y el frontend sin cambios.
-- Fixes relacionados: [FIX-010](#fix-010) introdujo el descarte de cookie ante Inicio rechazado que este fix ahora detecta en Windows; no se modifica. Sin evidencia de que un fix anterior haya causado el problema: aparece con el DBSC de Chromium, no con un cambio del repo.
+- Fixes relacionados: [FIX-10](#fix-10) introdujo el descarte de cookie ante Inicio rechazado que este fix ahora detecta en Windows; no se modifica. Sin evidencia de que un fix anterior haya causado el problema: aparece con el DBSC de Chromium, no con un cambio del repo.
 - Verificación del flag: experimento de control con Edge 157.0.4341.42 (misma versión que el runtime WebView2 instalado) y perfiles temporales en D:. Sin el flag se crea `Default\Network\Device Bound Sessions`; con `--disable-features=DeviceBoundSessions` no se crea. Demuestra que Edge reconoce el nombre del flag. No demuestra que Google emita cookies duraderas a una sesión sin atar.
 - Verificación automática: `cargo test --locked --lib` en `windows/src-tauri` (entorno MSVC, libmpv de `windows/.cache/mpv`, salida de cargo en D:): 121 aprobadas, 0 fallidas, 2 ignoradas (pruebas en vivo). Incluye las tres nuevas de `session`: clasificación de rechazo contra falta de respuesta, decisión de la vigilancia, y coincidencia de argumentos entre `tauri.conf.json` y `WEBVIEW_BROWSER_ARGS`. El primer intento falló al enlazar por no tener `mpv.lib` en la ruta, sin relación con el cambio. No se ejecutó `windows.ps1 -Action verify` completo: frontend y core no cambiaron.
 - Límites: sin prueba con cuenta, WebView2 real ni app abierta. Sin comprobar: que la ventana oculta navegue y exporte cookies igual que la visible, que no robe foco ni parpadee, y que una sesión iniciada con el flag dure. Las sesiones ya atadas no se convierten: con DBSC desactivado WebView2 tampoco puede renovarlas, así que la primera renovación puede fallar y pedir un inicio visible, quizá con contraseña. Lo previsible es un único inicio manual después de instalar; para forzarlo de entrada, cerrar sesión e iniciar de nuevo. Tras una renovación silenciosa de la misma cuenta la interfaz no recarga sola lo que hubiera fallado antes. La clasificación del rechazo depende del texto del error del core (`session expired`), fijado por una prueba; un cambio de ese texto en el core dejaría el rechazo por 401/403 como «sin respuesta». Dos instancias de la app a la vez comparten perfil y archivo de sesión y no se coordinan. El costo de la validación periódica es un pedido `account_menu` cada 10 min.
@@ -589,7 +589,7 @@ Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-355**. Lo
 - Verificación visual: fixture local de supervisión (shell de producción con datos sintéticos en Edge headless, bajo `windows/.cache/plan025-browser/`, fuera de Git) con 12 capturas a 1600×900, 1100×760 y 960×680 y `errors []`. Vistos: tres tamaños de tarjeta, píldora, hover chico y grande, ecualizador en la canción activa, flechas, carril desplazado, cinco tarjetas de colección enteras a 1600, tres a 1100, ambos acabados, hover con Play y menú, y ausencia de scroll horizontal de página.
 - Límites: WebView2, DPI, cuenta y audio reales sin comprobar. Sin medir rendimiento del `backdrop-filter` de las píldoras al desplazar. `prefers-reduced-motion` y `prefers-reduced-transparency` implementados pero no ejercitados. Hover de enlaces de artista sobre panel claro y Play de colección con el servicio real sin comprobar. A 960 px el reproductor flotante tapa el panel de las tarjetas hasta bajar. Observado y sin tocar por ser anterior: un título chico con invitados se corta sin puntos suspensivos; `gestures.ts` conserva el selector sin uso `.featured-pages`.
 - Decisiones tomadas sin confirmación del usuario: mosaico arriba y colecciones debajo (con 900 px de alto de ventana las colecciones empiezan cerca de los 720 px), cantidad adaptable, disposición estable por lista, tope de 27 canciones y acabado inicial «Blanco teñido».
-- Fixes relacionados: reemplaza la presentación de [FIX-098](#fix-098) (diseño original, sólo Apple) trasladada a Windows por FIX-113-2; reutiliza las flechas de [FIX-261](#fix-261); respeta el retiro histórico del aura roja en canciones de Inicio. FIX-188 (geometría del Speed Dial en Apple) queda como referencia del destino de paridad.
+- Fixes relacionados: reemplaza la presentación de [FIX-98](#fix-98) (diseño original, sólo Apple) trasladada a Windows por FIX-113-2; reutiliza las flechas de [FIX-261](#fix-261); respeta el retiro histórico del aura roja en canciones de Inicio. FIX-188 (geometría del Speed Dial en Apple) queda como referencia del destino de paridad.
 - Paridad: [PAR-054](PARIDAD.md). Apple conserva el Speed Dial 3×3 y las tarjetas horizontales.
 - Build: `builds/windows/build-0027/sideb-windows.exe`, Release x64, `status: compiled`. `verify` y `build` aprobados: check 0/0, 513 pruebas de frontend y 587 pruebas Rust aprobadas con 22 ignoradas, 0 fallos. `sourceChangedDuringBuild: true` porque esta entrada y la fila de PARIDAD se escribieron mientras compilaba; el código de la app no cambió en ese lapso. La app no se abrió.
 - Plan / commit: [PLAN-026](windows/plans/PLAN-026-home-mosaic-albums.md); sin commit.
@@ -636,7 +636,7 @@ Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-355**. Lo
 - Archivos: `core/crates/sideb-core/src/http.rs`, `core/crates/sideb-core/src/genius.rs`.
 - Pruebas: `live_pipeline_fetches_context_annotations_and_lyrics` (red real) con `--features windows-bridge`: 1 aprobada (historia, 5 productores, 7 escritores, 15 actuaciones); sin el feature: 403, como antes del cambio (confirma que el camino sin bridge no cambió). `cargo test --locked -p sideb-core`: 186 aprobadas/10 ignoradas sin feature y 188 aprobadas/10 ignoradas con `windows-bridge`, 0 fallos.
 - Límites: no se probó Mac. No se probó a mano la pestaña Genius en la app compilada. Si Genius vuelve a cambiar su filtro, el síntoma reaparecería; `failed()` en `commands/genius.rs` y el controller siguen ocultando la causa (mejora de diagnóstico optativa: clasificar sin URLs y mostrar `genius_metrics`).
-- Antecedentes: [FIX-079](#fix-079)…FIX-081 (resolución Genius), FIX-078 (Genius v2). No se atribuye regresión a esos fixes.
+- Antecedentes: [FIX-79](#fix-79)…FIX-81 (resolución Genius), FIX-78 (Genius v2). No se atribuye regresión a esos fixes.
 - Paridad: exclusivo Windows; el build Apple no activa `windows-bridge` y conserva su pila TLS nativa, donde Genius funciona según el usuario. Sin fila nueva en PARIDAD; si Mac mostrara 403 en el futuro, el mismo mecanismo requeriría su propia comprobación.
 
 <a id="fix-316"></a>
@@ -690,7 +690,7 @@ Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-355**. Lo
 - Pruebas: regresión del IIFE clásico con acceso a document, firma/n y strict explícito; pruebas optativas del player público actual y resolución/GET de dos IDs con sesión autorizada en memoria y datos auxiliares aislados. El probe no imprime cookies, URLs firmadas ni errores HTTP libres.
 - Verificación: test en vivo anterior falla al cargar el player; prueba QuickJS aislada con el mismo player e inyección pasa tras quitar strict forzado. Suite `cipher_runtime::tests`:11aprobadas/2live ignoradas; prueba optativa `live_public_player_cipher`:1aprobada. Prueba optativa `live_session_stream_probe`:1aprobada; Too Good `ZBz12OQJT_Q` y One Dance `5LFB3qdmZBM` resuelven vía WEB_REMIX/itag141 y cada GET devuelve4096bytes de audio. Sesión nativa autorizada sólo en memoria y DB auxiliar temporal, sin alterar cola/cuenta/historial. Rustfmt/diff check aprobados. Verify completo:1090aprobadas(503frontend/112InnerTube/175core/177bridge/5player/118Tauri),0fallos/22live ignoradas; las dos probes nuevas se ejecutaron aparte. Check0errores/1warning previo MediaCard; build frontend/nativa correctos, avisos existentes dead_code/LNK4098/chunk. Descarga de audio y tests sintéticos de player no certifican escucha de esta pista en la app.
 - Build: `builds/windows/build-0026/sideb-windows.exe`, Release x64, BUILD.json compiled y sourceChangedDuringBuild:false; cuatro hashes de EXE/libmpv/Vulkan/licencia revalidados. EXE SHA256 `a01f10276436cf32545bb95fec162b072ba1567b8273e07bae1bb5424e98ee7f`. Documentación de cierre actualizada después del empaquetado, sin cambios funcionales posteriores. Build0025 fallida por fixture visual se conserva; [FIX-314](#fix-314) corrige ese obstáculo del harness.
-- Antecedentes: [FIX-219](#fix-219) se completa; su fixture de funciones sintéticas no contenía el IIFE real. [FIX-083](#fix-083) aporta el contrato Apple. No se afirma que Too Good reproduzca por el solo éxito de una firma sintética.
+- Antecedentes: [FIX-219](#fix-219) se completa; su fixture de funciones sintéticas no contenía el IIFE real. [FIX-83](#fix-83) aporta el contrato Apple. No se afirma que Too Good reproduzca por el solo éxito de una firma sintética.
 - Paridad / límites: [PAR-033](PARIDAD.md). Exclusivo Windows: NativeCipherJsRuntime Apple evalúa con JavaScriptCore sin forzar strict y no usa rquickjs; no requiere port de este cambio. Sin ensayo Mac nuevo. Audio audible y aceptación de app nativa pendientes.
 
 
@@ -851,7 +851,7 @@ Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-355**. Lo
   - Fixture en Chromium 156 headless sobre macOS (`SIDEB_BROWSER=... node scripts/artist-profile-browser.mjs`, 24 secciones x 120 = 2880 tarjetas): marcado anterior 70 469 nodos / 24 repisas / 2880 tarjetas / 2880 imágenes; reciclado inicial 692 nodos / 2 repisas / 18 tarjetas; tras scroll profundo 1162-1632 nodos, 4-6 repisas, 36-54 tarjetas; redimensionado 600/1400 px sin desborde. Celda de tarjeta 216 px >= contenido máximo medido 212 px; repisa 300 px; ancho de scroll 19 248 px = ancho completo. Rueda vertical sobre la repisa desplaza la página; rueda horizontal desplaza la repisa; 0 acciones de historial; Alt sobre repisa 0 acciones, Alt sobre cabecera `['back']`; offset 2400 restaurado tras reciclar; flecha «siguiente» avanza 800 px alineada al paso de 160. Mutación de control: sin `data-gesture-local` falla «Alt over a shelf must stay with the shelf».
   - Suite completa `node --test --test-concurrency=1 scripts/*.test.mjs` (con el trabajo de los demás agentes en el árbol): 606 pruebas, 598 aprobadas, 3 omitidas, 5 fallos, todos en `scripts/visual-provider.test.mjs` (hook/extractor de token de Spotify, área de W6; sin relación con búsqueda/artista). Todas las pruebas de búsqueda y artista aprobadas, incluida `search-principal-dom.test.mjs` (había fallado por una aserción de fuente sobre `projectSearchDocument(displayData.page)` que mi cambio en `SearchView` volvió obsoleta; actualizada a la forma nueva).
 - Límites / QA pendiente: Chromium en macOS no es WebView2; el fixture no mide FPS ni uso de memoria ni Precision Touchpad/inercia. La rueda con Alt se simuló con eventos CDP. Falta QA humana en Windows: scroll fluido del perfil, flechas, restauración del offset, Alt+rueda sobre repisas y cabecera, y el interruptor en Configuración (la sección la compone W8 vía `HomeSettings`). Decisión de paridad a confirmar: Windows deja el chip «Videos» del proveedor tal cual (Swift tampoco lo oculta), por lo que con videos ocultos esa pestaña queda vacía. No se modificó Apple, core ni Rust.
-- Paridad: PAR-048 y PAR-049 pasan a «Implementado / validación pendiente» en Windows (fuentes Swift: `SearchPreferences.swift`, `ProviderSearchPageView.swift`, `ArtistDetailView.swift`, `ArtistProfileViewport.swift`; PLAN-032/033). Fixes anteriores relacionados: FIX-086, FIX-129, FIX-172, FIX-247, FIX-280, FIX-281.
+- Paridad: PAR-048 y PAR-049 pasan a «Implementado / validación pendiente» en Windows (fuentes Swift: `SearchPreferences.swift`, `ProviderSearchPageView.swift`, `ArtistDetailView.swift`, `ArtistProfileViewport.swift`; PLAN-032/033). Fixes anteriores relacionados: FIX-86, FIX-129, FIX-172, FIX-247, FIX-280, FIX-281.
 
 <a id="fix-302"></a>
 
@@ -1264,7 +1264,7 @@ Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-355**. Lo
 - Cambio: «Mostrar videos en búsquedas» en Configuración, activado por defecto. Desactivarlo filtra tarjetas y payloads identificados como video, conserva canciones/artistas/álbumes/listas y consultas textuales. Se aplica también al historial remoto de sugerencias. Preferencia local por instalación, sin cambios de cuenta ni consultas adicionales.
 - Integridad: se conservan los originales y las continuaciones; al reactivar vuelven los videos. Remapea índices de roles y payloads por ocurrencia, incluso con IDs repetidos. Omite secciones vacías y acciones de proveedor de bloques alterados para evitar activar contenido oculto. La proyección se prepara sólo al cambiar página o preferencia; IDs de sección conservan posiciones originales.
 - Archivos: Models/SearchPreferences.swift, Views/Home/HomeSettingsPanel.swift, ViewModels/SearchViewModel.swift, Views/Search/ProviderSearchPageView.swift; fragmento search-video-preferences.json y recursos generados; SearchVideoPreferencesTests.swift.
-- Antecedentes: FIX-086 incorporó Videos; se extiende la presentación vigente de búsqueda, sin atribuir regresiones a ese fix.
+- Antecedentes: FIX-86 incorporó Videos; se extiende la presentación vigente de búsqueda, sin atribuir regresiones a ese fix.
 - Verificación: catálogo ES/EN sincronizado, 825 claves; diff de archivos del cambio sin espacios inválidos. 57 pruebas focales aprobadas (11 XCTest + 46 SwiftTesting) con `swift test --package-path apple --no-parallel --filter 'SearchVideoPreferencesTests|ProviderSearch|SearchViewModelTests|QuickSearch'`, incluyendo cuatro nuevas. La ejecución completa de `swift test --package-path apple` aprobó 273 XCTest, registró fallos SwiftTesting de cola, menús, reproducción y navegación y fue interrumpida sin cierre global; no se atribuye la causa a este cambio ni se declara la suite aprobada. Logs locales: `/tmp/sideb-search-video-focused.log` y `/tmp/sideb-search-video-tests.log`.
 - Límites: afecta resultados y sugerencias de búsqueda en Mac; no filtra Inicio/biblioteca/cola ni modifica la reproducción o el core. Chips del proveedor se conservan; una búsqueda exclusiva de videos queda vacía al ocultarlos. Sin nueva build empaquetada ni validación manual.
 - Paridad: PAR-048, implementación Windows pendiente; no se modificó Windows.
@@ -1387,7 +1387,7 @@ Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-355**. Lo
 - Acciones conservadas: barra y fullscreen mantienen transporte actual y menús. Letras/Genius/Cola abren el panel; botón lateral abre portada, flecha expande. La rueda de volumen admite la superficie lateral sin marcar Inicio como cubierto. Progreso agrega ajustes accesibles de5s y desactiva hit testing sin duración. El booleano de repeat mantiene su semántica anterior; el pie lateral representa el estado activo con repeat.1.
 - Contexto: memoria de scroll de cola por ocurrencia/token, anclas de lectura compartidas y controlador de letras retenido al cambiar de presentación. No se crean motores, contratos ni solicitudes de reproducción nuevos.
 - Archivos: `Models/PlaybackPresentation.swift`, `ViewModels/PlayerViewModel.swift`, `SideBApp.swift`, `Views/Fullscreen/FullscreenNowPlayingView.swift`, `FullscreenBackdrop.swift`, `Views/Components/PlayerBarView.swift`, `PlayerBarProgressView.swift`, `WindowNavigationToolbarView.swift`, `Views/Common/NativeSeparatedQueueView.swift`, `Services/Navigation/NavigationInputCoordinator.swift`, ajustes de presentación/renderer de letras, fragmento `playback-sidebar.json` y recursos generados, `PlaybackSidebarTests.swift`.
-- Antecedentes: FIX-090/095, FIX-264/265 y FIX-270/271. Conserva trabajo previo de cola/recomendaciones presente sin guardar al comenzar; no se atribuye ese trabajo a esta mejora.
+- Antecedentes: FIX-90/95, FIX-264/265 y FIX-270/271. Conserva trabajo previo de cola/recomendaciones presente sin guardar al comenzar; no se atribuye ese trabajo a esta mejora.
 - Verificación inicial: seis pruebas focales aprobadas en el runner oficial (estados/retorno/reversión repetida, geometría a960–1920pt, item de audio/ocurrencia, transferencia nativa de scroll/token, frames de tres pestañas a380×628 y rueda lateral). El intento build0174 conserva diagnóstico:287pruebas Rust aprobadas/10live ignoradas;531SwiftTesting aprobadas, pero1de272XCTest falló al faltar el marcador `volumeExcluded` del canvas fullscreen. Se restaura activo únicamente en fullscreen para proteger las páginas retenidas sin bloquear la rueda lateral; las12pruebas `VolumeScrollIntegrationTests` Release pasan tras la corrección. Build0175 final:272XCTest +531SwiftTesting aprobadas (803Swift),287Rust aprobadas/10live ignoradas; runner oficial Release `compiled`, firma ad hoc y10hashes revalidados, `sourceChangedDuringBuild: false`. Sin fallos en la ejecución final.
 - Límites: sin cuenta/audio reales ni medición de FPS/Instruments/VoiceOver completo. Capturas bitmap offscreen de SwiftUI/AppKit resultaron incompletas; sólo se da por comprobada la geometría nativa, no la apariencia final ni la animación física. No se modifica Windows/core ni se publica.
 - Iteración 2 (2026-10-31): portada inmersiva a ancho completo con scroll por encima y blur progresivo, paleta muestreada de las franjas superior/inferior, recomendaciones bajo la portada con cabecera/pie fijos, retiro de Info/flip/rueda sobre portada, pie de Letras/Cola sin miniatura y coordinador de posición de letras. Archivos: `Views/PlaybackSidebar/NowPlayingSidebarArtwork.swift`, `NowPlayingSidebarRecommendations.swift`, `Views/Fullscreen/FullscreenNowPlayingView.swift`, `FullscreenBackdrop.swift`, `Lyrics/LyricsScrollCoordinator.swift` y ajustes de letras, localización y pruebas. Build0176: 272XCTest+559SwiftTesting (831Swift) y287Rust aprobadas/10live ignoradas; `BUILD.json: compiled`, firma ad hoc y hashes revalidados, fuentes estables. La suite en paralelo puede exceder la espera de2s de los mocks y dejar el runner idle sin reanudar la continuación; la corrida oficial en serie (`--no-parallel`) cierra sin fallos. Aceptación visual/audio del usuario pendiente. Entrega: `builds/macos/build-0176/Side B.app`.
@@ -1419,7 +1419,7 @@ Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-355**. Lo
 - Solución y motivo: variante Continua aprobada: anteriores atenuadas sobre actual, pendientes debajo, una cabecera «Ahora suena» y otra «Recomendaciones». Se eliminan plegador, cabecera Up next, vacío elegido y explicación permanente. Una acción plus de agregar al final sustituye siguiente/final permanentes; acciones y Like/Dislike siguen por fila/menú/teclado. Posicionamiento inicial con dos anteriores y ancla de scroll por ocurrencia; avanzar/actualizar reserva respeta exploración manual. Mac usa estilo plain, geometría ligada al clip, bloqueo X y carga progresiva de anteriores; Windows conserva rangos/snapshots dispersos virtualizados y confirma ancho real además de restringir overflow X.
 - Ámbito: sólo presentación/localización/pruebas y documentación de esta entrega. La separación funcional reserva/cola de PLAN-018 estaba implementada en el árbol antes de este trabajo; no se atribuye aquí como código nuevo. Core, contratos de audio y persistencia intactos por este fix.
 - Archivos: `apple/Sources/SideB/Views/Common/NativeSeparatedQueueView.swift`, `NativeQueueTrackCellView.swift`, `apple/Tests/SideBTests/SeparatedQueueIntegrationTests.swift`, fragmento editorial queue-recommendations y recursos derivados; `windows/src/lib/components/fullscreen/QueuePanel.svelte`, `queueProjection.ts`, localización/editoriales y catálogo generado; pruebas queue-projection/queue-presentation/queue-continuous-runtime y fixture `queue-continuous-browser.mjs`.
-- Fixes relacionados: FIX-036 como antecedente de política vertical y tabla actual de referencia; FIX-113 para presentación de cola. No se atribuye regresión de commits históricos: la omisión se contrastó directamente entre los dos contenedores actuales. [PLAN-018](plans/PLAN-018-queue-recommendations.md) conserva contrato funcional; [PLAN-019](plans/PLAN-019-continuous-queue.md) define el refinamiento aceptado.
+- Fixes relacionados: FIX-36 como antecedente de política vertical y tabla actual de referencia; FIX-113 para presentación de cola. No se atribuye regresión de commits históricos: la omisión se contrastó directamente entre los dos contenedores actuales. [PLAN-018](plans/PLAN-018-queue-recommendations.md) conserva contrato funcional; [PLAN-019](plans/PLAN-019-continuous-queue.md) define el refinamiento aceptado.
 - Verificación: baseline10Swift/15Node aprobadas; después10focales Swift con constructor real de producción, X bloqueado, resize320/350/480/600 y ancla al cargar anteriores; Windows515aprobadas/2omitidas/0fallos, check0errores/1warning CSS previo y build frontend.8fixtures Chrome con CSS real ES/EN:sin exceso horizontal, acciones dentro de fila, DOM acotado y offset manual preservado tras avance/reserva. Localizaciones regeneradas y verificadas. Build0171 compiled y firma verificada:272XCTest +519SwiftTesting aprobadas, core aprobado. Sólo documentación cambió durante esa build; entrega final0172 compiled con árbol estable, firma y10hashes verificados.
 - Límites: fixtures sintéticas sin audio/cuenta. No certifican trackpad físico, VoiceOver/Narrator, FPS ni runtime nativo Windows. No se ejecutó la app con sesión privada ni se cambió la versión pública; no hay commit/push/release.
 - Paridad: PAR-045, implementado en fuentes de ambas plataformas con aceptación física pendiente; evidencia de frontend en Mac no equivale a validación de WebView2.
@@ -1510,7 +1510,7 @@ Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-355**. Lo
 - Verificación Windows previa a build: check0errores/1warning previo MediaCard;33pruebas focales aprobadas. Edge player16geometrías y hover2100ms, dislike/Like, ancla natural corta dominada por artista o título, radio2, separadores invisibles y controles anclados; content-rating12casos, cuatro alternancias fullscreen sinE activa y badges restantes conservados; horizontal26casos con clic/scroll/RTL/foco y sin bandas/blur. Errors[] en las tres fixtures; capturas revisadas. Cinco regresiones nuevas de dislike cubren éxito/ocurrencia capturada, fallo de rating, cambio de sesión durante rating/filtrado y error de filtrado. Harness Edge preserva pipe CDP ante relaunch de compatibilidad y admite45s de montaje frío, manteniendo assertions. Evidencia local ignorada: `windows/.cache/{player-bar,content-rating,horizontal-navigation}-browser/`.
 - Build / cierre: `node Scripts/build-version.mjs windows` conservó `builds/windows/build-0024/sideb-windows.exe`, DLL libmpv/Vulkan/licencia y BUILD.json/build.log. Estado compiled, release, sourceChangedDuringBuild:false y cuatro SHA256 revalidados. Verify oficial:1089pruebas aprobadas (503frontend,112InnerTube,175core,177core/windows-bridge,5player,117Tauri),0fallos y20live ignoradas; check0errores/1warning previo CSS. Build0023 conservada. Sólo documentación de cierre editada después de compilar.
 - Límites: app0024 sin abrir, cuenta/audio real/WebView2/Narrator/DPI físico y FPS no certificados. Mac exige regeneración/compilación y suite/QA nativas en Mac; la inspección de fuentes no las reemplaza. Sin commit/push/release ni cambios de versión pública.
-- Antecedentes / paridad / planes: [FIX-264](#fix-264), distribución/marquee y build0023; [FIX-263](#fix-263), revisión anterior que conservaba E en créditos fullscreen ahora excluidos por nuevo pedido; [FIX-261](#fix-261), origen comprobado de bandas Windows; [FIX-167](#fix-167), enlaces a invitados; [FIX-059](#fix-059), volumen overlay. [PAR-044](PARIDAD.md), [PAR-040](PARIDAD.md), [Mac030](apple/plans/PLAN-030-player-bar-space-marquee.md), [Windows022](windows/plans/PLAN-022-player-bar-space-marquee.md). Paridad nativa permanece abierta por destino.
+- Antecedentes / paridad / planes: [FIX-264](#fix-264), distribución/marquee y build0023; [FIX-263](#fix-263), revisión anterior que conservaba E en créditos fullscreen ahora excluidos por nuevo pedido; [FIX-261](#fix-261), origen comprobado de bandas Windows; [FIX-167](#fix-167), enlaces a invitados; [FIX-59](#fix-59), volumen overlay. [PAR-044](PARIDAD.md), [PAR-040](PARIDAD.md), [Mac030](apple/plans/PLAN-030-player-bar-space-marquee.md), [Windows022](windows/plans/PLAN-022-player-bar-space-marquee.md). Paridad nativa permanece abierta por destino.
 
 <a id="fix-264"></a>
 
@@ -1525,7 +1525,7 @@ Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-355**. Lo
 - Verificación Mac / integración: revisión de diff y contratos; regresiones Swift de ciclo, pausa determinística, resize/identidad y geometría/hit testing/clipping preparadas. `swift test --package-path apple` no pudo ejecutarse porque Swift no está instalado en este Windows. Integración retiró suspensión incorrecta por fullscreen: la barra permanece visible encima de fullscreen y conserva animación/enlaces. Diff focal sin errores de whitespace. Dos subagentes Sol6.1/medio, uno por plataforma, y revisión del integrador.
 - Build Windows posterior, pedida por el usuario: `node Scripts/build-version.mjs windows` conservó `builds/windows/build-0023/sideb-windows.exe` junto a libmpv/Vulkan/licencia y BUILD.json/build.log. Estado `compiled`, release, `sourceChangedDuringBuild:false`; cuatro SHA256 revalidados. Verify completo:1084pruebas aprobadas (498frontend,112InnerTube,175core,177core/bridge,5player,117Tauri),20live ignoradas entre ambas variantes core,0fallos; check0errores/1warning previo. Build0022 anterior conservada.
 - Límites: Mac requiere compilación, suite Swift y medidas/QA física del layout y animación. Windows requiere aceptación WebView2/Narrator, DPI real y shell/sidebar; EdgeDPR es simulación. Build0023 no se abrió ni se probó cuenta real/audio; no se certifican FPS. La pausa temporal se comprobó en fixture Windows; las pruebas Mac aún no ejecutadas no la certifican.
-- Antecedentes: [FIX-167](#fix-167), integración de invitados comprobada en diff histórico; [FIX-038](#fix-038)/[FIX-039](#fix-039), distribución previa; [FIX-059](#fix-059), overlay de volumen sin desplazar texto. No se atribuye pérdida histórica de marquee Windows sin evidencia.
+- Antecedentes: [FIX-167](#fix-167), integración de invitados comprobada en diff histórico; [FIX-38](#fix-38)/[FIX-39](#fix-39), distribución previa; [FIX-59](#fix-59), overlay de volumen sin desplazar texto. No se atribuye pérdida histórica de marquee Windows sin evidencia.
 - Paridad / planes: [PAR-044](PARIDAD.md), [Mac030](apple/plans/PLAN-030-player-bar-space-marquee.md), [Windows022](windows/plans/PLAN-022-player-bar-space-marquee.md). Implementación común completada; aceptación nativa por destino permanece abierta. Sin commit/push/release.
 
 <a id="fix-263"></a>
@@ -1567,7 +1567,7 @@ Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-355**. Lo
 
 - Fecha:2026-10-27 (America/Montevideo).
 - Componente / estado: navegación horizontal Windows; implementado y verificado en frontend/navegador, QA física WebView2 pendiente; [PLAN-020](windows/plans/PLAN-020-horizontal-scroll-controls.md).
-- Problema / causa: estantes de Inicio y Relacionado ocultaban barra y no ofrecían entrada de mouse por página; otras pantallas tenían sólo una barra fina. Speed Dial/destacados tenían controles separados debajo. FIX-096/PAR-002 había retirado flechas de cabecera por una decisión visual Mac, trasladada a Windows en FIX-113-2; el usuario pide ahora una adaptación explícita a mouse en Windows, sin atribuir regresión a esa decisión.
+- Problema / causa: estantes de Inicio y Relacionado ocultaban barra y no ofrecían entrada de mouse por página; otras pantallas tenían sólo una barra fina. Speed Dial/destacados tenían controles separados debajo. FIX-96/PAR-002 había retirado flechas de cabecera por una decisión visual Mac, trasladada a Windows en FIX-113-2; el usuario pide ahora una adaptación explícita a mouse en Windows, sin atribuir regresión a esa decisión.
 - Cambio / motivo: control compartido HorizontalNavigation con flechas40px/target44 táctil, variantes compactas para filtros, fade, extremos reales, posición por viewport y límites de tarjetas/columnas. Controles fuera de scroll/máscara; lectura binaria de límites variables o stride virtual sin montar los5000elementos. Clics rápidos acumulan destino; resize/contexto y entrada manual invalidan destino pendiente, Reduce Motion usa scroll inmediato, foco se conserva al llegar al extremo, nombres ES/EN y forced-colors. Adaptador paginado mueve flechas de Speed Dial/destacados al bloque y conserva puntos, sin duplicar pares. Filas compactas reservan espacio lateral para el control de reproducción.
 - Alcance: Inicio/estantes/filtros/paginadores; novedades y pestañas de Explorar; carruseles/chips de búsqueda; Biblioteca/Todo/fijados/categorías sólo en grilla; secciones de artista/álbum; cuatro estantes de Relacionado. Tablas/listas verticales y proveedores/cola/audio intactos. Se conservan suspensión, offsets, menú/foco y virtualización de FIX-248/251/253/260.
 - Archivos: `windows/src/lib/horizontal/scroll.ts`, `components/common/HorizontalNavigation.svelte`, consumidores del inventario PLAN-020, traducciones Windows y pruebas `horizontal-navigation*`; documentación de este fix. Cambios concurrentes Apple/core/Tauri/contenido de otra tarea se conservan sin atribuirlos al control horizontal.
@@ -1622,7 +1622,7 @@ Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-355**. Lo
 - Cambio / motivo: viewports binarios vertical y horizontal, columnas270px de tres filas52px y huecos6px en clip168px; artistas76px dentro de columna86px/clip118px. Filas usan portada, título, créditos y Play/Pause comunes; ocurrencias conservan payload propio. Offsets sobreviven refresh/reciclado, cambian con contexto/cuenta. Foco/menú por clic o teclado pinnean columna y estante; ejeY del carrusel permite propagar rueda. requestIdentity/contextKey y suspend invalidan aceptación tardía conservando datos válidos. No se modifica selección de fuentes/rotación/exclusión de pista ni se promete cancelar RPC ya enviada.
 - Archivos: `windows/src/lib/components/fullscreen/{RecommendedPanel,RecommendedViewport,RecommendedSongRow,FullscreenNowPlaying}.svelte`, `windows/src/lib/player/{recommendations,recommended-viewport}.ts`, `windows/src/routes/+page.svelte`, tests `recommendations-{controller,geometry,viewport}.test.mjs`.
 - Verificación:15 focales aprobadas; montaje real con5000canciones+5000artistas, hasta4columnas/7artistas montados, desplazamiento a fila4500 exacta, duplicados, cuenta/contexto tardío, refresh/offset, menú teclado y teardown de observers. Revisión cruzada reproduce y corrige los dos casos de foco/rueda. Check0errores/0advertencias del lote. Resultado final integrado y límites en [PLAN-018 Windows](windows/plans/PLAN-018-windows-current-parity-roadmap.md).
-- Antecedentes / paridad: FIX-247/Mac0166 y PAR-043; conserva FIX-042/044/052/078 y servicios existentes. [PARIDAD](PARIDAD.md). Core/Apple sin cambios propios, trabajo concurrente preservado. Chromium/DOM en Mac no certifican WebView2, Narrator, wheel físico, audio o FPS; sin commit/push/publicación.
+- Antecedentes / paridad: FIX-247/Mac0166 y PAR-043; conserva FIX-42/44/52/78 y servicios existentes. [PARIDAD](PARIDAD.md). Core/Apple sin cambios propios, trabajo concurrente preservado. Chromium/DOM en Mac no certifican WebView2, Narrator, wheel físico, audio o FPS; sin commit/push/publicación.
 
 <a id="fix-252"></a>
 
@@ -1698,7 +1698,7 @@ Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-355**. Lo
 - Verificación:12 focales aprobadas. Fixture real NSWindow sin mostrar con3000canciones/1000columnas: máximo3columnas visibles,33 configuraciones al recorrer11posiciones. Identidad duplicada, A→B→A, refresh/cuenta/cancelación, metadatos tardíos, tamaño de viewport, offset y reentrada vertical comprobados. Renders340/600pt inspeccionados en `/tmp/sideb-related-qa/`; sin red ni cuenta real. El primer fixture sin NSWindow no recorría el carrusel; se añadió ventana nativa y aserción del índice visible. Fallos de compilación iniciales de nombres/inicializadores corregidos antes del focal aprobado.
 - Build: [0166/BUILD.json](builds/macos/build-0166/BUILD.json), `compiled`;282 Rust +269 XCTest +478 Swift Testing =1029 ejecutadas aprobadas,17 omitidas, cero fallos;12 focales incluidas. La cabecera Swift Testing cuenta485 incluidas7 omitidas; se contabilizan478 ejecutadas. Firma estricta y10hashes del artefacto verificados. Snapshot SHA-256 propio de361fuentes/recursos Apple/core sin cambios entre inicio de regeneración y cierre; bindings regenerados por el runner. El fingerprint global del repositorio cambió (`sourceChangedDuringBuild=true`); hay trabajo simultáneo Windows y regeneración de bindings, sin atribuir el delta global a una causa única ni afirmar estabilidad global. Evidencia local en `/tmp/sideb-related-qa/build-verification.json`. `git diff --check` focal limpio; el global señala whitespace en bindings generados del trabajo de búsqueda ya presente, no corregido manualmente.
 - Límites: reciclado y renders no acreditan FPS/audio/trackpad físico ni calidad del proveedor. Validación real de foco, menús, refresh y navegación con cuenta pendiente. Cambios previos del árbol conservados; sin push/publicación.
-- Antecedentes: conserva FIX-042/044 (cuatro estantes/datos), FIX-052/078 (estados/controles); aplica patrón de viewport de FIX-104/119/121/185 y aislamiento de FIX-236, que excluía Relacionado. No se atribuye regresión a esos fixes sin evidencia.
+- Antecedentes: conserva FIX-42/44 (cuatro estantes/datos), FIX-52/78 (estados/controles); aplica patrón de viewport de FIX-104/119/121/185 y aislamiento de FIX-236, que excluía Relacionado. No se atribuye regresión a esos fixes sin evidencia.
 - Paridad: [PAR-043](PARIDAD.md). Windows ya comparte pending y protege revision/contexto; usa MediaCard y Promise.allSettled. Su RecommendedPanel conserva carruseles DOM sin reciclado equivalente: traslado/rendimiento nativos pendientes, sin modificar Windows en esta tarea Apple.
 - Plan: [PLAN-028](apple/plans/PLAN-028-fullscreen-related.md).
 
@@ -1951,7 +1951,7 @@ Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-355**. Lo
 - Integración: `seekToLyric(seconds:)` coordina item cargado y último cue diferido por cuenta/ocurrencia/video en pista restaurada/resolviendo. Cambio de reproducción, cuenta o error lo invalida. Paneles envían segundos, fila completa clicable, click vuelve a seguimiento/centrado; el clásico se identifica por ocurrencia. Clock experimental reconcilia snapshot real y protege generaciones. Lifecycle aplica documento/clock antes de centrar, conserva manual en refresh de la misma ocurrencia y no cambia LazyVStack sin evidencia de necesidad.
 - Archivos: `Services/Player/AudioPlayerService.swift`, nuevo `AudioPlayerSeekState.swift`, `PlayerViewModel.swift`, `FullscreenNowPlayingView.swift`, panel/clock experimentales y nuevas pruebas AudioPlayerSeek/ExperimentalLyricsSeek/LyricSeekPlayback.
 - Verificación:17 pruebas nuevas de servicio,9 de reloj/seguimiento y5 de reproducción/restauración aprobadas dentro de la suite Release completa. Callbacks controlados, deadline, cancel/reemplazo, desfase, cuenta/ocurrencia, seguimiento y archivo local silencioso; revisión cruzada del VM/callsites sin hallazgos. Build oficial [0145](builds/macos/build-0145/BUILD.json) `compiled`, `sourceChangedDuringBuild:false`,889 pruebas ejecutadas aprobadas (97 InnerTube +129 core +239 XCTest +424 Swift Testing) y15 omitidas (8 Rust/7 Swift live o muestras optativas). XCFramework/bindings regenerados,786 claves ES/EN, firma ad hoc, arm64/1.2.6/build19 y diez hashes verificados. App: `builds/macos/build-0145/Side B.app`. No se afirma escucha de catálogo, clic/VoiceOver físico ni FPS. Cierre documental posterior al paquete, sin modificar código compilado ni abrir/reemplazar la app en ejecución.
-- Antecedentes / límites: [FIX-008](#fix-008), [FIX-041](#fix-041), [FIX-064](#fix-064), [FIX-077](#fix-077), [FIX-229](#fix-229), [FIX-231](#fix-231); [PLAN-025](apple/plans/PLAN-025-word-synced-lyrics.md). La tolerancia cero ya existía; no se atribuye una latencia universal a CoreAudio. No corrige diferencias de master/versiones con un reloj artificial. Genius/panel clásico/botón experimental se conservan.
+- Antecedentes / límites: [FIX-8](#fix-8), [FIX-41](#fix-41), [FIX-64](#fix-64), [FIX-77](#fix-77), [FIX-229](#fix-229), [FIX-231](#fix-231); [PLAN-025](apple/plans/PLAN-025-word-synced-lyrics.md). La tolerancia cero ya existía; no se atribuye una latencia universal a CoreAudio. No corrige diferencias de master/versiones con un reloj artificial. Genius/panel clásico/botón experimental se conservan.
 - Paridad: [PAR-038](PARIDAD.md). AVPlayer y su snapshot son Apple; Windows requiere revisar comportamiento equivalente sobre libmpv, sin copiar APIs nativas ni declarar ejecución destino.
 
 <a id="fix-232"></a>
@@ -1979,7 +1979,7 @@ Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-355**. Lo
 - Archivos: modelo/controller experimentales, `Views/Fullscreen/Lyrics/`, pruebas separadas de voces/esperas/reloj/renderer y fragmento de localización con derivados. Panel clásico, Genius y su ruta de carga conservados; botón temporal sigue disponible y modo actual sigue predeterminado.
 - Verificación:786 claves ES/EN y diffcheck aprobados. Build0142 queda como diagnóstico tras fallar una aserción de prueba sobre `AVPlayer().currentTime().seconds == 0` sin ítem (`CMTime.invalid` / `nan`), corregida en `ExperimentalLyricsClockInterludeTests.swift`. Build oficial [0143](builds/macos/build-0143/BUILD.json) Release aprobada (`status: compiled`, `sourceChangedDuringBuild: false`):842 pruebas ejecutadas aprobadas (97 InnerTube,116 sideb-core,239 XCTest y390 Swift Testing ejecutadas;15 live/muestra omitidas),53 pruebas focales de `ExperimentalLyrics` en8 suites, XCFramework/bindings regenerados, firma ad hoc y arm64/1.2.6/build19 verificados. Ruta: `builds/macos/build-0143/Side B.app`. Capturas aisladas en `builds/lyrics-octave-qa/` inspeccionadas (330/447/600px, interludio y barrido220/420/560px sin reflow). No se declara audio/FPS/VoiceOver físicos. Esta actualización documental es posterior al paquete; no modifica el código compilado.
 - Revisión posterior a build0143: orden de esperas por cronología (outro siempre después de todos los grupos, aunque el último fondo pertenezca a una frase anterior), geometría estable del indicador y tres pruebas de secuencia aprobadas. Las capturas aisladas dejan completar tareas iniciales, pero una ventana oculta no demuestra el seguimiento interactivo: son evidencia de composición, no sincronización auditiva. Build oficial [0144](builds/macos/build-0144/BUILD.json) Release aprobada con `sourceChangedDuringBuild:false`,851 pruebas ejecutadas aprobadas (97 InnerTube +122 core +239 XCTest +393 Swift Testing) y15 omitidas; firma, arm64/1.2.6/build19 y diez hashes revalidados. Ruta: `builds/macos/build-0144/Side B.app`. Build0143 conservada y reportada como funcional por el usuario. Fuentes propias y786 claves ES/EN comprobadas; actualización documental posterior sin modificar el código compilado.
-- Antecedentes / límites: completa [FIX-229](#fix-229) y consume [FIX-230](#fix-230); [FIX-064](#fix-064), [FIX-075](#fix-075), [FIX-077](#fix-077), [FIX-157](#fix-157). El centrado con espaciadores sólo pertenece al experimento, por pedido del usuario; no cambia límites del clásico. Fuentes sin roles conservan su texto normal. Acceso Apple autenticado, nuevas fuentes/selector, romanización e importación siguen fuera de esta entrega.
+- Antecedentes / límites: completa [FIX-229](#fix-229) y consume [FIX-230](#fix-230); [FIX-64](#fix-64), [FIX-75](#fix-75), [FIX-77](#fix-77), [FIX-157](#fix-157). El centrado con espaciadores sólo pertenece al experimento, por pedido del usuario; no cambia límites del clásico. Fuentes sin roles conservan su texto normal. Acceso Apple autenticado, nuevas fuentes/selector, romanización e importación siguen fuera de esta entrega.
 - Paridad / plan: [PAR-037](PARIDAD.md); renderer Windows pendiente. [PLAN-025](apple/plans/PLAN-025-word-synced-lyrics.md), [referencia visual medida](plans/research/OCTAVE-LYRICS-VISUAL-2026-10-20.md). No publicación ni cambio de versión.
 
 <a id="fix-230"></a>
@@ -2007,7 +2007,7 @@ Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-355**. Lo
 - Estado / reloj: carga sólo al abrir el experimento; descarta respuestas por cuenta, ocurrencia y revisión, cancela al salir y conserva el documento válido durante refresh. Reloj local consulta AVPlayer.currentTime/timeControlStatus, boundaries para segmentos cortos y pulso limitado a palabras cambiantes con reproducción/ventana visibles; ahorro de energía a 30 Hz. Sólo filas activas/foco observan posición por frame. Reduce Motion conserva fill y elimina elevación/brillo/scroll animado. Genius y la carga clásica conservan su ruta.
 - Archivos: `FullscreenNowPlayingView.swift`, getter de ocurrencia en `PlayerViewModel.swift`, nuevos `ExperimentalLyricsController`, `ExperimentalLyricsDocument`, `Views/Fullscreen/Lyrics/`, dos archivos de pruebas y fragmento `lyrics-experimental.json` con sus derivados.
 - Verificación: 782 claves ES/EN aprobadas. Fuentes propias sin errores de whitespace; el generador UniFFI conserva espacios finales de su plantilla, sin editarlos a mano. Suite Release final:239 XCTest y358 Swift Testing ejecutadas aprobadas,7live Swift omitidas; incluye8 pruebas de controller y13 de modelo/reloj/render. Build oficial [0141](builds/macos/build-0141/BUILD.json) compiled/sourceChangedDuringBuild=false:804 pruebas ejecutadas aprobadas entre Rust/Swift,15 omitidas (incluye muestra local opt-in); XCFramework/bindings regenerados, paquete arm64/1.2.6/build19, firma y diez hashes revalidados. Ruta: `builds/macos/build-0141/Side B.app`. Primera build0140 queda como diagnóstico anterior a los ajustes finales. Typecheck independiente macOS15 aprobado. Cuatro pruebas focales de presentación/capturas a220/560px y panel420×600 aprobadas con texto propio, AVPlayer vacío y ventana nunca mostrada. Capturas finales inspeccionadas: selector sin etiqueta redundante, wrapping Unicode y atenuación uniforme de futuras con/sin palabras; evidencia ignorada en `builds/lyrics-experimental-qa/`. Esta actualización documental es posterior al paquete; no se cambia código compilado.
-- Antecedentes / límites: [FIX-064](#fix-064), [FIX-075](#fix-075), [FIX-077](#fix-077), [FIX-157](#fix-157), [FIX-228](#fix-228); [PLAN-025](apple/plans/PLAN-025-word-synced-lyrics.md). Primera entrega para comparar y probar; sin afirmar audio/FPS/VoiceOver físicos. Desfase/opciones de sesión, sin persistencia por canción; dúos, romanización, importación y evaluación de motores web siguen pendientes. Al alejarse mediante scroll manual, el pulso puede continuar mientras la palabra actual cambia aunque su fila no esté montada.
+- Antecedentes / límites: [FIX-64](#fix-64), [FIX-75](#fix-75), [FIX-77](#fix-77), [FIX-157](#fix-157), [FIX-228](#fix-228); [PLAN-025](apple/plans/PLAN-025-word-synced-lyrics.md). Primera entrega para comparar y probar; sin afirmar audio/FPS/VoiceOver físicos. Desfase/opciones de sesión, sin persistencia por canción; dúos, romanización, importación y evaluación de motores web siguen pendientes. Al alejarse mediante scroll manual, el pulso puede continuar mientras la palabra actual cambia aunque su fila no esté montada.
 - Paridad: [PAR-037](PARIDAD.md), presentación karaoke Windows pendiente. No se publica release ni se modifica versión.
 
 <a id="fix-228"></a>
@@ -2106,7 +2106,7 @@ Integración posterior de FIX-216/217/218/219 (2026-10-19): por pedido de guarda
 - Verificación frontend: `pnpm check`0errores/0advertencias, `pnpm test`398aprobadas/0fallos/1omitida Windows, `pnpm build` aprobado con aviso de chunk>500kB preexistente. Doce regresiones adicionales cubren feedback, páginas tardías, refresh LM durante mutación, error/cambio de cuenta, duplicados, retorno antes de recargas y corazones de cola independientes de la hidratación. Localización específica en windows.json,750claves compartidas verificadas y catálogo generado previo conservado. Diff focal sin errores de whitespace.
 - Verificación Rust: cuatro tests de SessionOperations aprobados en fixture Cargo aislado usando el mismo Tokio1.53.1 del lock Windows, reloj virtual: lectura lenta no bloquea Like, reemplazo de sesión excluye solicitudes, mutaciones conservan orden y timeout libera guards/cola. `cargo check --locked --tests` de Tauri, con recursos de bundle omitidos sólo por TAURI_CONFIG del proceso, llega a tipos/handlers pero termina con10errores de handlers/session condicionados a Windows en hostMac; no es compilación nativa aprobada. No se modificaron configuración de producción ni Cargo.lock.
 - QA navegador: componentes reales con RPC locales controladas, sin cuenta ni audio. En el mismo click Guardar muestra En biblioteca/seleccióntrue/aria-busytrue/opacidad1, sin spinner central; luego se habilita. Like mantiene corazón visible/seleccionado durante confirmación y se habilita al finalizar. Captura `windows/.cache/action-feedback/evidence/immediate-feedback.png`; logs frontend en esa carpeta padre. La vista previa del trabajo anterior ahora confirma automáticamente sus acciones simuladas a900ms: su espera manual de QA no representa latencia del proveedor.
-- Antecedentes / paridad / límites: completa FIX-221 (apariencia) y conserva garantías de FIX-087/166/174; [PAR-035](PARIDAD.md), [PLAN-012](windows/plans/PLAN-012-action-feedback.md). Apple ya usa optimismo/rollback en álbum y Like, consultado sin modificar. El bloqueo de sesión es exclusivo de la integración Windows; core y Apple intactos. Faltan verify/EXE Windows, cuenta/proveedor real y aceptación física; no se afirma aceleración remota medida. Frontend compilado en `/Users/stefano/Documents/PROGRAMACION PADRE/SIDE B RUST BASED PROJECTO/SIDE B/windows/build/`; sin build EXE, instalación, commit/push ni release.
+- Antecedentes / paridad / límites: completa FIX-221 (apariencia) y conserva garantías de FIX-87/166/174; [PAR-035](PARIDAD.md), [PLAN-012](windows/plans/PLAN-012-action-feedback.md). Apple ya usa optimismo/rollback en álbum y Like, consultado sin modificar. El bloqueo de sesión es exclusivo de la integración Windows; core y Apple intactos. Faltan verify/EXE Windows, cuenta/proveedor real y aceptación física; no se afirma aceleración remota medida. Frontend compilado en `/Users/stefano/Documents/PROGRAMACION PADRE/SIDE B RUST BASED PROJECTO/SIDE B/windows/build/`; sin build EXE, instalación, commit/push ni release.
 - Entrega posterior: FIX-223 publica este cambio en 1.2.5/build 18; verify/build Windows, 397 tests frontend y 97 Tauri nativos aprobados. Paquetes públicos, versiones y hashes comprobados. Cuenta real, WebView2 interactivo y aceptación física pendientes; ver el plan de release.
 
 <a id="fix-221"></a>
@@ -2132,10 +2132,10 @@ Verificación posterior de FIX-216/217/218/219 (2026-10-18): por pedido «compil
 
 - Fecha: 2026-10-18 (America/Montevideo).
 - Componente / estado: integración Tauri de CipherJsRuntime; implementado, diez pruebas nativas sin cuenta aprobadas; reproducción del caso reportado pendiente.
-- Problema y causa: Windows construía SideBCore sin instalar el callback de cipher que Apple registra desde FIX-083. El core devuelve runtime unavailable cuando necesita descifrar formatos web. Es una carencia comprobada de integración, todavía sin atribuirle el fallo exacto de la captura. El usuario identificó la pista `5LFB3qdmZBM` y autorizó sesión/audio; luego pidió no usar su PC mientras juega y probar él después, antes de realizar el ensayo en vivo.
+- Problema y causa: Windows construía SideBCore sin instalar el callback de cipher que Apple registra desde FIX-83. El core devuelve runtime unavailable cuando necesita descifrar formatos web. Es una carencia comprobada de integración, todavía sin atribuirle el fallo exacto de la captura. El usuario identificó la pista `5LFB3qdmZBM` y autorizó sesión/audio; luego pidió no usar su PC mientras juega y probar él después, antes de realizar el ensayo en vivo.
 - Cambio y motivo: worker serial con QuickJS propio, separado de BotGuard y del WebView. Inicio y reintento usan la misma fábrica y registran el callback antes de publicar el core. Cada carga reemplaza su contexto, incluso si falla; shims inertes sin IPC, red, disco, credenciales ni loader. Límites de heap128MiB, stack512KiB, script16MiB, expresión/resultado64KiB y presupuesto JS5s/1s. Dependencia rquickjs0.9 ya presente transitivamente, sin actualizar paquetes. Los fallos de resolve emiten sólo una categoría finita, sin imprimir el mensaje libre ni URLs.
 - Archivos: `windows/src-tauri/src/cipher_runtime.rs`, `src/lib.rs`, `src/commands/playback.rs`, `Cargo.toml`, `Cargo.lock` del mismo ámbito.
-- Antecedentes: FIX-083 identifica el contrato Apple; FIX-007/077/134 consultados sin alterar selección de clientes, headers, cola ni generaciones. Core protegido y Apple sin cambios.
+- Antecedentes: FIX-83 identifica el contrato Apple; FIX-7/77/134 consultados sin alterar selección de clientes, headers, cola ni generaciones. Core protegido y Apple sin cambios.
 - Verificación: `cargo test --offline --manifest-path windows/src-tauri/Cargo.toml --lib cipher_runtime::tests -- --nocapture`:10aprobadas,93filtradas; firma/n, escapes, errores, reemplazo, concurrencia/instancias, APIs ausentes, interrupción, límites de tamaños/memoria/recursión y comprobación estructural de inicio/retry. Rustfmt del archivo y diff check aprobados. El test de wiring por fuente no reemplaza arranque real ni acredita la cadena de fallbacks del proveedor.
 - Paridad: [PAR-033](PARIDAD.md); Apple ya usa NativeCipherJsRuntime, sin nueva validación Mac.
 - Límites / plan: falta verify completo, build numerada, resolver la pista exacta y una de control, progreso y escucha real. No se afirma que One Dance esté reparada ni que QuickJS haya ejecutado player.js actual del proveedor. Sin nueva build/publicación por el pedido de posponer pruebas. [PLAN-010](windows/plans/PLAN-010-windows-ui-stream-bugs.md).
@@ -2438,7 +2438,7 @@ Verificación posterior de FIX-216/217/218/219 (2026-10-18): por pedido «compil
 - Apple: arbitraje anterior a navegación en el monitor existente, deltas AppKit originales y descarte de momentum; el volumen reemplaza el descenso wheel en sus zonas. Cero exacto/mute y restauración de cualquier volumen positivo, incluido 1 %. Una aplicación por frame como máximo durante ráfagas; slider/mute conservan prioridad.
 - Windows: normalización por deltaMode y capacidad de momentum, fallback explícito de WebView2 antiguo, listener central y conservación de Alt + horizontal/pull touch-pen. Controller ordena y coalesce volumen/mute/modo, separa intención de confirmación y protege identidad. Audio nativo/cola siguen siendo autoritativos; curva exponencial y persistencia existentes conservadas.
 - Archivos: Apple `Services/{Navigation,Player}`, `ViewModels/PlayerViewModel.swift`, `Views/{Components/PlayerBarView,Fullscreen}` y puente en `SideBApp.swift`; Windows `lib/{player,navigation}`, componentes de volumen/fullscreen, `routes/+page.svelte`, integración `src-tauri/src/{commands/playback,lib,dto}.rs`, DTO, localizaciones y pruebas.
-- Antecedentes: FIX-038/039/059/063 (barra, hover y persistencia), FIX-125–129/133 (arbitraje), FIX-134/143 (persistencia/audio Windows). Es una función nueva solicitada, no se atribuye regresión a esos cambios.
+- Antecedentes: FIX-38/39/59/63 (barra, hover y persistencia), FIX-125–129/133 (arbitraje), FIX-134/143 (persistencia/audio Windows). Es una función nueva solicitada, no se atribuye regresión a esos cambios.
 - Verificación Apple: `swift build` y 52 focales de volumen/navegación/persistencia aprobadas. Build0128 release: **745 pruebas ejecutadas aprobadas** (188 Rust + 220 XCTest + 337 Swift Testing; siete Rust ignoradas y siete Swift omitidas). `BUILD.json` compiled/sourceChangedDuringBuild=false, firma deep/strict y diez SHA256 verificados. Los 57 archivos core del snapshot inicial y tres bindings generados permanecen idénticos.
 - Verificación Windows: `pnpm check` 0 errores/0 avisos, suite completa **378 aprobadas y una omitida**, `pnpm build` aprobado. Incluye 41 regresiones/controller y una fixture con 11 subpruebas de política, timers, componentes Svelte montados y routing. Tras localizar el formato porcentual, check, 11 focales DOM y build frontend repetidos y aprobados. Hit-test de esa fixture inyectado: no valida geometría WebView2. Rust focal no ejecutable en este Mac: DLL de bundle ausente y, omitiendo recursos sólo para comprobar host, referencias/macros session/login condicionadas a Windows. No se corrige código ajeno ni se afirma runtime destino validado.
 - Plan / paridad: [PLAN-021 Apple](apple/plans/PLAN-021-volume-scroll-feedback.md), [PLAN-009 Windows](windows/plans/PLAN-009-volume-scroll-feedback.md), [PAR-032](PARIDAD.md). No cierra PAR-024 (curva exponencial) ni validaciones físicas anteriores.
@@ -2515,7 +2515,7 @@ Verificación posterior de FIX-216/217/218/219 (2026-10-18): por pedido «compil
 - Búsqueda: borrador visual por ventana, sin solicitudes, resultados ni nuevas entradas de historial. Lupa/⌘F/⌘K abren/enfocan; Escape/Enter contraen, X limpia o cierra; historial permanece funcional. Búsqueda de página y Spotlight previo accesible desde sidebar conservados. Cambiar cuenta limpia el borrador; fullscreen retira controles. Shell/sidebar y caches de FIX-186/192 conservados; configuración de menú extraída del cuerpo SwiftUI para limitar complejidad del compilador.
 - Archivos: `apple/Sources/SideB/{UI/ShellLayout.swift,Services/Navigation/NavPresentation.swift,Views/Components/TopNavigationView.swift,HistoryToolbarView.swift,WindowNavigationToolbarView.swift,SearchToolbarView.swift,SideBApp.swift}`; pruebas de navegación/búsqueda y plan018.
 - Verificación hasta ahora: swift build release de controles, header e integración aprobados; focal final27pruebas (23XCTest/4Swift Testing) aprobadas. La primera focal detectó discrepancia subpíxel entre el frame y bounds internos que AppKit redondea; frames alineados a backing pixels, repetición sin fallos. Builds oficiales0117/0118 compiladas y suite completa aprobada:188Rust+185XCTest+317SwiftTesting ejecutadas;14live omitidas. QA0117 detecta lente de selección ausente pese a destinos funcionales.0118 separa el fundido del contenedor exterior y mantiene opacos/visibles los planos internos, con regresión automatizada; confirmación visual pendiente por espera de llavero al restaurar sesión. El snapshot0118 registra cambios en scratch diagnóstico durante la build; se produce otra build con fuentes quietas. No se afirma cadencia120Hz física por compilar ni por configurar el display link.
-- Antecedentes: FIX-090/107/184/186/192. Cambios locales previos preservados mediante comparación con snapshot inicial; sin reset/commit/push/publicación.
+- Antecedentes: FIX-90/107/184/186/192. Cambios locales previos preservados mediante comparación con snapshot inicial; sin reset/commit/push/publicación.
 - Paridad: [PAR-007](PARIDAD.md), selector/transición AppKit excluidos previamente del port por decisión del usuario. Windows mantiene su shell/sidebar e historial existentes; motor de búsqueda compartido y core sin nuevas fuentes modificadas.
 - Diagnóstico de lente:0118 no corrige el defecto visual;0119 conserva snapshot estable y suite690aprobadas. Regresión roja reproduce pista retirada→lente primera→pista reinsertada, dejando lente enopacity0. Se recuerda débilmente la capa suprimida y su opacidad previa; si sigue en el hosting pero deja de ser primera, se libera sólo nuestra modificación. La primera actual continúa en0 dentro CATransaction sin acciones. Focal28pruebas aprobadas (24XCTest+4SwiftTesting); confirmación visual pendiente en siguiente build.
 - Integración visual: el control automático dentro de NSToolbar pierde su lente en la ventana activa. A/B con las mismas clases confirma lente visible en el plano de contenido; header nativo trasladado a overlay superior, conserva coordenadas de ventana y toggle de sidebar en toolbar. Ancho del header usa todo el contenido para anclas18pt; marcador de gestos excluidos desactivado en fullscreen. QA con fixture aislado0121 confirma lente Inicio→Explorar, fusión exacta/⌘K/foco/Escape; compilación y691pruebas aprobadas. Registro0121 marca cambio durante build por ajuste de marcador anterior a compilar Swift; siguiente build estable para entrega.
@@ -2533,7 +2533,7 @@ Verificación posterior de FIX-216/217/218/219 (2026-10-18): por pedido «compil
 - Evidencia: captura SwiftUI desde lanzamiento0115, duración9:43.950, guardada después de que el usuario detuviera Instruments. Se inspecciona sólo el cierre marcado03:57.985, rango gráfico aproximado2.01s hasta03:59.994: Layout View Hierarchy59.03ms, raízLazy52.66ms y raízAnyView1.44ms. Rama más costosa: HStack42.83ms → MoveTransition31.49ms → padding/sombra31.48ms → VStack29.71ms. Código y revisión independiente identifican SidebarView por la composición exterior; no identifican una fila específica. No atribuir ese tramo a HomeFeatured ni usar los9min como A/B controlado.
 - Cambio / motivo: `.geometryGroup()` alrededor de SidebarView, dentro del padding/transición y antes de windowGestureRegion. Resuelve el movimiento de la superficie antes de propagar geometría a controles con ancho fijo230pt; agrupa glass/borde/sombra. No cambia reserva, dimensiones, transacción, ciclo condicional, acciones, datos ni Reduce Motion. Apple documenta la barrera geométrica, no garantiza ahorro de CPU.
 - Archivos: `apple/Sources/SideB/SideBApp.swift`. No se agregan pruebas que sólo comprueben la presencia del modificador; validar suite y comportamiento/rendimiento reales.
-- Antecedentes / plan: completa investigación FIX-185/186/188/191; conserva safe area/zIndex de FIX-055/056 y composición del shell FIX-090. [PLAN-017](apple/plans/PLAN-017-main-navigation-performance.md).
+- Antecedentes / plan: completa investigación FIX-185/186/188/191; conserva safe area/zIndex de FIX-55/56 y composición del shell FIX-90. [PLAN-017](apple/plans/PLAN-017-main-navigation-performance.md).
 - Límites de verificación: pendientes QA exhaustiva de glass/foco/popover/menús/gestos/reversas/Reduce Motion y comparación instrumental de tres destinos/mismo tamaño,3toggles y reposo. Se conserva el cambio por la validación perceptual del usuario, sin inventar un ahorro cuantitativo ni convertir tiempos inclusivos/layout en FPS.
 - Paridad: no aplica: SwiftUI geometryGroup/MoveTransition en el shell macOS; Windows usa compositor CSS. No modifica ni cierra paridad existente; core/Windows de sólo lectura.
 - Fuente: [geometryGroup](https://developer.apple.com/documentation/swiftui/view/geometrygroup()). Evidencia privada `presentation-stage/launch-layout-0115.trace`; exportación CLI interrumpida por scratch, sin resumen de propietarios fiable por CLI. Lectura anterior proviene de UI Instruments.
@@ -2592,7 +2592,7 @@ Verificación posterior de FIX-216/217/218/219 (2026-10-18): por pedido «compil
 
 - Fecha: 2026-10-15 (America/Montevideo).
 - Componente / tipo / estado: fondo ambiental de Inicio e integración SwiftUI/AppKit; experimento probado en0112 y retirado del árbol vigente: no elimina el costo de layout global.
-- Problema / evidencia: tras FIX-188/0111 Inicio estable25–35s mantiene387.2msRunning/s; ViewGraph/layout del framework domina. Explorar estable en0110 cae a~1ms/s. El fondo Timeline30Hz es un posible disparador indirecto del recorrido global. Crear items/estantes es un pico de asentamiento y no un bucle permanente. No se atribuye causalidad a Timeline sin comparar.
+- Problema / evidencia: tras FIX-188/111 Inicio estable25–35s mantiene387.2msRunning/s; ViewGraph/layout del framework domina. Explorar estable en0110 cae a~1ms/s. El fondo Timeline30Hz es un posible disparador indirecto del recorrido global. Crear items/estantes es un pico de asentamiento y no un bucle permanente. No se atribuye causalidad a Timeline sin comparar.
 - Cambio / motivo: HomeAmbientBackground aloja su renderer existente en NSHostingView estable propio, sizingOptions/safeAreaRegions vacíos; frame nativo por bounds sólo cuando cambia. La configuración guarda thumbnails/sesión/actividad/scenePhase/Reduce Motion/colorScheme/displayScale, no el tiempo ni ancho por frame. El shell deja de formar parte del mismo ViewGraph del reloj ambiental. Una frontera de hosting sigue bajo mismaNSWindow: puede limitar propagación sin garantizar eliminar el scan AppKit.
 - Contratos: fórmulas, Timeline30Hz, máscaras, blends, fades, paleta/cache/cancelación y continuidad de fase conservados. Reduce Motion se transfiere por argumento opcional explícito a Surface porque su Environment es read-only. scenePhase/colorScheme/displayScale pasan por claves públicas; safe area se extiende también en la frontera exterior. Contenedor sin foco/hit-testing/AX; desmontaje vacía root y configuración. Purga por sesión existente conservada.
 - Archivos: `apple/Sources/SideB/Views/Home/{HomeAmbientBackground,HomeAmbientSurface}.swift`, una línea de `.ignoresSafeArea` en `SideBApp.swift`; nuevo `apple/Tests/SideBTests/HomeAmbientHostingTests.swift`.
@@ -2763,7 +2763,7 @@ Verificación posterior de FIX-216/217/218/219 (2026-10-18): por pedido «compil
 - Verificación automática: `node Scripts/build-version.mjs macos` completado con675 pruebas ejecutadas aprobadas:188 Rust,163 XCTest y324 Swift Testing (331 registradas,7 live omitidas; otras7 Rust ignoradas). Añadidas29 pruebas sobre geometría/identidad/reversión, callback vigente, historial de un paso, roles/teclado/IME, primer frame con foco, rangos UTF-16, transferencias y respuestas tardías/reset de cuenta. Build-0098 `compiled`, `sourceChangedDuringBuild=false`, firma estricta y diez hashes verificados; código de sección ejecutable de preview coincide con bundle original.
 - Verificación manual: CUA sobre copia diagnóstica con ID/datos aislados y Home fixture, más búsqueda anónima real. Isla visible al cerrar sidebar; typing inmediato al abrir; confirmar consulta; borrador y selección conservados isla→página→Spotlight→página→isla; selección sin editar restaurada desde Spotlight; Escape en dos niveles; Atrás/Adelante, inversión rápida de sidebar, Configuración y retirada/restauración al fullscreen. Build-0097 cubrió el recorrido completo y0098 repitió los cambios finales de foco/selección/historial y resize. Ventanas observadas960×680 y1512×949, más geometría automatizada960/1200/1920. Capturas en `builds/macos/build-0098/diagnostics/island-search.png` y `island-home.png`. No se inició reproducción.
 - Límites: sesión normal0093 quedó esperando `SecItemCopyMatching` del llavero; no se concedió acceso ni se alteró esa cuenta. Preview usa la misma sección de código, identidad/firma ad hoc distintas y datos HomeLab separados; no certifica cuenta real. macOS15/26, preferencias reales Reduce Motion/Transparency, IME humano, VoiceOver completo,960×640 físicos, FPS/audio y clic Play rápido quedan sin nueva validación manual. Foco se restaura al terminar la desaparición de Spotlight; no se garantiza entrada durante esa transición. Escape no cerró fullscreen sin pista en0097; botón explícito sí, ruta existente no modificada. Recorte de Home a960 con sidebar cerrada también reproducido en baseline0091, sin atribuirlo a este cambio.
-- Antecedentes / paridad: sustituye ubicación del historial de FIX-105/106/107 por pedido explícito; conserva acciones de Inicio estables y completa FIX-090. Aplica lección de una superficie de FIX-176/177 y reutiliza FIX-178/179. [PAR-007 / PAR-027](PARIDAD.md): selector/transición Mac siguen excluidos del port Windows por decisión previa; nueva presentación Apple registrada sin cerrar pendientes de destino ni alterar motor compartido.
+- Antecedentes / paridad: sustituye ubicación del historial de FIX-105/106/107 por pedido explícito; conserva acciones de Inicio estables y completa FIX-90. Aplica lección de una superficie de FIX-176/177 y reutiliza FIX-178/179. [PAR-007 / PAR-027](PARIDAD.md): selector/transición Mac siguen excluidos del port Windows por decisión previa; nueva presentación Apple registrada sin cerrar pendientes de destino ni alterar motor compartido.
 - Plan / build: [PLAN-016](apple/plans/PLAN-016-top-navigation-redesign.md). Bundle entregable `builds/macos/build-0098/Side B.app`; preview aislado `builds/macos/build-0098/diagnostics/SideBIslandLab.app` abierto. Builds0092–0097 conservadas como iteraciones; documentación posterior al build final, sin instalar/publicar/commit/push.
 
 <a id="fix-180"></a>
@@ -2954,7 +2954,7 @@ Cierre común de FIX-168/169/170 (2026-10-11): **build-0080 compilada release ar
 - Problema / causa: invitados presentes únicamente como texto no tenían destino. Dividir todo `&`/`y` fragmenta grupos reales y elegir un resultado sin cotejar el nombre puede navegar al artista principal equivocado.
 - Cambio / motivo: cláusulas feat/ft/featuring y with/con delimitados con rangos originales; particiones acotadas y coincidencias de nombres/contexto. Provider tiene prioridad sobre correcciones, caché e inferencia; el mejor candidato compatible abre directamente, homónimos usan orden determinista. Caché por cuenta/contexto, TTL7d/10min y500 entradas; concurrencia2, presupuesto8 consultas/6 créditos, clic total2s y fallback. Correcciones voluntarias validadas contra pista/nombre/cuenta; cancelación independiente entre consumidores. No se alteran artistRuns ni core.
 - Superficies / archivos: FeaturedArtistResolver.swift, NativeFeaturedArtistControls.swift, FeaturedTrackTitle.swift, TrackArtistLinks.swift y consumidores barra/fullscreen/filas/Inicio/búsqueda/cola; featured/artists.ts, FeaturedArtistLink.svelte, FeaturedTrackTitle.svelte, ArtistCredits y consumidores Windows; corpus docs/fixtures/featured-artists.json y pruebas Swift/TS. Controles hermanos y hitboxes por glyph preservan acciones y truncado.
-- Antecedentes / paridad: completa destinos originales de FIX-085; PAR-029. Relación funcional, sin atribuir regresión histórica. [Plan](plans/PLAN-006-featured-artist-links.md).
+- Antecedentes / paridad: completa destinos originales de FIX-85; PAR-029. Relación funcional, sin atribuir regresión histórica. [Plan](plans/PLAN-006-featured-artist-links.md).
 - Verificación / límites: ocho focales Swift y treinta resolver/cola TS aprobados inicialmente; dieciséis fixtures comunes. Fixture navegador verificó enlaces Joe Fox/Kanye independientes y navegación sin play. Build-0076 detectó fallos de jerarquía/hover Home tras nueva integración; se conserva fallida, corrección/revalidación en curso. Sin proveedor/cuenta real, aceptación nativa Windows, audio ni medición FPS. La selección heurística puede necesitar corrección local.
 
 <a id="fix-166"></a>
@@ -2966,7 +2966,7 @@ Cierre común de FIX-168/169/170 (2026-10-11): **build-0080 compilada release ar
 - Problema / causa: Biblioteca mostraba título/pestañas básicas y pocas herramientas frente a los detalles de álbum/playlist. Un filtro local no puede certificar ausencia mientras queden continuaciones; rollback tardío de guardado Apple podía reintroducir una tarjeta de la cuenta anterior.
 - Cambio / motivo: cabecera ambiental/collage determinista, Todo y secciones breves, atajos fijados locales canónicos/reordenables, toolbar de filtro/orden/cuadrícula/lista. Mantiene componentes y acciones; portadas limitadas cuando hay pocas tarjetas. Preserva orden del proveedor por separado; artista sólo donde hay metadata. Preferencias por cuenta, consulta/scroll de navegación, reset de viewport. Recorrido cancelable8 páginas de canciones/progreso/continuar; colección del proveedor declarada honestamente. Guardas de sesión en cargas y rollback; espacios equivalen a filtro vacío. No hay fechas inventadas ni indexación remota nueva.
 - Archivos: apple/Sources/SideB/{ViewModels/LibraryViewModel.swift,Views/Library/LibraryView.swift}, windows/src/lib/{components/library/LibraryView.svelte,account/controller.ts,library/preferences.ts}; wiring SideBApp/+page, tests de preferencias/paginación/mutaciones y localización.
-- Antecedentes / paridad: preserva garantías de cuenta/generación FIX-047 y acciones de catálogo existentes; PAR-028. Core intacto. [Plan](plans/PLAN-005-search-library.md).
+- Antecedentes / paridad: preserva garantías de cuenta/generación FIX-47 y acciones de catálogo existentes; PAR-028. Core intacto. [Plan](plans/PLAN-005-search-library.md).
 - Verificación / límites: ocho focales Swift y24 account/library TS iniciales aprobadas; regresiones adicionales preparadas para caché/rollback y espacios. Fixture navegador comprobó fijado, filtro, portadas limitadas y cambio de vista. Suite global/check/build frontend iniciales aprobados; build-0076 compila Biblioteca y sus nuevas pruebas pasan, intento falla en Home. Revalidación final aprobada; ver cierre común. APIs de colecciones recorren internamente hasta20 páginas/ocultan fallos parciales; no se promete cobertura completa. Cuenta real, audio, FPS y runtime Windows pendientes.
 
 <a id="fix-165"></a>
@@ -2978,7 +2978,7 @@ Cierre común de FIX-168/169/170 (2026-10-11): **build-0080 compilada release ar
 - Problema / causa: Spotlight carecía de recientes y usaba proyecciones distintas/reordenables. Registrar una petición o todo cambio de pista confunde la consulta enviada con un play directo, autoplay o reintento.
 - Cambio / motivo: store local versionado por cuenta/invitado,50 entradas mixtas query/track, eliminar/deshacer y recuperación de fallos. Submit/consulta reciente registra query; play directo sólo confirma al iniciar el item/token AVPlayer o generación/evento nativo Windows esperado. Orígenes técnicos/filtros/refresh/restore no registran; página completa conserva query sin duplicar canción. Borrador del modal separado, altura por contenido, foco restaurado y flechas sólo acciones primarias. La pista actual ya sonando se acepta sin pausar. Proyección equivalente con orden estable por tipo/proveedor, presupuesto8, deduplicación por tipo/ID, publicación/error/retry por bloque; no afecta ocurrencias de cola.
 - Archivos: SearchRecentStore.swift, SearchProjection.swift, SearchViewModel/SearchView/SpotlightSearchModal/QuickResultComponents; AudioPlayerService/PlayerViewModel y contexto de menús; search/{recents,projection,controller}.ts, player/controller.ts, componentes search y +page.svelte; fixtures/pruebas store/proyección/controller/playback/UI y localización ES/EN.
-- Antecedentes / paridad: completa FIX-047 (generaciones), FIX-053 (foco/fullscreen), FIX-086 (búsqueda/radio); PAR-027. Core protegido intacto. [Plan](plans/PLAN-005-search-library.md).
+- Antecedentes / paridad: completa FIX-47 (generaciones), FIX-53 (foco/fullscreen), FIX-86 (búsqueda/radio); PAR-027. Core protegido intacto. [Plan](plans/PLAN-005-search-library.md).
 - Verificación / límites: Windows global inicial320 aprobadas/0 fallos/1 fixture nativo omitido en Mac, check0/0 y build frontend aprobados. Regresiones Swift store/orígenes/proyección/progresivo y tres integración Player pasan en build-0076; intento fallido por pruebas Home, sin bundle entregable. Revisión cruzada corrigió flechas alcanzando «Borrar recientes» y aviso de fallo que no se limpiaba inmediatamente. Fixture navegador verificó recientes mixtos/sugerencias/Escape. Revalidación final aprobada; ver cierre común. No valida audio audible, cuenta/proveedor ni WebView2; `recordHistory:false` conserva límite actual de previews anónimas.
 
 Verificación común posterior de FIX-165/166/167: build-0077 compilada y firmada con618 pruebas aprobadas (182 Rust/140 XCTest/296 Swift Testing;7 live ignoradas), sourceChangedDuringBuild=false. Windows334 aprobadas/0 fallos/1 omitida, check0/0/build aprobado. Fixture navegador confirmó flechas→play, Enter, invitado reciente→perfil y Escape→Buscar. Última corrección FIX-167 distingue negativa parcial de completa/contextual, promueve vuelo compartido y evita repetir consulta exacta fresca; AppKit usa offset de puntero sólo en eventos reales de ratón. Regresiones nuevas preparadas y build-0078 final aprobada; aceptación física continúa pendiente.
@@ -3048,7 +3048,7 @@ Cierre final común de FIX-165/166/167 (2026-10-11): build-0078 compilada releas
 - Problema / causa: FIX-159 limitó el fallback de duración y el Like no marcado a la ocurrencia activa. Al avanzar, la primera canción volvía al duration vacío del catálogo y ocultaba el Like; la prueba anterior incluso esperaba esa ausencia. No era un fallo de centrado ni prueba de un problema de audio.
 - Solución / motivo: conservar en currentTrack y en la ocurrencia seleccionada la duración válida resuelta al iniciar el stream o recibir progreso, sólo si falta en catálogo. Se reutiliza updateCurrentMetadata con token/ocurrencia vigentes, sin reconstruir cola, alterar IDs/orden ni copiar a duplicados. Un dato ya conocido no se reemplaza ni produce nuevas mutaciones por tick. Duraciones no finitas, cero/negativas, fuera de Int y pistas que no corresponden a la cola se descartan. Like visible en todas las filas de la cola, preservando corazón marcado/acciones; Dislike y asa mantienen hover/foco.
 - Archivos: apple/Sources/SideB/ViewModels/PlayerViewModel.swift; apple/Sources/SideB/Views/Common/NativeQueueTrackCellView.swift; apple/Tests/SideBTests/{NativeQueueTrackCellTests,NativeTrackTableInteractionTests}.swift; FIXES/PARIDAD/PLAN-015 e índice.
-- Antecedentes / paridad: completa el caso que faltaba en FIX-159, conservando centrado FIX-158, ocurrencias/metadata de FIX-097/148 y foco/arrastre de FIX-113. [PAR-009](PARIDAD.md): Windows aún oculta Like no marcado fuera de hover/foco; conservación de duración resuelta tras skip requiere contraste en destino. Windows/core/transporte de audio intactos.
+- Antecedentes / paridad: completa el caso que faltaba en FIX-159, conservando centrado FIX-158, ocurrencias/metadata de FIX-97/148 y foco/arrastre de FIX-113. [PAR-009](PARIDAD.md): Windows aún oculta Like no marcado fuera de hover/foco; conservación de duración resuelta tras skip requiere contraste en destino. Windows/core/transporte de audio intactos.
 - Verificación: nueve Swift Testing focales aprobadas. La regresión reproduce playNext/playPrevious con dos ocurrencias del mismo video, comprueba tiempo/Like de la primera celda ya inactiva, duración independiente de la segunda, mismo token/IDs, restauración de sesión y descarte al cambiar cuenta. Datos inválidos, pista distinta y prioridad del catálogo comprobados. Renders de celda aislada disponibles, sin equipararlos a ventana real.
 - Build / límites: runner build-0073, **582 pruebas aprobadas** (182 Rust, 140 XCTest y 260 Swift Testing/5 suites; 7 live Rust ignoradas); 692 claves ES/EN verificadas. BUILD.json compiled/sourceChangedDuringBuild false, SDK 27.0/arm64/mínimo macOS 15, firma ad hoc y diez hashes comprobados. XCFramework/bindings regenerados sin diff. App en builds/macos/build-0073/Side B.app. [PLAN-015](apple/plans/PLAN-015-genius-color-queue-alignment.md); cierre documental posterior a build. Sin aceptación física, cuenta/audio real, apertura automática ni push/publicación.
 
@@ -3089,7 +3089,7 @@ Cierre final común de FIX-165/166/167 (2026-10-11): build-0078 compilada releas
 - Solución / motivo: reutilizar el sampler y ImageCache existentes con imagen 32×32, conversión de matiz HSL y límite de luminancia equivalentes a Windows. Opciones Carátula (predeterminada), Contraste y Neutro traducidas ES/EN; modo retenido durante fullscreen, sin preferencia persistente nueva. Estado vacío/error usa gris. Tarea ligada a URL cancelable y asociación de paleta a URL evitan pintar la portada anterior.
 - Integración: actualizar únicamente el dibujo del NSTextView conservando texto, rangos, selección, scroll y anotación activa; opacidades .16/.28/.48. Neutro mantiene blanco normal/hover y carátula legible al seleccionar, como Windows. Muestreo fuera del hilo principal; no se cambia descarga/parseo de Genius ni reproducción.
 - Archivos: nuevo Models/GeniusAnnotationPalette.swift; Views/Fullscreen/GeniusPanelView.swift y FullscreenNowPlayingView.swift; fragmento player-detail.json y recursos derivados; GeniusAnnotationPaletteTests.swift/GeniusLyricsLayoutTests.swift; PLAN-015/índice, FIXES/PARIDAD.
-- Antecedentes / paridad: traslada FIX-140 desde Windows y conserva geometría, selección y popover de FIX-073. [PAR-023](PARIDAD.md); Windows/core sin cambios.
+- Antecedentes / paridad: traslada FIX-140 desde Windows y conserva geometría, selección y popover de FIX-73. [PAR-023](PARIDAD.md); Windows/core sin cambios.
 - Verificación: cuatro pruebas de referencia Windows y diez focales Swift aprobadas. Fixtures del algoritmo real Windows coinciden en Swift: azul 102/131/214, complementario 161/142/84, verde 75/157/94 y fallback 140/140/147. Contraste ≥4.5:1 en el fondo oscuro de prueba para los tres modos/colores de regresión. Render real NSTextView cambia azul→verde conservando texto, selección, referent y rectángulos. Cuatro claves ES/EN añadidas, catálogo/recursos generados y check aprobado (692 claves).
 - Build / límites: builds/macos/build-0071/Side B.app, 578 pruebas aprobadas, compiled/sourceChangedDuringBuild false, release arm64/SDK 27.0/mínimo macOS 15, firma ad hoc y diez hashes verificados. XCFramework/bindings sin diff; core/Windows intactos. Fixtures sin cuenta ni proveedor real; aceptación física del selector/scroll/cambio de canción pendiente. [PLAN-015](apple/plans/PLAN-015-genius-color-queue-alignment.md). Cierre documental posterior; sin push/publicación.
 
@@ -3102,7 +3102,7 @@ Cierre final común de FIX-165/166/167 (2026-10-11): build-0078 compilada releas
 - Problema / causa: el run 38082175075 compiló los targets Swift pero falló en diez aserciones de un mismo test de HomeFeedScrollTests. Igualdades exactas rechazaron medidas como `959.9999999999999` frente a `960` y `541.9999999999999` frente a `542`. Son diferencias de representación numérica, no evidencia de un cambio visible. El test y la geometría de producción no cambiaron en los seis commits recibidos hasta `6c162f7`; la revisión original compiló localmente en build-0069 con 574 pruebas aprobadas. No se atribuye una regresión a las nuevas funciones ni se identifica qué particularidad del entorno CI introduce el redondeo.
 - Solución / motivo: usar `accuracy: 0.000001` puntos únicamente para ancho del viewport, ancho realmente renderizado y altura calculada de destacados. Mantener los once tamaños, cruces de breakpoint, identidad del hosting, mapeo y continuidad de filas, alturas nativas y ausencia de scrollbar horizontal. La tolerancia está muy por debajo de un píxel; no se redondea ni modifica el layout de la app.
 - Archivos: apple/Tests/SideBTests/HomeFeedScrollTests.swift; FIXES.md, PARIDAD.md, plans/RELEASE-1.2.0-beta.1.md, plans/PLAN-002-quick-access-album-metadata.md, plans/PLAN-003-home-greeting.md y plans/README.md.
-- Antecedentes: conserva el contrato de viewport/identidad de FIX-099/119. Resuelve localmente el bloqueo de precisión documentado en FIX-152/155; verifica además las diez regresiones Swift de FIX-148 y las dos de FIX-150 recibidas de GitHub.
+- Antecedentes: conserva el contrato de viewport/identidad de FIX-99/119. Resuelve localmente el bloqueo de precisión documentado en FIX-152/155; verifica además las diez regresiones Swift de FIX-148 y las dos de FIX-150 recibidas de GitHub.
 - Verificación: focal release HomeFeedScrollTests, 8 XCTest aprobadas. Runner `node Scripts/build-version.mjs macos`, build-0070: 182 Rust, 140 XCTest y 252 Swift Testing/5 suites aprobadas, 574 en total; 7 live Rust ignoradas. XCFramework/bindings regenerados sin diff. BUILD.json compiled/sourceChangedDuringBuild false, release arm64, SDK 27.0/mínimo macOS 15, firma ad hoc verificada y diez hashes. Diff revisado/whitespace limpio; documentación de cierre posterior a la build.
 - Límites: GitHub aún no ejecutó este arreglo; su run anterior permanece fallido. Sin prueba manual de UI/audio/FPS, ejecución Windows nueva ni publicación. El borrador beta/tag/version.env quedan intactos.
 - Paridad: comparación XCTest/AppKit exclusiva de Apple, sin lógica trasladable a Windows. [PAR-026](PARIDAD.md) conserva el requisito de CI conjunta; [PAR-003](PARIDAD.md) y [PAR-022](PARIDAD.md) incorporan ejecución automatizada Mac, sin cerrar aceptación física.
@@ -3130,7 +3130,7 @@ Cierre final común de FIX-165/166/167 (2026-10-11): build-0078 compilada releas
 - Problem / cause: the root README was an agent/developer workflow rather than a useful introduction to Side B. GitHub's About still described only macOS; the repository had no root license text despite GPL-3.0-or-later in its manifests.
 - Change / reason: write a plain-English public README with the app icon, origins, supported features, design, downloads, shared Rust backend, Limusic/Kaset acknowledgments and feedback links. Preserve the previous internal guide under .agents/WORKFLOW.md, adjusting relative links and active entry points without deleting workflow instructions. Include the existing GPL license text and upstream Kaset MIT notice; no license terms are changed. Prepare a location for current native screenshots without publishing test fixtures or old bug screenshots as product images.
 - Files: README.md, AGENTS.md, .agents/WORKFLOW.md, LICENSE, THIRD_PARTY_NOTICES.md, docs/images/sideb.png, docs/licenses/Kaset-MIT.txt, docs/screenshots/README.md, plan/index links, FIXES.md and PARIDAD.md introductory links.
-- Related fixes: reorganizes the presentation established in FIX-088/089 and preserves publication/history boundaries from FIX-130. Existing apple/Resources/Credits.rtf confirms Limusic's backend origins; upstream repository/license links checked directly.
+- Related fixes: reorganizes the presentation established in FIX-88/89 and preserves publication/history boundaries from FIX-130. Existing apple/Resources/Credits.rtf confirms Limusic's backend origins; upstream repository/license links checked directly.
 - Verification / limits: documentation-only;97 relative links/anchors valid, original internal guide preservation checked, icon matches the app asset, GitHub GFM/API and actual public page rendering verified, staged diffcheck clean; final evidence in [PLAN-004](plans/PLAN-004-public-readme.md). About description/topics and GitHub GPL recognition verified. No application tests/build needed or claimed. Native screenshots remain pending; public README has no broken placeholder images. Separate release CI is not evidence for this documentation change.
 - Parity: no port required; the public page describes both apps from current source, preserving stated platform requirements and differences. Product code, protected core, manifests, version and release tags remain unchanged by this fix.
 
@@ -3188,7 +3188,7 @@ Cierre final común de FIX-165/166/167 (2026-10-11): build-0078 compilada releas
 - Problema y causa: el subtítulo «Tu próximo lado B empieza acá» ocupaba una segunda línea sin aportar información. Ambas apps ya elegían saludo con hora local, pero Apple calculaba Date sólo al reevaluar la vista; Windows retenía la hora hasta el siguiente tick al salir de fullscreen. La franja previa trataba la madrugada como mañana.
 - Cambio y motivo: se retira todo subtítulo de cabecera y se pasa saludo 27→40 pt/px; Windows30px en contenido<600 y ellipsis/title para nombres largos, Apple reducción hasta70%. Avatar44 y acciones conservados. Contenido de cabecera52 de alto, manteniendo fila nativa88/alturas112–158 y espacio anterior Windows. Franjas iguales: mañana06–11:59, tarde12–19:59, noche20–05:59. Usa zona local del SO, sin red/permisos. Apple Calendar.autoupdatingCurrent con tarea cada60s cancelada al quedar inactivo/cubierto, sólo muta al cambiar hora. Windows reloj sólo cuando interactivo/visible, cleanup completo y reconciliación inmediata por foco/visibilidad/revelación. Traducción/cuenta conservadas; avisos de fuentes siguen en contenido/configuración.
 - Archivos: `apple/Sources/SideB/Views/Home/HomeView.swift`, nuevo `Models/HomeGreeting.swift`, `apple/Tests/SideBTests/HomeGreetingTests.swift`; `windows/src/lib/components/home/HomeView.svelte`, nuevo `windows/src/lib/home/greeting.ts`, `windows/scripts/home-greeting.test.mjs`.
-- Antecedentes: presentación nueva sobre FIX-098/FIX-113-2; preserva suspensión y geometría FIX-122/123. No se atribuye una regresión histórica sin evidencia.
+- Antecedentes: presentación nueva sobre FIX-98/FIX-113-2; preserva suspensión y geometría FIX-122/123. No se atribuye una regresión histórica sin evidencia.
 - Verificación: pnpm check0 errores/0 advertencias; pnpm test280/280 (dos regresiones nuevas: límites06/12/20/medianoche y mismo instante con Montevideo/Madrid/Tokio, cambio de zona); pnpm build frontend exit0. Fixture real HomeView en navegador1000/500: saludo40/30, contenido52, sin subtítulo/solapamiento/overflow; nombre largo/acceso title, cuenta vacía, configuración e idioma ES/EN. Hora simulada06/15/20/00, saludo retenido bajo fullscreen y actualizado al revelar. Captura `.cache/home-greeting-review/after-1000.png` y logs locales ignorados. Diffcheck limpio; actualización de header/featured AppKit contrastada con updateNativeScrollView/updateHeader/updateFeatured(force:true).
 - Límites: dos pruebas Swift de franjas/zona preparadas sin ejecutar: no existe Swift/macOS en este host. Aceptación física Mac/WebView2 pendiente; fixture no certifica rendering nativo ni comportamiento de suspensión del SO. No nueva build standalone, audio/cuenta real/commit/push.
 - Paridad / plan: [PAR-003](PARIDAD.md), [PLAN-003 común](plans/PLAN-003-home-greeting.md). Implementación en ambos destinos, sin cerrar paridad nativa sólo por pruebas frontend.
@@ -3253,7 +3253,7 @@ Cierre final común de FIX-165/166/167 (2026-10-11): build-0078 compilada releas
 - Problema y causa: Windows combinaba brightness(.55) con gradiente negro70–83% y tinte frío; arte retenido9.35–16.5% frente a28% Apple. El tamaño de título/subtítulo ya interpolaba correctamente21→28/14.5→17.5 según carátula300→500, pero artista500 frente a600 Apple y álbum/separador heredaban sus métricas y tono; interlineado global1.5 y bloque centrado diferían del nativo. Iconos Windows cuadrados: macOS aplica máscara en el sistema, assets Apple fuente también cuadrados.
 - Cambio y motivo: backdrop independiente300px, aspectFill, escala1.4, blur75, negro72%; canvas de ventana completa permanece estable al contraer sidebar, recorte contenido Windows conservado. Carga/fallo muestra fondo oscuro sin foto vieja, guardas por intento y original de respaldo, URLs firmadas intactas. Crédito artista600/blanco78%, álbum subtítulo−.5/500/blanco60%, punto13/400/blanco40%; line-height normal y bloque alineado arriba, medidas reservadas68/16 intactas. Tokens optativos preservan otros consumidores. Logo con máscara alpha continua superellipse n=5/antialias8x; RGB/diseño/resoluciones preservados, sin añadir margen.
 - Archivos: `FullscreenNowPlaying.svelte`, nuevos `FullscreenBackdrop.svelte`/`backdrop.ts`, `ArtistCredits.svelte`, `scripts/fullscreen-backdrop.test.mjs`; nueve assets `windows/static/{logo,favicon}.png` y `windows/src-tauri/icons/{icon.png,32x32.png,64x64.png,128x128.png,128x128@2x.png,icon.ico,icon.icns}`.
-- Antecedentes: completa paridad de presentación de FIX-132/FIX-137 y consulta FIX-091 Apple; mantiene acciones/cola de FIX-144/FIX-145. No atribuye defecto del logo a un fix previo.
+- Antecedentes: completa paridad de presentación de FIX-132/FIX-137 y consulta FIX-91 Apple; mantiene acciones/cola de FIX-144/FIX-145. No atribuye defecto del logo a un fix previo.
 - Verificación: pnpm check0 errores/0 advertencias; cuatro tests fondo y seis cola10/10, más ocho artwork del agente. Fixture1280×720: carátula409.125/título24.8194/artista16.1369/álbum15.6369; artista600/álbum500/separador400, colores esperados. Canvas1280 con sidebar230 y60; al contraer arte455.984375/título26.4595 coincide fórmula. Ventana850×700 arte307/título21.245/artista14.605/álbum14.105, sin overflow. Bloque68, alineación superior/interlineado normal comprobados. 23 representaciones iconos mantienen RGB y tamaño; ICO16/24/32/48/64/256, ICNS10 representaciones; esquinasalpha0/centro255/bordesAA simétricos. Diff revisado, Apple/core intactos. Evidencia local ignorada `.cache/fix146-review/fullscreen.png` y `.cache/logo-rounding-baseline/before-after.png`; tabs/server cerrados.
 - Límites: fixture sintética sin cuenta/audio/WebView2 ni Mac físico. Parámetros y escala coinciden, Gaussian CSS/SwiftUI y Segoe/SF conservan diferencias de render; máscara macOS no versionada impide certificar contorno exacto. Icono en Shell/caché pendiente. SF Pro no incluida: licencia Apple no autoriza distribución Windows; familia sistema Segoe UI conservada. Otros tamaños auditados: sincronizadas25.2/Genius20/16 coinciden; barra compacta13 vs13.5 y pestañas estrechas12 vs13 son adaptaciones existentes, sin alterar ese ámbito en este fix.
 - Paridad: PAR-025; Apple/core sólo lectura. No cerrar igualdad perceptual sin prueba del destino.
@@ -3290,7 +3290,7 @@ Cierre FIX-142/143/144, PLAN-006/007, 2026-10-10 14:42 (America/Montevideo): [bu
 - Problema y causa: el grupo derecho mostraba duración/grip antes de votos y menú, distinto del grupo Dislike → Like → duración de Apple. Portada compartida agregaba overlay y actividad compartida mostraba barras, frente a la variante específica de cola Apple. Contraste de código documentado en PLAN-006; no se atribuye regresión a FIX-121-2 sin evidencia.
 - Cambio y motivo: DOM y foco menú → Dislike → Like → duración/grip; conserva acceso explícito al menú Windows. Fila 46/paso 48, portada 36, anclas de índice/portada/texto y fondo inset; votos compactos blancos, símbolos 12 y grip 16×14 con hitboxes existentes. Portada interactiva sin overlay y altavoz opt-in sólo en cola, defaults intactos en otras listas. Cabecera contextual/vacío compactos conservan errores, cargas parciales y Reintentar.
 - Archivos: `windows/src/lib/components/fullscreen/QueuePanel.svelte`, `windows/src/lib/components/common/{TrackArtwork,TrackActivity}.svelte`, `windows/scripts/queue-presentation.test.mjs`.
-- Antecedentes: FIX-113 Apple y FIX-057 como origen de presentación; completa FIX-121-2 Windows sin cambiar algoritmos de cola, audio, revisiones o resolución por entryId.
+- Antecedentes: FIX-113 Apple y FIX-57 como origen de presentación; completa FIX-121-2 Windows sin cambiar algoritmos de cola, audio, revisiones o resolución por entryId.
 - Verificación: seis pruebas de render real Svelte aprobadas, incluyendo duplicados/guest/estados disabled/errores/vacío/defaults. Check 0/0. Diff contra baseline confirma script de cola idéntico salvo título contextual. Fixture con 1000 ocurrencias en 1280×720, 850×700 y 1440×900, sidebar 230/60; filas montadas acotadas (18–19). Medidos paneles 306,875/369,5625/492,484375/600 y fila 46. Menú/votos/asa no se solapan; portada x+50/texto x+98. Selección, movimiento con flecha, menú, Like, Dislike, foco y retry disparan sus callbacks exactos, sin audio.
 - Límites: datos ficticios, navegador con dimensiones CSS registradas; sin cuenta real/WebView2/Narrator/DPI físico ni captura nueva de macOS. La matriz física completa de PLAN-006 sigue pendiente; no se certifican sus medidas por referencia al código.
 - Paridad: PAR-009 / PAR-016-2 / PAR-017-2, actualizados con evidencia del destino; Apple/core intactos.
@@ -3306,7 +3306,7 @@ Cierre FIX-142/143/144, PLAN-006/007, 2026-10-10 14:42 (America/Montevideo): [bu
 - Cambio y motivo: checkbox Audio al principio de configuración de Inicio, ES/EN y OFF por defecto. Ganancia adicional −30×(1−v/100) dB con v positivo (amplitud exponencial); conserva porcentaje, silencio, máximo y normalización previa del stream. Estado nativo por cuenta/invitado, default false para registros antiguos y dirty flag incluye modo. Cambio, mute y carga leen preferencias actuales bajo playback lock; guardan ganancia RAM sólo tras carga válida. Rollback de ganancia/volumen ante fallo, también al fallar loadfile.
 - Revisión: corregidos respuesta descartada por progreso durante RPC (merge sólo del bit, cede ante full-state/generation nuevo), ganancia aplicada antes de carga fallida y checkbox DOM que mostraba valor rechazado (restaura valor confirmado antes del callback). Sin estado optimista de audio.
 - Archivos: `windows/src-tauri/src/{volume,playback_runtime,dto,lib}.rs`, `commands/playback.rs`, `windows/src/lib/{types.ts,player/controller.ts,i18n/windows.json}`, componentes `home/{HomeSettings,HomeView}.svelte`, `windows/src/routes/+page.svelte`, `windows/scripts/playback-controller.test.mjs`.
-- Antecedentes: FIX-134 para persistencia Windows, FIX-063 Apple para restauración y FIX-121-2/FIX-059 para controles. No redefine la semántica preexistente de loudness_db ni modifica core.
+- Antecedentes: FIX-134 para persistencia Windows, FIX-63 Apple para restauración y FIX-121-2/FIX-59 para controles. No redefine la semántica preexistente de loudness_db ni modifica core.
 - Verificación: 80 tests Tauri/lib aprobados, incluidos dos de curva y persistencia/migración/aislamiento ampliadas. 37 pruebas focales frontend (controller/cola/i18n) aprobadas; check 0/0. Fixture HomeSettings real comprueba ubicación, disabled durante solicitud, aceptación y rechazo con valor confirmado. Revisión cruzada sin otros errores materiales.
 - Límites: no se escuchó salida real ni se verificó percepción en PCs de volumen fuerte. Rollback es de mejor esfuerzo si el motor también rechaza restauración. Sin cuenta/audio reales.
 - Paridad: [PAR-024](PARIDAD.md), opción adicional ausente en Apple, evaluación del destino pendiente. Apple/core intactos.
@@ -3339,7 +3339,7 @@ Cierre FIX-140/141, [PLAN-005](windows/plans/PLAN-005-genius-text.md), 2026-10-1
 - Solución y motivo: spans inline con rol button/foco y Enter/Space explícitos, sin repeats, scroll ni playback. Texto alineado a izquierda y resaltado clonado por renglón, preservando rangos/IDs repetidos, espacios marginales como nodos sin pintar y contenido interpolado seguro. Popup anclado a fragmento capturado antes del await; teclado usa primer fragmento visible y movimiento cancela apertura pendiente. Referencia Apple vigente: GeniusPanelView.swift draw/highlightRects/setLyrics, fuentes20/16 y opacidades .16/.28/.48.
 - Experimento autorizado: opciones Genius ofrecen Carátula (predeterminado), Contraste y Neutro. Muestreo32×32 del arte ya seleccionado, matiz complementario para contraste y luminancia limitada para leer texto blanco; neutro usa blanco. Fallback gris sin arte/CORS y descarte de muestras obsoletas. El modo se aplica al panel abierto; no se añade preferencia persistente. No se cambia color de la tarjeta emergente ni audio/cola.
 - Archivos: `windows/src/lib/components/fullscreen/{GeniusPanel,GeniusAnnotation,FullscreenNowPlaying}.svelte`, `windows/src/lib/genius/highlight.ts`, `windows/src/lib/i18n/windows.json`, `windows/scripts/genius-{highlight,popover}.test.mjs`.
-- Fixes relacionados: completa FIX-137 y toma FIX-073 Apple como antecedente; conserva cancelación/retry y texto seguro de FIX-135/137.
+- Fixes relacionados: completa FIX-137 y toma FIX-73 Apple como antecedente; conserva cancelación/retry y texto seguro de FIX-135/137.
 - Verificación: 14 pruebas focales de color, contraste de texto, whitespace, anclaje/teclado/cancelación aprobadas; fixture de navegador compara panel560 y ventana420, tres/cuatro fragmentos alineados x20, anotaciones parciales, colores reales muestreados, Space/Escape/cierre exterior. Resultados integrados/build en [PLAN-005](windows/plans/PLAN-005-genius-text.md).
 - Límites: fixture sintética, sin Genius real/Narrator/entrada física ni WebView2 nativo. El rectángulo inline puede incluir espacios interiores de línea; no se reemplazó la tipografía del sistema por glyphs AppKit. La propuesta de color espera preferencia visual del usuario.
 - Revisión cruzada: corregido contraste insuficiente de selección neutra blanca .48; normal/hover conservan blanco y activo toma acento legible de portada/fallback. Regresión cubre todos los modos con texto #f4f4f5 y carátula ausente.
@@ -3389,7 +3389,7 @@ Cierre Windows posterior a build-0005: FIX-137…139, [PLAN-004](windows/plans/P
 - Problema y causa: subtítulos responsive incluyen artista y contador; el segundo grupo podía llegar como album («337M plays»). Un valor no vacío impedía completar el álbum real. Cola antigua y artistRuns podían conservar la misma contaminación. El parser compartido usa grupos posicionales; se corrige en la integración Windows y se registra evaluación Apple/core separada.
 - Cambio y motivo: normalización semántica para canciones/video al proyectar Home, Speed Dial, cartas, menú y reproducción; descarta expresiones completas de estadísticas/duración, conserva nombres legítimos e IDs/tokens/flags. Álbum conocido enlazado se conserva incluso si se llama «100 Plays»; un subtítulo no se convierte en álbum sin enlace. La cola nativa sanea entradas nuevas, merge y restauración, y el enriquecimiento del video actual permite completar metadata canónica sin recargar audio ni cambiar ocurrencia/generación. Las parejas etiqueta/destino deben conservar coherencia al enriquecer. No se inventa un álbum cuando el proveedor no lo ofrece.
 - Archivos: `windows/src/lib/home/songMetadata.ts`, `home/featured.ts`, `components/home/{CompactSongCard,HomeCard}.svelte`, `menu/types.ts`, `src/routes/+page.svelte`, `windows/src-tauri/src/{queue,dto,playback_runtime}.rs`, `commands/playback.rs`; pruebas song/home/menu y regresiones Rust.
-- Fixes relacionados: completa manejo de metadata de FIX-132/134/135; no hay evidencia que atribuya el origen del parser a esos fixes. Conserva duplicados y autoridad de cola de FIX-087/134.
+- Fixes relacionados: completa manejo de metadata de FIX-132/134/135; no hay evidencia que atribuya el origen del parser a esos fixes. Conserva duplicados y autoridad de cola de FIX-87/134.
 - Verificación: fixtures de contadores ES/EN, runs fragmentados, colaboradores, nombres Views/Plays/1989/The 1975, álbum enlazado y restauración; resultado integrado/build en [PLAN-004](windows/plans/PLAN-004-player-shell-corrections.md).
 - Límites: no se ensayó Inicio/radio con cuenta real. Si el proveedor no devuelve álbum canónico, queda ausente; el contador nunca se usa como reemplazo. Audio audible no comprobado.
 - Paridad: [PAR-022](PARIDAD.md), evaluación de origen Apple/core pendiente; ambos sólo consultados, sin cambios compartidos.
@@ -3461,7 +3461,7 @@ Cierre Windows posterior a build-0005: FIX-137…139, [PLAN-004](windows/plans/P
 - Problema y causa: cola/volumen sólo RAM; el inicio normal esperaba catálogo completo; Next no retenía intención al borde. Faltaban registro de escucha y controles multimedia. Radio de colección se reducía a primera pista y se perdía `isUpload`.
 - Cambio y motivo: store versionado por identidad guest/cuenta, escritura atómica serializada y flush al cambiar/cerrar. Restaura pausado y resuelve stream fresco; no persiste cookies, streams ni continuaciones; elimina miniaturas con URLs firmadas/sensibles del envelope durable conservando metadata en RAM. Inicio con prefijo aceptado, extensión por generaciones y sufijos conservando ocurrencias/anclas/shuffle/ediciones manuales; reintento revalida prefijo completo y rechaza reorder remoto/loops. Next pendiente y coalescing de saltos; pausa cancela intenciones. La barra consume canNext del runtime para playlists/radios extensibles y permite pausa durante resolución de audio. La fusión de un RPC de cola tras progreso conserva sus capacidades sin rebobinar posición. Historial por intento y umbral, guardas de cuenta/generación al enviar y publicar. SMTC a cola Rust con artwork local acotado y rechazo de trabajos obsoletos. Resolución de stream revalida auth_generation tras adquirir auth_operation y antes de publicar; cambio de sesión invalida selección pendiente no cargada. Radio conserva endpoint/origen; Dislike filtra recomendaciones con generación esperada; subidas conservan indicador hasta resolver audio.
 - Archivos: `windows/src-tauri/src/playback_runtime.rs`, `media_controls.rs`, `queue.rs`, `commands/playback.rs`, `dto.rs`, `lib.rs`, Cargo; `lib/player/controller.ts`, `recommendations.ts`, `menu/executor.ts`, `types.ts`, `src/routes/+page.svelte`; pruebas runtime/cola/integración.
-- Fixes relacionados: FIX-087, FIX-097 y FIX-112 Apple; conserva entryId, generaciones y autoridad de cola de Windows. Completa el port descrito en PAR-010.
+- Fixes relacionados: FIX-87, FIX-97 y FIX-112 Apple; conserva entryId, generaciones y autoridad de cola de Windows. Completa el port descrito en PAR-010.
 - Verificación: pruebas de serialización, restauración/cuenta, prefijos duplicados, edits, EOF/Next, coalescing y eventos tardíos; totales finales del runner y build registrados en PLAN-003.
 - Límites: audio audible, reconexión de cuenta, uploads reales, orden remoto, reinicio real y SMTC/teclas físicas pendientes. Una cuenta necesita login ready para recuperar su identidad; no se añadió un mapa offline de cookies a identidad. No se persiste posición exacta del stream.
 - Paridad: PAR-001/010/016/017/020/021. SMTC es implementación exclusiva Windows del comportamiento común; no requiere MPRemoteCommandCenter en Windows ni cambios Apple/core.
@@ -3498,7 +3498,7 @@ Cierre Windows posterior a build-0005: FIX-137…139, [PLAN-004](windows/plans/P
 - Build / QA: `compiled`, `sourceChangedDuringBuild: false`, release arm64, firma ad hoc y diez hashes verificados, idiomas es/en dentro del bundle. Copia reubicada HomeLabFixture: diagnóstico del ejecutable confirma lookup dentro de esa copia y plurales 0/1/2 en ambos idiomas (`builds/macos/build-0067/diagnostics/localization-resources.json`). Selector y panel revisados visualmente; cambio inglés→español→inglés, menús/etiquetas AX, página seleccionada y pista original conservados; preferencia comprobada al relanzar. Copias de QA cerradas y dominio real del usuario conservado.
 - Antecedentes de verificación: build-0063 falló por expectativas de textos anteriores y se conserva como diagnóstico; se actualizaron sólo esas expectativas tras revisar las acciones. Builds 0064–0066 compilaron; la inspección de recursos y UI detectó resolver SwiftPM, encabezados genéricos, labels AX y títulos de submenú, corregidos antes de entregar 0067. No se presentan bundles intermedios como la entrega final.
 - Límites: contenido/letras/descripciones externas, login web, elementos de macOS y sus comandos estándar internos siguen su propio idioma. Pendientes ensayo de VoiceOver, ventanas múltiples, cuenta/audio reales, anchos estrechos, trackpad físico y medición FPS; no se deducen de tests/AX. CI/paquete de una futura release requiere validación en su entorno. Sin ejecución Windows ni commit/push/publicación.
-- Antecedentes / plan / paridad: conserva FIX-105/106 (panel/preferencias), FIX-119/121/122/123 (reciclaje y pausa), FIX-129 (propiedad local de gestos), FIX-097/112 (cola/reproducción); [PLAN-014](apple/plans/PLAN-014-localization.md), [PAR-014](PARIDAD.md).
+- Antecedentes / plan / paridad: conserva FIX-105/106 (panel/preferencias), FIX-119/121/122/123 (reciclaje y pausa), FIX-129 (propiedad local de gestos), FIX-97/112 (cola/reproducción); [PLAN-014](apple/plans/PLAN-014-localization.md), [PAR-014](PARIDAD.md).
 - Build: `builds/macos/build-0067/Side B.app`.
 
 <a id="fix-130"></a>
@@ -3514,7 +3514,7 @@ Cierre Windows posterior a build-0005: FIX-137…139, [PLAN-004](windows/plans/P
 - Auditoría: rutas de todas las ramas/tags públicos sin `temp/`, builds/dependencias compiladas ni archivos de credenciales, bases de datos o logs. Gitleaks 8.30.1: 65 commits, cero hallazgos; revisión adicional de 1044 blobs de texto, con coincidencias limitadas a identificadores generados y credenciales sintéticas de pruebas. Informes redactados conservados fuera del repositorio.
 - Verificación: árboles idénticos de los tres tags y del tip consolidado respecto de las versiones anteriores; fuentes de la app conservadas por identidad de blobs. `git diff --check` aprobado y `git check-ignore` confirma exclusión de `temp/`. Push atómico verificado: sólo cambian `main` y los tres tags previstos, cero checkpoints en todas las referencias públicas, ocho releases/assets conservados y 118 archivos de `temp/` intactos. Segundo escaneo del historial limpio con Gitleaks aprobado. Sin nuevas pruebas de runtime ni build: no se modifican fuentes de la app.
 - Límites: no se afirma ausencia absoluta de información sensible ni borrado de objetos cacheados por GitHub/clones. `temp/`, builds y datos locales se conservan. Los SHA históricos de registros anteriores describen la evidencia original y permanecen recuperables localmente.
-- Fixes relacionados: conserva FIX-088–129 y sus registros; el commit de checkpoint que reunía sus cambios no constituía validación funcional adicional.
+- Fixes relacionados: conserva FIX-88–129 y sus registros; el commit de checkpoint que reunía sus cambios no constituía validación funcional adicional.
 - Paridad: no requiere port de runtime; `.gitignore` y la skill Git se comparten en el mismo `main` para Apple/Windows. Comprobaciones Git realizadas en macOS, sin ejecución de la app Windows.
 - Plan: [Historial público y material local](plans/PLAN-001-git-publication.md).
 
@@ -3619,7 +3619,7 @@ Cierre Windows posterior a build-0005: FIX-137…139, [PLAN-004](windows/plans/P
   - Tests unitarios de Rust (`cargo test -p innertube -p sideb-core`): 90 pruebas aprobadas.
   - Tests del runner Node (`node --test Scripts/build-version.test.mjs`): 10 pruebas aprobadas.
 - Paridad: [PAR-013](PARIDAD.md). Exclusivo Apple en su integración física con `NSEvent` y AppKit. La arquitectura conceptual (propiedad por región semántica, umbrales con histéresis y cápsula de estado) puede informar futuras extensiones en Windows, sin asumir paridad actual. Código Windows conservado sin alteraciones.
-- Antecedentes / plan: [PLAN-012](apple/plans/PLAN-012-navigation-gestures.md), [FEAT-068](FIXES.md#feat-068), [FIX-095](FIXES.md#fix-095), [FIX-100](FIXES.md#fix-100).
+- Antecedentes / plan: [PLAN-012](apple/plans/PLAN-012-navigation-gestures.md), [FEAT-068](FIXES.md#feat-068), [FIX-95](FIXES.md#fix-95), [FIX-100](FIXES.md#fix-100).
 
 <a id="fix-124"></a>
 
@@ -3651,9 +3651,9 @@ Cierre Windows posterior a build-0005: FIX-137…139, [PLAN-004](windows/plans/P
 - Build final: `node Scripts/build-version.mjs macos` conservó `builds/macos/build-0052/Side B.app`, release arm64, SDK 27.0/mínimo macOS 15.0, firma ad hoc verificada; 182 Rust (7 live ignoradas), 68 XCTest y 235 Swift Testing aprobadas, 485 en total. BUILD.json `compiled`, `sourceChangedDuringBuild: false`; versión pública 1.1.6 (10) y bindings conservados.
 - Comprobación de app: copia firmada de 0052 con ID HomeLabFixture, misma ventana/fixture/pista Song 2 seleccionada sin audio que la reproducción visual de 0050. Cerrar sidebar en Inicio, abrir fullscreen y abrir sidebar: panel completo con Inicio/Biblioteca/textos visibles, cola/duración dentro del borde derecho, portada/metadata/player dentro de la ventana. Cuatro alternancias adicionales con lectura AX tras cada clic y captura final conservaron la geometría. La copia de 0050 sí había reproducido panel recortado/cola fuera del borde en esa misma secuencia. Evidencia/protocolo en `builds/macos/build-0052/fullscreen-sidebar-regression/`.
 - Retorno / Instruments: al cerrar fullscreen, Inicio muestra correctamente recomendaciones y álbumes 700/701, página 1/6, scroll AX 0; desplazamiento no nulo/identidad siguen cubiertos por las pruebas nativas. Time Profiler, reposo de 12 s con Song 2 seleccionada/pausada y cola visible, sin entrada/lecturas AX durante la captura: 2146 muestras Running del hilo principal (2146 ms), cero muestras inclusivas HomeAmbientSurface/HomeAmbientMotionClock/HomeFeatured y cero backtraces ausentes. Apoya que la pausa de Inicio oculto se conserva; no implica costo total cero. Escenario distinto del reposo de FIX-122 con cola vacía: no comparar sus CPU ni inferir FPS. Copias diagnósticas cerradas al terminar; apps normales de 0048/0050 preservadas.
-- Límites: comprobación visual con fixture local sin cuenta/audio; FPS y fluidez física con sesión real sin certificar. La suspensión del reloj/callbacks y viewport nativo retenido siguen cubiertos por regresiones. Las cifras CPU de FIX-122/0050 son históricas y no sustituyen esta validación de bordes.
+- Límites: comprobación visual con fixture local sin cuenta/audio; FPS y fluidez física con sesión real sin certificar. La suspensión del reloj/callbacks y viewport nativo retenido siguen cubiertos por regresiones. Las cifras CPU de FIX-122/50 son históricas y no sustituyen esta validación de bordes.
 - Paridad: evaluación estática Windows: shell flex/CSS con ancho variable, sin NSViewRepresentable ni respuesta retenida de sizeThatFits; esta regresión concreta es exclusiva Apple. [PAR-003](PARIDAD.md)/[PAR-008](PARIDAD.md) conservan principio de suspensión oculta, con viewport externo siempre ajustado al espacio disponible. Sin runtime Windows verificado ni fuentes core/Windows/version.env cambiadas.
-- Antecedentes / plan: corrige FIX-122 y mantiene FIX-095/102/119. [PLAN-013](apple/plans/PLAN-013-fullscreen-home-performance.md). Sin commit/push/publicación.
+- Antecedentes / plan: corrige FIX-122 y mantiene FIX-95/102/119. [PLAN-013](apple/plans/PLAN-013-fullscreen-home-performance.md). Sin commit/push/publicación.
 
 <a id="fix-122"></a>
 
@@ -3666,7 +3666,7 @@ Cierre Windows posterior a build-0005: FIX-137…139, [PLAN-004](windows/plans/P
 - Problema / causa: abrir/cerrar sidebar en fullscreen se siente peor con Inicio debajo que con Biblioteca. El Timeline de HomeAmbientSurface seguía activo bajo fullscreen (muestra real de build-0048); el feed oculto seguía midiendo destacados al cambiar ancho (17 mediciones en la caracterización). Opacidad/isHidden no suspendían sus callbacks ni la proyección de capacidad. Son costos comprobados; la contribución cuantitativa de cada uno al lag no se deduce de esa muestra.
 - Cambio / motivo: el shell pasa visibilidad al fondo; su Timeline pausa por fullscreen, inactividad y Reduce Motion. Un reloj conserva la fase del humo excluyendo el tiempo pausado, manteniendo paleta, superficie y fade. El NSViewRepresentable conserva su viewport mientras está oculto; el coordinador retiene un snapshot aplicado consistente con las filas y coalesce el snapshot más reciente. Bounds/layout/header/destacados/hover/reproducción visual y acciones de controles ocultos quedan suspendidos. Al revelar se aplican snapshot, playback, tamaño/alturas y visibilidad; se mantiene hosting, scroll y callbacks actuales. HomeView registra capacidad pendiente sin reproyectar el feed oculto y la aplica al salir; el cambio de visibilidad no anima el tamaño nativo bajo el fade de la página.
 - Archivos: `apple/Sources/SideB/SideBApp.swift`, `Views/Home/{HomeAmbientBackground,HomeAmbientSurface,HomeFeedTableView,HomeView}.swift`; nuevos `apple/Tests/SideBTests/{HomeFullscreenSuspensionTests,HomeAmbientMotionTests}.swift`; PLAN-013/índice/paridad.
-- Antecedentes: completa el ciclo de visibilidad de FIX-095/109 y la optimización de identidad/recargas de FIX-119. Conserva geometría/acciones de FIX-098–100 y viewport/controles de FIX-102/103. No se atribuye una regresión a FIX-119 ni a Explorar FIX-120/121.
+- Antecedentes: completa el ciclo de visibilidad de FIX-95/109 y la optimización de identidad/recargas de FIX-119. Conserva geometría/acciones de FIX-98–100 y viewport/controles de FIX-102/103. No se atribuye una regresión a FIX-119 ni a Explorar FIX-120/121.
 - Verificación automática: focal `swift test --package-path apple --filter 'HomeFullscreenSuspensionTests|HomeAmbientMotion|HomeFeedScrollTests|HomeFeaturedIdentity'`: 11 XCTest y 2 Swift Testing aprobadas. Nuevas regresiones: cero mediciones en los callbacks ocultos, datos intermedios diferidos y último snapshot/playback aplicados al revelar, altura/ancho correctos, hosting y offset conservados, viewport SwiftUI fijo con cambios reales de tamaño, reloj pausado/reanudado sin salto/reinicio. Sin NSWindow en estas cuatro pruebas. `swift test --package-path apple`: 67 XCTest y 235 Swift Testing/5 suites aprobadas. `git diff --check` limpio antes del runner.
 - Build: `node Scripts/build-version.mjs macos` conservó `builds/macos/build-0050/Side B.app`, release arm64, SDK 27.0/mínimo macOS 15.0, firma ad hoc verificada. Runner completo: 182 Rust (7 live ignoradas), 67 XCTest y 235 Swift Testing aprobadas, 484 en total; bindings/XCFramework regenerados sin cambios de fuentes generadas. BUILD.json `compiled`, `sourceChangedDuringBuild: false`; versión pública 1.1.6 (10) conservada.
 - Comprobación real: copias firmadas de 0048/0050 con ID HomeLabFixture, mismo Mac/fixture local/ventana/panel Cola vacío, sin cuenta ni audio. Time Profiler: reposo 12 s y 16 clics reales de sidebar durante capturas de 30 s por versión, con fullscreen visible/Inicio oculto verificados tras cada clic. En 0050 desaparecen muestras de HomeAmbientSurface/HomeFeatured bajo fullscreen. Hilo principal Running sin stacks AX: reposo 2896 → 4 ms; sidebar 11723 → 8822 ms (aprox. 25% menos en esta pareja). Las categorías inclusivas se solapan; no se usan para atribuir porcentajes por componente. Al revelar tras cambiar ancho se muestran cuatro álbumes; segundo retorno conserva página de álbumes 2/6 y scroll AX 0.1583166332665331. Evidencia/exportador reproducible en `builds/macos/build-0050/fullscreen-home-performance/`; PLAN-013 detalla protocolo y límites. App original de 0048 conservada en ejecución; copias de prueba cerradas.
@@ -3710,7 +3710,7 @@ Cierre Windows posterior a build-0005: FIX-137…139, [PLAN-004](windows/plans/P
 - Región: Rankings reúne Global y país detectado; selector con opciones reales del proveedor y nombres en español. En esta conexión UY y 69 regiones disponibles. Detección nueva al volver después de 10 minutos o pulsar Actualizar; sin región/soporte deja Global y elección manual. Fallo local conserva Global con reintento. Sólo rankings adapta país en esta etapa; categorías/lanzamientos no se presentan como un recomendador geográfico propio.
 - Carga: generaciones y cancelación descartan respuestas anteriores al cambiar ruta, país o cuenta; cachés LRU de ocho fuentes/ocho regiones en memoria y purga por sesión. Identidad clase:ID, deduplicado y filtrado de tarjetas inválidas/desconocidas; estados de carga, vacío, error y refresh.
 - Archivos: `core/crates/innertube/src/{transport,endpoints,models/browse}.rs`, `core/crates/sideb-core/src/lib.rs`; `apple/Sources/SideB/Models/ExploreCatalog.swift`, `ViewModels/ExploreViewModel.swift`, `Views/Explore/ExploreView.swift`, navegación/TopNav/sidebar/`SideBApp` y `CatalogCardView`; pruebas Explore/NavPresentation/TopNavigation y bindings generados.
-- Antecedentes: completa el destino deshabilitado de FIX-090; reutiliza catálogo/búsqueda de FIX-086 y cartas/acciones de FIX-111/112. Preserva cambios de detalle/Inicio FIX-118/119. No se atribuye una regresión a esos fixes.
+- Antecedentes: completa el destino deshabilitado de FIX-90; reutiliza catálogo/búsqueda de FIX-86 y cartas/acciones de FIX-111/112. Preserva cambios de detalle/Inicio FIX-118/119. No se atribuye una regresión a esos fixes.
 - Verificación: runner `SIDEB_LIVE_EXPLORE=1 node Scripts/build-version.mjs macos`: 182 Rust (7 live Rust ignoradas), 59 XCTest y 233 Swift Testing/5 suites aprobados. Fixtures de país/selección/labels/duplicados y pruebas de carreras/cuenta/cache/cancelación/país/cambio de red/fallo local. Live sin cookies: 101 lanzamientos, país UY, 2 colecciones Global y 3 UY con IDs distintos, 69 regiones y 20 playlists de concentración. `cargo test --locked --manifest-path core/Cargo.toml -p sideb-core --features windows-bridge`: 92 aprobadas, 7 live ignoradas. `swift test --package-path apple`: repetición completa aprobada, 59 XCTest/233 Swift Testing. Primera corrida debug falló en cuatro pruebas previas de PlaylistPlaybackLatencyTests (espera de 2 s del fixture y aserciones posteriores); repetición sin builder concurrente aprobó, sin cambios de reproducción/fixtures. Se conserva el log; no se atribuye una causa concluyente.
 - Investigación visual: referencias y menús inspeccionados en navegador. El intento de abrir build-0042 por ruta explícita devolvió timeout del control de ventana; el intento de abrir build-0044 también devolvió timeout (-10005). La revisión física de Explorar no se deduce de pruebas/build; audio/FPS/consumo no medidos.
 - Intentos conservados: build-0041 falló en espera de 2 s de la prueba shuffle previa; focal posterior aprobó en 0.022 s y build-0042 completa aprobó, sin cambios de reproducción ni de su fixture. Build-0043 detectó tarjeta `unknown:bad` admitida en charts; filtrado unificado con el resto de Explorar y build-0044 aprobada. Bundles/logs anteriores conservados.
@@ -3728,7 +3728,7 @@ Cierre Windows posterior a build-0005: FIX-137…139, [PLAN-004](windows/plans/P
 - Problema / causa: HomeFeaturedView usaba ID de página completa y ForEach por columnas; 1→2 columnas cambiaba el padre/identidad de tarjetas existentes. El breakpoint ancho/vertical reemplazaba ambos paneles. HomeFeedTableView reasignaba rootView a cada ancho intermedio y contentRevision de capacidad activaba reloadData de todos los estantes, aunque no cambiaran.
 - Cambio / motivo: AnyLayout conserva paneles, Layout plano de dos filas mantiene IDs de colección al añadir columnas; ancho observable separado del snapshot/raíz de hosting. Revisión de destacados no recarga estantes idénticos; recarga sólo filas cambiadas si no cambia cantidad, conservando fallback completo para cambios estructurales. Mantener geometría, páginas/ancla, 2/4/6 visibles, acciones, reproducción y límites/cache/metadata existentes.
 - Archivos: `apple/Sources/SideB/Views/Home/{HomeFeaturedView,HomeFeedTableView}.swift`, `HomeFeedScrollTests`, nuevo `HomeFeaturedIdentityTests`.
-- Antecedentes: FIX-099/100 (geometría y columnas), FIX-102/103 (contrato/controles de scroll), FIX-106 (capacidad y fuentes). Completa el escenario de sidebar; no reintroduce pools/rebind descartados de FIX-101.
+- Antecedentes: FIX-99/100 (geometría y columnas), FIX-102/103 (contrato/controles de scroll), FIX-106 (capacidad y fuentes). Completa el escenario de sidebar; no reintroduce pools/rebind descartados de FIX-101.
 - Verificación: subagente Sol e integración; pruebas de controles reales conservados en 1100→1512→1920→899→900→1100, ancho realmente renderizado y recargas de estantes. Focal inicial detectó viewport cero en fixture spy: dimensiones/layout corregidos, repetición aprobada. Focal final combinada: 11 XCTest y 29 Swift Testing aprobados. `git diff --check` limpio.
 - Límites: identidad y ausencia de recargas innecesarias no certifican FPS ni toda la fluidez física. Comprobación de app y medición Instruments pendientes: CUA no pudo inspeccionar build-0039 porque el Mac está bloqueado; se pidió desbloqueo, sin inferir FPS.
 - Paridad: [PAR-003](PARIDAD.md)/[PAR-006](PARIDAD.md). Windows HomeView/HomeShelf usan each por IDs y resize CSS; aún no tienen los destacados. Portar identidad plana estable y layout sin recrear tarjetas. Hosting/recargas NSTable específicos Apple; PAR-004 virtualización Windows sigue pendiente.
@@ -3782,7 +3782,7 @@ Cierre Windows posterior a build-0005: FIX-137…139, [PLAN-004](windows/plans/P
 - Archivos: `SideBApp`, `CollectionWindowBackground`, `CollectionAmbientBackground`, `NativeTrackTableView`, `AlbumDetailView`, `PlaylistDetailView`, `CollectionWindowBackgroundTests`; FIXES/PARIDAD/PORTEO-INICIO/PLAN-010/índice.
 - Verificación: `swift test --package-path apple --filter 'Collection'`: 3 XCTest y 22 Swift Testing aprobados. Dos nuevas pruebas cubren título/sidebar, scroll/rebote, montaje en NSWindow oculta, resize, identidad página/cuenta, llegada antes del montaje, navegación y Ahora suena. Revisión sólo lectura por Luna sin hallazgos e integración/diff revisados. Runner final `node Scripts/build-version.mjs macos`: 180 Rust aprobados (7 live ignorados), 54 XCTest y 221 Swift Testing/5 suites aprobados (455 en total). Diff/whitespace y fuentes protegidas revisados.
 - Límites: geometría/hit testing nativos comprobados; apariencia de vidrio/portadas y scroll físico en app real, audio y consumo Instruments pendientes. Pruebas ocultas no certifican apariencia final.
-- Antecedentes / paridad: corrige el recorte de FIX-115, mantiene FIX-114 y la separación de fondo/foreground de FIX-095. [PAR-011](PARIDAD.md): portar ambiente a toda ventana detrás de titlebar/sidebar, separado de la columna de detalle. Lectura estática Windows confirma `content-column` con padding de titlebar, scroll y fondo del shell propios; port/runtime pendientes. Core/Windows/bindings/version.env sin cambios de fuentes.
+- Antecedentes / paridad: corrige el recorte de FIX-115, mantiene FIX-114 y la separación de fondo/foreground de FIX-95. [PAR-011](PARIDAD.md): portar ambiente a toda ventana detrás de titlebar/sidebar, separado de la columna de detalle. Lectura estática Windows confirma `content-column` con padding de titlebar, scroll y fondo del shell propios; port/runtime pendientes. Core/Windows/bindings/version.env sin cambios de fuentes.
 - Plan / build: [PLAN-010](apple/plans/PLAN-010-collection-detail-ui.md); `builds/macos/build-0036/Side B.app`, BUILD.json/build.log. Release arm64, SDK 27.0 / mínimo macOS 15.0, firma ad hoc verificada; `status: compiled`, `sourceChangedDuringBuild: false`. Documentación de cierre finalizada después del runner; código sin cambios posteriores. Sin commit/push/publicación ni apertura automática.
 
 <a id="fix-115"></a>
@@ -3818,7 +3818,7 @@ Cierre Windows posterior a build-0005: FIX-137…139, [PLAN-004](windows/plans/P
 - Archivos: detalles/common header/background/table/presenter, modelos de detalle y proyección, getter de identidad de sesión del player, pruebas; PLAN-010/índice/PARIDAD/PORTEO-INICIO.
 - Verificación: focal de 34 Swift Testing aprobada; incluye proyección/duplicados, reproducción completa ordenada, paginación tardía descartada, movimiento por setVideoId/sucesor con rollback, permisos propias/ajenas/LM, geometría/enlaces/acciones, fila de cabecera no seleccionable y cola especial. Runner final `node Scripts/build-version.mjs macos`: 180 Rust aprobados (7 live ignorados), 54 XCTest y 216 Swift Testing/5 suites aprobados, incluida reproducción filtrada de álbum y modelo simplificado. Revisión de subagentes e integración; previews de cabecera a 600/1100 pt inspeccionadas fuera de ventana; diff/whitespace/protegidos revisados.
 - Límites: validación visual/scroll/foco/arrastre y persistencia con cuenta real, audio audible y consumo Instruments pendientes; previews fuera de ventana no reproducen todos los materiales Liquid Glass. Fecha de lanzamiento requiere metadata futura, no queda declarada implementada. No se afirma rendimiento por compilación.
-- Antecedentes / paridad: FIX-097, FIX-108/109, FIX-111/112/113; [PAR-011](PARIDAD.md). Contraste estático Windows: AlbumDetail usa DetailHeader/TrackTable, PlaylistDetail su header/AccountTrackTable separados, portada 180/título 32, sort propio y API de movimientos existentes, sin filtro común/ambiente nuevo; contenedor exterior scrollable. Port visual/comportamiento final y validación destino pendientes. Sin editar fuentes core/Windows/bindings ni versión pública.
+- Antecedentes / paridad: FIX-97, FIX-108/109, FIX-111/112/113; [PAR-011](PARIDAD.md). Contraste estático Windows: AlbumDetail usa DetailHeader/TrackTable, PlaylistDetail su header/AccountTrackTable separados, portada 180/título 32, sort propio y API de movimientos existentes, sin filtro común/ambiente nuevo; contenedor exterior scrollable. Port visual/comportamiento final y validación destino pendientes. Sin editar fuentes core/Windows/bindings ni versión pública.
 - Plan / build: [PLAN-010](apple/plans/PLAN-010-collection-detail-ui.md); `builds/macos/build-0034/Side B.app`, BUILD.json/build.log. Release arm64, SDK 27.0 / mínimo macOS 15.0, firma ad hoc verificada; `status: compiled`, `sourceChangedDuringBuild: false`. Documentación de cierre finalizada después del runner, código sin cambios posteriores. Sin commit/push/publicación ni apertura automática.
 
 <a id="fix-113"></a>
@@ -3834,7 +3834,7 @@ Cierre Windows posterior a build-0005: FIX-137…139, [PLAN-004](windows/plans/P
 - Archivos: `apple/Sources/SideB/Views/Common/{NativeTrackTableView,NativeTrackCellPresenting,NativeQueueTrackCellView}.swift`, `Views/Fullscreen/FullscreenNowPlayingView.swift`, pruebas de celda/tabla; PLAN-009, índice, PARIDAD y PORTEO-INICIO.
 - Verificación: cinco pruebas Swift Testing focales aprobadas (cuatro nuevas): geometría a 350/576/900 pt, subtítulo conjunto/fallback, hover/foco/likes/reuse, callbacks y fabricación separada de celdas con arrastre de ocurrencias. La prueba de ancho fija constraints como la columna real; la primera versión sin ancho requerido dejaba crecer la celda sin padre. Corregida también la firma del callback de foco durante compilación focal. Runner numerado completo: 180 Rust (7 live ignorados), 52 XCTest y 198 Swift Testing/5 suites aprobados. Diff/whitespace y fuentes protegidas comprobados. Pruebas sin NSWindow; no equivalen a validación visual/arrastre/audio con cuenta real.
 - Límites: vista real, teclado completo y arrastre físico pendientes. Sin cambios de core/Windows/bindings/versión pública; no commit/push/publicación.
-- Antecedentes / paridad: excepción de cola solicitada al contrato común [FIX-111](#fix-111), conserva [FIX-112](#fix-112) y ocurrencias/anclas de [FIX-097](#fix-097). [PAR-009](PARIDAD.md) distingue la cola especial. Windows `QueuePanel.svelte` ya tiene Like/Dislike, créditos compactos y grip al hover/foco; revisar diferencias en el destino, sin ejecución ni cambios Windows.
+- Antecedentes / paridad: excepción de cola solicitada al contrato común [FIX-111](#fix-111), conserva [FIX-112](#fix-112) y ocurrencias/anclas de [FIX-97](#fix-97). [PAR-009](PARIDAD.md) distingue la cola especial. Windows `QueuePanel.svelte` ya tiene Like/Dislike, créditos compactos y grip al hover/foco; revisar diferencias en el destino, sin ejecución ni cambios Windows.
 - Plan / build: [PLAN-009](apple/plans/PLAN-009-common-media-cards.md); `builds/macos/build-0033/Side B.app`, BUILD.json/build.log; release arm64, SDK 27.0 / mínimo macOS 15, firma ad hoc verificada. BUILD.json `compiled`, `sourceChangedDuringBuild: false`; documentación de cierre actualizada después de compilar, código sin cambios posteriores.
 
 ## Integración de registros Windows — 2026-10-09
@@ -3869,7 +3869,7 @@ Sincronización con `origin/main` (`d37c1ee`) completada: fuentes Windows conser
 - Cambio / motivo: botón de selección hermano de controles/enlaces evita botones anidados; artista/álbum reciben IDs/callbacks, navegación no activa canción. TrackArtwork de 36 px/TrackActivity comunes con listas; fila de 46 px / paso de 48 px, duración de 44 px y actividad neutral6.5%/borde9%. Controles ocupan sólo ancho necesario; asa al hover/foco sustituye duración. Resolución de activación por entryId actual, Play activo alterna pausa, bloqueo/spinner durante carga; like/dislike/menú/errores/radio/arrastre/teclado existentes conservados. Ventana con helper compartido y overscan de 8 filas, filas enfocada/arrastrada retenidas por entryId, contenedor de altura total y Tab a través de ventanas; scroll/resize con RAF acotado. No se crea estado de cola optimista ni otro reproductor.
 - Archivos: `windows/src/lib/components/fullscreen/QueuePanel.svelte`, `FullscreenNowPlaying.svelte`, `windows/src/routes/+page.svelte`; consume common/{TrackArtwork,TrackActivity,trackList} de FIX-119-2.
 - Verificación: suite de 167 pruebas/check: 0 errores y 0 advertencias/build frontend aprobados. Fixture de 1000 entradas:22 filas iniciales,23 al final con foco entry-1 retenido, altura de 48000 px; Tab desde control final de ocurrencia retenida lleva a entry-2 con ventana de 22 filas. Clic artista+álbum conserva contador de reproducción y sólo una ocurrencia activa. No se midieron FPS/consumo ni arrastre nativo; callbacks de fixture no ejecutan comandos de cuenta/audio. Captura `windows/.cache/ui-fix-2026-10-05/fullscreen-cola.png` ignorada.
-- Paridad / antecedentes: PAR-012-2 implementado/validación nativa pendiente, PAR-016-2 permanece en curso por funciones fuera de esta tanda. Apple referencia NativeTrackTableView fila compacta; conserva controles Like/Dislike Windows por mantener acciones. FIX-087 / FIX-113-2 / FIX-114-2 / FIX-116-2 / FIX-117-2; PLAN-002. Core/Apple intactos, sin EXE/commit/push.
+- Paridad / antecedentes: PAR-012-2 implementado/validación nativa pendiente, PAR-016-2 permanece en curso por funciones fuera de esta tanda. Apple referencia NativeTrackTableView fila compacta; conserva controles Like/Dislike Windows por mantener acciones. FIX-87 / FIX-113-2 / FIX-114-2 / FIX-116-2 / FIX-117-2; PLAN-002. Core/Apple intactos, sin EXE/commit/push.
 
 <a id="fix-120-2"></a>
 
@@ -3883,7 +3883,7 @@ Sincronización con `origin/main` (`d37c1ee`) completada: fuentes Windows conser
 - Cambio / motivo: contador visible junto a subtitle, título de 2 líneas / arte con radio de 8 px, selector extra retirado manteniendo seis órdenes de MenuPolicy. ContinuationLoader aproxima umbral nativo de 15 filas con margen de 780 px, una tentativa automática por contexto/cursor actual sin busy/error, reintento explícito al fallar y controller existente conserva tokens/generaciones. Biblioteca/Sidebar/menú de canción abren PlaylistEditorDialog común, 5000 caracteres y PRIVATE/UNLISTED/PUBLIC; canción inicial opcional. Raíz conserva ID ya creado si falla agregar canción para reintentar sin duplicar creación, y revisión de cuenta/diálogo evita cierre o escritura tardía sobre una creación nueva. Creación vacía abre detalle de la playlist. Editor bloquea submit pendiente y acota Tab al propio diálogo.
 - Archivos: `detail/{PlaylistDetailView,PlaylistEditorDialog,ContinuationLoader}.svelte`, `library/LibraryView.svelte`, nuevo `library/continuation.ts`, `scripts/library-continuation.test.mjs`, `sidebar/Sidebar.svelte`, `routes/+page.svelte`.
 - Verificación: cinco regresiones de gate/near-bottom/contexto/busy/error/cursor, suite de 167 pruebas/check: 0 errores y 0 advertencias/build frontend aprobados. Fixture: subtitle y 2 canciones simultáneos, ningún thead/select de orden, una continuación automática. Desde + de Sidebar: editor común guarda PUBLIC con nombre/descripción ficticios y devuelve foco al disparador. Mutaciones reales y error de proveedor no ejecutados; pruebas existentes de cuenta/playlist preservadas.
-- Paridad / antecedentes: PAR-015-2 implementado/validación nativa pendiente; PAR-013-2 en curso porque cabeceras generales/artista/disponibilidad no están portadas por este fix. PAR-010 (play antes de catálogo completo) sigue pendiente; no se confunde con paginación de UI ni se cambia Cargar más de Inicio. FIX-087 / FIX-113-2 / FIX-114-2 / FIX-117-2, referencia Apple PlaylistDetail/Library/PlaylistEditorSheet; PLAN-002. Sin core/Apple/EXE/commit/push.
+- Paridad / antecedentes: PAR-015-2 implementado/validación nativa pendiente; PAR-013-2 en curso porque cabeceras generales/artista/disponibilidad no están portadas por este fix. PAR-010 (play antes de catálogo completo) sigue pendiente; no se confunde con paginación de UI ni se cambia Cargar más de Inicio. FIX-87 / FIX-113-2 / FIX-114-2 / FIX-117-2, referencia Apple PlaylistDetail/Library/PlaylistEditorSheet; PLAN-002. Sin core/Apple/EXE/commit/push.
 
 <a id="fix-119-2"></a>
 
@@ -3897,7 +3897,7 @@ Sincronización con `origin/main` (`d37c1ee`) completada: fuentes Windows conser
 - Cambio / motivo: wrappers TrackTable/AccountTrackTable conservan props/callbacks y usan TrackList común. Sin franja thead ni minwidth/scrollhorizontal; conserva semántica de tabla, rowcount/rowindex e información de álbum. Acción de miniatura de 40 px / radio de 2 px, control de 28 px / filtro de 58%; índice+barras separados, actividad neutral/hover redondeados; acciones calculadas por disponibilidad(36/60/84/108) y reveladas al hover/foco. Selección Ctrl/Meta/Shift no reproduce, espacios/título/arte activan una vez, links/menús independientes; teclado/arrastre/mutaciones por setVideoId conservados. Ventana desde 161 filas, paso de 52 px / overscan de 8 filas, pins y ancla por clave de ocurrencia rederivada tras reordenar, DOM keyed estable, Tab/flechas/Home/End entre ventanas. Un owner de listeners y pausa de barras fuera viewport/inactividad/ReduceMotion. Historial normaliza Hoy/Ayer/días/meses y numera por sección preservando indexOffset global.
 - Archivos: nuevos common/{TrackList,TrackArtwork,TrackActivity}.svelte y common/trackList.ts, `detail/TrackTable.svelte`, `library/{AccountTrackTable,HistoryView}.svelte`, `scripts/track-list.test.mjs`.
 - Verificación: cinco regresiones de ventana/altura/pins tras reorder/selección duplicados/fechas, suite de 167 pruebas/check: 0 errores y 0 advertencias/build frontend aprobados. Fixture de 1000 filas:20 al inicio/21 al final, altura de 52000 px, cero encabezados/overflow; End enfoca999. DuplicadoB activo único; artist/menu/Ctrl selección no reproducen; Alt+↓ y quitar invocan una acción cada uno. No se midieron FPS ni arrastre/lector de pantalla WebView2; estados/control propietario conservados como adaptación Windows.
-- Paridad / antecedentes: PAR-012-2 implementado/validación nativa pendiente (cola completa viewport en FIX-121-2), sin cerrar por browser. PAR-009 conserva actividad/acciones, PAR-017-2 aún tiene variantes/tokens pendientes. FIX-087 / FIX-113-2 / FIX-114-2 / FIX-116-2 / FIX-117-2; Apple sólo referencia, core sin cambios. PLAN-002, sin EXE/commit/push.
+- Paridad / antecedentes: PAR-012-2 implementado/validación nativa pendiente (cola completa viewport en FIX-121-2), sin cerrar por browser. PAR-009 conserva actividad/acciones, PAR-017-2 aún tiene variantes/tokens pendientes. FIX-87 / FIX-113-2 / FIX-114-2 / FIX-116-2 / FIX-117-2; Apple sólo referencia, core sin cambios. PLAN-002, sin EXE/commit/push.
 
 <a id="fix-118-2"></a>
 
@@ -3927,7 +3927,7 @@ Sincronización con `origin/main` (`d37c1ee`) completada: fuentes Windows conser
 - Archivos: nuevo `windows/plans/AUDIT-002-ui-parity.md`; índice `windows/plans/README.md`, PARIDAD y este registro. No se modifica código Windows/Apple/core ni trabajo previo del árbol.
 - Verificación: revisión estática de vistas principales, componentes comunes, consumidores y controllers/view models de ambas plataformas; inventario 42 Svelte/47 archivos Views Swift, sin afirmar lectura exhaustiva de cada línea. Referencias locales/anchors nuevos comprobados y diff sin errores de whitespace. No se repiten las suites/builds de FIX-114-2 a FIX-116-2 porque la entrega sólo cambia documentación.
 - Límites: igualdad visual a ancho/DPI equivalentes, WebView2/foco/lector de pantalla, cuentas/audio/latencia y recursos no verificados. Virtualización por código no demuestra FPS; columnas fijas no demuestran overflow reproducido. Disponibilidad de FE/radio de artista necesita fixture/runtime antes de corregir. Sin build/commit/push.
-- Paridad / antecedentes: [PAR-012-2 a PAR-017-2](PARIDAD.md) nuevos; PAR-010 / PAR-011-2 siguen pendientes, PAR-007 / PAR-008 excluidos. PAR-003 / PAR-009 conservan implementación y límites previos, aclarando variantes todavía diferentes. Amplía [FIX-114-2](#fix-114-2)/AUDIT-001 y evaluación documental [FIX-110](#fix-110); toma FIX-087 a FIX-098 a FIX-112 como referencias y contrasta el estado local de [FIX-113-2](#fix-113-2), [FIX-115-2](#fix-115-2) y [FIX-116-2](#fix-116-2). Apple sólo consultado como origen; ninguna comprobación nativa nueva ni paridad cerrada.
+- Paridad / antecedentes: [PAR-012-2 a PAR-017-2](PARIDAD.md) nuevos; PAR-010 / PAR-011-2 siguen pendientes, PAR-007 / PAR-008 excluidos. PAR-003 / PAR-009 conservan implementación y límites previos, aclarando variantes todavía diferentes. Amplía [FIX-114-2](#fix-114-2)/AUDIT-001 y evaluación documental [FIX-110](#fix-110); toma FIX-87 a FIX-98 a FIX-112 como referencias y contrasta el estado local de [FIX-113-2](#fix-113-2), [FIX-115-2](#fix-115-2) y [FIX-116-2](#fix-116-2). Apple sólo consultado como origen; ninguna comprobación nativa nueva ni paridad cerrada.
 
 <a id="fix-116-2"></a>
 
@@ -3960,7 +3960,7 @@ Sincronización con `origin/main` (`d37c1ee`) completada: fuentes Windows conser
 - Verificación automática: prueba focal nueva aprobada: worker transfiere máscara no vacía/translúcida, bordes desvanecidos y densidad que cae hacia abajo. Runner `node Scripts/build-version.mjs windows` aprobado: 153 pruebas frontend, `pnpm check` con 0 errores/0 advertencias y `pnpm build` aprobado; 90 InnerTube, 90 core y 92 core/windows-bridge (7 live ignoradas por variante), 4 player y 50 Tauri. Advertencias de campos no leídos/LNK4098 y mensajes informativos del enlazador presentes; no impidieron verify/build. Diff/whitespace revisados; no se modificaron fuentes Apple/core/Rust.
 - Límites / otra plataforma: requiere confirmación visual del usuario en nueva build WebView2; cuenta real, audio audible, gestos nativos/ventana y consumo no verificados. Apple ya muestra créditos y composición tomada como referencia; no se modifica origen. Integración TitleBar es específica Windows/Tauri y conserva la decisión de sidebar permanente, sin trasladar TopNav ni transición fullscreen Mac. [PAR-003 / PAR-009](PARIDAD.md) incorporan la evidencia; no se cierran por una captura de navegador. PAR-007 / PAR-008 siguen excluidos y PAR-010 / PAR-011-2 pendientes.
 - Build: `C:\Users\Stefa\Escritorio\SIDE B CODIGO PADREEEE\Side-B-main\builds\windows\build-0004\sideb-windows.exe`, Release x64; BUILD.json compiled/sourceChangedDuringBuild false, verify/build passed. EXE/libmpv/Vulkan/licencia conservados juntos y cuatro SHA-256 comprobados contra manifiesto; builds previas intactas. Se reutilizó caché Cargo D: y junction ignorada de FIX-114-2, con PSModulePath aislado sólo durante el proceso. No se abrió la app; cierre de documentación posterior a compilar, sin cambios posteriores de código.
-- Antecedentes / plan: corrige presentación de [FIX-113-2](#fix-113-2)/[FIX-114-2](#fix-114-2), usando [FIX-098](#fix-098)/[FIX-099](#fix-099)/[FIX-100](#fix-100), [FIX-108](#fix-108)/[FIX-109](#fix-109) y [FIX-111](#fix-111) como referencia. [PLAN-001](windows/plans/PLAN-001-personalized-home.md). Sin commit/push/publicación.
+- Antecedentes / plan: corrige presentación de [FIX-113-2](#fix-113-2)/[FIX-114-2](#fix-114-2), usando [FIX-98](#fix-98)/[FIX-99](#fix-99)/[FIX-100](#fix-100), [FIX-108](#fix-108)/[FIX-109](#fix-109) y [FIX-111](#fix-111) como referencia. [PLAN-001](windows/plans/PLAN-001-personalized-home.md). Sin commit/push/publicación.
 
 <a id="fix-114-2"></a>
 
@@ -3977,7 +3977,7 @@ Sincronización con `origin/main` (`d37c1ee`) completada: fuentes Windows conser
 - Verificación automática: `pnpm test` — 152 aprobadas, 18 adicionales frente a FIX-113-2; casos de referencia Apple trasladados y races retenidas de carga/navegación/cuenta/reproducción/ocurrencias. `pnpm check` — 0 errores/0 advertencias. `pnpm build` — frontend aprobado sin ruta temporal. Diff/whitespace revisados. Suites Swift no ejecutadas en Windows; sin cambios Rust/Tauri/Apple/core ni contratos nativos.
 - Revisión de navegador separada: fixture sin cuenta, contenido 1200 → 2200 → 1200 conserva ancla Álbum 5/6; ocultar categoría retira estante y conserva página/destacados. Fila duplicada B activa sólo su ocurrencia; botón activo pausa una vez y enfoca tabla; Ctrl selecciona A sin reproducir; Space conserva foco del control. Sin errores de consola observados. Captura/fixture locales ignorados en `windows/.cache/ui-review-2026-10-04/`, captura `auditoria-inicio.png`; ruta temporal retirada antes del build. El fixture requirió completar el tipo de cola antes de verificarlo; check final del producto aprobado.
 - Límites: WebView2, cuenta/persistencia real, audio audible, arrastre/trackpad/foco exhaustivos y consumo pendientes. DOM no expone momentum AppKit; textura/movimiento/render Windows no se declaran idénticos por píxel. Dos IPC de metadata totales frente a dos por modelo Apple. Fingerprint completo/protección de tokens durante toda la carga son defensas Windows conservadas; preferencias no se sincronizan entre plataformas.
-- Antecedentes / paridad: corrige/completa [FIX-113-2](#fix-113-2), tomando FIX-098 a FIX-109 a FIX-111 a FIX-112 como referencia y preservando FIX-087. [PAR-003 / PAR-005 / PAR-006 / PAR-009](PARIDAD.md) incorporan evidencia y siguen implementados / validación nativa pendiente; PAR-004 conserva evidencia anterior sin nueva medición. PAR-010 sigue pendiente; nuevo PAR-011-2 registra snapshots/hidratación persistente Apple ausentes en Windows, diferencia previa sin port en este fix. PAR-007 / PAR-008 siguen excluidos por decisión del usuario. Apple ya contiene las reglas portadas; origen/core intactos.
+- Antecedentes / paridad: corrige/completa [FIX-113-2](#fix-113-2), tomando FIX-98 a FIX-109 a FIX-111 a FIX-112 como referencia y preservando FIX-87. [PAR-003 / PAR-005 / PAR-006 / PAR-009](PARIDAD.md) incorporan evidencia y siguen implementados / validación nativa pendiente; PAR-004 conserva evidencia anterior sin nueva medición. PAR-010 sigue pendiente; nuevo PAR-011-2 registra snapshots/hidratación persistente Apple ausentes en Windows, diferencia previa sin port en este fix. PAR-007 / PAR-008 siguen excluidos por decisión del usuario. Apple ya contiene las reglas portadas; origen/core intactos.
 - Plan / artefacto: [PLAN-001](windows/plans/PLAN-001-personalized-home.md), [matriz por función](windows/plans/AUDIT-001-home-parity.md). Frontend: `C:\Users\Stefa\Escritorio\SIDE B CODIGO PADREEEE\Side-B-main\windows\build`; no EXE standalone numerado, sin commit/push/publicación.
 
 Compilación posterior de FIX-114-2 solicitada por el usuario: `node Scripts/build-version.mjs windows` conservó `builds/windows/build-0003/sideb-windows.exe`, Release x64, `BUILD.json` con `status: compiled` y `sourceChangedDuringBuild: false`. Verify/build aprobados: 152 pruebas frontend, check sin errores/advertencias, 90 InnerTube, 90 core (7 live ignoradas), 92 core/windows-bridge (7 live ignoradas), 4 player y 50 Tauri. EXE/libmpv/Vulkan/licencia presentes y sus cuatro SHA-256 comprobados. No se abrió la app ni se validó cuenta/audio audible; paridad manual pendiente. Intentos build-0001 (módulos PowerShell mezclados) y build-0002 (espacio insuficiente C:) conservados. Se aisló PSModulePath sólo en el proceso; caché Cargo en `D:\SideB-build-cache\side-b-main-windows`, con junction ignorada `windows/src-tauri/target`; caché anterior/builds intactos. Sin cambios de código/version.env; documentación de build agregada después de compilar. Sin commit/push/publicación.
@@ -3991,7 +3991,7 @@ Compilación posterior de FIX-114-2 solicitada por el usuario: `node Scripts/bui
 - Fecha: 2026-10-04 (America/Montevideo).
 - Componente: Inicio/ambiente/configuración, cartas compartidas de la UI Windows, tablas/historial y controllers de feed/player.
 - Tipo / estado: mejora solicitada; implementada y comprobada automáticamente y en navegador con datos ficticios. Validación nativa Windows pendiente.
-- Problema / causa: Windows conservaba Inicio genérico, carga automática por sentinel y cartas distintas por superficie. No exponía la selección de fuentes/categorías/cuenta de Apple ni el contexto de radio/colección; las filas reproducían sólo desde título/índice y la identidad de video no distingue ocurrencias duplicadas. Es una diferencia de implementación comprobada frente a FIX-098 a FIX-112, sin atribuir una regresión histórica.
+- Problema / causa: Windows conservaba Inicio genérico, carga automática por sentinel y cartas distintas por superficie. No exponía la selección de fuentes/categorías/cuenta de Apple ni el contexto de radio/colección; las filas reproducían sólo desde título/índice y la identidad de video no distingue ocurrencias duplicadas. Es una diferencia de implementación comprobada frente a FIX-98 a FIX-112, sin atribuir una regresión histórica.
 - Inicio/configuración: saludo según hora y cuenta, avatar disponible, Speed Dial hasta 27 canciones en tres páginas y destacados hasta seis páginas de 2/4/6 colecciones. Prioridad estricta por fuente, dedupe canónico, orden Side B/YouTube/personalizado y categorías independientes de aportes a destacados. Overlay derecho de 292 px con fuentes separadas por Álbumes/Playlists, orden por botones/arrastre, filtro sin tildes, cierre contextual/Escape y reintento de biblioteca. Preferencias validadas/migradas en localStorage con SHA-256 de identidad de cuenta; tipo de destacados global. No se persisten credenciales ni feed. Metadata sólo de página visible: máximo dos solicitudes, LRU seis, sin continuación completa para enriquecer y descarte de resultados obsoletos.
 - Ambiente: hasta cuatro portadas muestreadas a 32 px, extracción de paleta en worker, acentos separados/fallback neutro y caché por sesión. Máscara de textura compartida generada una vez; capas de humo/radiales con transform, reloj rAF limitado a 30 actualizaciones/s, pausa por ventana oculta/inactiva y Reduce Motion. Base grafito y sin blur por frame. No se afirma equivalencia visual exacta del renderer Apple ni consumo medido.
 - Cartas/filas: MediaCard/MediaArtwork/RowPlay comparten Play/Pausa, menú, créditos independientes y barras de origen. Radio se identifica por fuente real, mantiene origen tras avanzar y pausa sin reconstruir cola; colecciones por tipo/ID canónico, sin inferir actividad desde álbum de pista de radio. Clic en espacio libre mediante botón hermano evita doble acción; hover/foco real revela controles, selección no los mantiene. Un clic en filas reproduce/pausa preservando Ctrl/Meta/Shift; IDs de ocurrencia combinan fuente y setVideoId/posición, conservados al shuffle de la cola nativa. Cola actual alterna pausa; menús, likes, guardado, playlist/cola y reordenamiento mantienen sus ejecutores existentes. No se crea otra cola UI.
@@ -4000,7 +4000,7 @@ Compilación posterior de FIX-114-2 solicitada por el usuario: `node Scripts/bui
 - Verificación automática: `pnpm check` — 0 errores/0 advertencias; `pnpm test` — 134 aprobadas, 17 nuevas (selección/fuentes/capacidad/categorías/migración/cuentas, radio/ocurrencias/shuffle, continuaciones ocultas/repetidas/error, concurrencia/LRU/metadatos y paleta); `pnpm build` — frontend aprobado, worker incluido. Diff/whitespace y exclusión de fuentes Apple/core/runtime revisados. Sin nuevas pruebas Rust porque no cambian sus fuentes/contratos.
 - Revisión visual separada: navegador a 800/1440/2400 px con datos ficticios: panel superpuesto sin reducir Inicio, paginadores/resize anclado, Space sin audio, Escape, filtro sin tildes/orden por botones, origen de radio tras avanzar, menú y Play sin doble acción, multiselección de duplicados. Fixture de 5000 categorías: 2–4 estantes y 18–41 cartas montadas en posiciones verificadas; valida DOM acotado, no FPS. Ruta temporal retirada del producto; captura/fixture locales en `windows/.cache/ui-review-2026-10-04/`. Arranque de raíz en navegador muestra UI, pero las APIs/eventos Tauri fallan por ausencia del runtime; no es validación IPC.
 - Límites: WebView2, cuenta/persistencia reales, audio audible, foco exhaustivo, arrastre y consumo pendientes; no hubo sesión autenticada ni medición de FPS. No se generó un EXE standalone ni se modificó versión pública. PAR-010 (reproducir antes de completar catálogo) sigue pendiente: esta UI conserva la resolución canónica completa existente.
-- Antecedentes / paridad: traslada comportamientos de [FIX-096](#fix-096), [FIX-098](#fix-098)–[FIX-109](#fix-109), [FIX-111](#fix-111)/visibilidad de [FIX-112](#fix-112); preserva el contrato Windows de [FIX-087](#fix-087). [FIX-110](#fix-110) aporta la auditoría, sin atribuirle cambios runtime. [PAR-002 / PAR-003 / PAR-004 / PAR-005 / PAR-006 / PAR-009](PARIDAD.md) pasan a implementado / validación nativa pendiente. Por decisión del usuario, PAR-007 / PAR-008 quedan fuera: sidebar expandida/compacta, TitleBar y composición fullscreen Windows se conservan. Apple ya tiene estos comportamientos; no se modifican Apple ni core.
+- Antecedentes / paridad: traslada comportamientos de [FIX-96](#fix-96), [FIX-98](#fix-98)–[FIX-109](#fix-109), [FIX-111](#fix-111)/visibilidad de [FIX-112](#fix-112); preserva el contrato Windows de [FIX-87](#fix-87). [FIX-110](#fix-110) aporta la auditoría, sin atribuirle cambios runtime. [PAR-002 / PAR-003 / PAR-004 / PAR-005 / PAR-006 / PAR-009](PARIDAD.md) pasan a implementado / validación nativa pendiente. Por decisión del usuario, PAR-007 / PAR-008 quedan fuera: sidebar expandida/compacta, TitleBar y composición fullscreen Windows se conservan. Apple ya tiene estos comportamientos; no se modifican Apple ni core.
 - Plan / artefacto: [PLAN-001 Windows](windows/plans/PLAN-001-personalized-home.md). Frontend: `C:\Users\Stefa\Escritorio\SIDE B CODIGO PADREEEE\Side-B-main\windows\build` (no app standalone numerada). Sin commit/push/publicación.
 
 <a id="fix-112"></a>
@@ -4010,13 +4010,13 @@ Compilación posterior de FIX-114-2 solicitada por el usuario: `node Scripts/bui
 - Fecha: 2026-10-04 (America/Montevideo).
 - Componente: `NativeTrackTableView`, `PlayerViewModel.playPlaylist`, `QueueManager` / reproducción de Biblioteca y Tus Me Gusta.
 - Tipo / estado: fix solicitado tras probar build-0030; implementado y comprobado automáticamente en build-0031, validación real pendiente.
-- Problema / causa: las capturas muestran Play sobre la fila pulsada incluso después de cambiar la pista actual. `updateHoverControls` incluía `isRowSelected`; seleccionar al reproducir dejaba visibles los controles de esa fila. La demora reportada de ~5–6 s tiene un punto de espera concreto: con continuación, `playPlaylist` esperaba todas las páginas de `PlaylistCatalog.load` antes de `beginPlaylist`/`playSongNow`. Biblioteca pasa canciones ya cargadas y su continuación; la canción anterior seguía sonando durante la descarga completa (camino de FIX-097).
+- Problema / causa: las capturas muestran Play sobre la fila pulsada incluso después de cambiar la pista actual. `updateHoverControls` incluía `isRowSelected`; seleccionar al reproducir dejaba visibles los controles de esa fila. La demora reportada de ~5–6 s tiene un punto de espera concreto: con continuación, `playPlaylist` esperaba todas las páginas de `PlaylistCatalog.load` antes de `beginPlaylist`/`playSongNow`. Biblioteca pasa canciones ya cargadas y su continuación; la canción anterior seguía sonando durante la descarga completa (camino de FIX-97).
 - Cambio visual: Play/puntos dependen de hover o foco real de control, no de selección ni estado de pista actual. Mantener selección/multiselección y su resaltado; actualizar hover/foco al refrescar celdas. Una activación primaria con mouse devuelve foco a la tabla para no dejar enfocado el Play flotante al salir de la fila; activación por teclado conserva foco.
 - Cambio de reproducción: inicio normal con las canciones disponibles y la ocurrencia pulsada, retirando el audio anterior y resolviendo el stream sin esperar continuaciones. Completar catálogo en segundo plano; reutilizar caché completa si su prefijo coincide. Añadir sólo posiciones de fuente restantes, sin reconstruir cola/audio: IDs de ocurrencia, pista actual, entradas manuales, eliminaciones, shuffle y orden original conservados. Cola/cuenta/solicitud/contexto rechazan respuestas tardías; avanzar o pausar la misma colección no invalida su completado. Si falla una página, conservar la reproducción iniciada y el token para reintento. Inicio en Aleatorio sigue esperando catálogo completo para elegir entre todas las ocurrencias.
 - Archivos: `Views/Common/NativeTrackTableView.swift`, `ViewModels/PlayerViewModel.swift`, `Services/Player/QueueManager.swift`; `NativeTrackTableInteractionTests`, nuevas `PlaylistPlaybackLatencyTests` y dos casos en `QueueShuffleTests`; planes 001/009, índice, paridad y guía.
 - Verificación: focal de 11 Swift Testing aprobada (visibilidad/acciones nativas, dos casos de fuente con anclas/shuffle y cinco de inicio/continuación/audio/races). Pruebas de latencia usan páginas retenidas y streams locales de fixture; verifican resolución antes de liberar la página, no milisegundos de red real. Runner completo: 180 Rust aprobados (7 live ignorados), 52 XCTest y 194 Swift Testing/5 suites aprobados. Diff/whitespace y fuentes core/Windows/bindings/version.env comprobados; sin cambios en esas fuentes.
 - Límites: no se midieron los ~5–6 s en la cuenta del usuario. Se elimina la espera comprobada de catálogo; resolución/red/buffering del stream mantienen su coste propio. Apariencia/tiempo audible con cuenta real y rendimiento pendientes; sin nuevas fuentes core/Windows ni cambios de versión pública.
-- Antecedentes / paridad: corrige visibilidad introducida en [FIX-111](#fix-111) y reduce la espera de catálogo completo de [FIX-097](#fix-097), conservando sus identidades/anclas/shuffle. [PAR-009](PARIDAD.md) incorpora la visibilidad; [PAR-010](PARIDAD.md) registra inicio normal antes de completar todas las páginas. Windows `+page.svelte` espera `account.resolvePlaylistTracks`, cuyo controller recorre el catálogo; sin implementación/ejecución Windows en este pedido.
+- Antecedentes / paridad: corrige visibilidad introducida en [FIX-111](#fix-111) y reduce la espera de catálogo completo de [FIX-97](#fix-97), conservando sus identidades/anclas/shuffle. [PAR-009](PARIDAD.md) incorpora la visibilidad; [PAR-010](PARIDAD.md) registra inicio normal antes de completar todas las páginas. Windows `+page.svelte` espera `account.resolvePlaylistTracks`, cuyo controller recorre el catálogo; sin implementación/ejecución Windows en este pedido.
 - Plan / build: [PLAN-009](apple/plans/PLAN-009-common-media-cards.md), [PLAN-001](apple/plans/PLAN-001-playlists-shuffle.md); `builds/macos/build-0031/Side B.app`, BUILD.json/build.log; release arm64, SDK 27.0 / mínimo macOS 15, firma ad hoc verificada, `status: compiled`, `sourceChangedDuringBuild: false`. Documentación finalizada después de compilar; código sin cambios posteriores. Sin commit/push/publicación.
 
 <a id="fix-111"></a>
@@ -4034,7 +4034,7 @@ Compilación posterior de FIX-114-2 solicitada por el usuario: `node Scripts/bui
 - Archivos: nuevos `Models/MediaPlaybackIdentity.swift`, `Views/Common/MediaArtworkControls.swift`; `PlayerViewModel`, `PlaybackSpaceShortcut`, `NativeTrackTableView`, `HistoryView`, vistas Home/Library/Search/Detail/Recommended; pruebas `MediaPlaybackIdentityTests`, `NativeTrackTableInteractionTests`, `HomeAlbumPlaybackTests`, `HomeItemHierarchyTests`, `HomeViewModelTests`, `PlaybackSpaceShortcutTests`; PLAN-009, índice, PARIDAD y PORTEO-INICIO.
 - Verificación: focal final de 8 XCTest y 31 Swift Testing aprobada; cubre radio avanzada, colecciones canónicas, respuesta tardía cancelada, zonas de clic/foco, selección modificada, enlaces/menú y ocurrencias duplicadas. Runner `node Scripts/build-version.mjs macos` completo: 180 Rust aprobados (7 live ignorados), 52 XCTest y 187 Swift Testing/5 suites aprobados. Diff/whitespace y enlaces revisados; fuentes core/Windows/bindings/version.env intactas.
 - Límites: apariencia con portadas/vidrio de cuenta real, teclado/foco y selección/arrastre en ventana real, audio audible y consumo Instruments pendientes. Pruebas nativas ejercitan eventos/AX/callbacks sin crear una ventana; no certifican una sesión de usuario ni rendimiento. No ejecutar PLAN-008 ni modificar fuentes Rust/Windows.
-- Antecedentes / paridad: completa interacción de FIX-097–100/103/105–106 y sus componentes existentes; no atribuye regresión a esos fixes. [PAR-009](PARIDAD.md), [guía de porteo](PORTEO-INICIO.md#5-interfaz-de-inicio-speed-dial-y-destacados); contraste estático con HomeCard/SearchResultCard/TrackTable Windows, implementación del destino pendiente.
+- Antecedentes / paridad: completa interacción de FIX-97–100/103/105–106 y sus componentes existentes; no atribuye regresión a esos fixes. [PAR-009](PARIDAD.md), [guía de porteo](PORTEO-INICIO.md#5-interfaz-de-inicio-speed-dial-y-destacados); contraste estático con HomeCard/SearchResultCard/TrackTable Windows, implementación del destino pendiente.
 - Plan / build: [PLAN-009](apple/plans/PLAN-009-common-media-cards.md); `builds/macos/build-0030/Side B.app`, BUILD.json/build.log; release arm64, SDK 27.0 / mínimo macOS 15, firma ad hoc verificada, `status: compiled`, `sourceChangedDuringBuild: false`. Documentación de cierre finalizada después de compilar; código sin cambios posteriores. Sin commit/push/publicación.
 
 <a id="fix-110"></a>
@@ -4044,11 +4044,11 @@ Compilación posterior de FIX-114-2 solicitada por el usuario: `node Scripts/bui
 - Fecha: 2026-10-04 (America/Montevideo).
 - Componente: documentación de paridad / especificación de porteo Apple → Windows.
 - Problema: TopNav estaba en PORTEO-INICIO pero sin fila propia de seguimiento; el comportamiento visible de fullscreen/sidebar no se registraba al clasificar su implementación como exclusiva de AppKit. PAR-003/índice conservaban build-0027 pese a FIX-109/build-0029. La guía resumía fuentes/categorías pero omitía límites de categorías ausentes/Quick picks, cabecera personal, foco/acciones/catálogo y detalles de continuaciones.
-- Cambio: añadir PAR-007 (TopNav) y PAR-008 (shell/fullscreen/sidebar), actualizar PAR-003/004/005/006 y ampliar PORTEO-INICIO con cobertura explícita de todos los FIX-090–109. Separar comportamiento y resultado visual de la implementación AppKit/SwiftUI; Windows los implementará con CSS/canvas/Tauri. Conservar seguimiento pendiente y referencias a intentos descartados, sin afirmar que PLAN-008 esté aplicado. Corregir su referencia rígida al siguiente FIX para evitar colisión con esta entrada.
+- Cambio: añadir PAR-007 (TopNav) y PAR-008 (shell/fullscreen/sidebar), actualizar PAR-003/004/005/006 y ampliar PORTEO-INICIO con cobertura explícita de todos los FIX-90–109. Separar comportamiento y resultado visual de la implementación AppKit/SwiftUI; Windows los implementará con CSS/canvas/Tauri. Conservar seguimiento pendiente y referencias a intentos descartados, sin afirmar que PLAN-008 esté aplicado. Corregir su referencia rígida al siguiente FIX para evitar colisión con esta entrada.
 - Evidencia: contraste de TopNavigationView, toolbar/header, SideBApp, settings/presentación/ViewModel, metadata y HomeAmbientSurface con TitleBar.svelte, +page.svelte, FullscreenNowPlaying.svelte, HomeView/HomeCard/HomeShelf y HomeController Windows. TitleBar carece del selector/grupo completo; backdrop Windows parte de var(--sidebar-width); HomeView conserva sentinel automático. Build-0029 tiene BUILD.json compiled/sourceChangedDuringBuild false y log de 180 Rust (7 live ignorados), 47 XCTest y 177 Swift Testing aprobados. Es evidencia existente, no una corrida nueva de esta auditoría.
 - Archivos: `PARIDAD.md`, `PORTEO-INICIO.md`, `apple/plans/{README,PLAN-002-top-navigation-layout,PLAN-003-fullscreen-sidebar,PLAN-004-personalized-home,PLAN-008-home-cleanup-efficiency}.md`, `FIXES.md`.
-- Verificación / límites: revisión estática, matriz de cobertura FIX-090–109, enlaces/anchors y whitespace; checksum de 306 archivos de fuentes/pruebas confirma código Apple/Windows/core intacto. No se ejecuta build/test ni se declara runtime Windows validado por editar documentación. Estados pendientes/por verificar preservados; medición de consumo de FIX-109 y validaciones reales siguen pendientes.
-- Antecedentes / paridad: FIX-090–109; [PAR-001–008](PARIDAD.md), [PORTEO-INICIO](PORTEO-INICIO.md). Amplía la evaluación de los resultados visibles que antes se describían como implementación nativa exclusiva; conserva los registros históricos. Sin cambios core/contratos, port de código, commit/push/publicación.
+- Verificación / límites: revisión estática, matriz de cobertura FIX-90–109, enlaces/anchors y whitespace; checksum de 306 archivos de fuentes/pruebas confirma código Apple/Windows/core intacto. No se ejecuta build/test ni se declara runtime Windows validado por editar documentación. Estados pendientes/por verificar preservados; medición de consumo de FIX-109 y validaciones reales siguen pendientes.
+- Antecedentes / paridad: FIX-90–109; [PAR-001–008](PARIDAD.md), [PORTEO-INICIO](PORTEO-INICIO.md). Amplía la evaluación de los resultados visibles que antes se describían como implementación nativa exclusiva; conserva los registros históricos. Sin cambios core/contratos, port de código, commit/push/publicación.
 
 <a id="fix-109"></a>
 
@@ -4060,7 +4060,7 @@ Compilación posterior de FIX-114-2 solicitada por el usuario: `node Scripts/bui
 - Problema y motivo: el humo de FIX-108 era estático. El usuario pidió nubes dinámicas sutiles con los colores de los álbumes sin gastar recursos.
 - Solución y motivo: la misma máscara procedural de FIX-108 (textura única, sin blur en tiempo real) se dibuja en dos capas sobredimensionadas (escala 1,5 y 1,75 espejada) que se desplazan y rotan con ciclos de ~45–90 s y parallax; los tres radiales de color derivan con ciclos de 36–50 s. Todo usa transformaciones (`offset`/`rotation`/`scale`) sobre `TimelineView` limitado a 30 fps, en pausa con la ventana inactiva o con Reduce Motion (fondo estático como antes). Valores finales: opacidad nubes 1,4 y 0,9; radiales 0,46/0,42/0,16.
 - Archivos: `apple/Sources/SideB/Views/Home/HomeAmbientSurface.swift`.
-- Fixes relacionados: continúa FIX-108 (conserva paleta, base grafito y máscara); no cambia la extracción de color de FIX-098/100.
+- Fixes relacionados: continúa FIX-108 (conserva paleta, base grafito y máscara); no cambia la extracción de color de FIX-98/100.
 - Verificación: `swift build` y runner `node Scripts/build-version.mjs macos` completos (177 pruebas Swift Testing aprobadas); builds `builds/macos/build-0028` (primera versión) y `build-0029` (más movimiento y opacidad). Aprobación visual del usuario sobre el movimiento.
 - Límites: sin medición de CPU/GPU en Instruments; `blendMode(.screen)` sobre capas en movimiento puede forzar composición offscreen. Si el consumo sube, reducir a 20 fps o quitar el blend de las nubes.
 - Paridad: [PAR-003](PARIDAD.md) ampliada; **pendiente de portar a Windows**. Referencia de diseño: dos capas de la misma textura, ciclos lentos desfasados, 30 fps, pausa por inactividad y por reducir movimiento. En Windows equivale a animar con CSS (`transform`/`opacity` en capas con `will-change`) o canvas, respetando `prefers-reduced-motion`; sin cambios en core ni contratos.
@@ -4079,7 +4079,7 @@ Compilación posterior de FIX-114-2 solicitada por el usuario: `node Scripts/bui
 - Verificación automática: siete pruebas focales de paleta aprobadas. Dos regresiones nuevas comprueban conservar un acento azul pequeño ante tono tierra dominante y elegir una familia distinta pese a carátulas repetidas/azules semejantes. Runner `node Scripts/build-version.mjs macos`: 180 Rust aprobados (7 live ignorados), 47 XCTest y 177 Swift Testing/5 suites aprobados. Diff/whitespace y ausencia de cambios core/Windows/bindings revisados.
 - Verificación visual: renders nativos ImageRenderer de la superficie de producción con paletas cálida, contrastada y neutra; sin NSWindow ni abrir/controlar la app. Primer render con dos tonos cálidos seguía demasiado sepia, por lo que se integró la contraluz acotada. Tras aprobación del usuario, renders con humo cálido/contrastado/neutro revisados, usando la misma fábrica de máscara de producción; fuentes incluidas para repetir el diagnóstico. Comparación antes/después usa una misma muestra RGBA (900 píxeles tierra y 24 azules), con sampler/superficie anteriores y actuales; no es captura de un feed real. PNGs y fuentes del diagnóstico en `builds/macos/build-0027/previews/`. Apariencia con portadas/vidrio de la sesión real y rendimiento por Instruments pendientes; renders/pruebas no certifican FPS.
 - Build final: `builds/macos/build-0027/Side B.app`, BUILD.json/build.log; release arm64, SDK 27.0 / mínimo macOS 15, firma ad hoc verificada, compiled/sourceChangedDuringBuild false. Documentación finalizada después de compilar; build-0026 (paleta sin humo), build-0025 y anteriores conservadas. El runner final con humo volvió a aprobar 180 Rust/47 XCTest/177 Swift Testing. Sin commit/push/publicación.
-- Antecedentes / paridad: continúa FIX-098/100 (ambiente de portadas), conserva shell/fullscreen FIX-095 y centrado permanente FIX-107. PAR-003 amplía el criterio visual para Windows; implementación y verificación del destino pendientes, core/Windows sin modificar.
+- Antecedentes / paridad: continúa FIX-98/100 (ambiente de portadas), conserva shell/fullscreen FIX-95 y centrado permanente FIX-107. PAR-003 amplía el criterio visual para Windows; implementación y verificación del destino pendientes, core/Windows sin modificar.
 
 <a id="fix-107"></a>
 
@@ -4130,7 +4130,7 @@ Compilación posterior de FIX-114-2 solicitada por el usuario: `node Scripts/bui
 - Tarjetas y datos: geometría y paginado compartidos, cabecera/badge/acciones según tipo; portada/título abren detalle correcto y menú contextual de playlist existente. Metadata de playlists sólo obtiene primera página de tarjetas visibles (máximo seis en memoria / dos solicitudes simultáneas incluso entre páginas solapadas); cancelación, generaciones y sesión descartan resultados viejos. Usa creador enlazado real, cuenta/duración del proveedor o total de página completa; no presenta una primera página parcial como total ni un año como duración.
 - Reproducción: Reproducir/Aleatorio consulta PlaylistCatalog completo sólo al ejecutar la acción. Protecciones de petición, cuenta, cola y pista impiden reemplazos obsoletos; errores mantienen cola/audio anteriores. Álbumes conservan su camino y ambas clases comparten cancelación. Dependencia de catálogo inyectable conserva .shared en producción y aísla pruebas de cambio de cuenta. Shuffle restaura orden/ocurrencias canónicos.
 - Archivos: `apple/Sources/SideB/SideBApp.swift`, `UI/ShellLayout.swift`, `Views/Components/{HistoryToolbarView,WindowNavigationToolbarView}.swift`, `Views/Home/{HomeSettingsPanel,HomeView,HomeFeaturedView}.swift`, `Models/{HomeFeaturedCollectionKind,HomeFeaturedPresentation,HomeAlbumMetadata,HomePlaylistMetadata}.swift`, `ViewModels/{HomeViewModel,PlayerViewModel}.swift`, `Services/Player/PlaybackSpaceShortcut.swift`; regresiones en `apple/Tests/SideBTests`.
-- Antecedentes: preserva FIX-090/095 (toolbar/capas), FIX-097 (catálogo/shuffle), FIX-098/099/100 (destacados), FIX-102/103 (fluidez) y FIX-104 (Cargar más). No reintroduce el reciclaje descartado de FIX-101 ni modifica core/Windows.
+- Antecedentes: preserva FIX-90/95 (toolbar/capas), FIX-97 (catálogo/shuffle), FIX-98/99/100 (destacados), FIX-102/103 (fluidez) y FIX-104 (Cargar más). No reintroduce el reciclaje descartado de FIX-101 ni modifica core/Windows.
 - Verificación automática: runner `node Scripts/build-version.mjs macos` completado en build-0021: 180 Rust aprobados (7 live ignorados), 43 XCTest y 161 Swift Testing/5 suites sin fallos (live omitidas). Incluye persistencia/selección/cuentas, continuación/chips, metadata parcial/completa/creador/LRU/concurrencia entre páginas, reproducción/error/shuffle/obsolescencia, visibilidad/callbacks/geometría/hit testing y foco por ventana. Las pruebas nativas nuevas no crean NSWindow. Dos revisiones independientes con subagentes sobre selección, persistencia, navegación, metadata y reproducción. Diff/whitespace revisados.
 - Verificación manual: build-0020 abierta para aspecto del panel y detalle My Supermix (100 pistas mostradas) con engranaje oculto fuera de Inicio. Build-0021 abierta: preferencia Playlists restaurada al iniciar otra versión; selector alterna en vivo con Speed Dial conservado; Escape cierra desde Inicio, selector y después de scroll. Inicio sigue desplazándose con panel abierto; búsqueda y fullscreen cierran panel/ocultan engranaje, vuelven con panel cerrado; Biblioteca no muestra configuración y regreso a Inicio conserva tipo elegido. Overlay visible sobre tarjetas, sin reserva de ancho ni modificación del centrado del reproductor; sidebar independiente. La corrección de foco deja Espacio de reproducción cuando la tabla retiene el foco y lo cede a controles de configuración con foco real (política automática por ventana comprobada; no se afirma prueba de audio audible).
 - Build final: `builds/macos/build-0021/Side B.app`, BUILD.json y build.log en la misma carpeta; release arm64, SDK 27.0 / mínimo macOS 15, XCFramework/bindings regenerados sin cambios de fuentes core, firma ad hoc verificada, compiled/sourceChangedDuringBuild false. Documentos finalizados después de compilar; 0019/0020 y versiones anteriores conservadas.
@@ -4149,7 +4149,7 @@ Compilación posterior de FIX-114-2 solicitada por el usuario: `node Scripts/bui
 - Problema y evidencia: usuario confirma fluidez en build-0017 pero reporta que Cargar más no funciona. Reproducción en esa app: refrescar, bajar al pie y pulsar el botón; la acción llega y el botón desaparece sin nuevas categorías visibles. No se establece si la página real estaba vacía, completamente repetida o filtrada por Core; no se atribuye a los cambios de rendimiento. El camino Swift sólo consultaba una continuación, descartaba duplicados y ocultaba el pie cuando no había próximo token, sin explicar el resultado. Su catch ignoraba el error. El debounce histórico de dos segundos descartaba reintentos rápidos aun sin una petición pendiente; un retorno por cancelación podía dejar isLoadingMore activado.
 - Cambio y motivo: avanzar hasta tres páginas por clic cuando no llegan estantes nuevos; parar en contenido nuevo, fin o ciclo de tokens. Mantener el último token válido ante error y permitir reintento inmediato, con isLoadingMore como exclusión de concurrencia. Defer libera el estado al cancelar/descartar respuestas de la generación vigente. El preload sólo empieza si su token sigue vigente y no hay carga manual en curso. Un pie de 68 puntos muestra error, tanda sin novedades o «No hay más recomendaciones por ahora»; conserva el botón cuando todavía existe token. Páginas sin estantes nuevos no reconstruyen la presentación de las tarjetas ni incrementan contentRevision.
 - Archivos: `apple/Sources/SideB/ViewModels/HomeViewModel.swift`, `Views/Home/{HomeView,HomeFeedTableView}.swift`, `apple/Tests/SideBTests/{HomeViewModelTests,HomeFeedScrollTests}.swift`; plan/índice y paridad.
-- Antecedentes: conserva mejoras de FIX-102/103 y composición de FIX-098/099/100. FIX-029/030 son origen histórico del debounce y reemplazo del centinela por botón explícito; ya no existe un centinela que justifique el bloqueo temporal. No se cambia el parseo/transporte Rust ni se inventan categorías cuando el proveedor termina.
+- Antecedentes: conserva mejoras de FIX-102/103 y composición de FIX-98/99/100. FIX-29/30 son origen histórico del debounce y reemplazo del centinela por botón explícito; ya no existe un centinela que justifique el bloqueo temporal. No se cambia el parseo/transporte Rust ni se inventan categorías cuando el proveedor termina.
 - Verificación focal: 7 XCTest de feed y 7 Swift Testing de paginación aprobados. Ocho regresiones nuevas verifican botón/estado/fin, duplicados y clic simultáneo, error/reintento inmediato, límite de tres páginas y siguiente token, ciclo, página vacía terminal sin reconstruir tarjetas, cancelación y cambio de filtro. Primer ensayo nativo retenía un botón que AppKit había reemplazado durante layout; la prueba ahora inspecciona la fila vigente, sin cambiar comportamiento de la app para acomodar el test.
 - Verificación completa / build: `node Scripts/build-version.mjs macos` completado: 180 Rust aprobados (7 live ignorados), 40 XCTest y 135 Swift Testing/5 suites aprobados. XCFramework/bindings regenerados sin cambios en fuentes Core; release arm64/SDK 27.0/mínimo macOS 15 y firma verificada. BUILD.json compiled/sourceChangedDuringBuild false. Ruta `builds/macos/build-0018/Side B.app`, log/metadata en esa carpeta. Build-0017 conservada.
 - Revisión real: build-0018 abierta (PID 92039), cuenta/feed real y scroll hasta el pie; pulsar Cargar más cambia a «No hay más recomendaciones por ahora», sin añadir categorías en esa continuación. AX y captura muestran el mensaje legible encima de la barra flotante, sin spinner atascado ni ocultar el estado. Casos de error/reintento y avance por repetidos verificados con dobles de Core, no forzados en la cuenta real.
@@ -4167,7 +4167,7 @@ Compilación posterior de FIX-114-2 solicitada por el usuario: `node Scripts/bui
 - Problema y evidencia: usuario confirma mejora parcial en build-0016/FIX-102. Time Profiler de esa build, 20 s y 40 desplazamientos nativos en bloques de ocho con una sola lectura AX final: Inicio tiene 3448 muestras main sin AX/Accessibility, 681 en `_removeRowsBeingAnimatedOff`, 637 en `_setWindow:` y 586 en display_if_needed (inclusive). En la playlist Liked Music de 2003 canciones: 1070 main, 28/16/294 respectivamente. La región y duración activa difieren, por lo que no se deduce un porcentaje de mejora ni FPS de esta comparación; sí se localiza el costo de desmontar árboles de controles en Inicio. Las pilas de desmontaje pasan por actualización de contexto semántico/estilos de NSTextField y NSButton, incluso con metadata oculta. Cada tarjeta montaba todos los controles de ambos formatos y un botón transparente de título que sólo llamaba a la misma acción que el botón de la tarjeta completa.
 - Cambio y motivo: mantener las instancias de metadata, pero añadir al árbol sólo las utilizadas en el formato/contenido vigente (artista, etiqueta de artista grande, álbum compacto, tipo, detalle, separador y explícito). Restaurar los mismos controles al reciclar entre formatos, sin recrear sus acciones. La etiqueta de título deja pasar los clics al botón de tarjeta; se elimina su botón superpuesto redundante. El botón de tarjeta conserva título/metadata/acción accesibles. El slot de álbum compacto no se monta sobre una tarjeta grande tras reutilizarla.
 - Archivos: `apple/Sources/SideB/Views/Home/HomeFeedCollectionView.swift`, `apple/Tests/SideBTests/HomeItemHierarchyTests.swift`; plan, índice, paridad y registro.
-- Fixes relacionados: conserva FIX-102 y virtualización original; no reintroduce pools/rebind/scanner del ensayo rechazado FIX-101. Mantiene presentación, hitboxes, menús, portadas y reproducción de FIX-098/099/100.
+- Fixes relacionados: conserva FIX-102 y virtualización original; no reintroduce pools/rebind/scanner del ensayo rechazado FIX-101. Mantiene presentación, hitboxes, menús, portadas y reproducción de FIX-98/99/100.
 - Verificación focal: 2 XCTest y 4 Swift Testing aprobados. Reutilización compacto→grande→compacto verifica mismas instancias de artista/álbum/badge, callbacks nuevos, accesibilidad y orden de etiqueta bajo acción de artista. Compacto sin álbum monta 7 NSControl directos frente a los 14 del árbol anterior; clic de título alcanza cardButton. Metadata no usada sale del árbol y vuelve al cambiar formato. Pruebas existentes de hover, hitboxes, esquinas, dos líneas y ecualizador/play pasan. Primer fallo de prueba: fixture de canción incluía subtítulo de playlist, interpretado como álbum por el parser; fixture corregida para representar canción sin álbum, sin cambiar el parser.
 - Paridad: no aplica al cambio AppKit: Windows HomeCard.svelte ya monta metadata/explicit mediante bloques if y una acción principal compartida por portada/título. No usa NSControl/contexto semántico de ventana. PAR-004 mantiene pendiente la investigación general de virtualización Windows; no se cambia su estado como consecuencia de este ensayo.
 - Comparación posterior: Time Profiler 20 s, mismo Mac/ventana 1512×949 puntos/sidebar visible; ambas builds preparadas con 60 scrolls y luego 40 de 0.45 páginas en bloques de ocho, desde el fondo alternando arriba/abajo, una lectura AX final. Excluir AX/mshMIGPerform/Accessibility. Build-0016 repetición frente a build-0017: main 3135→3011 muestras; desmontaje de filas 561→465; `_setWindow:` 551→475; contexto semántico de controles 296→226; actualización de estilos 155→128; display_if_needed 499→499. Se conserva la mejora acotada de jerarquía, sin atribuir todo el lag a ella. Trazas `/tmp/sideb-home-build16-controls-repeat-oct3.trace` y `/tmp/sideb-home-build17-controls-oct3.trace`. Primera captura 0016 sin calentamiento idéntico: 3448/681 muestras main/desmontaje; no se usa para exagerar el porcentaje de mejora.
@@ -4186,7 +4186,7 @@ Compilación posterior de FIX-114-2 solicitada por el usuario: `node Scripts/bui
 - Diferencia comprobada con playlists: NativeTrackTableView implementa sizeThatFits y devuelve el tamaño propuesto por su contenedor. HomeFeedTableView no lo implementaba y usaba medición predeterminada del NSScrollView y su documento. [Contrato oficial de Apple](https://developer.apple.com/documentation/swiftui/nsviewrepresentable/sizethatfits%28_%3Ansview%3Acontext%3A%29): un tamaño explícito evita recurrir al algoritmo predeterminado. Se comprueba la hipótesis con captura posterior; la traza por sí sola no identifica cada instancia medida.
 - Solución y motivo: mismo contrato de tamaño que la playlist (viewport propuesto, fallback 800×600 para dimensiones no propuestas). El documento sigue siendo más alto y scrolleable; no se toca layout de destacados, shell, acciones ni apariencia. Se vuelve al reciclaje original de estantes/colecciones; sólo se conserva el clamp de offset horizontal detectado en FIX-101, cubierto por prueba funcional.
 - Archivos: `apple/Sources/SideB/Views/Home/HomeFeedTableView.swift`, prueba `HomeFeedReuseTests.swift`, fixture sintética conservada, plan/índice/registros. HomeFeedCollectionView/HomeFeedScrollTests vuelven al checkpoint 5cf08ef.
-- Fixes relacionados: sustituye el ensayo descartado FIX-101; usa NativeTrackTableView de FIX-017 como referencia de código actual, sin reutilizar las afirmaciones históricas de FPS. Preserva FIX-098/099/100.
+- Fixes relacionados: sustituye el ensayo descartado FIX-101; usa NativeTrackTableView de FIX-17 como referencia de código actual, sin reutilizar las afirmaciones históricas de FPS. Preserva FIX-98/99/100.
 - Verificación funcional: 9 XCTest focales aprobados, incluidos viewport SwiftUI a 1100×760, 700×480 y 900×640 antes/después de scroll, offsets y 5000 categorías. Runner completo: 180 pruebas Rust aprobadas (7 live ignoradas), 37 XCTest y 128 Swift Testing/5 suites aprobados. La prueba sintética mantiene máximo 3 estantes/26 tarjetas en árbol; verifica vistas acotadas, no fluidez.
 - Comparación real: Time Profiler 25 s en build-0016/PID 73642, `/tmp/sideb-home-real-build16.trace`, con Inicio de la cuenta y contenido cargado, misma ventana 1512×949 puntos y sidebar oculto. Excluyendo muestras AX/mshMIGPerform: medición measureMin/systemLayoutSizeFitting pasa de 1353/3855 a 1/3928 muestras main; enumeración de restricciones de 1230 a 0. Esto confirma que el contrato elimina esa cadena de trabajo. No se deduce un porcentaje de mejora global: recomendaciones cambiaron entre lanzamientos y la inercia/cantidad de eventos no fue idéntica; otras categorías inclusive se solapan.
 - Frames y límites: captura Animation Hitches de build-0016, `/tmp/sideb-home-frames-build16.trace`, pantalla integrada identificada como 120 Hz. La plantilla sigue marcando actualizaciones y render potencialmente costosos; etapa de render de 828 registros del proceso, mediana 14.51 ms/p95 16.77 ms, no equivale a intervalos de presentación ni FPS. Tablas de superficies presentadas exportadas vacías: no se certifican 120 FPS ni desaparición del lag. Captura instrumentada y scroll automatizado con lecturas AX; no comparación antes/después de FPS ni trackpad humano. Validación perceptual pendiente. Ver método y próximos límites en PLAN-005.
@@ -4205,7 +4205,7 @@ Compilación posterior de FIX-114-2 solicitada por el usuario: `node Scripts/bui
 - Problema y causa comprobada: el feed actual ya virtualiza ambos ejes, pero cada cambio de categoría en una fila reciclada ejecutaba NSCollectionView.reloadData, incluso con formato y cantidad idénticos. Un único pool mezclaba filas compactas con tarjetas grandes. El collection view también recorría sus descendientes buscando scroll views ortogonales del contenedor composicional anterior, aunque los estantes actuales usan flow layout y un scroll externo. No se cargan las canciones de cada playlist al dibujar sus tarjetas; tampoco se establece que estas recargas expliquen por sí solas todo el lag sostenido.
 - Solución y motivo: dos pools por formato visual (compactSong/largeCard), compartiendo tarjetas grandes entre álbumes, playlists, artistas y canciones. Si formato y cantidad coinciden, se conserva la colección y se reconfigura sólo el conjunto débil de celdas preparadas por AppKit; cambios estructurales mantienen reloadData. Se actualizan callbacks y contenido también en willDisplay para evitar datos/acciones viejos en tarjetas preparadas fuera de pantalla. Cambio de categoría limpia hover/selección; conserva el offset por identidad y lo limita al ancho real para categorías más cortas. El scanner de scrolls internos se restringe al layout composicional.
 - Archivos: `apple/Sources/SideB/Views/Home/{HomeFeedTableView,HomeFeedCollectionView,HomeBenchmarkFixture}.swift`, `apple/Tests/SideBTests/{HomeFeedReuseTests,HomeFeedScrollTests}.swift`, plan/índice/paridad. Fixture permite SIDEB_HOME_FIXTURE_CATEGORIES=5000 exclusivamente en modo HomeLab+fixture, con identidades de ocurrencia y sin ampliar descargas.
-- Fixes relacionados: preserva destacados/geometría/gestos de FIX-098/099/100 (checkpoint 5cf08ef). FIX-027/029/030 son antecedentes históricos contrastados; sus implementaciones SwiftUI y afirmaciones de 120 FPS no describen el código actual ni se reutilizan como evidencia nueva.
+- Fixes relacionados: preserva destacados/geometría/gestos de FIX-98/99/100 (checkpoint 5cf08ef). FIX-27/29/30 son antecedentes históricos contrastados; sus implementaciones SwiftUI y afirmaciones de 120 FPS no describen el código actual ni se reutilizan como evidencia nueva.
 - Verificación: focales 9 XCTest y 2 Swift Testing de hitboxes/play/ecualizador aprobados. `swift test --package-path apple` con pruebas live desactivadas y HomeLab: 37 XCTest y 128 Swift Testing/5 suites aprobados, incluyendo el test de montaje anterior sin excluirlo. Prueba nueva recorre 5000 categorías de 24 items (120000 registros) sin ventana/red: máximo 3 filas y 26 tarjetas en árbol, 4 instancias de fila retenidas para evitar subcontar direcciones de memoria reutilizadas. Comprueba conservación de celdas, nuevas acciones/etiquetas, preparación fuera de pantalla, selección, offsets y reducción a dos items. La primera ejecución detectó offset fuera de rango al acortar una categoría; corregido y repetición aprobada.
 - Experimentos descartados: ejecutable diagnóstico aislado del 02/10, en este Mac y con imágenes ya en RAM. Aplanar subviews y cambiar política de redraw de texto no mejoraron callback/tracking; no integrados. Rebind parcial redujo 16 recargas a 4, pero su p99 seguía alrededor de 8.7 ms y no representa FPS. Ese ejecutable carece de destacados/fondo actuales; no es medición de esta build.
 - Límites: pruebas sin ventana verifican virtualización y contratos, no composición gráfica ni 120 Hz. Falta comparar en la app completa, con imágenes cargadas, trackpad y pantalla ProMotion. La traza histórica señaló redibujado de backing stores/texto y tracking además del reciclaje; no se da el lag sostenido por resuelto. No se modificaron core, UI visual, shell ni Windows.
@@ -4220,7 +4220,7 @@ Compilación posterior de FIX-114-2 solicitada por el usuario: `node Scripts/bui
 
 - Fecha: 2026-10-03 (America/Montevideo).
 - Componente: Inicio / medidas AppKit / gestos de navegación / ambiente de portadas.
-- Tipo / estado: corrección de FIX-098/099 tras feedback visual negativo; compilada en build-0014, revisión manual pendiente.
+- Tipo / estado: corrección de FIX-98/99 tras feedback visual negativo; compilada en build-0014, revisión manual pendiente.
 - Problema y causas verificadas: grilla centrada en columna 40% que continuaba creciendo aunque las tiles estaban acotadas; etiqueta de álbum con offset negativo salía por arriba de la portada; transición lateral de álbumes sin clipping pasaba detrás del Speed Dial. El monitor global de historial sólo detectaba NSScrollView y consumía antes los eventos del paginador propio. El delegate de la tabla marcaba altura nueva como medida al construir el hosting, antes de que AppKit invalidara la altura anterior almacenada; al volver a Inicio podía quedar un row alto y contenido centrado con hueco arriba. El sampler promediaba RGB global incluyendo gris, además de elegir sólo dos primeros álbumes: portadas casi neutras daban luz casi gris.
 - Solución y motivo: intro/chips/destacados comparten un único NSHostingView de fila real con ancho/altura nativos y actualizaciones sin animación implícita por componente; no se vuelve a un GeometryReader de ancho propuesto. Se contrasta altura medida con rect(ofRow:) y se reconcilia al cambiar viewport/layout, preservando instancia y páginas. Speed Dial tiene exactamente el ancho de sus tres columnas, alineado a la izquierda con la cabecera. Se conserva el scroll completo y reciclaje de estantes, sin añadir barras horizontales ni cambiar shell/fullscreen.
 - Álbumes: una a tres columnas según ancho disponible, dos álbumes por columna (2/4/6 visibles), hasta seis recomendaciones reales. El índice ancla conserva la selección al reducir/ampliar columnas. Etiqueta, título, artista, resumen y cápsulas quedan dentro de la misma altura de carátula, sin offsets exteriores. Paginado de ambos paneles mediante fundido de 140 ms dentro de su viewport con clipping; Reduce Motion cambia página sin desplazamiento.
@@ -4229,30 +4229,30 @@ Compilación posterior de FIX-114-2 solicitada por el usuario: `node Scripts/bui
 - Archivos: `Views/Home/{HomeView,HomeFeaturedView,HomeFeedTableView,HomeFeedScrollView,HomeAmbientBackground}.swift`, `Models/{HomeAlbumMetadata,HomeFeaturedPresentation}.swift`, `Services/Navigation/NavigationInputCoordinator.swift`; pruebas de medidas, gestos, geometría, metadata y paleta. Dos encargos Luna acotados para sampler/datos; integrador resuelve UI, navegación, medidas y revisión.
 - Verificación focal: 7 XCTest de feed/gestos y 19 Swift Testing aprobados, más 5 XCTest de paleta; incluye recrear tabla tres veces tras construir hosting a otro ancho, alturas reales contiguas, columnas 1/2/3 en 1100/1512/1920 puntos, captura local de gesto sin NSWindow, seis metadata con límite de concurrencia y LRU, respuesta de sesión vieja, gris dominante con pequeña región de color y fallback. Build-0014 completada mediante runner numerado: 180 pruebas Rust aprobadas (7 live ignoradas), 34 XCTest y suite Swift Testing de 127 casos/5 suites aprobadas (7 live omitidos). XCFramework/bindings regenerados; release arm64/SDK 27.0/mínimo macOS 15.0 y firma ad hoc verificada, BUILD.json compiled/sourceChangedDuringBuild false. Se mantiene exclusión de testHomeFeedCollectionViewMountAndLayout que crea NSWindow. Diff/whitespace revisados; las fuentes no cambiaron durante build.
 - Límites: composición/movimiento real en la ventana y audio se validan por el usuario. No se abre/controla app ni se crean ventanas de prueba; pruebas/build no certifican FPS. Si hay menos álbumes o no hay metadatos/color, se usa lo disponible sin inventar recomendaciones.
-- Antecedentes / paridad: FIX-098/099 no se consideran validados visualmente; este fix sustituye el header separado de FIX-099 y su etiqueta con offset. Preserva FIX-095/096/097. [PAR-003](PARIDAD.md); Windows pendiente de trasladar presentación/paginación con sus controles existentes, sin cambios core/Windows.
+- Antecedentes / paridad: FIX-98/99 no se consideran validados visualmente; este fix sustituye el header separado de FIX-99 y su etiqueta con offset. Preserva FIX-95/96/97. [PAR-003](PARIDAD.md); Windows pendiente de trasladar presentación/paginación con sus controles existentes, sin cambios core/Windows.
 - Plan / build: [PLAN-004](apple/plans/PLAN-004-personalized-home.md); `builds/macos/build-0014/Side B.app`, BUILD.json y build.log. Sin commit/push.
 
-<a id="fix-099"></a>
+<a id="fix-99"></a>
 
-### [FIX-099] [Apple] - Inicio estable al cambiar sidebar y álbumes sin fondo de tarjeta
+### [FIX-99] [Apple] - Inicio estable al cambiar sidebar y álbumes sin fondo de tarjeta
 
 - Fecha: 2026-10-03 (America/Montevideo).
 - Componente: Inicio / geometría nativa del feed / álbumes destacados.
-- Tipo / estado: corrección de FIX-098 tras feedback visual del usuario; build-0013 compilada, validación manual pendiente.
+- Tipo / estado: corrección de FIX-98 tras feedback visual del usuario; build-0013 compilada, validación manual pendiente.
 - Problema y evidencia: usuario reporta recortes/desorden desde el saludo hasta Speed Dial al alternar sidebar, destacados pegados a chips y demasiado hueco debajo. Capturas muestran fondo rectangular innecesario, carátula más corta que la fila, artista mezclado con tipo y acciones planas; faltan año/cantidad/duración.
 - Causa en código: un encabezado de altura fija contenía toda la nueva UI y recibía ancho propuesto de GeometryReader/SwiftUI mientras la tabla AppKit cambiaba su viewport. La actualización nativa de alturas sólo atendía el umbral de 760 puntos de los estantes, aunque destacados tenían otro umbral de 900 y alturas variables. No había un cálculo desde el viewport nativo para cada ancho intermedio. Esto permite medidas divergentes durante sidebar; sin trazas de la ventana no se afirma que explique cada frame observado.
 - Solución: cabecera pequeña con saludo/chips y fila nativa separada de destacados. NSTableView aporta el ancho real del clip view a presentación y cálculo de altura, actualizados en cada cambio de ancho sin una segunda animación SwiftUI. Conserva NSHostingView, estado de páginas, mapeo de estantes/paginación y el scroll vertical común. Espacio bajo chips 24 puntos; destacados usan header de categoría de 38 y separación inferior de 16, con filas según elementos disponibles.
 - Álbumes: fondo y padding de tarjeta retirados; fila exactamente de altura de portada, portada y nombre alineados arriba, etiqueta ÁLBUM encima del nombre, artista y resumen en orden Álbum/año/canciones/duración. Dos álbumes comparten altura de contenido con una grilla completa en formato ancho; portada acotada a 240 puntos. Acciones de 36 puntos en cápsulas con compatGlass, glassEffect nativo interactivo en macOS 26+, material compatible en macOS 15 y preferencias de transparencia conservadas.
-- Datos: carga de detalles mediante getAlbum existente, sólo dos álbumes de la página visible, caché LRU de seis y respuestas protegidas por sesión/generación/cancelación. Tarjetas de álbum usan su id de browse, no albumId de pistas. Metadatos reales del catálogo/proveedor, fallback a Home si falla o falta algún campo; no inventar cantidad/año/duración. Duración suma pistas completas válidas o usa resumen del proveedor. Conserva radio y reproducción/shuffle canónico de FIX-097/098; sin cambios Rust/Windows/shell/fullscreen.
+- Datos: carga de detalles mediante getAlbum existente, sólo dos álbumes de la página visible, caché LRU de seis y respuestas protegidas por sesión/generación/cancelación. Tarjetas de álbum usan su id de browse, no albumId de pistas. Metadatos reales del catálogo/proveedor, fallback a Home si falla o falta algún campo; no inventar cantidad/año/duración. Duración suma pistas completas válidas o usa resumen del proveedor. Conserva radio y reproducción/shuffle canónico de FIX-97/98; sin cambios Rust/Windows/shell/fullscreen.
 - Archivos: `Views/Home/{HomeView,HomeFeaturedView,HomeFeedTableView}.swift`, nuevo `Models/HomeAlbumMetadata.swift`; `HomeFeedScrollTests`, `HomeFeaturedPresentationTests`, nuevo `HomeAlbumMetadataTests`; plan, índice y paridad.
 - Verificación: cinco XCTest de feed aprobados, incluyendo varios anchos 1100→640→1100, cruce de 900/760, continuidad de filas, identidad del hosting y ausencia de ventana/scrollbar horizontal; 15 pruebas Swift Testing focales aprobadas de selección/geometría/metadata, aislación de sesión y rechazo de duraciones inválidas. Una primera ejecución detectó espacios duplicados en créditos de artistas; se corrigió y pasó al repetir. Se añadió después fallback del resumen del proveedor sin pistas, aprobado en el runner completo. Build-0013: 180 pruebas Rust aprobadas (7 live ignoradas), 30 XCTest sin fallos y suite Swift Testing de 124 casos/5 suites aprobada (7 live omitidos). XCFramework/bindings regenerados, fuentes estables durante build, BUILD.json compiled, release arm64/SDK 27.0/mínimo macOS 15.0 y firma ad hoc verificada. Se excluyó testHomeFeedCollectionViewMountAndLayout que crea NSWindow. Luna escribió el modelo/pruebas de metadata; integrador revisó/corrigió/integró datos, vistas y geometría.
 - Límites: apariencia, movimiento real y audio requieren revisión del usuario. No se abre/controla la app ni se crean ventanas de prueba. Las comprobaciones automáticas no certifican FPS. Ante metadatos ausentes o fallo de red se conserva información disponible.
-- Feedback posterior: usuario confirmó problemas de animación/espacios, gesto interceptado, texto fuera de portada y ambiente gris en build-0013. [FIX-100](#fix-100) continúa y corrige las causas; FIX-099 no queda validado visualmente.
-- Antecedentes / paridad: [FIX-098](#fix-098), [PAR-003](PARIDAD.md), [PLAN-004](apple/plans/PLAN-004-personalized-home.md). Windows pendiente de adaptar esta presentación con contratos existentes. Build `builds/macos/build-0013/Side B.app`, BUILD.json y build.log. Sin commit/push.
+- Feedback posterior: usuario confirmó problemas de animación/espacios, gesto interceptado, texto fuera de portada y ambiente gris en build-0013. [FIX-100](#fix-100) continúa y corrige las causas; FIX-99 no queda validado visualmente.
+- Antecedentes / paridad: [FIX-98](#fix-98), [PAR-003](PARIDAD.md), [PLAN-004](apple/plans/PLAN-004-personalized-home.md). Windows pendiente de adaptar esta presentación con contratos existentes. Build `builds/macos/build-0013/Side B.app`, BUILD.json y build.log. Sin commit/push.
 
-<a id="fix-098"></a>
+<a id="fix-98"></a>
 
-### [FIX-098] [Apple] - Inicio personalizado con Speed Dial, álbumes destacados y luz de carátulas
+### [FIX-98] [Apple] - Inicio personalizado con Speed Dial, álbumes destacados y luz de carátulas
 
 - Fecha: 2026-10-03 (America/Montevideo).
 - Componente: Inicio / presentación del feed / reproducción de álbumes recomendados.
@@ -4260,19 +4260,19 @@ Compilación posterior de FIX-114-2 solicitada por el usuario: `node Scripts/bui
 - Necesidad y diseño: usuario aprobó un fondo difuminado, saludo personal y recomendaciones primero; mockup con Speed Dial 3×3 a la izquierda y dos tarjetas grandes de álbum a la derecha, cada colección con hasta tres páginas independientes. Inicio anterior mostraba cabecera genérica sobre color plano y todos los resultados como estantes.
 - Solución y motivo: proyección acotada del feed existente, calculada al cambiar datos (hasta 27 canciones y 6 álbumes únicos). Prioriza Speed Dial/selecciones rápidas y álbumes personalizados, conserva orden del proveedor dentro de cada grupo y usa el resto del feed cuando faltan recomendaciones específicas. Retira las repeticiones destacadas de los estantes restantes conservando sus identidades/destinos; no inventa elementos para completar páginas. Canciones inician radio; carátula/título de álbum abren detalle y artista navega cuando hay destino. Menús nativos conservados mediante factory existente.
 - UI: saludo/perfil de la cuenta, paneles 40/60 desde 900 puntos de contenido y apilados debajo; geometría compartida entre la vista y la altura de fila del header. Speed Dial con carátulas y gradiente de texto; álbumes con portada grande, título/artista y acciones de 34 puntos. Paginación independiente con botones/puntos, desplazamiento horizontal de página y responder AppKit de rueda horizontal que deja pasar el scroll vertical; Reduce Motion evita desplazamiento. Cabecera/chips/destacados permanecen en la fila de scroll real, sin reemplazar el reciclaje AppKit ni añadir indicadores horizontales.
-- Fondo: un único plano de ventana detrás de Inicio y sidebar, base #171717 y dos gradientes amplios derivados de hasta dos carátulas. Caché LRU de hasta 64 paletas en memoria, muestreo de 32×32 píxeles fuera del main actor, transición de un segundo y fallback neutro. Cuenta/revisión/request/cancelación protegen resultados; una revisión distinta muestra neutro desde el cálculo de body. Se retira el fondo opaco de HomeView, preservando el orden de capas fullscreen de FIX-095.
-- Reproducción: playRecommendedAlbum carga el catálogo de álbum y sólo publica si siguen vigentes request, cuenta, cola y token de reproducción. Una carga fallida conserva audio/cola anteriores y expone el error; una carga obsoleta no reemplaza la elección posterior. Reproducir/Aleatorio usan playAlbum y la fuente canónica de FIX-097, sin mezclar arrays en UI.
+- Fondo: un único plano de ventana detrás de Inicio y sidebar, base #171717 y dos gradientes amplios derivados de hasta dos carátulas. Caché LRU de hasta 64 paletas en memoria, muestreo de 32×32 píxeles fuera del main actor, transición de un segundo y fallback neutro. Cuenta/revisión/request/cancelación protegen resultados; una revisión distinta muestra neutro desde el cálculo de body. Se retira el fondo opaco de HomeView, preservando el orden de capas fullscreen de FIX-95.
+- Reproducción: playRecommendedAlbum carga el catálogo de álbum y sólo publica si siguen vigentes request, cuenta, cola y token de reproducción. Una carga fallida conserva audio/cola anteriores y expone el error; una carga obsoleta no reemplaza la elección posterior. Reproducir/Aleatorio usan playAlbum y la fuente canónica de FIX-97, sin mezclar arrays en UI.
 - Archivos: nuevos `apple/Sources/SideB/Models/HomeFeaturedPresentation.swift`, `Views/Home/{HomeFeaturedView,HomeAmbientBackground}.swift`; `ViewModels/{HomeViewModel,PlayerViewModel}.swift`, `Views/Home/HomeView.swift`, `SideBApp.swift`; nuevas pruebas `HomeFeaturedPresentationTests.swift`, `HomeAlbumPlaybackTests.swift`, `HomeAmbientPaletteTests.swift`, extensión de `HomeViewModelTests.swift`; plan/índice y paridad. Core/Windows sin cambios.
-- Fixes relacionados: preserva FIX-095 (capas fullscreen/sidebar), FIX-096 (flechas de los estantes) y FIX-097 (shuffle reversible). FIX-027/029/030 son antecedentes históricos consultados de rendimiento/menús, sin atribuirles una regresión nueva ni afirmar sus mediciones actuales.
+- Fixes relacionados: preserva FIX-95 (capas fullscreen/sidebar), FIX-96 (flechas de los estantes) y FIX-97 (shuffle reversible). FIX-27/29/30 son antecedentes históricos consultados de rendimiento/menús, sin atribuirles una regresión nueva ni afirmar sus mediciones actuales.
 - Verificación: 14 comprobaciones focales aprobadas (13 nuevas y una existente ampliada): prioridades/deduplicación, feed parcial, dimensiones 640/899/900/1100/1600/2500, rueda horizontal/vertical, muestreo RGB, latest-request, error sin detener audio, reemplazo de cola y cuenta. Primera ejecución focal falló por un doble UniFFI incompleto para getLyrics; se agregó el override del mock y la repetición aprobó. Build-0012 mediante runner numerado: 180 pruebas Rust aprobadas (7 live ignoradas), 29 XCTest sin fallos y suite Swift Testing de 114 casos/5 suites aprobada (7 live omitidos). Excluido testHomeFeedCollectionViewMountAndLayout que crea NSWindow. XCFramework/bindings regenerados; release arm64, SDK 27.0/mínimo macOS 15.0, firma ad hoc verificada, BUILD.json compiled y sourceChangedDuringBuild false. Diff/whitespace revisados. Dos encargos Luna en archivos independientes y revisión final del integrador.
 - Límites: usuario valida apariencia, fluidez, gestures reales de trackpad, audio/radio/shuffle con cuenta y sidebar/fullscreen. No se abrió la app ni se crearon ventanas de prueba. Las pruebas/build no certifican FPS ni cantidad de recomendaciones que el proveedor devuelva; puede haber menos de tres páginas. Las tarjetas muestran metadatos presentes en Home, sin precargar seis catálogos sólo para decorar el feed.
-- Feedback posterior: usuario reportó desorden al alternar sidebar y rechazó el fondo/altura de tarjetas y datos incompletos. [FIX-099](#fix-099) corrige esos puntos; FIX-098 no se considera validado visualmente.
+- Feedback posterior: usuario reportó desorden al alternar sidebar y rechazó el fondo/altura de tarjetas y datos incompletos. [FIX-99](#fix-99) corrige esos puntos; FIX-98 no se considera validado visualmente.
 - Paridad: [PAR-003](PARIDAD.md); Windows conserva HomeView.svelte con cabecera/estantes y necesita adaptación equivalente. No se modificó ni compiló Windows.
 - Plan / build: [PLAN-004](apple/plans/PLAN-004-personalized-home.md); `builds/macos/build-0012/Side B.app`, BUILD.json y build.log. Sin commit/push.
 
-<a id="fix-097"></a>
+<a id="fix-97"></a>
 
-### [FIX-097] [Apple] - Shuffle reversible por ocurrencia y playlists completas por tandas
+### [FIX-97] [Apple] - Shuffle reversible por ocurrencia y playlists completas por tandas
 
 - Fecha: 2026-10-03 (America/Montevideo).
 - Componente: cola / reproducción de colecciones / catálogo de playlists / persistencia por cuenta.
@@ -4282,16 +4282,16 @@ Compilación posterior de FIX-114-2 solicitada por el usuario: `node Scripts/bui
 - Integración: consumidores pasan arrays canónicos y `shuffle: true` en la creación de cola. `PlaylistCatalog` comparte carga completa/caché en memoria entre reproducción, menús y hidratación de LM; preserva duplicados, rechaza errores/ciclos de continuaciones y resultados obsoletos, y verifica el prefijo recibido frente a la caché. Refrescos, mutaciones y cambio de cuenta invalidan el catálogo. Tokens de cola/reproducción/cuenta protegen las respuestas pendientes. Cambiar shuffle sólo guarda estado: no vuelve a resolver, detener, cargar ni buscar audio.
 - Persistencia: v2 guarda catálogo completo, IDs, rangos, anclas, índice/ocurrencia actual y modos por cuenta. Lee v1 sin inventar un orden original cuando sólo quedó un array mezclado; en ese caso conserva el orden legado y se debe iniciar una colección nueva para probar restauración canónica. No se incorporan URLs de streams ni cookies a la persistencia. Fuentes Rust/Windows no editadas por este port; XCFramework/bindings regenerados por el runner habitual.
 - Archivos: `apple/Sources/SideB/Services/Player/{QueueManager,PlaylistCatalog,PlaybackStateStore}.swift`; `ViewModels/{Player,PlaylistDetail,AlbumDetail,ArtistDetail}ViewModel.swift`; `UI/ContextMenu/MenuActionExecutor.swift`; `Views/Fullscreen/FullscreenNowPlayingView.swift`; `Views/Detail/PlaylistDetailView.swift`; `SideBApp.swift` (invalidación al refrescar Biblioteca); nuevas pruebas `QueueShuffleTests.swift`, `PlaylistCatalogTests.swift`, `PlayerShuffleIntegrationTests.swift`.
-- Fixes relacionados: traslada [FIX-087](#fix-087) y completa [PLAN-001](apple/plans/PLAN-001-playlists-shuffle.md). La nueva build también incluye la retirada de flechas de Inicio de [FIX-096](#fix-096), que había quedado sin compilar por pedido específico del usuario.
+- Fixes relacionados: traslada [FIX-87](#fix-87) y completa [PLAN-001](apple/plans/PLAN-001-playlists-shuffle.md). La nueva build también incluye la retirada de flechas de Inicio de [FIX-96](#fix-96), que había quedado sin compilar por pedido específico del usuario.
 - Verificación: 22 casos nuevos focales aprobados; duplicados, playlist de 2000 entradas con primera aleatoria en posición original 1616, catálogo de 3005 entradas, cadenas de 2000 manuales, ON/OFF/ON, transporte/repeat, arrastre/eliminación, cargas compartidas/canceladas/invalidadas, errores/paginación, v1/v2 y aislamiento de cuentas. La integración verifica el mismo AVPlayerItem y tiempo 38.5 al alternar shuffle sin iniciar audio ni red. Build-0011 completada mediante `Scripts/build-version.mjs`: 180 pruebas Rust aprobadas (7 live ignoradas); 26 XCTest y suite Swift Testing de 104 casos, con 7 live omitidos, sin fallos. Se excluyó `testHomeFeedCollectionViewMountAndLayout`, que crea NSWindow, para respetar el pedido de no controlar la laptop. Release arm64/SDK 27.0; firma ad hoc verificada; `BUILD.json` indica `compiled` y fuentes sin cambios durante build. Diff de archivos propios sin errores de whitespace. No se abrió la app ni se hizo prueba manual.
 - Intentos conservados: build-0009 falló por una expectativa de fila numérica fija en la prueba de arrastre, contraria al contrato de anclas; build-0010 por una expectativa de recibir siempre una carga antigua aunque un prefijo nuevo la invalidara antes de reanudar el waiter. Se corrigieron esas comprobaciones, se verificaron los 22 casos focales y se repitió el runner completo en build-0011. Logs/metadata fallidos conservados.
 - Límites: audio audible, interacción real con cuenta, latencia de catálogo completo y apariencia quedan para el usuario. Las pruebas no certifican FPS ni comportamiento del proveedor con una cuenta real. El orden original de colas v1 mezcladas ya guardadas no se puede recuperar de ese archivo.
 - Paridad: [PAR-001](PARIDAD.md), implementado en Mac con validación manual pendiente; Windows mantiene su estado histórico, sin nueva build Windows en este pedido.
 - Plan / build: [PLAN-001](apple/plans/PLAN-001-playlists-shuffle.md); `builds/macos/build-0011/Side B.app`, `BUILD.json` y `build.log` en la misma carpeta. Sin commit/push.
 
-<a id="fix-096"></a>
+<a id="fix-96"></a>
 
-### [FIX-096] [Apple] - Ocultar flechas de desplazamiento en todas las categorías de Inicio
+### [FIX-96] [Apple] - Ocultar flechas de desplazamiento en todas las categorías de Inicio
 
 - Fecha: 2026-10-03 (America/Montevideo).
 - Componente: Inicio / cabeceras de estantes.
@@ -4299,14 +4299,14 @@ Compilación posterior de FIX-114-2 solicitada por el usuario: `node Scripts/bui
 - Problema y causa: las cabeceras activaban previous/next cuando el estante tenía más de cuatro ítems; usuario pidió quitar ambas flechas señaladas en la captura.
 - Solución y motivo: `showsArrows: false` en los dos feeds Apple (tabla vigente y colección alternativa). El header ya oculta ambos NSButton y elimina su reserva de ancho cuando no se muestran. Scroll horizontal por gesto y acción Ver todo conservados.
 - Archivos: `apple/Sources/SideB/Views/Home/HomeFeedTableView.swift`, `apple/Sources/SideB/Views/Home/HomeFeedCollectionView.swift`.
-- Fixes relacionados: ajuste independiente de FIX-095 (fullscreen/sidebar); no se atribuye a una regresión anterior.
+- Fixes relacionados: ajuste independiente de FIX-95 (fullscreen/sidebar); no se atribuye a una regresión anterior.
 - Verificación: revisión de ambos consumidores de HomeSectionHeaderView y su layout/isHidden, búsqueda de referencias y diff del cambio; whitespace de archivos propios comprobado. No se ejecutaron pruebas ni compilación: usuario pidió explícitamente omitir esta build.
 - Límites: apariencia se comprobará en la próxima compilación; build-0008 no contiene este cambio.
 - Paridad: [PAR-002](PARIDAD.md), por verificar; Windows tiene flechas equivalentes en HomeShelf.svelte y no se modificó en este pedido Mac.
 
-<a id="fix-095"></a>
+<a id="fix-95"></a>
 
-### [FIX-095] [Apple] - Mismo plano de fondo para sidebar y contenido durante el fade de fullscreen
+### [FIX-95] [Apple] - Mismo plano de fondo para sidebar y contenido durante el fade de fullscreen
 
 - Fecha: 2026-10-03 (America/Montevideo).
 - Componente: shell / composición de fullscreen / sidebar.
@@ -4314,63 +4314,63 @@ Compilación posterior de FIX-114-2 solicitada por el usuario: `node Scripts/bui
 - Problema y causa verificada en código: nueva captura del primer frame y recorte posterior señalan tres zonas: vidrio de sidebar, margen exterior cálido y fondo de Inicio más oscuro que luego se iguala. La página de Inicio incluye un background opaco y pertenece al HStack de zIndex 2, por encima del backdrop (zIndex 0) y del foreground (zIndex 1). Al presentar fullscreen, ese navegador sigue encima mientras su opacidad baja; bajo sidebar no hay navegador. Así el backdrop recibe una atenuación adicional sólo en la zona de contenido. En el caso de fondos base iguales y fade de progreso p, su contribución era p bajo sidebar y p² bajo la página. Se comprobó esta asimetría de composición, sin atribuirla a latencia de caché/red o al vidrio nativo.
 - Solución y motivo: separar páginas, backdrop, foreground, sidebar, player y Spotlight en capas hermanas del root. Orden explícito: páginas (0), backdrop a tamaño ventana (1), fullscreen (2), sidebar flotante (3), player (4), Spotlight (5). El fondo fullscreen ahora pasa por encima del navegador mientras éste se desvanece, y por debajo de sidebar/player, con el mismo fade en todo el ancho. Las páginas mantienen reserva transparente del ancho de sidebar, identidad, tareas y estado. Player/Spotlight mantienen ancho y centrado sobre el área de contenido mediante la misma reserva animada de sidebar; acciones originales, glas nativo, titlebar y duraciones conservados.
 - Archivos: `apple/Sources/SideB/SideBApp.swift`; plan e índice Apple.
-- Fixes relacionados: completa la capa persistente de FIX-094 corrigiendo el orden respecto del navegador, que los intentos FIX-091/092/093/094 no corrigieron. Esos intentos y su feedback negativo se conservan.
+- Fixes relacionados: completa la capa persistente de FIX-94 corrigiendo el orden respecto del navegador, que los intentos FIX-91/92/93/94 no corrigieron. Esos intentos y su feedback negativo se conservan.
 - Verificación: build-0008 completada con runner numerado Mac: 180 pruebas Rust aprobadas (7 live ignoradas); 26 XCTest y suite Swift Testing de 82 casos (7 live omitidos) sin fallos. Excluido HomeFeedCollectionViewMountAndLayout, que crea NSWindow. Revisión del diff respecto de copia anterior de SideBApp: callbacks/identidades conservados, orden de capas explícito y archivos propios sin whitespace sobrante. Release arm64, SDK 27.0/mínimo macOS 15, firma ad hoc verificada; `BUILD.json: compiled`, fuentes sin cambios durante compilación. Lectura de procesos confirmó build-0007 abierta durante investigación, sin manipularla. No se abrió app ni se crearon NSWindow de prueba.
 - Límites: la causa de la atenuación desigual está en código; ausencia del retraso perceptible y composición real del vidrio quedan para revisión del usuario. Las pruebas de geometría/build no certifican apariencia o FPS.
 - Paridad: no aplica: orden de overlays SwiftUI y mezcla de páginas AppKit específicos de Apple; Windows/core/contratos sin cambios.
 - Plan / build: [PLAN-003](apple/plans/PLAN-003-fullscreen-sidebar.md); `builds/macos/build-0008/Side B.app`, log y metadata en la misma carpeta.
 
-<a id="fix-094"></a>
+<a id="fix-94"></a>
 
-### [FIX-094] [Apple] - Backdrop persistente fuera de la presentación condicional de fullscreen
+### [FIX-94] [Apple] - Backdrop persistente fuera de la presentación condicional de fullscreen
 
 - Fecha: 2026-10-02 (America/Montevideo).
 - Componente: shell / fullscreen / fondo detrás de sidebar.
-- Tipo / estado: revisión de FIX-093 tras resultado visual sin mejora; implementada y comprobada automáticamente, validación visual pendiente.
-- Problema y evidencia: tras entrega de build-0006, usuario reporta que sigue igual y confirma que espera fullscreen directamente detrás de sidebar sin rectángulo intermedio. La revisión encuentra que FIX-093 aún monta/desmonta fondo y foreground en una misma rama condicional. No hay trazas de composición que permitan afirmar qué transición aplica el compositor a ese grupo en la ventana real; las comprobaciones automáticas anteriores no reprodujeron este síntoma.
+- Tipo / estado: revisión de FIX-93 tras resultado visual sin mejora; implementada y comprobada automáticamente, validación visual pendiente.
+- Problema y evidencia: tras entrega de build-0006, usuario reporta que sigue igual y confirma que espera fullscreen directamente detrás de sidebar sin rectángulo intermedio. La revisión encuentra que FIX-93 aún monta/desmonta fondo y foreground en una misma rama condicional. No hay trazas de composición que permitan afirmar qué transición aplica el compositor a ese grupo en la ventana real; las comprobaciones automáticas anteriores no reprodujeron este síntoma.
 - Solución y motivo: sacar FullscreenBackdrop de FullscreenCanvas y montarlo siempre como capa raíz de ventana, independiente de la rama que presenta el foreground. Visibilidad mediante `.opacity` del estado de fullscreen, sin `.transition` y sin ancestro desplazado. Geometría y carga/identidad del thumbnail de 300 px permanecen estables al presentar fullscreen/alternar sidebar; el thumbnail se prepara cuando cambia la pista. FullscreenCanvas contiene únicamente foreground condicional con su movimiento existente. Sidebar/player/Spotlight siguen por encima; fondo no interactivo ni accesible, color base del shell conservado. No mantener paneles/letras/recomendaciones montados al estar cerrado fullscreen.
 - Archivos: `apple/Sources/SideB/SideBApp.swift`, `apple/Sources/SideB/Views/Fullscreen/FullscreenBackdrop.swift`; plan e índice Apple.
-- Fixes relacionados: sustituye el montaje condicional del fondo de FIX-093, cuyo resultado visual reportado fue negativo. Mantiene la reserva de sidebar de FIX-092. Intentos FIX-091/092/093 conservados con sus límites.
+- Fixes relacionados: sustituye el montaje condicional del fondo de FIX-93, cuyo resultado visual reportado fue negativo. Mantiene la reserva de sidebar de FIX-92. Intentos FIX-91/92/93 conservados con sus límites.
 - Verificación: build-0007 del runner numerado Mac completada: 180 pruebas Rust aprobadas (7 live ignoradas), 26 XCTest y suite Swift Testing de 82 casos (7 live omitidos) sin fallos. Excluido el test HomeFeedCollectionViewMountAndLayout que crea NSWindow. Revisión de la única instancia del backdrop, capas y diff sin whitespace sobrante en archivos propios. Release arm64, SDK 27.0/mínimo macOS 15, firma ad hoc verificada; `BUILD.json: compiled`, fuentes estables durante build. Lectura de procesos encontró dos bundles en ejecución (apple/.build/app y build-0006), sin manipularlos. No se abrió/controló la app ni se crearon ventanas.
-- Límites: usuario reportó persistencia del defecto y aportó un primer frame tras entrega de build-0007. FIX-095 encuentra/corrige la página opaca sobre el backdrop sólo en la zona de contenido. Durante FIX-094 había dos bundles abiertos; durante FIX-095 la lectura de procesos confirma sólo build-0007. Build/pruebas de geometría no prueban ausencia del rectángulo. El fondo persistente carga una imagen pequeña por pista, reutilizando ImageCache; no se midió rendimiento.
+- Límites: usuario reportó persistencia del defecto y aportó un primer frame tras entrega de build-0007. FIX-95 encuentra/corrige la página opaca sobre el backdrop sólo en la zona de contenido. Durante FIX-94 había dos bundles abiertos; durante FIX-95 la lectura de procesos confirma sólo build-0007. Build/pruebas de geometría no prueban ausencia del rectángulo. El fondo persistente carga una imagen pequeña por pista, reutilizando ImageCache; no se midió rendimiento.
 - Paridad: no aplica: identidad y presentación de vistas SwiftUI/AppKit exclusivas de Apple; Windows mantiene otra composición CSS, core y contratos sin cambios.
 - Plan / build: [PLAN-003](apple/plans/PLAN-003-fullscreen-sidebar.md); `builds/macos/build-0007/Side B.app`, log y metadata en la misma carpeta.
 
-<a id="fix-093"></a>
+<a id="fix-93"></a>
 
-### [FIX-093] [Apple] - Fondo fijo durante la entrada y salida de fullscreen
+### [FIX-93] [Apple] - Fondo fijo durante la entrada y salida de fullscreen
 
 - Fecha: 2026-10-02 (America/Montevideo).
 - Componente: shell / fullscreen / composición detrás de sidebar.
-- Tipo / estado: corrección de FIX-092; implementada y comprobada automáticamente, validación visual pendiente.
-- Problema y causa: capturas intermedias del usuario muestran un borde horizontal entre fondo oscuro y blur, también visible a través de la sidebar. En FIX-092, la transición `.move(edge: .bottom)` estaba aplicada al FullscreenCanvas completo: el backdrop se desplazaba con portada/cola y dejaba expuesto el fondo oscuro del shell. El background opaco condicional de la columna reaparecía al cambiar el booleano de salida, tapando el fade aún en curso. Código y capturas sustentan esta causa; no se atribuye a tiempos de red.
+- Tipo / estado: corrección de FIX-92; implementada y comprobada automáticamente, validación visual pendiente.
+- Problema y causa: capturas intermedias del usuario muestran un borde horizontal entre fondo oscuro y blur, también visible a través de la sidebar. En FIX-92, la transición `.move(edge: .bottom)` estaba aplicada al FullscreenCanvas completo: el backdrop se desplazaba con portada/cola y dejaba expuesto el fondo oscuro del shell. El background opaco condicional de la columna reaparecía al cambiar el booleano de salida, tapando el fade aún en curso. Código y capturas sustentan esta causa; no se atribuye a tiempos de red.
 - Solución y motivo: conservar el canvas raíz sin transición ni desplazamiento. Dentro de ese canvas fijo, el backdrop a tamaño ventana entra/sale sólo con opacidad y el foreground se mueve desde abajo con opacidad. Ambas transiciones heredan la misma transacción de fullscreen, sin timers ni demoras adicionales. El fondo opaco redundante de la columna se elimina: el color base del root queda debajo de fullscreen y de las páginas. Sidebar mantiene su animación y reserva de ancho; contenido fullscreen sólo se monta durante su presentación/transición, sin agregar cargas de paneles ocultos. Reduce Motion usa fade; capa oculta no interactiva ni accesible.
 - Archivos: `apple/Sources/SideB/SideBApp.swift`, `apple/Sources/SideB/Views/Fullscreen/FullscreenBackdrop.swift`; plan e índice Apple.
-- Fixes relacionados: corrige la transición de contenedor introducida por FIX-092; mantiene su geometría única de sidebar. FIX-091/092 conservados como intentos con resultados automáticos y feedback visual posterior.
+- Fixes relacionados: corrige la transición de contenedor introducida por FIX-92; mantiene su geometría única de sidebar. FIX-91/92 conservados como intentos con resultados automáticos y feedback visual posterior.
 - Verificación: build-0006 completada mediante el runner versionado de la skill Mac: 180 pruebas Rust aprobadas (7 live ignoradas); 26 XCTest y suite Swift Testing de 82 casos (7 live omitidos) sin fallos. Se excluyó HomeFeedCollectionViewMountAndLayout porque crea NSWindow. Geometría existente de sidebar, tamaño de portada y metadata sigue aprobada; revisión estática de capas y diff sin whitespace sobrante en archivos propios. Release arm64, SDK 27.0/mínimo macOS 15, firma ad hoc verificada, `BUILD.json: compiled`, fuentes sin cambios durante build. No se abrió la app ni se crearon ventanas de prueba.
-- Límites: comprobaciones de geometría y build no certifican composición real de vidrio o fluidez. Usuario reportó que build-0006 sigue igual; FIX-094 continúa la investigación y elimina el montaje condicional del backdrop. Este intento no se considera validado visualmente.
+- Límites: comprobaciones de geometría y build no certifican composición real de vidrio o fluidez. Usuario reportó que build-0006 sigue igual; FIX-94 continúa la investigación y elimina el montaje condicional del backdrop. Este intento no se considera validado visualmente.
 - Paridad: no aplica: modificación de transición SwiftUI y capas del shell macOS; Windows usa un contenedor CSS distinto y no recibe este cambio. Core/contratos sin cambios.
 - Plan / build: [PLAN-003](apple/plans/PLAN-003-fullscreen-sidebar.md); `builds/macos/build-0006/Side B.app`, log y metadata en la misma carpeta.
 
-<a id="fix-092"></a>
+<a id="fix-92"></a>
 
-### [FIX-092] [Apple] - Una sola capa y transición de fullscreen, con fondo estable al mostrar sidebar
+### [FIX-92] [Apple] - Una sola capa y transición de fullscreen, con fondo estable al mostrar sidebar
 
 - Fecha: 2026-10-02 (America/Montevideo).
 - Componente: shell / fullscreen / presentación de sidebar.
-- Tipo / estado: corrección de FIX-091; implementada y comprobada automáticamente, validación manual pendiente.
-- Problema y causa: usuario reportó que build-0004 empeoró el movimiento y que el fondo detrás de sidebar aparecía tarde. El diff de FIX-091 separó el backdrop en el background del HStack con transición de opacidad, mientras el foreground entraba desde abajo, e interpoló otra vez la propuesta de ancho de un GeometryReader dentro de la columna que ya cambiaba de tamaño. Esas diferencias de jerarquía/transacción están verificadas en el código; no se atribuye el retraso a red ni a una nueva descarga sin trazas.
+- Tipo / estado: corrección de FIX-91; implementada y comprobada automáticamente, validación manual pendiente.
+- Problema y causa: usuario reportó que build-0004 empeoró el movimiento y que el fondo detrás de sidebar aparecía tarde. El diff de FIX-91 separó el backdrop en el background del HStack con transición de opacidad, mientras el foreground entraba desde abajo, e interpoló otra vez la propuesta de ancho de un GeometryReader dentro de la columna que ya cambiaba de tamaño. Esas diferencias de jerarquía/transacción están verificadas en el código; no se atribuye el retraso a red ni a una nueva descarga sin trazas.
 - Solución y motivo: FullscreenCanvas en el ZStack raíz, debajo del shell, contiene backdrop y foreground con una única transición de movimiento desde abajo y opacidad. Su viewport es la ventana completa y permanece montado al alternar sidebar; la identidad/request del fondo sólo depende de la pista/thumbnail. FullscreenNowPlayingView interpola directamente un único progreso de sidebar en la transacción existente, reservando el ancho de la sidebar en el foreground y manteniendo su borde derecho fijo. Se elimina AnimatedFullscreenScene y su interpolación de ancho/alto recibidos de otra geometría animada. Sidebar, PlayerBar y Spotlight quedan por encima; fondo no interactivo, contenido fullscreen recortado y página oculta sin hit testing.
 - Archivos: `apple/Sources/SideB/SideBApp.swift`, `Views/Fullscreen/FullscreenBackdrop.swift`, `FullscreenNowPlayingView.swift`, `FullscreenSceneLayout.swift`; `apple/Tests/SideBTests/FullscreenSceneLayoutTests.swift`; plan/index Apple.
-- Fixes relacionados: corrige explícitamente FIX-091 tras feedback del usuario; conserva fuentes continuas y bloque metadata estable. FIX-090 define el mismo ritmo de sidebar; FIX-056 es antecedente histórico de hit testing, no causa atribuida del nuevo retraso.
+- Fixes relacionados: corrige explícitamente FIX-91 tras feedback del usuario; conserva fuentes continuas y bloque metadata estable. FIX-90 define el mismo ritmo de sidebar; FIX-56 es antecedente histórico de hit testing, no causa atribuida del nuevo retraso.
 - Verificación: build-0005 del flujo Mac completada: 180 pruebas Rust aprobadas (7 live ignoradas); 26 XCTest aprobadas y suite Swift Testing de 82 casos (7 live omitidos) sin fallos. Se excluyó el test HomeFeedCollectionViewMountAndLayout que crea NSWindow. Casos de progreso 0→1→0 comprueban canvas fijo, borde derecho del contenido anclado, geometría coherente e inversión; se conservan pruebas de fuentes/espacio. Revisión de jerarquía/transacciones y diff del fix, sin whitespace sobrante en archivos propios. Release arm64 SDK 27.0, mínimo macOS 15, firma ad hoc verificada; `BUILD.json: compiled`. No se abrió la app.
-- Límites: pruebas matemáticas/compilación no demuestran composición real de vidrio ni fluidez. Capturas intermedias posteriores de build-0005 muestran una franja oscura porque el backdrop también se desplazaba; FIX-093 corrige la transición del canvas. Validación manual por usuario, sin abrir la app ni controlar su laptop.
+- Límites: pruebas matemáticas/compilación no demuestran composición real de vidrio ni fluidez. Capturas intermedias posteriores de build-0005 muestran una franja oscura porque el backdrop también se desplazaba; FIX-93 corrige la transición del canvas. Validación manual por usuario, sin abrir la app ni controlar su laptop.
 - Paridad: no aplica como port: composición y transacciones SwiftUI/macOS específicas; core y contratos compartidos sin cambios.
 - Plan / build: [PLAN-003](apple/plans/PLAN-003-fullscreen-sidebar.md), retomado tras regresión reportada; `builds/macos/build-0005/Side B.app`, log y metadata en la misma carpeta.
 
-<a id="fix-091"></a>
+<a id="fix-91"></a>
 
-### [FIX-091] [Apple] - Fondo continuo de fullscreen tras sidebar y geometría conjunta animada
+### [FIX-91] [Apple] - Fondo continuo de fullscreen tras sidebar y geometría conjunta animada
 
 - Fecha: 2026-10-02 (America/Montevideo).
 - Componente: shell / fullscreen / portada y metadata.
@@ -4378,15 +4378,15 @@ Compilación posterior de FIX-114-2 solicitada por el usuario: `node Scripts/bui
 - Problema y causa: fondo borroso dentro de fullscreen, limitado y recortado en la columna de contenido; la sidebar quedaba sobre el fondo oscuro del shell. GeometryReader entregaba propuesta final de tamaño a cálculos dependientes de ancho mientras el shell interpolaba sus frames; la tipografía saltaba en 340/460 puntos y la metadata no tenía la altura estable asumida por el cálculo de portada.
 - Solución y motivo: mover el blur existente a un único FullscreenBackdrop detrás del shell completo, sin hit testing ni accesibilidad, y dejar transparente el área de contenido durante fullscreen. Mantener el recorte de controles dentro de su columna y capas/sidebar intactos. AnimatedFullscreenScene interpola ancho/alto una vez usando la transacción de sidebar; columnas, portada, bloque de metadata y paneles derivan del mismo tamaño intermedio. La metadata tiene 68 puntos y la tipografía crece continuamente; no iniciar animaciones de frame/font independientes en cada tick. Mantener URL/identidad/caché de imágenes, flip, likes/enlaces, cola, letras y recomendaciones existentes.
 - Archivos: `apple/Sources/SideB/SideBApp.swift`, `Views/Fullscreen/FullscreenNowPlayingView.swift`, `FullscreenBackdrop.swift`, `FullscreenSceneLayout.swift`; `apple/Tests/SideBTests/FullscreenSceneLayoutTests.swift`; plan e índice Apple.
-- Fixes relacionados: FIX-028 y FIX-056 son antecedentes históricos de rendimiento, recorte e interacción (no causas atribuidas de este síntoma); FIX-090 aporta la animación común de sidebar/selector. El backdrop sigue siendo blur de imagen sólo en fullscreen, no material de ventana agregado a Inicio.
+- Fixes relacionados: FIX-28 y FIX-56 son antecedentes históricos de rendimiento, recorte e interacción (no causas atribuidas de este síntoma); FIX-90 aporta la animación común de sidebar/selector. El backdrop sigue siendo blur de imagen sólo en fullscreen, no material de ventana agregado a Inicio.
 - Verificación: revisión estática con Luna de capas, interacción y geometría; diff del cambio y comprobación de whitespace de archivos propios sin errores. Build-0004 completada por `Scripts/build-version.mjs`: 180 pruebas Rust aprobadas (7 live ignoradas), 26 XCTest aprobadas incluidas 3 de geometría fullscreen, suite Swift Testing de 82 casos (7 live omitidos) sin fallos. Se excluyó el test de montaje que crea NSWindow. SDK 27.0, mínimo macOS 15, firma ad hoc verificada y `BUILD.json: compiled`. Build-0003 falló al compilar las pruebas porque tomó un módulo intermedio durante el último ajuste; se conservó su diagnóstico y se repitió con fuentes estabilizadas.
-- Límites: apariencia del vidrio, coordenadas con ventana real, fluidez y FPS requieren validación manual por el usuario; no controlar su laptop ni crear ventanas de prueba. El usuario reportó empeoramiento del movimiento y retraso del fondo en build-0004; la revisión continúa en FIX-092, que reemplaza la interpolación y la jerarquía de esta entrada.
+- Límites: apariencia del vidrio, coordenadas con ventana real, fluidez y FPS requieren validación manual por el usuario; no controlar su laptop ni crear ventanas de prueba. El usuario reportó empeoramiento del movimiento y retraso del fondo en build-0004; la revisión continúa en FIX-92, que reemplaza la interpolación y la jerarquía de esta entrada.
 - Paridad: no aplica como port: jerarquía SwiftUI/GeometryReader, glass de sidebar y layout de fullscreen específicos de Apple; no cambia contratos compartidos ni core Rust.
 - Plan / build: [PLAN-003](apple/plans/PLAN-003-fullscreen-sidebar.md); `builds/macos/build-0004/Side B.app`, log y metadata en la misma carpeta.
 
-<a id="fix-090"></a>
+<a id="fix-90"></a>
 
-### [FIX-090] [Apple] - Centrado del selector nativo y salida vertical coordinada con sidebar
+### [FIX-90] [Apple] - Centrado del selector nativo y salida vertical coordinada con sidebar
 
 - Fecha: 2026-10-02 (America/Montevideo).
 - Componente: shell / selector superior / layout y animación AppKit.
@@ -4394,15 +4394,15 @@ Compilación posterior de FIX-114-2 solicitada por el usuario: `node Scripts/bui
 - Problema y causa: captura del usuario con símbolos descentrados respecto del vidrio. El bar declaraba altura fija de 28 puntos mientras el vidrio imponía 34, sin recentrar el control después del layout nativo. La presentación sólo desplazaba 8 puntos y desvanecía el menú, sin retirarlo por arriba.
 - Solución y motivo: conservar ancho/control NSSegmentedControl y lente nativa, medir su tamaño real más 3 puntos por lado y centrarlo cada layout. Vidrio y contenido comparten plano y altura. La salida usa el progreso SwiftUI ya compartido con sidebar (smooth, 0.42 s), calculando la distancia del borde inferior al techo real de la ventana más margen de sombra. El historial permanece fijo; reducir movimiento usa un único fade de 0.12 s. Se conserva el selector montado durante todo el recorrido y se oculta al finalizar.
 - Archivos: `apple/Sources/SideB/Views/Components/TopNavigationView.swift`, `WindowNavigationToolbarView.swift`; `apple/Tests/SideBTests/TopNavigationViewTests.swift`, `WindowNavigationToolbarTests.swift`; plan e índice Apple.
-- Fixes relacionados: FIX-003, FIX-026 y FIX-058 son antecedentes históricos de shell/toolbar; no hay evidencia suficiente para atribuir este descentrado a una de esas entradas ni a un autor.
+- Fixes relacionados: FIX-3, FIX-26 y FIX-58 son antecedentes históricos de shell/toolbar; no hay evidencia suficiente para atribuir este descentrado a una de esas entradas ni a un autor.
 - Verificación: flujo `Scripts/build-version.mjs` macos release completado: 180 pruebas Rust aprobadas (7 live ignoradas); 23 pruebas XCTest aprobadas, incluidas centrado/hit testing con vidrio y fondo sólido, inversión de salida, recorrido completo e historial fijo; suite Swift Testing con 82 casos (7 live omitidos), sin fallos. Se excluyó `testHomeFeedCollectionViewMountAndLayout`, que crea NSWindow. Prueba de toolbar convertida a contenedor en memoria para no crear ventanas. Build-0002 con SDK 27.0 y firma ad hoc verificada; `BUILD.json` marca `compiled`. Revisión estática adicional por Luna y revisión de cambios; archivos del fix sin whitespace sobrante.
 - Límites: no se controló la laptop ni se abrió la app. Apariencia, lente al arrastrar, conversión de coordenadas con la ventana real y fluidez percibida quedan a cargo del usuario. Los bindings regenerados conservan cambios previos de contrato, pero UniFFI deja whitespace que `git diff --check` señala; no se editó el core ni se formatearon manualmente los bindings.
 - Paridad: no aplica como port: ajuste exclusivo de integración Apple NSSegmentedControl/NSGlassEffectView y coordenadas de toolbar macOS; no cambia contratos ni comportamiento compartido del core.
 - Plan / build: [PLAN-002](apple/plans/PLAN-002-top-navigation-layout.md), `builds/macos/build-0002/Side B.app`, metadata y log en la misma carpeta.
 
-<a id="fix-089"></a>
+<a id="fix-89"></a>
 
-### [FIX-089] [Compartido] - Historial único de fixes con tags y búsqueda de antecedentes
+### [FIX-89] [Compartido] - Historial único de fixes con tags y búsqueda de antecedentes
 
 - Fecha: 2026-10-02 (America/Montevideo).
 - Componente: documentación / historial de cambios / notas de release.
@@ -4410,14 +4410,14 @@ Compilación posterior de FIX-114-2 solicitada por el usuario: `node Scripts/bui
 - Problema: repartir fixes por plataforma y dejar el historial en otro archivo dificultaba encontrar cambios anteriores del mismo componente e investigar regresiones.
 - Solución: un único FIXES.md con tags Apple, Windows y Compartido; se integró el historial, se distinguieron dos IDs repetidos y se exige buscar antecedentes antes de corregir y enlazarlos después. Las notas filtran por tag y omiten importaciones históricas.
 - Archivos: FIXES.md, README.md, AGENTS por ámbito, referencias de paridad/planes, skill sideb-git, Scripts/generate_recap.py y sus pruebas.
-- Fixes relacionados: FIX-088 (antes GENERAL-001) y FIX-002; actualiza la organización, conservando las decisiones/resultados anteriores como historia.
+- Fixes relacionados: FIX-88 (antes GENERAL-001) y FIX-2; actualiza la organización, conservando las decisiones/resultados anteriores como historia.
 - Verificación: 4 pruebas del generador aprobadas (filtro por tags, exclusión de importaciones, comparación con release anterior y aliases de migración); 91 entradas con IDs únicos, incluidas 89 históricas; enlaces locales correctos en 18 documentos. Código y bindings de producto preservados. Skill Git validada con quick_validate.py.
 - Límites: clasificación histórica por código/ámbito documentado; no certifica compatibilidad actual ni verificación de ambas apps. No cambia fuentes de producto.
 - Paridad: no aplica como port; el registro y procedimiento son comunes.
 
-<a id="fix-088"></a>
+<a id="fix-88"></a>
 
-### [FIX-088] [Compartido] - Instrucciones unificadas y builds locales conservadas
+### [FIX-88] [Compartido] - Instrucciones unificadas y builds locales conservadas
 
 - ID anterior: GENERAL-001.
 - Componente: herramientas / compilación / documentación.
@@ -4429,11 +4429,11 @@ Compilación posterior de FIX-114-2 solicitada por el usuario: `node Scripts/bui
 - Verificación: 10 pruebas del flujo de builds aprobadas con compiladores/runtime simulados (numeración, conservación, locks, fallo de comprobaciones, DLLs faltantes, fingerprint y empaquetado/firma); 2 pruebas del generador de notas aprobadas; 3 skills validadas con `quick_validate.py`; sintaxis Bash/Node y `git diff --check` correctos. Enlaces locales de 21 documentos comprobados, incluidas referencias históricas.
 - Límites: no se ejecutó una compilación real nueva de las apps ni validación de audio/rendimiento. El runtime Windows requiere un host Windows. Fuentes y bindings de producto existentes preservados; originales de `temp/` intactos. No se publicó una release.
 - Paridad: no aplica como port; procedimiento/herramientas para ambas plataformas en esta tarea.
-- Fixes relacionados: FIX-002 y FIX-089; FIX-089 sustituye la separación inicial de registros por plataforma.
+- Fixes relacionados: FIX-2 y FIX-89; FIX-89 sustituye la separación inicial de registros por plataforma.
 
-<a id="fix-087"></a>
+<a id="fix-87"></a>
 
-### [FIX-087] [Windows] - Playlists por tandas y shuffle reversible (referencia importada)
+### [FIX-87] [Windows] - Playlists por tandas y shuffle reversible (referencia importada)
 
 - ID anterior: WINDOWS-001.
 - Histórico: sí; referencia importada.
@@ -4446,16 +4446,16 @@ Compilación posterior de FIX-114-2 solicitada por el usuario: `node Scripts/bui
 - Verificación: el reporte histórico documenta 50 pruebas nativas Tauri aprobadas y standalone abierto; no se repitieron en esta reorganización.
 - Límites: audio audible e hidratación con cuenta real no comprobados en ese reporte.
 - Paridad: [PAR-001](PARIDAD.md); port Mac pendiente.
-- Fixes relacionados: FIX-063 (persistencia Apple) y FIX-027-2 (cola/radio); antecedentes de otros ámbitos, no causas demostradas del error Windows.
+- Fixes relacionados: FIX-63 (persistencia Apple) y FIX-27-2 (cola/radio); antecedentes de otros ámbitos, no causas demostradas del error Windows.
 
 
 ## Historial importado
 
-Las siguientes entradas conservan el detalle de los registros anteriores hasta FIX-086: sus mandatos de gobernanza, mediciones y verificaciones son históricos, no reglas activas ni pruebas nuevas. Se omiten de las notas de release nuevas. El original permanece intacto en `temp/documentation/FIXES_LOG.md`.
+Las siguientes entradas conservan el detalle de los registros anteriores hasta FIX-86: sus mandatos de gobernanza, mediciones y verificaciones son históricos, no reglas activas ni pruebas nuevas. Se omiten de las notas de release nuevas. El original permanece intacto en `temp/documentation/FIXES_LOG.md`.
 
-<a id="fix-001"></a>
+<a id="fix-1"></a>
 
-### [FIX-001] [Compartido] - Configuración de Reglas de Proyecto y Estructura Multi-Agente
+### [FIX-1] [Compartido] - Configuración de Reglas de Proyecto y Estructura Multi-Agente
 
 - Histórico: sí; resultados originales, no comprobados nuevamente en esta reorganización.
 - **Fecha**: 2026-09-17 00:25 (GMT-3)
@@ -4480,9 +4480,9 @@ Las siguientes entradas conservan el detalle de los registros anteriores hasta F
 ---
 
 
-<a id="fix-002"></a>
+<a id="fix-2"></a>
 
-### [FIX-002] [Compartido] - Creación del Registro Obligatorio de Fixes (FIXES_LOG)
+### [FIX-2] [Compartido] - Creación del Registro Obligatorio de Fixes (FIXES_LOG)
 
 - Histórico: sí; resultados originales, no comprobados nuevamente en esta reorganización.
 - **Fecha**: 2026-09-17 00:36 (GMT-3)
@@ -4499,9 +4499,9 @@ Las siguientes entradas conservan el detalle de los registros anteriores hasta F
 ---
 
 
-<a id="fix-003"></a>
+<a id="fix-3"></a>
 
-### [FIX-003] [Apple] - Blueprint de Arquitectura de UI y Protocolo Anti-Código Zombie
+### [FIX-3] [Apple] - Blueprint de Arquitectura de UI y Protocolo Anti-Código Zombie
 
 - Histórico: sí; resultados originales, no comprobados nuevamente en esta reorganización.
 - **Fecha**: 2026-09-17 00:56 (GMT-3)
@@ -4522,9 +4522,9 @@ Las siguientes entradas conservan el detalle de los registros anteriores hasta F
 ---
 
 
-<a id="fix-004"></a>
+<a id="fix-4"></a>
 
-### [FIX-004] [Compartido] - Sistema de Planes Numerados y Validación Cruzada Frontend-Backend
+### [FIX-4] [Compartido] - Sistema de Planes Numerados y Validación Cruzada Frontend-Backend
 
 - Histórico: sí; resultados originales, no comprobados nuevamente en esta reorganización.
 - **Fecha**: 2026-09-17 01:00 (GMT-3)
@@ -4548,9 +4548,9 @@ Las siguientes entradas conservan el detalle de los registros anteriores hasta F
 ---
 
 
-<a id="fix-005"></a>
+<a id="fix-5"></a>
 
-### [FIX-005] [Compartido] - Simplificación de Gobernanza, Desbloqueo Técnico y Reglas Automáticas
+### [FIX-5] [Compartido] - Simplificación de Gobernanza, Desbloqueo Técnico y Reglas Automáticas
 
 - Histórico: sí; resultados originales, no comprobados nuevamente en esta reorganización.
 - **Fecha**: 2026-09-17 01:12 (GMT-3)
@@ -4581,9 +4581,9 @@ Las siguientes entradas conservan el detalle de los registros anteriores hasta F
 ---
 
 
-<a id="fix-006"></a>
+<a id="fix-6"></a>
 
-### [FIX-006] [Compartido] - Ejecución y Finalización de PLAN-001: Pipeline de Audio Nativo y MVP de Barra Flotante
+### [FIX-6] [Compartido] - Ejecución y Finalización de PLAN-001: Pipeline de Audio Nativo y MVP de Barra Flotante
 
 - Histórico: sí; resultados originales, no comprobados nuevamente en esta reorganización.
 - **Fecha**: 2026-09-17 01:25 (GMT-3)
@@ -4623,9 +4623,9 @@ Las siguientes entradas conservan el detalle de los registros anteriores hasta F
 ---
 
 
-<a id="fix-007"></a>
+<a id="fix-7"></a>
 
-### [FIX-007] [Compartido] - Corrección de Error 403 en AVPlayer y Resolución de Streams Nativos con VISIONOS
+### [FIX-7] [Compartido] - Corrección de Error 403 en AVPlayer y Resolución de Streams Nativos con VISIONOS
 
 - Histórico: sí; resultados originales, no comprobados nuevamente en esta reorganización.
 - **Fecha**: 2026-09-17 01:50 (GMT-3)
@@ -4658,9 +4658,9 @@ Las siguientes entradas conservan el detalle de los registros anteriores hasta F
 ---
 
 
-<a id="fix-008"></a>
+<a id="fix-8"></a>
 
-### [FIX-008] [Apple] - Corrección de Bug de CoreMedia macOS (Duración Duplicada 2x en Streams fMP4)
+### [FIX-8] [Apple] - Corrección de Bug de CoreMedia macOS (Duración Duplicada 2x en Streams fMP4)
 
 - Histórico: sí; resultados originales, no comprobados nuevamente en esta reorganización.
 - **Fecha**: 2026-09-17 02:05 (GMT-3)
@@ -4692,9 +4692,9 @@ Las siguientes entradas conservan el detalle de los registros anteriores hasta F
 ---
 
 
-<a id="fix-009"></a>
+<a id="fix-9"></a>
 
-### [FIX-009] [Compartido] - Ejecución de PLAN-002: Arquitectura de UI, Sidebar, Player Bar macOS 26 y Modo Fullscreen
+### [FIX-9] [Compartido] - Ejecución de PLAN-002: Arquitectura de UI, Sidebar, Player Bar macOS 26 y Modo Fullscreen
 
 - Histórico: sí; resultados originales, no comprobados nuevamente en esta reorganización.
 - **Fecha**: 2026-09-17 14:10 (GMT-3)
@@ -4756,9 +4756,9 @@ Las siguientes entradas conservan el detalle de los registros anteriores hasta F
 ---
 
 
-<a id="fix-010"></a>
+<a id="fix-10"></a>
 
-### [FIX-010] [Compartido] - Autocorrección de Sesión Expirada y Fallback Anónimo en Home Feed
+### [FIX-10] [Compartido] - Autocorrección de Sesión Expirada y Fallback Anónimo en Home Feed
 
 - Histórico: sí; resultados originales, no comprobados nuevamente en esta reorganización.
 - **Fecha**: 2026-09-17 14:35 (GMT-3)
@@ -4786,9 +4786,9 @@ Las siguientes entradas conservan el detalle de los registros anteriores hasta F
 ---
 
 
-<a id="fix-011"></a>
+<a id="fix-11"></a>
 
-### [FIX-011] [Compartido] - Integración de Apple Keychain y Perfil de Usuario en Sidebar
+### [FIX-11] [Compartido] - Integración de Apple Keychain y Perfil de Usuario en Sidebar
 
 - Histórico: sí; resultados originales, no comprobados nuevamente en esta reorganización.
 - **Fecha**: 2026-09-17 14:50 (GMT-3)
@@ -4839,9 +4839,9 @@ Las siguientes entradas conservan el detalle de los registros anteriores hasta F
 ---
 
 
-<a id="fix-012"></a>
+<a id="fix-12"></a>
 
-### [FIX-012] [Compartido] - Integración de Biblioteca (Tus Me Gusta, Playlists, Álbumes, Historial) y Vistas de Detalle
+### [FIX-12] [Compartido] - Integración de Biblioteca (Tus Me Gusta, Playlists, Álbumes, Historial) y Vistas de Detalle
 
 - Histórico: sí; resultados originales, no comprobados nuevamente en esta reorganización.
 - **Fecha**: 2026-09-17 15:15 (GMT-3)
@@ -4899,9 +4899,9 @@ Las siguientes entradas conservan el detalle de los registros anteriores hasta F
 ---
 
 
-<a id="fix-013"></a>
+<a id="fix-13"></a>
 
-### [FIX-013] [Apple] - Optimización de Rendimiento a 120 FPS en Listas, Playlists e Historial (Estrategia Limusic)
+### [FIX-13] [Apple] - Optimización de Rendimiento a 120 FPS en Listas, Playlists e Historial (Estrategia Limusic)
 
 - Histórico: sí; resultados originales, no comprobados nuevamente en esta reorganización.
 - **Fecha**: 2026-09-17 16:45 (GMT-3)
@@ -4946,9 +4946,9 @@ Las siguientes entradas conservan el detalle de los registros anteriores hasta F
 ---
 
 
-<a id="fix-014"></a>
+<a id="fix-14"></a>
 
-### [FIX-014] [Apple] - Virtualización Real por Ventana (Virtual Windowing Limusic `rows.ts`) en SwiftUI a 120 FPS
+### [FIX-14] [Apple] - Virtualización Real por Ventana (Virtual Windowing Limusic `rows.ts`) en SwiftUI a 120 FPS
 
 - Histórico: sí; resultados originales, no comprobados nuevamente en esta reorganización.
 - **Fecha**: 2026-09-17 17:08 (GMT-3)
@@ -4990,9 +4990,9 @@ Las siguientes entradas conservan el detalle de los registros anteriores hasta F
 ---
 
 
-<a id="fix-015"></a>
+<a id="fix-15"></a>
 
-### [FIX-015] [Apple] - Paginación Dinámica Continua y Corrección del Sensor de Ventana en `ScrollView`
+### [FIX-15] [Apple] - Paginación Dinámica Continua y Corrección del Sensor de Ventana en `ScrollView`
 
 - Histórico: sí; resultados originales, no comprobados nuevamente en esta reorganización.
 - **Fecha**: 2026-09-17 17:22 (GMT-3)
@@ -5025,9 +5025,9 @@ Las siguientes entradas conservan el detalle de los registros anteriores hasta F
 ---
 
 
-<a id="fix-016"></a>
+<a id="fix-16"></a>
 
-### [FIX-016] [Apple] - Arquitectura Definitiva a 120 FPS: Reescritura CDN 96px (Limusic `thumb.ts`), Root `LazyVStack` y Cero Trabajo en Hilo Principal
+### [FIX-16] [Apple] - Arquitectura Definitiva a 120 FPS: Reescritura CDN 96px (Limusic `thumb.ts`), Root `LazyVStack` y Cero Trabajo en Hilo Principal
 
 - Histórico: sí; resultados originales, no comprobados nuevamente en esta reorganización.
 - **Fecha**: 2026-09-17 18:10 (GMT-3)
@@ -5069,9 +5069,9 @@ Las siguientes entradas conservan el detalle de los registros anteriores hasta F
 ---
 
 
-<a id="fix-017"></a>
+<a id="fix-17"></a>
 
-### [FIX-017] [Apple] - Solución Definitiva de 120 FPS: Componente de Lista Nativo `NSTableView` de AppKit (`NativeTrackTableView`)
+### [FIX-17] [Apple] - Solución Definitiva de 120 FPS: Componente de Lista Nativo `NSTableView` de AppKit (`NativeTrackTableView`)
 
 - Histórico: sí; resultados originales, no comprobados nuevamente en esta reorganización.
 - **Fecha**: 2026-09-17 18:48 (GMT-3)
@@ -5106,9 +5106,9 @@ Las siguientes entradas conservan el detalle de los registros anteriores hasta F
 ---
 
 
-<a id="fix-018"></a>
+<a id="fix-18"></a>
 
-### [FIX-018] [Apple] - Perfeccionamiento de 120 FPS: Eliminación de Hueco en Cabecera, Corrección de Hover Múltiple y Unificación Global de Listas
+### [FIX-18] [Apple] - Perfeccionamiento de 120 FPS: Eliminación de Hueco en Cabecera, Corrección de Hover Múltiple y Unificación Global de Listas
 
 - Histórico: sí; resultados originales, no comprobados nuevamente en esta reorganización.
 - **Fecha**: 2026-09-17 20:10 (GMT-3)
@@ -5150,9 +5150,9 @@ Las siguientes entradas conservan el detalle de los registros anteriores hasta F
 ---
 
 
-<a id="fix-019"></a>
+<a id="fix-19"></a>
 
-### [FIX-019] [Compartido] - Integración Completa y Modular del Feed de Inicio de YouTube Music (PLAN-002)
+### [FIX-19] [Compartido] - Integración Completa y Modular del Feed de Inicio de YouTube Music (PLAN-002)
 
 - Histórico: sí; resultados originales, no comprobados nuevamente en esta reorganización.
 - **Fecha**: 2026-09-17
@@ -5184,9 +5184,9 @@ Las siguientes entradas conservan el detalle de los registros anteriores hasta F
 ---
 
 
-<a id="fix-020"></a>
+<a id="fix-20"></a>
 
-### [FIX-020] [Apple] - Controles Flotantes de Navegación Liquid Glass (Back / Forward) y Unificación con NavigationRouter
+### [FIX-20] [Apple] - Controles Flotantes de Navegación Liquid Glass (Back / Forward) y Unificación con NavigationRouter
 
 - Histórico: sí; resultados originales, no comprobados nuevamente en esta reorganización.
 - **Fecha**: 2026-09-17 23:35 (GMT-3)
@@ -5225,9 +5225,9 @@ Las siguientes entradas conservan el detalle de los registros anteriores hasta F
 ---
 
 
-<a id="fix-021"></a>
+<a id="fix-21"></a>
 
-### [FIX-021] [Compartido] - Auditoría Forense, Higiene de Repositorio y Sinceramiento de Epics
+### [FIX-21] [Compartido] - Auditoría Forense, Higiene de Repositorio y Sinceramiento de Epics
 
 - Histórico: sí; resultados originales, no comprobados nuevamente en esta reorganización.
 - **Fecha**: 2026-09-18 00:08 (GMT-3)
@@ -5238,7 +5238,7 @@ Las siguientes entradas conservan el detalle de los registros anteriores hasta F
   2. La carpeta `.agents/skills/` contenía carpetas zombies vacías sin `SKILL.md`.
   3. Existía desorden residual con carpetas abandonadas (`SIDE B/windows/`), logs de build en git (`build.log`) y scripts viejos de Sparkle/AppleScript.
   4. La carpeta `SIDE B/plans/` presentaba desincronización severa: `PLAN-002` había canibalizado el modo Fullscreen (Epic 5) y la Cola (Epic 3), mientras que `PLAN-003`, `PLAN-004` y `PLAN-005` no tenían archivos `.md`, haciendo que `PROJECT_STATE.md` reportara falsamente como "pendientes" componentes ya construidos.
-  5. `plans/README.md` contenía mandatos de validación burocrática previa ya derogados en FIX-005.
+  5. `plans/README.md` contenía mandatos de validación burocrática previa ya derogados en FIX-5.
 - **Solución Aplicada**:
   1. **Reglas de Agentes Actualizadas**: Se actualizó `20-frontend.md` formalizando el estándar obligatorio `NativeTrackTableView` (`NSTableView` con reciclaje estricto de ~15 celdas y miniaturas CDN de 96px).
   2. **Skill Profesional**: Se creó `.agents/skills/swiftui-pro/SKILL.md` con las mejores prácticas nativas de macOS 15, SwiftUI 6, puenteo a AppKit y ProMotion 120Hz.
@@ -5272,9 +5272,9 @@ Las siguientes entradas conservan el detalle de los registros anteriores hasta F
 ---
 
 
-<a id="fix-022"></a>
+<a id="fix-22"></a>
 
-### [FIX-022] [Apple] - Restauración del Semáforo Nativo de macOS 27 y Adopción Global de Liquid Glass Real
+### [FIX-22] [Apple] - Restauración del Semáforo Nativo de macOS 27 y Adopción Global de Liquid Glass Real
 
 - Histórico: sí; resultados originales, no comprobados nuevamente en esta reorganización.
 - **Fecha**: 2026-09-18 00:45 (GMT-3)
@@ -5325,9 +5325,9 @@ Las siguientes entradas conservan el detalle de los registros anteriores hasta F
 ---
 
 
-<a id="fix-023"></a>
+<a id="fix-23"></a>
 
-### [FIX-023] [Compartido] - Sistema Unificado de Menús Contextuales Nativos (Click Derecho), Perfeccionamiento de Álbumes/Playlists y Nueva Vista de Artista
+### [FIX-23] [Compartido] - Sistema Unificado de Menús Contextuales Nativos (Click Derecho), Perfeccionamiento de Álbumes/Playlists y Nueva Vista de Artista
 
 - Histórico: sí; resultados originales, no comprobados nuevamente en esta reorganización.
 - **Fecha**: 2026-09-18 00:54 (GMT-3)
@@ -5397,16 +5397,16 @@ Las siguientes entradas conservan el detalle de los registros anteriores hasta F
 ---
 
 
-<a id="fix-024"></a>
+<a id="fix-24"></a>
 
-### [FIX-024] [Apple] - Restauración de ProMotion a 120 FPS: Menús Contextuales Nativos Bajo Demanda, LazyVStack y Supresión de Invalidaciones RunLoop
+### [FIX-24] [Apple] - Restauración de ProMotion a 120 FPS: Menús Contextuales Nativos Bajo Demanda, LazyVStack y Supresión de Invalidaciones RunLoop
 
 - Histórico: sí; resultados originales, no comprobados nuevamente en esta reorganización.
 - **Fecha**: 2026-09-18 01:20 (GMT-3)
 - **Agente / Rol**: Core UI & Performance Engineer (Swift 6 / AppKit / SwiftUI)
 - **Componente**: `Frontend / Swift 6 / UI Performance / AppKit Interop`
 - **Problema / Causa Raíz**:
-  1. Caída dramática de rendimiento de 120 FPS a ~30 FPS al scrollear en la pantalla de Inicio (`HomeView`) tras FIX-023.
+  1. Caída dramática de rendimiento de 120 FPS a ~30 FPS al scrollear en la pantalla de Inicio (`HomeView`) tras FIX-23.
   2. La causa raíz principal fue el uso de `.contextMenu { ... }` de SwiftUI evaluado de forma ansiosa (*eager*) en ~200 tarjetas del feed. En cada elemento se ejecutaba síncronamente `core?.isPinned(id:)`, disparando cientos de consultas SQLite a través del puente UniFFI Rust en el hilo principal durante el scroll e instanciando más de 1.600 vistas de botones y labels por adelantado.
   3. `WindowTrafficLightRevealer.swift` observaba `NSWindow.didUpdateNotification`, mutando propiedades de la barra de título en cada ciclo del runloop durante el scroll y causando pases de layout repetidos de AppKit.
   4. `HomeView.swift` utilizaba un `VStack` vertical estático dentro del `ScrollView`, forzando la evaluación simultánea de todas las secciones.
@@ -5436,9 +5436,9 @@ Las siguientes entradas conservan el detalle de los registros anteriores hasta F
 ---
 
 
-<a id="fix-025"></a>
+<a id="fix-25"></a>
 
-### [FIX-025] [Apple] - Eliminación Definitiva de Hitches en Scroll: Alturas Rígidas de Carruseles, Purga de NSWindow.didUpdateNotification y Supresión de Animaciones de Imagen
+### [FIX-25] [Apple] - Eliminación Definitiva de Hitches en Scroll: Alturas Rígidas de Carruseles, Purga de NSWindow.didUpdateNotification y Supresión de Animaciones de Imagen
 
 - Histórico: sí; resultados originales, no comprobados nuevamente en esta reorganización.
 - **Fecha**: 2026-09-18 01:30 (GMT-3)
@@ -5475,9 +5475,9 @@ Las siguientes entradas conservan el detalle de los registros anteriores hasta F
 ---
 
 
-<a id="fix-026"></a>
+<a id="fix-26"></a>
 
-### [FIX-026] [Apple] - Eliminación de Hacks y Adopción del Semáforo y Barra de Título 100% Nativos de macOS 27
+### [FIX-26] [Apple] - Eliminación de Hacks y Adopción del Semáforo y Barra de Título 100% Nativos de macOS 27
 
 - Histórico: sí; resultados originales, no comprobados nuevamente en esta reorganización.
 - **Fecha**: 2026-09-18 11:20 (GMT-3)
@@ -5511,9 +5511,9 @@ Las siguientes entradas conservan el detalle de los registros anteriores hasta F
 ---
 
 
-<a id="fix-027"></a>
+<a id="fix-27"></a>
 
-### [FIX-027] [Apple] - Erradicación Definitiva de Lag en HomeView: Restauración de NativeContextMenuOverlay y Contenedor Vertical Estable
+### [FIX-27] [Apple] - Erradicación Definitiva de Lag en HomeView: Restauración de NativeContextMenuOverlay y Contenedor Vertical Estable
 
 - Histórico: sí; resultados originales, no comprobados nuevamente en esta reorganización.
 - **Fecha**: 2026-09-18 11:27 (GMT-3)
@@ -5543,9 +5543,9 @@ Las siguientes entradas conservan el detalle de los registros anteriores hasta F
 ---
 
 
-<a id="fix-028"></a>
+<a id="fix-28"></a>
 
-### [FIX-028] [Apple] - Optimización de Rendimiento en Live Window Resizing: Eliminación de Backdrop Blur de Ventana Completa, LazyVStack con Alturas Rígidas, NativeContextMenuNSView No-Op y Debounce en Scroll Infinito
+### [FIX-28] [Apple] - Optimización de Rendimiento en Live Window Resizing: Eliminación de Backdrop Blur de Ventana Completa, LazyVStack con Alturas Rígidas, NativeContextMenuNSView No-Op y Debounce en Scroll Infinito
 
 - Histórico: sí; resultados originales, no comprobados nuevamente en esta reorganización.
 - **Fecha**: 2026-09-18 11:47 (GMT-3)
@@ -5576,9 +5576,9 @@ Las siguientes entradas conservan el detalle de los registros anteriores hasta F
 ---
 
 
-<a id="fix-029"></a>
+<a id="fix-29"></a>
 
-### [FIX-029] [Apple] - Erradicación Definitiva del Lag en HomeView: Caché O(1) de URLs CDN sin Regex, ContextMenu Nativo sin Nodos AppKit y Prefetching Predictivo en RAM
+### [FIX-29] [Apple] - Erradicación Definitiva del Lag en HomeView: Caché O(1) de URLs CDN sin Regex, ContextMenu Nativo sin Nodos AppKit y Prefetching Predictivo en RAM
 
 - Histórico: sí; resultados originales, no comprobados nuevamente en esta reorganización.
 - **Fecha**: 2026-09-18 12:03 (GMT-3)
@@ -5613,9 +5613,9 @@ Las siguientes entradas conservan el detalle de los registros anteriores hasta F
 ---
 
 
-<a id="fix-030"></a>
+<a id="fix-30"></a>
 
-### [FIX-030] [Apple] - Restauración Definitiva de 120 FPS y Resizing Fluido en HomeView: Cero Mutaciones @State en CachedAsyncImage, Columnas Estables sin LazyHGrid, Supresión de Prefetching Competitivo y Paginación Anti-Resize
+### [FIX-30] [Apple] - Restauración Definitiva de 120 FPS y Resizing Fluido en HomeView: Cero Mutaciones @State en CachedAsyncImage, Columnas Estables sin LazyHGrid, Supresión de Prefetching Competitivo y Paginación Anti-Resize
 
 - Histórico: sí; resultados originales, no comprobados nuevamente en esta reorganización.
 - **Fecha**: 2026-09-18 12:23 (GMT-3)
@@ -5652,12 +5652,12 @@ Las siguientes entradas conservan el detalle de los registros anteriores hasta F
 ---
 
 
-<a id="fix-027-2"></a>
+<a id="fix-27-2"></a>
 
-### [FIX-027-2] [Compartido] - Sistema de Colas Dinámicas, Radios Automáticas y Reemplazo Contextual (Cierre de PLAN-003)
+### [FIX-27-2] [Compartido] - Sistema de Colas Dinámicas, Radios Automáticas y Reemplazo Contextual (Cierre de PLAN-003)
 
 - Histórico: sí; resultados originales, no comprobados nuevamente en esta reorganización.
-- ID histórico repetido: FIX-027; esta entrada se identifica como FIX-027-2 para distinguirla.
+- ID histórico repetido: FIX-27; esta entrada se identifica como FIX-27-2 para distinguirla.
 - **Fecha**: 2026-09-18
 - **Epic**: `PLAN-003: Cola de Reproducción, Automix y Radio` (Completada al 100%)
 - **Problema**:
@@ -5707,12 +5707,12 @@ Las siguientes entradas conservan el detalle de los registros anteriores hasta F
 ---
 
 
-<a id="fix-028-2"></a>
+<a id="fix-28-2"></a>
 
-### [FIX-028-2] [Apple] - 2026-09-24: Estabilización de Rendimiento 120 FPS ProMotion en Home Feed y Detalle (PLAN-006)
+### [FIX-28-2] [Apple] - 2026-09-24: Estabilización de Rendimiento 120 FPS ProMotion en Home Feed y Detalle (PLAN-006)
 
 - Histórico: sí; resultados originales, no comprobados nuevamente en esta reorganización.
-- ID histórico repetido: FIX-028; esta entrada se identifica como FIX-028-2 para distinguirla.
+- ID histórico repetido: FIX-28; esta entrada se identifica como FIX-28-2 para distinguirla.
 - **Problema Reportado**:
   1. Caída severa en la tasa de refresco (de 120 FPS a ~45 FPS) y tirones durante el scroll horizontal y vertical en el Feed de Inicio tras la reorganización visual de bloques.
   2. Reintroducción accidental de `.drawingGroup()` en `mixCardView` y `standardCardView`, forzando la creación y destrucción constante de framebuffers Metal offscreen por cada tarjeta visible.
@@ -5738,9 +5738,9 @@ Las siguientes entradas conservan el detalle de los registros anteriores hasta F
 ---
 
 
-<a id="fix-031"></a>
+<a id="fix-31"></a>
 
-### [FIX-031] [Apple] - 2026-09-24: Ejecución Integral del Plan de Auditoría de UI (Sprints 1, 2 y 3)
+### [FIX-31] [Apple] - 2026-09-24: Ejecución Integral del Plan de Auditoría de UI (Sprints 1, 2 y 3)
 
 - Histórico: sí; resultados originales, no comprobados nuevamente en esta reorganización.
 - **Objetivo**: Ejecutar exhaustivamente todas las directivas de corrección identificadas en la auditoría forense de UI (`2026-09-24-ui-audit-report.md` (`docs/audits/2026-09-24-ui-audit-report.md`, ruta histórica)): erradicar zombies, garantizar persistencia segura de datos y sesión de YouTube, desacoplar lógica de vistas a ViewModels (`HomeViewModel`), unificar listas a `NativeTrackTableView`, centralizar mix/radios en `PlayerViewModel` y limpiar deuda técnica.
@@ -5797,9 +5797,9 @@ Las siguientes entradas conservan el detalle de los registros anteriores hasta F
 ---
 
 
-<a id="fix-032"></a>
+<a id="fix-32"></a>
 
-### [FIX-032] [Apple] - 2026-09-24: Reingeniería del Pipeline del Player, Cancelación Atómica y Carátulas Reactivas
+### [FIX-32] [Apple] - 2026-09-24: Reingeniería del Pipeline del Player, Cancelación Atómica y Carátulas Reactivas
 
 - Histórico: sí; resultados originales, no comprobados nuevamente en esta reorganización.
 - **Problema Reportado**:
@@ -5851,9 +5851,9 @@ Las siguientes entradas conservan el detalle de los registros anteriores hasta F
 ---
 
 
-<a id="fix-033"></a>
+<a id="fix-33"></a>
 
-### [FIX-033] [Apple] - 2026-09-24: Corrección de Crash en MediaRemote por Aislamiento de Actor en MPMediaItemArtwork
+### [FIX-33] [Apple] - 2026-09-24: Corrección de Crash en MediaRemote por Aislamiento de Actor en MPMediaItemArtwork
 
 - Histórico: sí; resultados originales, no comprobados nuevamente en esta reorganización.
 - **Fecha**: 2026-09-24 02:22 (GMT-3)
@@ -5880,9 +5880,9 @@ Las siguientes entradas conservan el detalle de los registros anteriores hasta F
 ---
 
 
-<a id="fix-034"></a>
+<a id="fix-34"></a>
 
-### [FIX-034] [Apple] - 2026-09-24: Reingeniería del Layout de Redimensionamiento en Fullscreen (Apple Music Parity)
+### [FIX-34] [Apple] - 2026-09-24: Reingeniería del Layout de Redimensionamiento en Fullscreen (Apple Music Parity)
 
 - Histórico: sí; resultados originales, no comprobados nuevamente en esta reorganización.
 - **Fecha**: 2026-09-24 02:44 (GMT-3)
@@ -5914,9 +5914,9 @@ Las siguientes entradas conservan el detalle de los registros anteriores hasta F
 ---
 
 
-<a id="fix-035"></a>
+<a id="fix-35"></a>
 
-### [FIX-035] [Apple] - 2026-09-24: Calibración 50/50 en Fullscreen, Artwork Estilizado y Tipografía de Metadata Agrandada
+### [FIX-35] [Apple] - 2026-09-24: Calibración 50/50 en Fullscreen, Artwork Estilizado y Tipografía de Metadata Agrandada
 
 - Histórico: sí; resultados originales, no comprobados nuevamente en esta reorganización.
 - **Fecha**: 2026-09-24 02:50 (GMT-3)
@@ -5946,9 +5946,9 @@ Las siguientes entradas conservan el detalle de los registros anteriores hasta F
 ---
 
 
-<a id="fix-036"></a>
+<a id="fix-36"></a>
 
-### [FIX-036] [Apple] - 2026-09-24: Reingeniería Integral de la Cola (Drag & Drop, Like/Dislike Backend, Subtítulo Artista • Álbum y Bloqueo de Scroll Horizontal)
+### [FIX-36] [Apple] - 2026-09-24: Reingeniería Integral de la Cola (Drag & Drop, Like/Dislike Backend, Subtítulo Artista • Álbum y Bloqueo de Scroll Horizontal)
 
 - Histórico: sí; resultados originales, no comprobados nuevamente en esta reorganización.
 - **Fecha**: 2026-09-24 03:28 (GMT-3)
@@ -5991,9 +5991,9 @@ Las siguientes entradas conservan el detalle de los registros anteriores hasta F
 ---
 
 
-<a id="fix-037"></a>
+<a id="fix-37"></a>
 
-### [FIX-037] [Apple] - Resolución Forense de Crash al Presionar Dislike en Cola (`SIGABRT` / `viewAtColumn:`)
+### [FIX-37] [Apple] - Resolución Forense de Crash al Presionar Dislike en Cola (`SIGABRT` / `viewAtColumn:`)
 
 - Histórico: sí; resultados originales, no comprobados nuevamente en esta reorganización.
 - **Fecha**: 2026-09-24 03:38 (GMT-3)
@@ -6020,9 +6020,9 @@ Las siguientes entradas conservan el detalle de los registros anteriores hasta F
 ---
 
 
-<a id="fix-038"></a>
+<a id="fix-38"></a>
 
-### [FIX-038] [Apple] - Rediseño Total de la Barra de Reproducción Flotante (Apple Music Style, Barra de Estado Foto 3 con Playhead Vertical, Corazón Contiguo, Shortcuts y Volumen Adaptativo)
+### [FIX-38] [Apple] - Rediseño Total de la Barra de Reproducción Flotante (Apple Music Style, Barra de Estado Foto 3 con Playhead Vertical, Corazón Contiguo, Shortcuts y Volumen Adaptativo)
 
 - Histórico: sí; resultados originales, no comprobados nuevamente en esta reorganización.
 - **Fecha**: 2026-09-24 04:00 (GMT-3)
@@ -6072,9 +6072,9 @@ Las siguientes entradas conservan el detalle de los registros anteriores hasta F
 ---
 
 
-<a id="fix-039"></a>
+<a id="fix-39"></a>
 
-### [FIX-039] [Apple] - Refinamiento de la Barra de Reproducción y Fullscreen (AirPlay Nativo Sin Reborde, Simetría Vertical, Botones Ampliados, Sin Subrayados y Portada Interactiva con Play/Pause)
+### [FIX-39] [Apple] - Refinamiento de la Barra de Reproducción y Fullscreen (AirPlay Nativo Sin Reborde, Simetría Vertical, Botones Ampliados, Sin Subrayados y Portada Interactiva con Play/Pause)
 
 - Histórico: sí; resultados originales, no comprobados nuevamente en esta reorganización.
 - **Fecha**: 2026-09-24 04:26 (GMT-3)
@@ -6120,9 +6120,9 @@ Las siguientes entradas conservan el detalle de los registros anteriores hasta F
 ---
 
 
-<a id="fix-040"></a>
+<a id="fix-40"></a>
 
-### [FIX-040] [Compartido] - Unificación y Consistencia de "Artista • Álbum" en Fullscreen, Cola y Barra de Reproducción
+### [FIX-40] [Compartido] - Unificación y Consistencia de "Artista • Álbum" en Fullscreen, Cola y Barra de Reproducción
 
 - Histórico: sí; resultados originales, no comprobados nuevamente en esta reorganización.
 - **Fecha**: 2026-09-24 14:05 (GMT-3)
@@ -6162,9 +6162,9 @@ Las siguientes entradas conservan el detalle de los registros anteriores hasta F
 ---
 
 
-<a id="fix-041"></a>
+<a id="fix-41"></a>
 
-### [FIX-041] [Apple] - Avance Automático Fiable al Final de la Canción (Auto-Skip CoreMedia & AVPlayer)
+### [FIX-41] [Apple] - Avance Automático Fiable al Final de la Canción (Auto-Skip CoreMedia & AVPlayer)
 
 - Histórico: sí; resultados originales, no comprobados nuevamente en esta reorganización.
 - **Fecha**: 2026-09-24 14:30 (GMT-3)
@@ -6201,9 +6201,9 @@ Las siguientes entradas conservan el detalle de los registros anteriores hasta F
 ---
 
 
-<a id="fix-042"></a>
+<a id="fix-42"></a>
 
-### [FIX-042] [Apple] - 2026-09-24: Agrandamiento de Barra de Cola / Relacionado y Sistema Integral de Recomendaciones con 4 Estantes Liquid Glass
+### [FIX-42] [Apple] - 2026-09-24: Agrandamiento de Barra de Cola / Relacionado y Sistema Integral de Recomendaciones con 4 Estantes Liquid Glass
 
 - Histórico: sí; resultados originales, no comprobados nuevamente en esta reorganización.
 - **Fecha**: 2026-09-24 14:35 (GMT-3)
@@ -6243,9 +6243,9 @@ Las siguientes entradas conservan el detalle de los registros anteriores hasta F
 ---
 
 
-<a id="fix-043"></a>
+<a id="fix-43"></a>
 
-### [FIX-043] [Compartido] - Sistema de Búsqueda Reactiva: Modal Spotlight Dinámico y SearchView con Topdown Dropdown
+### [FIX-43] [Compartido] - Sistema de Búsqueda Reactiva: Modal Spotlight Dinámico y SearchView con Topdown Dropdown
 
 - Histórico: sí; resultados originales, no comprobados nuevamente en esta reorganización.
 - **Fecha**: 2026-09-24 14:42 (GMT-3)
@@ -6294,9 +6294,9 @@ Las siguientes entradas conservan el detalle de los registros anteriores hasta F
 ---
 
 
-<a id="fix-044"></a>
+<a id="fix-44"></a>
 
-### [FIX-044] [Compartido] - 2026-09-24: Extracción de Canciones Parecidas y Artistas Afines vía Endpoint Oficial Related de YouTube Music (MPTR) en Rust y Swift
+### [FIX-44] [Compartido] - 2026-09-24: Extracción de Canciones Parecidas y Artistas Afines vía Endpoint Oficial Related de YouTube Music (MPTR) en Rust y Swift
 
 - Histórico: sí; resultados originales, no comprobados nuevamente en esta reorganización.
 - **Fecha**: 2026-09-24 14:48 (GMT-3)
@@ -6337,9 +6337,9 @@ Las siguientes entradas conservan el detalle de los registros anteriores hasta F
 ---
 
 
-<a id="fix-045"></a>
+<a id="fix-45"></a>
 
-### [FIX-045] [Apple] - Spotlight 50% más Amplio y Radio Automática Inmediata en Resultados de Búsqueda
+### [FIX-45] [Apple] - Spotlight 50% más Amplio y Radio Automática Inmediata en Resultados de Búsqueda
 
 - Histórico: sí; resultados originales, no comprobados nuevamente en esta reorganización.
 - **Fecha**: 2026-09-24 14:53 (GMT-3)
@@ -6376,9 +6376,9 @@ Las siguientes entradas conservan el detalle de los registros anteriores hasta F
 ---
 
 
-<a id="fix-046"></a>
+<a id="fix-46"></a>
 
-### [FIX-046] [Compartido] - 2026-09-24: Rediseño de Tarjetas de Canciones en Inicio estilo Apple Music macOS, Artistas y Álbumes Clickeables y Ecualizador Animado
+### [FIX-46] [Compartido] - 2026-09-24: Rediseño de Tarjetas de Canciones en Inicio estilo Apple Music macOS, Artistas y Álbumes Clickeables y Ecualizador Animado
 
 - Histórico: sí; resultados originales, no comprobados nuevamente en esta reorganización.
 - **Fecha**: 2026-09-24 15:33 (GMT-3)
@@ -6429,9 +6429,9 @@ Las siguientes entradas conservan el detalle de los registros anteriores hasta F
 ---
 
 
-<a id="fix-047"></a>
+<a id="fix-47"></a>
 
-### [FIX-047] [Apple] - Ejecución Integral de Fase 4: Búsqueda Reactiva sin Carreras, Aislamiento de Filtros, Spotlight Responsivo, Historial Unificado y Ámbito de Ventana
+### [FIX-47] [Apple] - Ejecución Integral de Fase 4: Búsqueda Reactiva sin Carreras, Aislamiento de Filtros, Spotlight Responsivo, Historial Unificado y Ámbito de Ventana
 
 - Histórico: sí; resultados originales, no comprobados nuevamente en esta reorganización.
 - **Fecha**: 2026-09-25 01:10 (GMT-3)
@@ -6466,9 +6466,9 @@ Las siguientes entradas conservan el detalle de los registros anteriores hasta F
 ---
 
 
-<a id="fix-048"></a>
+<a id="fix-48"></a>
 
-### [FIX-048] [Apple] - Ejecución Integral de Fase 5: Feed de Inicio Resiliente, Tipado Estricto de Catálogo, Conexión de Valoraciones y Desacoplamiento de Biblioteca
+### [FIX-48] [Apple] - Ejecución Integral de Fase 5: Feed de Inicio Resiliente, Tipado Estricto de Catálogo, Conexión de Valoraciones y Desacoplamiento de Biblioteca
 
 - Histórico: sí; resultados originales, no comprobados nuevamente en esta reorganización.
 - **Fecha**: 2026-09-25 01:45 (GMT-3)
@@ -6522,9 +6522,9 @@ Las siguientes entradas conservan el detalle de los registros anteriores hasta F
 ---
 
 
-<a id="fix-049"></a>
+<a id="fix-49"></a>
 
-### [FIX-049] [Compartido] - PLAN-008: Corrección y Ejecución de Acciones en Menús Contextuales
+### [FIX-49] [Compartido] - PLAN-008: Corrección y Ejecución de Acciones en Menús Contextuales
 
 - Histórico: sí; resultados originales, no comprobados nuevamente en esta reorganización.
 - **Fecha**: 2026-09-25 16:35 (GMT-3)
@@ -6565,9 +6565,9 @@ Las siguientes entradas conservan el detalle de los registros anteriores hasta F
 ---
 
 
-<a id="fix-050"></a>
+<a id="fix-50"></a>
 
-### [FIX-050] [Apple] - Decoración Visual y Estandarización de Iconos en Menús Contextuales
+### [FIX-50] [Apple] - Decoración Visual y Estandarización de Iconos en Menús Contextuales
 
 - Histórico: sí; resultados originales, no comprobados nuevamente en esta reorganización.
 - **Fecha**: 2026-09-25 16:45 (GMT-3)
@@ -6601,9 +6601,9 @@ Las siguientes entradas conservan el detalle de los registros anteriores hasta F
 ---
 
 
-<a id="fix-051"></a>
+<a id="fix-51"></a>
 
-### [FIX-051] [Apple] - Visibilidad y Renderizado Universal de Iconos en Menús Contextuales (macOS 27+ y SwiftUI)
+### [FIX-51] [Apple] - Visibilidad y Renderizado Universal de Iconos en Menús Contextuales (macOS 27+ y SwiftUI)
 
 - Histórico: sí; resultados originales, no comprobados nuevamente en esta reorganización.
 - **Fecha**: 2026-09-25 17:05 (GMT-3)
@@ -6642,9 +6642,9 @@ Las siguientes entradas conservan el detalle de los registros anteriores hasta F
 ---
 
 
-<a id="fix-052"></a>
+<a id="fix-52"></a>
 
-### [FIX-052] [Apple] - Auditoría y Refinamiento Estético macOS 26/27: Geometría Concéntrica, Realce Neutro en Reproducción y Tokens de Reborde
+### [FIX-52] [Apple] - Auditoría y Refinamiento Estético macOS 26/27: Geometría Concéntrica, Realce Neutro en Reproducción y Tokens de Reborde
 
 - Histórico: sí; resultados originales, no comprobados nuevamente en esta reorganización.
 - **Fecha**: 2026-09-25 17:40 (GMT-3)
@@ -6694,9 +6694,9 @@ Las siguientes entradas conservan el detalle de los registros anteriores hasta F
 ---
 
 
-<a id="fix-053"></a>
+<a id="fix-53"></a>
 
-### [FIX-053] [Apple] - Sincronización de Navegación en Barra Lateral con Modo Fullscreen y Corrección de Foco/Escape en Spotlight (⌘K)
+### [FIX-53] [Apple] - Sincronización de Navegación en Barra Lateral con Modo Fullscreen y Corrección de Foco/Escape en Spotlight (⌘K)
 
 - Histórico: sí; resultados originales, no comprobados nuevamente en esta reorganización.
 - **Fecha**: 2026-09-25 18:00 (GMT-3)
@@ -6738,9 +6738,9 @@ Las siguientes entradas conservan el detalle de los registros anteriores hasta F
 ---
 
 
-<a id="fix-054"></a>
+<a id="fix-54"></a>
 
-### [FIX-054] [Apple] - Corrección de Altura Colapsada en Menú de Respuestas Rápidas (SearchView) y Foco Inmediato
+### [FIX-54] [Apple] - Corrección de Altura Colapsada en Menú de Respuestas Rápidas (SearchView) y Foco Inmediato
 
 - Histórico: sí; resultados originales, no comprobados nuevamente en esta reorganización.
 - **Fecha**: 2026-09-25 18:07 (GMT-3)
@@ -6766,9 +6766,9 @@ Las siguientes entradas conservan el detalle de los registros anteriores hasta F
 ---
 
 
-<a id="fix-055"></a>
+<a id="fix-55"></a>
 
-### [FIX-055] [Apple] - Unificación de Fondo en Esquina Superior de Barra Lateral y Controles de Ventana (Traffic Lights)
+### [FIX-55] [Apple] - Unificación de Fondo en Esquina Superior de Barra Lateral y Controles de Ventana (Traffic Lights)
 
 - Histórico: sí; resultados originales, no comprobados nuevamente en esta reorganización.
 - **Fecha**: 2026-09-25 18:17 (GMT-3)
@@ -6799,9 +6799,9 @@ Las siguientes entradas conservan el detalle de los registros anteriores hasta F
 ---
 
 
-<a id="fix-056"></a>
+<a id="fix-56"></a>
 
-### [FIX-056] [Apple] - Corrección de Capa Invisible y Bloqueo de Clics en Barra Lateral durante Modo Fullscreen
+### [FIX-56] [Apple] - Corrección de Capa Invisible y Bloqueo de Clics en Barra Lateral durante Modo Fullscreen
 
 - Histórico: sí; resultados originales, no comprobados nuevamente en esta reorganización.
 - **Fecha**: 2026-09-25 18:20 (GMT-3)
@@ -6833,16 +6833,16 @@ Las siguientes entradas conservan el detalle de los registros anteriores hasta F
 ---
 
 
-<a id="fix-057"></a>
+<a id="fix-57"></a>
 
-### [FIX-057] [Apple] - Optimización y Ajuste Vertical Ergonómico de la Cola de Reproducción (~14 a 14.5 Canciones Visibles)
+### [FIX-57] [Apple] - Optimización y Ajuste Vertical Ergonómico de la Cola de Reproducción (~14 a 14.5 Canciones Visibles)
 
 - Histórico: sí; resultados originales, no comprobados nuevamente en esta reorganización.
 - **Fecha**: 2026-09-25 18:30 (GMT-3)
 - **Agente / Rol**: @frontend & UI Architect
 - **Componente**: `Frontend/Swift` | `NativeTrackTableView` | `FullscreenNowPlayingView` | `Layout` | `AppKit`
 - **Problema / Requerimiento**:
-  1. En `FIX-036` se amplió la altura de fila de la cola de reproducción a 64 pt para mostrar unas 10 canciones. Con la ventana maximizada, la vista mostraba únicamente 10.5 canciones, lo que reducía la visibilidad del contexto musical próximo.
+  1. En `FIX-36` se amplió la altura de fila de la cola de reproducción a 64 pt para mostrar unas 10 canciones. Con la ventana maximizada, la vista mostraba únicamente 10.5 canciones, lo que reducía la visibilidad del contexto musical próximo.
   2. El usuario requería visualizar aproximadamente 14 o 14.5 canciones en la cola con la ventana maximizada.
   3. El ajuste debía realizarse reduciendo exclusivamente el tamaño vertical de las canciones y sus botones asociados (Like, Dislike, Reorder, Play icon), manteniendo el eje horizontal (anchos de columna, márgenes y alineaciones) 100% intacto.
   4. La modificación no debía afectar negativamente a otras pantallas que comparten `NativeTrackTableView` (Biblioteca, Álbumes, Playlists y Búsqueda, que usan la altura estándar de 52 pt).
@@ -6874,9 +6874,9 @@ Las siguientes entradas conservan el detalle de los registros anteriores hasta F
 ---
 
 
-<a id="fix-058"></a>
+<a id="fix-58"></a>
 
-### [FIX-058] [Apple] - Ventana Borderless Transparente con Controles Header SwiftUI (Erradicación de NSToolbar)
+### [FIX-58] [Apple] - Ventana Borderless Transparente con Controles Header SwiftUI (Erradicación de NSToolbar)
 
 - Histórico: sí; resultados originales, no comprobados nuevamente en esta reorganización.
 - **Fecha**: 2026-09-25 18:31 (GMT-3)
@@ -6909,9 +6909,9 @@ Las siguientes entradas conservan el detalle de los registros anteriores hasta F
 ---
 
 
-<a id="fix-059"></a>
+<a id="fix-59"></a>
 
-### [FIX-059] [Apple] - Control de Volumen como Overlay Flotante sin Desplazamiento de Layout en PlayerBarView
+### [FIX-59] [Apple] - Control de Volumen como Overlay Flotante sin Desplazamiento de Layout en PlayerBarView
 
 - Histórico: sí; resultados originales, no comprobados nuevamente en esta reorganización.
 - **Fecha**: 2026-09-25 21:40 (GMT-3)
@@ -6988,9 +6988,9 @@ Las siguientes entradas conservan el detalle de los registros anteriores hasta F
 ---
 
 
-<a id="fix-061"></a>
+<a id="fix-61"></a>
 
-### [FIX-061] [Compartido] - PLAN-009: Dos formatos de Inicio y carga de secciones prioritarias
+### [FIX-61] [Compartido] - PLAN-009: Dos formatos de Inicio y carga de secciones prioritarias
 
 - Histórico: sí; resultados originales, no comprobados nuevamente en esta reorganización.
 - **Fecha**: 2026-09-26 13:26 (GMT-3)
@@ -7035,9 +7035,9 @@ Las siguientes entradas conservan el detalle de los registros anteriores hasta F
 ---
 
 
-<a id="fix-062"></a>
+<a id="fix-62"></a>
 
-### [FIX-062] [Apple] - PLAN-009: Pulido visual de tarjetas grandes de Inicio
+### [FIX-62] [Apple] - PLAN-009: Pulido visual de tarjetas grandes de Inicio
 
 - Histórico: sí; resultados originales, no comprobados nuevamente en esta reorganización.
 - **Fecha**: 2026-09-26 13:38 (GMT-3)
@@ -7059,9 +7059,9 @@ Las siguientes entradas conservan el detalle de los registros anteriores hasta F
 ---
 
 
-<a id="fix-063"></a>
+<a id="fix-63"></a>
 
-### [FIX-063] [Apple] - Persistencia de volumen, cola y última canción
+### [FIX-63] [Apple] - Persistencia de volumen, cola y última canción
 
 - Histórico: sí; resultados originales, no comprobados nuevamente en esta reorganización.
 - **Fecha**: 2026-09-26 14:57 (GMT-3)
@@ -7087,9 +7087,9 @@ Las siguientes entradas conservan el detalle de los registros anteriores hasta F
 ---
 
 
-<a id="fix-064"></a>
+<a id="fix-64"></a>
 
-### [FIX-064] [Apple] - Seguimiento visual y scroll manual de letras sincronizadas
+### [FIX-64] [Apple] - Seguimiento visual y scroll manual de letras sincronizadas
 
 - Histórico: sí; resultados originales, no comprobados nuevamente en esta reorganización.
 - **Fecha**: 2026-09-26 15:18 (GMT-3)
@@ -7273,9 +7273,9 @@ Las siguientes entradas conservan el detalle de los registros anteriores hasta F
 - **Verificación**: `cargo test -p sideb-core`: 70 pasadas, 3 ignoradas. `swift test --package-path apple`: 61 pasadas. El endpoint público de búsqueda devolvió HTTP 403 desde este Mac; corpus real de 100 pistas, prueba Release de p95/hitches y permiso de distribución quedan como puertas de aceptación en PLAN-012.
 
 
-<a id="fix-070"></a>
+<a id="fix-70"></a>
 
-### [FIX-070] [Compartido] - Recuperación de canciones con metadatos de video y colaboración en Genius
+### [FIX-70] [Compartido] - Recuperación de canciones con metadatos de video y colaboración en Genius
 
 - Histórico: sí; resultados originales, no comprobados nuevamente en esta reorganización.
 - **Fecha**: 2026-09-26 23:27 (GMT-3)
@@ -7287,9 +7287,9 @@ Las siguientes entradas conservan el detalle de los registros anteriores hasta F
 - **Verificación**: Matriz en vivo de ocho pistas: seis coincidencias automáticas y dos versiones ambiguas. Prueba completa: historia y créditos, 7 anotaciones, 64 líneas, 11 líneas con anotaciones enlazadas; repetición con cero solicitudes. Las respuestas de Genius variaron entre HTTP 403 y 200 en esta sesión.
 
 
-<a id="fix-071"></a>
+<a id="fix-71"></a>
 
-### [FIX-071] [Compartido] - Excluir cabecera de Genius de las letras extraídas
+### [FIX-71] [Compartido] - Excluir cabecera de Genius de las letras extraídas
 
 - Histórico: sí; resultados originales, no comprobados nuevamente en esta reorganización.
 - **Fecha**: 2026-09-26 23:34 (GMT-3)
@@ -7301,9 +7301,9 @@ Las siguientes entradas conservan el detalle de los registros anteriores hasta F
 - **Verificación**: Fixture con cabecera excluida y prueba ignorada por defecto contra el HTML real de Genius. Ambas pasan y la primera línea extraída es el encabezado de estrofa. Validación visual en app pendiente del binario actualizado.
 
 
-<a id="fix-072"></a>
+<a id="fix-72"></a>
 
-### [FIX-072] [Apple] - La búsqueda automática de Genius continuaba cargando tras saltar de pista
+### [FIX-72] [Apple] - La búsqueda automática de Genius continuaba cargando tras saltar de pista
 
 - Histórico: sí; resultados originales, no comprobados nuevamente en esta reorganización.
 - **Fecha**: 2026-09-26 23:40 (GMT-3)
@@ -7315,9 +7315,9 @@ Las siguientes entradas conservan el detalle de los registros anteriores hasta F
 - **Verificación**: `swift test --package-path apple`: 61 pruebas pasan. Build Release y apertura de la app completados. En la app, con búsqueda automática activa y panel Genius abierto, se saltó de «Pink + White» a «gloria»: la segunda pista mostró su coincidencia y letras sin tocar «Actualizar». Otro avance mostró correctamente el estado ambiguo de «L.E.S.».
 
 
-<a id="fix-073"></a>
+<a id="fix-73"></a>
 
-### [FIX-073] [Apple] - Resaltado interactivo de anotaciones en letras de Genius y pulido visual de tarjeta
+### [FIX-73] [Apple] - Resaltado interactivo de anotaciones en letras de Genius y pulido visual de tarjeta
 
 - Histórico: sí; resultados originales, no comprobados nuevamente en esta reorganización.
 - **Fecha**: 2026-09-27 01:05 (GMT-3)
@@ -7344,9 +7344,9 @@ Las siguientes entradas conservan el detalle de los registros anteriores hasta F
 - **Verificación**: `swift test --package-path apple` aprobó las 61 pruebas unitarias. Compilación en Release exitosa y app ejecutándose con el nuevo motor de letras y tarjeta sin bordes.
 
 
-<a id="fix-074"></a>
+<a id="fix-74"></a>
 
-### [FIX-074] [Compartido] - Coincidencias de Genius con iniciales, colaboraciones y alias duplicado
+### [FIX-74] [Compartido] - Coincidencias de Genius con iniciales, colaboraciones y alias duplicado
 
 - Histórico: sí; resultados originales, no comprobados nuevamente en esta reorganización.
 - **Fecha**: 2026-09-27
@@ -7358,9 +7358,9 @@ Las siguientes entradas conservan el detalle de los registros anteriores hasta F
 - **Verificación**: 11 pruebas locales de Genius aprobadas, incluidas regresiones para seis coincidencias reportadas, `OFF` y las dos fichas de `I CAN’T WAIT`; 4 pruebas en vivo permanecen ignoradas. XCFramework recompilado y `swift test --package-path apple`: 61 pruebas aprobadas. Genius devolvió HTTP 403 en la última comprobación, por lo que falta repetir las ocho reproducciones reales.
 
 
-<a id="fix-075"></a>
+<a id="fix-75"></a>
 
-### [FIX-075] [Apple] - Presentación limpia de letras Genius con diagnóstico opcional
+### [FIX-75] [Apple] - Presentación limpia de letras Genius con diagnóstico opcional
 
 - Histórico: sí; resultados originales, no comprobados nuevamente en esta reorganización.
 - **Fecha**: 2026-09-27
@@ -7372,9 +7372,9 @@ Las siguientes entradas conservan el detalle de los registros anteriores hasta F
 - **Verificación**: `swift test --package-path apple`: 63 pruebas aprobadas. Build Release empaquetada y abierta; inspección visual confirmó letras a toda altura, menú alineado con la primera línea y ausencia de los selectores redundantes. El menú mostró todas las acciones previstas en accesibilidad.
 
 
-<a id="fix-076"></a>
+<a id="fix-76"></a>
 
-### [FIX-076] [Compartido] - Registro local de canciones no identificadas y cursor estable en letras Genius
+### [FIX-76] [Compartido] - Registro local de canciones no identificadas y cursor estable en letras Genius
 
 - Histórico: sí; resultados originales, no comprobados nuevamente en esta reorganización.
 - **Fecha**: 2026-09-27
@@ -7386,9 +7386,9 @@ Las siguientes entradas conservan el detalle de los registros anteriores hasta F
 - **Verificación**: 12 pruebas locales de Genius y prueba SQLite de deduplicación aprobadas; XCFramework reconstruido; `swift test --package-path apple`: 63 pruebas aprobadas; build Release abierta. La pista «Real (feat. Anna Wise)» mostró el estado ambiguo con un solo menú y el botón de reporte. La persistencia se verificó con prueba SQLite; la pulsación en la app queda por confirmar porque la vista cambió durante la interacción.
 
 
-<a id="fix-077"></a>
+<a id="fix-77"></a>
 
-### [FIX-077] [Apple] - La cola sigue operativa tras saltos rápidos y errores de stream
+### [FIX-77] [Apple] - La cola sigue operativa tras saltos rápidos y errores de stream
 
 - Histórico: sí; resultados originales, no comprobados nuevamente en esta reorganización.
 - **Fecha**: 2026-09-27 02:38 (GMT-3)
@@ -7400,9 +7400,9 @@ Las siguientes entradas conservan el detalle de los registros anteriores hasta F
 - **Verificación**: Pruebas de regresión para saltos repetidos tras un error de resolución y continuación tras salto al final aprobadas con `swift test --package-path apple --filter 'rapidSkipsKeepQueueNavigableAfterResolutionError|manualSkipAtTailContinuesWhenQueueExtends'`. La suite completa `swift test --package-path apple` aprobó 63 pruebas. Falta validar el escenario de saltos rápidos en la app con una sesión real.
 
 
-<a id="fix-078"></a>
+<a id="fix-78"></a>
 
-### [FIX-078] [Apple] - Controles y menús blancos coherentes en toda la interfaz
+### [FIX-78] [Apple] - Controles y menús blancos coherentes en toda la interfaz
 
 - Histórico: sí; resultados originales, no comprobados nuevamente en esta reorganización.
 - **Fecha**: 2026-09-27 03:27 (GMT-3)
@@ -7414,9 +7414,9 @@ Las siguientes entradas conservan el detalle de los registros anteriores hasta F
 - **Verificación**: `swift build --package-path apple` completado. Pruebas locales del feed aprobadas con `swift test --package-path apple --filter 'buildNSMenu|testHomeFeedCollectionViewMountAndLayout|testHomeItemViewEqualizerOverlayAndDirectPlay'` (2 pruebas ejecutadas). La suite completa compiló, pero una prueba de red en vivo quedó esperando respuesta y se detuvo. Una copia temporal de la build actual confirmó visualmente sidebar, chip activo y controles del reproductor en blanco; el menú abrió con sus acciones disponibles en accesibilidad, aunque la captura de la ventana no incluyó el panel nativo del menú.
 
 
-<a id="fix-079"></a>
+<a id="fix-79"></a>
 
-### [FIX-079] [Apple] - Acento suave y contraste legible en estados seleccionados
+### [FIX-79] [Apple] - Acento suave y contraste legible en estados seleccionados
 
 - Histórico: sí; resultados originales, no comprobados nuevamente en esta reorganización.
 - **Fecha**: 2026-09-27 15:45 (GMT-3)
@@ -7428,9 +7428,9 @@ Las siguientes entradas conservan el detalle de los registros anteriores hasta F
 - **Verificación**: `git diff --check` sin errores y build Release completada con `Scripts/compile_and_run.sh` tras elegir `#A33D45`; la app empaquetada se abrió. La inspección visual confirmó el botón de reproducir rojo con icono blanco, el icono activo de Genius en el rojo aclarado, texto blanco legible en la cápsula seleccionada y ausencia de halo coloreado. El tramo reproducido usa la misma constante cromática que los iconos activos; en esta sesión la pista restaurada estaba en 0:00 y no había tramo visible para comprobar en pantalla.
 
 
-<a id="fix-080"></a>
+<a id="fix-80"></a>
 
-### [FIX-080] [Compartido] - Catálogo completo del artista y versiones alternativas del álbum
+### [FIX-80] [Compartido] - Catálogo completo del artista y versiones alternativas del álbum
 
 - Histórico: sí; resultados originales, no comprobados nuevamente en esta reorganización.
 - **Fecha**: 2026-09-27 17:07 (GMT-3)
@@ -7442,9 +7442,9 @@ Las siguientes entradas conservan el detalle de los registros anteriores hasta F
 - **Verificación**: `cargo test -p innertube --lib`: 87 pruebas aprobadas; `swift test -c release --filter SideBTests`: 66 pruebas aprobadas. `apple/build_xcframework.sh` regeneró Core y bindings. `Scripts/compile_and_run.sh` compiló la app Release con SDK 27.0, creó `apple/.build/app/SideB.app` y la abrió; el proceso quedó activo. Falta verificar visualmente con un álbum y artista concretos que YouTube Music entregue las ediciones esperadas.
 
 
-<a id="fix-081"></a>
+<a id="fix-81"></a>
 
-### [FIX-081] [Compartido] - Detección automática precisa en Genius y resolución de colaboraciones, secuelas y metadatos
+### [FIX-81] [Compartido] - Detección automática precisa en Genius y resolución de colaboraciones, secuelas y metadatos
 
 - Histórico: sí; resultados originales, no comprobados nuevamente en esta reorganización.
 - **Fecha**: 2026-09-27 17:35 (GMT-3)
@@ -7463,9 +7463,9 @@ Las siguientes entradas conservan el detalle de los registros anteriores hasta F
 ---
 
 
-<a id="fix-082"></a>
+<a id="fix-82"></a>
 
-### [FIX-082] [Apple] - Nombre de bundle 'Side B', sanitización de diálogo Keychain e instalación sin Gatekeeper
+### [FIX-82] [Apple] - Nombre de bundle 'Side B', sanitización de diálogo Keychain e instalación sin Gatekeeper
 
 - Histórico: sí; resultados originales, no comprobados nuevamente en esta reorganización.
 - **Fecha**: 2026-09-27 20:20 (GMT-3)
@@ -7484,9 +7484,9 @@ Las siguientes entradas conservan el detalle de los registros anteriores hasta F
 - **Verificación**: `swift build` en `apple/` compiló exitosamente (código 0); `compile_and_run.sh` y `package_release.sh` verificados; `install.sh` probado sintácticamente.
 
 
-<a id="fix-083"></a>
+<a id="fix-83"></a>
 
-### [FIX-083] [Compartido] - Reproducción del ID original de «Feel No Ways»
+### [FIX-83] [Compartido] - Reproducción del ID original de «Feel No Ways»
 
 - Histórico: sí; resultados originales, no comprobados nuevamente en esta reorganización.
 - **Fecha**: 2026-09-28 (GMT-3)
@@ -7498,9 +7498,9 @@ Las siguientes entradas conservan el detalle de los registros anteriores hasta F
 - **Verificación**: `cargo test -p sideb-core --lib`: 80 aprobadas, 7 ignoradas. Prueba en vivo optativa con la sesión local: `pMaogWC5TEQ` se resolvió por `WEB_REMIX` y AVPlayer avanzó más de 0,5 s sin error (prueba aprobada en 3,7 s). `Scripts/compile_and_run.sh` compiló la app Release con SDK 27.0 y la abrió.
 
 
-<a id="fix-084"></a>
+<a id="fix-84"></a>
 
-### [FIX-084] [Apple] - Espacio controla la reproducción fuera de campos de texto
+### [FIX-84] [Apple] - Espacio controla la reproducción fuera de campos de texto
 
 - Histórico: sí; resultados originales, no comprobados nuevamente en esta reorganización.
 - **Fecha**: 2026-09-30 (GMT-3)
@@ -7512,9 +7512,9 @@ Las siguientes entradas conservan el detalle de los registros anteriores hasta F
 - **Verificación**: `swift test -c release --filter spaceShortcut`: 2 pruebas aprobadas. `Scripts/compile_and_run.sh` compiló la app Release y la abrió. El usuario confirmó el funcionamiento del atajo en la app.
 
 
-<a id="fix-085"></a>
+<a id="fix-85"></a>
 
-### [FIX-085] [Compartido] - Enlaces independientes para los artistas de una canción
+### [FIX-85] [Compartido] - Enlaces independientes para los artistas de una canción
 
 - Histórico: sí; resultados originales, no comprobados nuevamente en esta reorganización.
 - **Fecha**: 2026-10-01 (GMT-3)
@@ -7527,9 +7527,9 @@ Las siguientes entradas conservan el detalle de los registros anteriores hasta F
 
 
 
-<a id="fix-086"></a>
+<a id="fix-86"></a>
 
-### [FIX-086] [Compartido] - Integración macOS de las mejoras de búsqueda de Windows
+### [FIX-86] [Compartido] - Integración macOS de las mejoras de búsqueda de Windows
 
 - Histórico: sí; resultados originales, no comprobados nuevamente en esta reorganización.
 - **Fecha**: 2026-10-01 (GMT-3)
@@ -7549,7 +7549,7 @@ Las siguientes entradas conservan el detalle de los registros anteriores hasta F
 - Viewport: contenedor compartido observa geometría/offset, conserva ancla por ID y muestra flechas/fades únicamente donde hay contenido fuera de pantalla. Metadata depende de IDs intersectados, excluyendo gaps; modelos conservan máximo dos solicitudes, LRU seis y guardas de sesión/generación/cancelación. HomeView mantiene estable la proyección acotada de recomendaciones durante resize; no precarga catálogos. Región AppKit reserva historial horizontal y reenvía rueda vertical al scroll padre.
 - Ver todo: sheet con todas las colecciones destacadas reales y las acciones actuales; no inventa destino de catálogo ni registros. Revisión del integrador: viewport propio para metadatos de la hoja, cierre al navegar a álbum/artista, Escape y ancho acotado a la ventana; bordes de tarjetas y etiquetas accesibles de las flechas completados.
 - Archivos: `apple/Sources/SideB/Views/Home/{HomeFeaturedView,HomeView}.swift`, `apple/Sources/SideB/Models/Home{Album,Playlist}Metadata.swift`, tests `HomeFeaturedPresentationTests`, `HomeFeaturedIdentityTests`, `HomeSpeedDialPanelTests`, `HomeGestureRoutingTests`.
-- Antecedentes: reemplaza geometría/paginación de FIX-098/099/100 y conserva identidad plana/acciones de FIX-119. No se reutilizan sus afirmaciones de rendimiento ni se atribuye regresión histórica sin evidencia.
+- Antecedentes: reemplaza geometría/paginación de FIX-98/99/100 y conserva identidad plana/acciones de FIX-119. No se reutilizan sus afirmaciones de rendimiento ni se atribuye regresión histórica sin evidencia.
 - Verificación: `swift test --package-path apple --no-parallel --filter 'HomeFeatured|HomeSpeedDial|HomeAlbumMetadata|HomePlaylistMetadata|HomeGesture'`: 10 XCTest y 33 Swift Testing aprobados; log `/tmp/home-final-tests.log`. Incluye identidad al resize, menús/localización, regiones de gesto, rango visible y límites/cancelación de metadata. Diff focal sin errores de whitespace.
 - Revisión: 43 focales (10 XCTest + 33 Swift Testing) nuevamente aprobados tras correcciones; `/tmp/sideb-home-reviewed-tests.log`. Se verificó que el diff adicional respecto al estado inicial se limita a Home, sus modelos/pruebas y documentación. Localizaciones: 844 claves verificadas.
 - Límites: sin QA manual, medición de FPS ni audio real. Build-0186 compilada y firmada ad hoc; `BUILD.json` con estado `compiled`. Suites release completas: 280 XCTest + 582 Swift Testing = 862 aprobadas; Rust 112 innertube + 186 sideb-core = 298 aprobadas y 10 ignoradas. Sin commit/push; cambios previos conservados.
@@ -7565,7 +7565,7 @@ Las siguientes entradas conservan el detalle de los registros anteriores hasta F
 - Cambio: rieles NSCollectionView con HomeNativeCollectionView/HomeCollectionItem/HomeItemView; sin NSHostingView por celda, pools, rebind de categorías ni scanners de documento. Portada en CALayer aspect-fill con frame y máscara explícitos; texto y gradiente independientes dentro de bounds. Conserva 3 filas de 126, gap12, álbum cuadrado y pie120, títulos, controles, menús, navegación, teclado y sheet. Flechas/fades sólo en bordes con overflow. Los cambios de reproducción actualizan celdas visibles sin reloadData.
 - Trabajo visible: ImageCache existente y downsampling al ancho de tarjeta; cancelación/generación al reciclar, cambiar sesión u ocultar; callbacks sólo publican cambios de IDs. Tinte derivado de la misma imagen, muestreo utility y caché de colores acotada; sheet comparte URL/tamaño de imagen con su tinte, elimina variante32 extra. Metadata conserva límite2 concurrentes/cache6/sesión y carga por rango; más de6 visibles conserva fallback del proveedor.
 - Archivos: HomeFeaturedNativeRail.swift, HomeFeaturedView.swift, HomeFeedCollectionView.swift; HomeFeaturedNativeTests.swift y HomeFeaturedIdentityTests.swift.
-- Antecedentes: corrige FIX-285 tras feedback real; reutiliza mecanismos de FIX-098/099/100/102/103/119; no reintroduce el ensayo rechazado FIX-101. La prueba anterior sólo buscaba overlays SwiftUI y usaba imágenes nil; ahora observa menús nativos vigentes y renderiza imágenes no nil.
+- Antecedentes: corrige FIX-285 tras feedback real; reutiliza mecanismos de FIX-98/99/100/102/103/119; no reintroduce el ensayo rechazado FIX-101. La prueba anterior sólo buscaba overlays SwiftUI y usaba imágenes nil; ahora observa menús nativos vigentes y renderiza imágenes no nil.
 - Verificación: 63 XCTest + 98 Swift Testing aprobadas (1 integración omitida), focales Home/celdas con swift test; registro final `/tmp/sideb-home-native-final.log`. Fixture nativa 2× con imágenes600×600,1200×600,600×1200; PNG `/tmp/sideb-home-native-review.png`. Fixture270 elementos:12 celdas visibles,1 reload tras cambiar reproducción; solicitudes nil=0 (no mide red). Prueba loader controlado:2 solicitudes, respuesta anterior rechazada tras reuse, acción/menú vigentes.
 - Verificación adicional final: `/tmp/sideb-home-native-last.log` (focales tras publicación de metadata/visibilidad) y `/tmp/sideb-home-native-images.log` (4 XCTest aprobadas). ImageCache real con PNG local1200×600: dos solicitudes concurrentes comparten la misma instancia/downsample404×202, lectura de memoria idéntica; cero solicitudes de red.
 - Límites: PNG sintético y tests no equivalen a QA en la app ni perfil de FPS/lag/audio. Padre revisa PNG, código y build oficial. No build empaquetada, commit, push ni cambio de rama. Cambios previos conservados; core/Windows sin editar.

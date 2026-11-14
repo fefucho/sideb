@@ -15,7 +15,7 @@ export const sidebarLayout = {
   /** The cover spans the panel minus this inset per side; text and controls keep `contentInset`. */
   coverInset: 4,
   contentInset: 20,
-  /** One vertical rhythm of the artwork panel, measured between visible glyph/shape edges (FIX-349). */
+  /** One vertical rhythm of the artwork panel, measured between visible glyph/shape edges (FIX-351). */
   gap: 23,
   /** Progress bar spacing, measured from the bar itself and not from the time labels around it. */
   progressGap: 28,

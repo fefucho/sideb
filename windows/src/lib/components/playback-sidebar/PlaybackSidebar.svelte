@@ -61,7 +61,7 @@
   let reduceTransparency = $state(false), increasedContrast = $state(false);
   const paletteController = new SidebarPaletteController(next => { palette = next; });
   $effect(() => { void paletteController.update(playback.currentTrack?.thumbnail ?? null); });
-  // Ready portrait video (Ahora suena only): the surface takes the video's palette so it fades into the panel (FIX-350).
+  // Ready portrait video (Ahora suena only): the surface takes the video's palette so it fades into the panel (FIX-352).
   let videoPalette = $state<SidebarPalette | null>(null);
   const immersive = $derived(panel === 'artwork' && isPortrait && videoPalette !== null);
   const displayPalette = $derived(immersive && videoPalette ? videoPalette : palette);

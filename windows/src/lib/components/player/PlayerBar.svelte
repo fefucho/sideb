@@ -585,7 +585,7 @@
   .side-transport .spinner { width: 28px; height: 28px; border-width: 3px; }
   .side-tail { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; padding: 16px 0 12px; }
   .side-flex { flex: 1 1 8px; min-height: 8px; }
-  /* Artwork panel with the square cover (FIX-349): fixed, equal gaps (23 px; 28 px measured from the progress bar)
+  /* Artwork panel with the square cover (FIX-351): fixed, equal gaps (23 px; 28 px measured from the progress bar)
      instead of flexible spacers. Metadata frame leaves 20 px under the artist line, so 8 px puts the bar 28 px below it. */
   .sidebar-controls.hero { padding: 0 20px 15px; }
   .sidebar-controls.hero .side-top { flex-basis: 8px; }

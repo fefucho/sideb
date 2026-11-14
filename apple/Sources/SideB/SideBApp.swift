@@ -165,7 +165,7 @@ struct WindowRootView: View {
     }()
     @State private var sidebarInset = NavigationSidebarInsetModel()
     @State private var sidebarWidthPersistTask: Task<Void, Never>?
-    // Panel derecho Ahora suena redimensionable (FIX-354).
+    // Panel derecho Ahora suena redimensionable (FIX-356).
     @State private var storedPlaybackPanelWidth: CGFloat = PlaybackSidebarLayout.storedWidth(in: HomeAppearance.preferences)
     @State private var detailWidth: CGFloat = 0
     @State private var panelResize = PlaybackPanelResizeModel()
