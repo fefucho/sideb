@@ -90,10 +90,12 @@ export type JamLookupResult<S extends MatchSong = MatchSong> =
 export type JamSearch<S extends MatchSong = MatchSong> = { ok: true; ranked: JamCandidate<S>[] } | { ok: false; error: unknown };
 
 /** Decides what a finished search means. A thrown error is never a "no match"; an empty successful result is. */
-export function lookupResult<S extends MatchSong>(search: JamSearch<S>, override: string | null = null): JamLookupResult<S> {
+export function lookupResult<S extends MatchSong>(search: JamSearch<S>, override: string | null = null, acceptBest = false): JamLookupResult<S> {
   if (!search.ok) return { kind: 'failed', reason: errorText(search.error) };
   const best = search.ranked[0];
-  if (best && (best.isConfident || override === best.song.videoId)) return { kind: 'matched', song: best.song, score: best.score };
+  // `acceptBest`: the top result is taken even when it is not confident (the first option is usually right);
+  // "no match" then only means the search returned nothing at all.
+  if (best && (best.isConfident || acceptBest || override === best.song.videoId)) return { kind: 'matched', song: best.song, score: best.score };
   return { kind: 'noMatch', candidateCount: search.ranked.length, bestScore: best ? best.score : null };
 }
 

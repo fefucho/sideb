@@ -2,7 +2,7 @@
 // track is looked up at once; the queue goes through the planner (nearest first, few at a time).
 // A failed or throwing search is retried with backoff and never cached as "unavailable".
 import type { SongDto } from '../types';
-import { lookupResult, matchQuery, rankCandidates, type JamSearch } from './matcher';
+import { CONFIDENT_SCORE, lookupResult, matchQuery, rankCandidates, type JamSearch } from './matcher';
 import { songToMatched, type JamCore, type MatchingApi, type Matched } from './model';
 import { backoffMs, PLANNER, planMatches } from './planner';
 import type { JamPluginTrack } from './types';
@@ -46,11 +46,11 @@ export function createMatching(core: JamCore): MatchingApi {
       if (!core.isCurrent(token)) return;
       inFlight.delete(uri);
       const label = `${track.title ?? uri}`;
-      const outcome = lookupResult(result, null);
+      const outcome = lookupResult(result, null, true);
       switch (outcome.kind) {
         case 'matched':
           core.d.matches.set(uri, { kind: 'matched', match: songToMatched(outcome.song), corrected: false });
-          core.note(`match: ${label} -> ${outcome.song.title} (score ${outcome.score.toFixed(1)})`);
+          core.note(`match: ${label} -> ${outcome.song.title} (score ${outcome.score.toFixed(1)}${outcome.score < CONFIDENT_SCORE ? ', low confidence' : ''})`);
           break;
         case 'noMatch':
           core.d.matches.set(uri, { kind: 'unavailable' });
@@ -79,14 +79,19 @@ export function createMatching(core: JamCore): MatchingApi {
       const override = core.d.overrides.get(track.uri);
       if (override && !core.d.matches.has(track.uri)) core.d.matches.set(track.uri, { kind: 'matched', match: override, corrected: true });
     }
+    // The plugin emits a first state without metadata when many tracks are not cached yet (title is
+    // null) and another one when they arrive. A track without a title has nothing to search for, so
+    // it stays pending (never "no equivalent") until a later state brings its title.
+    const awaitingMetadata = new Set<string>();
+    for (const track of current ? [current, ...core.d.queue] : core.d.queue) if (!track.title) awaitingMetadata.add(track.uri);
     // The current track bypasses the pacing: it is what the user is waiting to hear.
-    if (current && !core.d.matches.has(current.uri) && !inFlight.has(current.uri) && (attempts.get(current.uri) ?? 0) < PLANNER.maxAttempts) {
+    if (current && current.title && !core.d.matches.has(current.uri) && !inFlight.has(current.uri) && (attempts.get(current.uri) ?? 0) < PLANNER.maxAttempts) {
       const due = retryAt.get(current.uri);
       if (due === undefined || due <= now) start(current);
       else wakeAfter = due - now;
     }
     const plan = planMatches({
-      queue: core.d.queue.map(track => track.uri), settled: new Set(core.d.matches.keys()), inFlight, attempts, retryAt,
+      queue: core.d.queue.map(track => track.uri), settled: new Set([...core.d.matches.keys(), ...awaitingMetadata]), inFlight, attempts, retryAt,
       lastBackgroundStart: lastBackground, now
     });
     if (plan.startsBackground) lastBackground = now;

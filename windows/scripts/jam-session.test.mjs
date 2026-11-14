@@ -187,6 +187,21 @@ test('a failed search is retried with backoff and never cached as unavailable', 
   assert.equal(jam.app.callsOf('search_songs').length, 3);
 });
 
+test('tracks whose metadata has not arrived yet wait instead of becoming unavailable', async () => {
+  // The plugin emits a first state without titles (more than 60 uncached tracks) and another once they load.
+  const bare = n => track(n, {title: null, artists: [], album: null, durationMs: null});
+  const jam = await bootJam();
+  await jam.start({state: {track: bare(1), queue: [bare(2), bare(3)]}});
+  await jam.time.advance(1500);
+  assert.equal(jam.app.callsOf('search_songs').length, 0);
+  assert.deepEqual(jam.view.queue.map(item => item.status), ['pending', 'pending']);
+  assert.notEqual(jam.view.current.status, 'unavailable');
+  await jam.push({track: track(1), queue: [track(2), track(3)]});
+  await jam.time.advance(1500);
+  assert.equal(jam.view.current.status, 'matched');
+  assert.deepEqual(jam.view.queue.map(item => item.status), ['matched', 'matched']);
+});
+
 test('after six failed attempts the track shows as unavailable without being cached; resync tries again', async () => {
   let broken = true;
   const jam = await bootJam({app: {search: query => {

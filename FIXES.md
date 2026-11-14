@@ -4,9 +4,21 @@ Memoria de cambios de Side B para investigar problemas y regresiones. Buscar aqu
 
 Tags de ámbito: `[Apple]`, `[Windows]`, `[Compartido]`. Core y herramientas comunes usan Compartido, detallando el componente. El tag indica dónde se hizo el cambio; no demuestra que ambas plataformas hayan sido verificadas. Estados, fechas, componentes y relaciones se conservan dentro de cada entrada.
 
-Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-350**. Los IDs repetidos FIX-285/286/287 (2026-11-02) se desambiguaron renumerando las entradas de proveedor visual como FIX-310/311/312; FIX-285/286/287 conservan las de Inicio y recomendaciones laterales. Se conservaron los FIX/FEAT históricos. Dos números antiguos repetidos se distinguen como `FIX-027-2` y `FIX-028-2`, anotando el ID original; al citar FIX-027/028 comprobar título y entrada exacta.
+Todos los nuevos IDs siguen la serie `FIX-NNN`; siguiente libre: **FIX-351**. Los IDs repetidos FIX-285/286/287 (2026-11-02) se desambiguaron renumerando las entradas de proveedor visual como FIX-310/311/312; FIX-285/286/287 conservan las de Inicio y recomendaciones laterales. Se conservaron los FIX/FEAT históricos. Dos números antiguos repetidos se distinguen como `FIX-027-2` y `FIX-028-2`, anotando el ID original; al citar FIX-027/028 comprobar título y entrada exacta.
 
 ## Cambios recientes
+
+<a id="fix-350"></a>
+### [FIX-350] [Windows] - Spotify Jam: filas «Sin equivalente en YouTube Music» cuando el plugin aún no trae los metadatos
+
+- Fecha: 2026-11-14 (America/Montevideo).
+- Componente: `windows/src/lib/jam/matching.ts` (`pump`); el plugin y `core/` no cambian.
+- Problema / causa: en un Jam de 77 canciones las primeras ~19 filas salían «Sin equivalente en YouTube Music» y no se recuperaban. El registro del panel de depuración lo mostró: `match: spotify:track:… -> no confident equivalent (0 candidates, best -)` todas en el mismo segundo del ingreso, y la pista actual como `jam track: spotify:track:… - ` (sin título). Con más de 60 pistas sin metadatos en caché el plugin emite un primer `state` con `title: null` y otro cuando llegan (`extensions/README.md`). `search()` devolvía `{ok:true, ranked:[]}` para una pista sin título, `lookupResult` lo trataba como búsqueda completada sin candidatos y `matches` guardaba `unavailable` para toda la sesión; el siguiente `state` con título nunca lo reevaluaba. Las filas con título (de la 20 en adelante) sí emparejaban (puntaje 4,0–7,0). Comprobado además contra YouTube Music que las canciones afectadas existen con la duración de Spotify.
+- Cambio / motivo: `pump` ya no inicia búsqueda ni marca como resuelta una pista sin título: queda `pending` («Buscando…») y se reintenta sola con el siguiente `state`, que ya llama a `pump`. Las pistas sin título se pasan al planificador como «resueltas» para no alterar las posiciones de la ventana rápida (15 primeras). Un fallo real de búsqueda sigue con reintentos y backoff (FIX-343). A pedido del usuario («la mayoría de las veces la primera opción es correcta»), el emparejado además toma siempre el mejor candidato aunque no llegue al puntaje confiable (`lookupResult(…, acceptBest)`): «sin equivalente» queda sólo para una búsqueda sin ningún resultado, y el registro marca `low confidence` cuando el puntaje es bajo. Riesgo asumido: una versión equivocada (otra duración) desincroniza el audio; se corrige a mano con «elegir otra versión».
+- Archivos: `windows/src/lib/jam/matching.ts`, `windows/src/lib/jam/matcher.ts`, `windows/scripts/jam-session.test.mjs` (primer estado sin títulos, segundo con títulos), `windows/scripts/jam-matcher.test.mjs` (`acceptBest`).
+- Pruebas / límites: la prueba nueva falla sin el cambio y pasa con él; `node --test scripts/jam-*.test.mjs` 77/77; `svelte-check` 0 errores. Compilado con el build rápido de release (sin `verify`) y publicado en 1.5.2 por pedido; no se probó con el Jam real: falta validar en la app que las filas pasen de «Buscando…» a emparejadas. Una pista cuyos metadatos nunca lleguen queda en «Buscando…».
+- Anteriores relacionados: [FIX-343](#fix-343) y [FIX-347](#fix-347) (emparejado perezoso y Jam en Windows).
+- Paridad: [PAR-065](PARIDAD.md). Mac tiene el mismo defecto (`JamSessionController.ranking(for:)`: `guard track.title != nil else { return .success([]) }`).
 
 <a id="fix-349"></a>
 ### [FIX-349] [Windows] - Spotify Jam: aceptar enlaces cortos `spotify.link` al unirse
