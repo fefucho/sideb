@@ -78,6 +78,15 @@ enum ShellLayout {
         return CGSize(width: target - (closeRect.midX - bounds.minX), height: target - centerFromTop)
     }
 
+    /// Coordenadas horizontales del toolbar en el espacio del contenido: con la sidebar nativa expandida el cluster empieza
+    /// 18 pt despues de su borde derecho; el inset derecho (panel Ahora suena) se resta como siempre.
+    static func toolbarHorizontals(minX: CGFloat, midX: CGFloat, maxX: CGFloat, sidebarLeadingInset: CGFloat,
+                                   playbackTrailingInset: CGFloat) -> (centerX: CGFloat, leading: CGFloat, trailing: CGFloat) {
+        (midX + sidebarLeadingInset / 2 - playbackTrailingInset / 2,
+         minX + sidebarLeadingInset + 18,
+         maxX - 18 - playbackTrailingInset)
+    }
+
     static func translatedControl(_ rect: CGRect, offset: CGSize, isFlipped: Bool) -> CGRect {
         rect.offsetBy(dx: offset.width, dy: isFlipped ? offset.height : -offset.height)
     }

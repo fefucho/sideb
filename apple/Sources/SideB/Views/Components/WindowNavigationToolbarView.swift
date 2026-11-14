@@ -1,6 +1,18 @@
 import AppKit
 import SwiftUI
 
+/// Ancho vivo de la columna lateral nativa para el toolbar; solo `AnimatedWindowNavigationToolbarView` lo observa.
+@MainActor @Observable final class NavigationSidebarInsetModel {
+    var expandedWidth: CGFloat = 0
+    var isExpanded = true
+    var inset: CGFloat { isExpanded ? expandedWidth : 0 }
+    /// Ignora anchos de transicion (< minimo de la columna) para que abrir/cerrar no mueva el toolbar a medias.
+    func report(columnWidth: CGFloat) {
+        let width = columnWidth.rounded()
+        if width >= 200, width != expandedWidth { expandedWidth = width }
+    }
+}
+
 /// Native presentation owns its frame clock; SwiftUI supplies semantic state only.
 struct AnimatedWindowNavigationToolbarView: View {
     let selection: MainNavigationDestination
@@ -12,6 +24,8 @@ struct AnimatedWindowNavigationToolbarView: View {
     let showsHistory: Bool
     var viewportWidth: CGFloat = ShellLayout.navigationMinimumWidth
     var playbackTrailingInset: CGFloat = 0
+    /// Ancho de la columna lateral nativa expandida (0 colapsada/fullscreen). Se lee aqui, no en la raiz de la ventana.
+    var sidebarInsetModel: NavigationSidebarInsetModel? = nil
     var isHomeSettingsPresented: Bool = false
     var onHistoryFrameChanged: ((CGRect) -> Void)? = nil
     var onHomeSettings: () -> Void = {}
@@ -39,7 +53,8 @@ struct AnimatedWindowNavigationToolbarView: View {
             history: HistoryToolbarView(router: router, isDisabled: isHistoryDisabled,
                                         isHomeSettingsPresented: isHomeSettingsPresented,
                                         onHomeSettings: onHomeSettings), showsHistory: showsHistory,
-            viewportWidth: viewportWidth, playbackTrailingInset: playbackTrailingInset, onHistoryFrameChanged: onHistoryFrameChanged,
+            viewportWidth: viewportWidth, playbackTrailingInset: playbackTrailingInset,
+            sidebarLeadingInset: sidebarInsetModel?.inset ?? 0, onHistoryFrameChanged: onHistoryFrameChanged,
             isSidebarExpanded: isSidebarExpanded, isSearchExpanded: isSearchExpanded,
             searchQuery: searchQuery, searchFocusRevision: searchFocusRevision,
             searchSessionRevision: searchSessionRevision,
@@ -56,6 +71,7 @@ struct WindowNavigationToolbarView: NSViewRepresentable {
     let showsHistory: Bool
     var viewportWidth: CGFloat = ShellLayout.navigationMinimumWidth
     var playbackTrailingInset: CGFloat = 0
+    var sidebarLeadingInset: CGFloat = 0
     var onHistoryFrameChanged: ((CGRect) -> Void)? = nil
     var isSidebarExpanded: Bool = false
     var isSearchExpanded: Bool = false
@@ -123,6 +139,7 @@ struct WindowNavigationToolbarView: NSViewRepresentable {
         header.searchResultsHost.setContent(searchResultsContent)
         header.viewportWidth = viewportWidth
         header.playbackTrailingInset = playbackTrailingInset
+        header.sidebarLeadingInset = sidebarLeadingInset
         header.onHistoryFrameChanged = onHistoryFrameChanged
         header.setPresentation(sidebarExpanded: isSidebarExpanded, searchExpanded: isSearchExpanded,
                                visible: showsHistory, reduceMotion: navigation.reduceMotion,
@@ -233,6 +250,10 @@ final class NativeNavigationHeader: NSView {
     let searchResultsHost = NavigationSearchResultsHost(frame: .zero)
     private weak var navigationCoordinator: TopNavigationView.Coordinator?
     var playbackTrailingInset: CGFloat = 0
+    /// No forma parte de `Presentation`: moverlo durante el arrastre de la sidebar no dispara retargets de animacion.
+    var sidebarLeadingInset: CGFloat = 0 {
+        didSet { if abs(oldValue - sidebarLeadingInset) > 0.5 { needsLayout = true } }
+    }
     var viewportWidth: CGFloat = ShellLayout.navigationMinimumWidth {
         didSet {
             guard oldValue != viewportWidth else { return }
@@ -684,18 +705,18 @@ final class NativeNavigationHeader: NSView {
     private func geometry() -> Geometry {
         var center = NSPoint(x: bounds.midX, y: ShellLayout.navigationRowCenter)
         var windowTop = bounds.minY
-        var leading = bounds.minX + 18
+        var leading = bounds.minX + sidebarLeadingInset + 18
         var trailing = bounds.maxX - 18 - playbackTrailingInset
         if let content = window?.contentView {
             let top = content.isFlipped ? content.bounds.minY : content.bounds.maxY
             windowTop = convert(NSPoint(x: content.bounds.midX, y: top), from: content).y
             let y = content.isFlipped ? top + ShellLayout.navigationRowCenter : top - ShellLayout.navigationRowCenter
-            center = convert(NSPoint(x: content.bounds.midX, y: y), from: content)
-            leading = convert(NSPoint(x: content.bounds.minX + 18,
-                                      y: top), from: content).x
-            trailing = convert(NSPoint(x: content.bounds.maxX - 18 - playbackTrailingInset, y: top), from: content).x
+            let h = ShellLayout.toolbarHorizontals(minX: content.bounds.minX, midX: content.bounds.midX, maxX: content.bounds.maxX,
+                sidebarLeadingInset: sidebarLeadingInset, playbackTrailingInset: playbackTrailingInset)
+            center = convert(NSPoint(x: h.centerX, y: y), from: content)
+            leading = convert(NSPoint(x: h.leading, y: top), from: content).x
+            trailing = convert(NSPoint(x: h.trailing, y: top), from: content).x
         }
-        center.x -= playbackTrailingInset / 2
         return Geometry(bounds: bounds, center: center, leading: leading, trailing: trailing, windowTop: windowTop)
     }
     private func layoutClusters(retargetSidebar: Bool = true) {

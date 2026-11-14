@@ -158,8 +158,13 @@ struct WindowRootView: View {
     // PROTOTIPO ui/native-sidebar: la visibilidad la gobierna NavigationSplitView.
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @State private var sidebarVisibilityBeforeFullscreen: NavigationSplitViewVisibility?
-    @AppStorage("native.sidebar.width", store: HomeAppearance.preferences) private var persistedSidebarWidth: Double = 252
-    @State private var initialSidebarWidth: CGFloat = 0
+    // El ancho inicial se lee una vez; no se observa ni se escribe por tick (evita reevaluar toda la ventana).
+    @State private var initialSidebarWidth: CGFloat = {
+        let stored = HomeAppearance.preferences.double(forKey: "native.sidebar.width")
+        return stored >= 200 ? CGFloat(stored) : 252
+    }()
+    @State private var sidebarInset = NavigationSidebarInsetModel()
+    @State private var sidebarWidthPersistTask: Task<Void, Never>?
     // Panel derecho Ahora suena redimensionable (FIX-354).
     @State private var storedPlaybackPanelWidth: CGFloat = PlaybackSidebarLayout.storedWidth(in: HomeAppearance.preferences)
     @State private var detailWidth: CGFloat = 0
@@ -255,6 +260,7 @@ struct WindowRootView: View {
                     showsHistory: !playerViewModel.isFullscreenPresented,
                     viewportWidth: navigationHeaderWidth,
                     playbackTrailingInset: playerViewModel.isPlaybackSidebarPresented ? PlaybackSidebarLayout.reserve(forWidth: playbackPanelWidth) : 0,
+                    sidebarInsetModel: sidebarInset,
                     isHomeSettingsPresented: isHomeSettingsPresented && canPresentHomeSettings,
                     onHistoryFrameChanged: { frame in
                         if abs(homeToolbarBottom - frame.maxY) > 0.5 { homeToolbarBottom = frame.maxY }
@@ -446,14 +452,15 @@ struct WindowRootView: View {
     private var windowContent: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
             nativeSidebar
-                .navigationSplitViewColumnWidth(min: 200, ideal: initialSidebarWidth > 0 ? initialSidebarWidth : CGFloat(persistedSidebarWidth), max: 360)
+                .navigationSplitViewColumnWidth(min: 200, ideal: initialSidebarWidth, max: 360)
         } detail: {
             detailContent
                 .ignoresSafeArea(.container, edges: .top)
                 .onGeometryChange(for: CGFloat.self) { ($0.size.width / 8).rounded(.down) * 8 } action: { detailWidth = $0 }
         }
         .navigationSplitViewStyle(.balanced)
-        .onAppear { if initialSidebarWidth == 0 { initialSidebarWidth = CGFloat(persistedSidebarWidth) } }
+        .onChange(of: columnVisibility, initial: true) { _, _ in sidebarInset.isExpanded = isSidebarExpanded && !playerViewModel.isFullscreenPresented }
+        .onChange(of: playerViewModel.isFullscreenPresented) { _, _ in sidebarInset.isExpanded = isSidebarExpanded && !playerViewModel.isFullscreenPresented }
         .onChange(of: playerViewModel.isFullscreenPresented) { _, presented in
             // La sidebar nativa vive en su propia columna: para que el fullscreen cubra toda la ventana se colapsa y se restaura.
             if presented {
@@ -493,7 +500,14 @@ struct WindowRootView: View {
         .background {
             GeometryReader { proxy in
                 Color.clear.onChange(of: proxy.size.width) { _, width in
-                    if width > 0, abs(Double(width) - persistedSidebarWidth) > 0.5 { persistedSidebarWidth = Double(width) }
+                    sidebarInset.report(columnWidth: width)
+                    guard width >= 200 else { return }
+                    // Persistencia diferida: una sola escritura al terminar de arrastrar.
+                    sidebarWidthPersistTask?.cancel()
+                    sidebarWidthPersistTask = Task { @MainActor in
+                        try? await Task.sleep(for: .milliseconds(350))
+                        if !Task.isCancelled { HomeAppearance.preferences.set(Double(width), forKey: "native.sidebar.width") }
+                    }
                 }
             }
         }
