@@ -152,7 +152,8 @@ try {
       assert.deepEqual(controls.playSize, [78, 78]);
       assert.ok(controls.progTop < controls.playTop && controls.playBottom <= controls.volBottom, 'progress, transport and volume stack top to bottom');
       // The free height of the footer goes under the transport (lyrics sample / queue), never between the metadata and the progress.
-      if (s.panel === 'artwork') near(controls.progTop - footer.y, 12 + 10, `${vw}x${vh}@${w}: progress stays glued to the top of the footer`, 1.5);
+      // FIX-351/353: square-cover artwork panel has fixed gaps: no footer top padding + 8 px so the bar sits 28 px under the artist line.
+      if (s.panel === 'artwork') near(controls.progTop - footer.y, 8, `${vw}x${vh}@${w}: progress stays glued to the top of the footer`, 1.5);
       assert.ok(controls.volBottom <= controls.p.b && controls.volRight <= controls.p.r - 19 && controls.volLeft >= controls.p.l + 19, 'volume row inside the panel');
       assert.ok(controls.hdrOverflow <= 0 && controls.segOverflow <= 0 && controls.docOverflow <= 0 && controls.panelOverflow <= 0, `${vw}x${vh}@${w}: no horizontal overflow ${JSON.stringify(controls)}`);
       assert.ok(panel.height - header.height - footer.height >= 0 || s.panel === 'artwork', 'body keeps its height');

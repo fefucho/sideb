@@ -78,7 +78,8 @@ struct JamSurfacesTests {
     @Test("The badge overlays the artwork card and never needs more than the header offset")
     func badgePlacement() {
         let tall = JamSidebarBadgePlacement.top(width: 380, height: 700, portrait: false)
-        #expect(tall >= 58 + JamSidebarBadgePlacement.inset)
+        // FIX-351: the cover now starts at `coverTop` (56 pt), just inside the header band.
+        #expect(tall == PlaybackSidebarLayout.coverTop + JamSidebarBadgePlacement.inset)
         #expect(tall <= 58 + 12 + JamSidebarBadgePlacement.inset)
         #expect(JamSidebarBadgePlacement.top(width: 380, height: 700, portrait: true) == 66)
     }
