@@ -49,12 +49,7 @@ extension FullscreenNowPlayingView {
         // The shadow belongs to a static shape behind the panel. Applying it to the
         // panel itself would re-rasterize live video, karaoke and scrolling content
         // into an offscreen shadow pass on every frame.
-        .background {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(Color.black)
-                .shadow(color: .black.opacity(0.28), radius: 16, y: 6)
-                .allowsHitTesting(false)
-        }
+        .background { PlaybackPanelShadow().allowsHitTesting(false) }
         .onAppear { sidebarCloseFocused = true }
     }
 

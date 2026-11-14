@@ -52,7 +52,66 @@ final class PlaybackSidebarResizeBenchmarkTests: XCTestCase {
         XCTAssertLessThan(sorted[sorted.count / 2], 50)
     }
 
+    /// Costo por tick de reservar el ancho del panel en la PAGINA Inicio real (rieles, tabla del feed, marco de contenido).
+    func testLivePageReserveCostPerTick() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let home = HomeViewModel(cacheStore: HomeFeedCacheStore(directory: directory),
+                                 preferences: UserDefaults(suiteName: UUID().uuidString)!)
+        home.prepareSession(identity: UUID().uuidString)
+        await home.loadHomeFeed(core: BenchHomeCoreStub())
+        let player = PlayerViewModel()
+        func shell(reserve: CGFloat) -> some View {
+            HomeView(playerViewModel: player, homeViewModel: home, sessionRevision: 0, accountName: "bench")
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .contentEdgeFrame(leadingInset: 0, trailingInset: 0)
+                .padding(.trailing, reserve)
+        }
+        let host = NSHostingView(rootView: shell(reserve: 392))
+        host.sizingOptions = []
+        host.frame = NSRect(x: 0, y: 0, width: 1300, height: 860)
+        let window = NSWindow(contentRect: host.frame, styleMask: [.titled], backing: .buffered, defer: false)
+        window.contentView = host
+        host.layoutSubtreeIfNeeded()
+        for _ in 0..<10 { spin() }
+        var baseline: [Double] = []
+        for _ in 0..<30 {
+            let t = ContinuousClock.now; host.rootView = shell(reserve: 392); spin(); host.layoutSubtreeIfNeeded(); baseline.append(ms(ContinuousClock.now - t))
+        }
+        var ticks: [Double] = []
+        for i in 0..<120 {
+            let reserve = 352 + CGFloat(i % 60) * 3
+            let start = ContinuousClock.now
+            host.rootView = shell(reserve: reserve)
+            spin(); host.layoutSubtreeIfNeeded(); host.displayIfNeeded()
+            ticks.append(ms(ContinuousClock.now - start))
+        }
+        let base = baseline.sorted()[baseline.count / 2]
+        let sorted = ticks.sorted()
+        print("RESIZE-BENCH page: base=\(base)ms median=\(sorted[sorted.count / 2])ms p95=\(sorted[Int(Double(sorted.count) * 0.95)])ms max=\(sorted.last!)ms")
+    }
+
     private func ms(_ d: Duration) -> Double {
         Double(d.components.seconds) * 1000 + Double(d.components.attoseconds) / 1e15
+    }
+}
+
+private final class BenchHomeCoreStub: SideBCore, @unchecked Sendable {
+    required init(unsafeFromRawPointer pointer: UnsafeMutableRawPointer) { super.init(unsafeFromRawPointer: pointer) }
+    init() { super.init(noPointer: .init()) }
+    override func isLoggedIn() -> Bool { true }
+    override func getHomePage(chipParams: String?) async throws -> HomePageRecord {
+        func items(_ kind: String, count: Int) -> [HomeItemRecord] {
+            (0..<count).map { index in
+                HomeItemRecord(kind: kind, id: "\(kind)-\(index)", title: "\(kind) \(index)", subtitle: "Subtitle", thumbnail: nil,
+                    duration: nil, artists: "Artist", artistId: nil, album: nil, albumId: nil, artistRuns: [], explicit: false)
+            }
+        }
+        return HomePageRecord(chips: [], sections: [
+            HomeSectionRecord(title: "Quick picks", format: .compactSongs, items: items("song", count: 27), moreBrowseId: nil, moreParams: nil),
+            HomeSectionRecord(title: "Albums for you", format: .largeCards, items: items("album", count: 24), moreBrowseId: nil, moreParams: nil),
+            HomeSectionRecord(title: "Listen again", format: .largeCards, items: items("playlist", count: 24), moreBrowseId: nil, moreParams: nil),
+            HomeSectionRecord(title: "More", format: .largeCards, items: items("album", count: 24), moreBrowseId: nil, moreParams: nil)
+        ], continuation: nil)
     }
 }

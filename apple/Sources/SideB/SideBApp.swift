@@ -601,7 +601,8 @@ struct WindowRootView: View {
                 .contentEdgeFrame(leadingInset: isSidebarExpanded ? 0 : ShellLayout.contentFrameInset,
                                   trailingInset: playbackContentReserve > 0 ? 0 : ShellLayout.contentFrameInset)
             }
-            .padding(.trailing, playbackContentReserve)
+            .modifier(PlaybackPageReserve(model: panelResize, storedWidth: storedPlaybackPanelWidth,
+                windowWidth: playbackAvailableWindowWidth, presented: playerViewModel.isPlaybackSidebarPresented))
             .zIndex(0)
 
             // Centered macOS Settings popup modal with backdrop scrim

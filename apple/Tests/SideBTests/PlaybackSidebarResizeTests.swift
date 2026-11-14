@@ -73,6 +73,42 @@ struct PlaybackSidebarResizeTests {
         #expect(!model.isResizing)
     }
 
+    @MainActor @Test func pageReserveFollowsAtMostOncePerFrameWhilePanelFollowsEveryTick() {
+        let model = PlaybackPanelResizeModel()
+        model.update(400, now: 10.000)
+        #expect(model.liveWidth == 400 && model.pageWidth == 400)
+        model.update(410, now: 10.004) // dentro del mismo fotograma
+        #expect(model.liveWidth == 410 && model.pageWidth == 400)
+        model.update(420, now: 10.020)
+        #expect(model.liveWidth == 420 && model.pageWidth == 420)
+        model.finish()
+        #expect(model.liveWidth == nil && model.pageWidth == nil)
+    }
+
+    @Test func itemsNeverWiderThanCoverAcrossWidthsAndHeights() {
+        for width: CGFloat in [340, 380, 450, 520] {
+            for height: CGFloat in [600, 700, 875, 1000] {
+                let items = PlaybackSidebarLayout.itemsWidth(panelWidth: width, panelHeight: height, panel: .artwork, isPortrait: false)
+                let footer = PlaybackSidebarLayout.footerHeight(for: height, panel: .artwork, width: width)
+                let card = SidebarArtworkLayout(width: width, height: height - footer, portrait: false).cardSide
+                #expect(items <= width - 40 + 0.001, "\(width)x\(height)")
+                #expect(items <= max(PlaybackSidebarLayout.minimumItemsWidth, card) + 0.001, "\(width)x\(height)")
+                if card >= width - 40 { #expect(items == width - 40) } // caratula a todo el ancho: margen de 20 pt
+                // metadata y pie comparten ancho (metadataWidth = min(width-40, card)).
+                if card >= PlaybackSidebarLayout.minimumItemsWidth {
+                    #expect(abs(items - SidebarArtworkLayout(width: width, height: height - footer, portrait: false).metadataWidth) < 0.001)
+                }
+            }
+        }
+        // Lyrics, cola y retrato no cambian.
+        for panel in [PlaybackSidebarPanel.lyrics, .queue] {
+            #expect(PlaybackSidebarLayout.itemsWidth(panelWidth: 520, panelHeight: 700, panel: panel, isPortrait: false) == 480)
+        }
+        #expect(PlaybackSidebarLayout.itemsWidth(panelWidth: 520, panelHeight: 700, panel: .artwork, isPortrait: true) == 480)
+        // Panel ancho y poca altura: items mas angostos que el panel.
+        #expect(PlaybackSidebarLayout.itemsWidth(panelWidth: 520, panelHeight: 600, panel: .artwork, isPortrait: false) < 480)
+    }
+
     @Test func imageRequestSizeIsQuantizedSoIntermediateWidthsShareOneLoad() {
         let sizes = Set(stride(from: CGFloat(300), to: 330, by: 3).map { PlaybackSidebarResizeDrag.quantizedImageSide($0).width })
         #expect(sizes.count <= 2)

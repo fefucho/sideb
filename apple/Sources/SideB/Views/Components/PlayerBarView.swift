@@ -113,7 +113,9 @@ struct PlayerBarView: View {
             .foregroundStyle(.white.opacity(0.8))
             .frame(height: 32)
         }
-        .padding(.horizontal, PlaybackSidebarLayout.contentInset)
+        .padding(.horizontal, usesHeroGaps ? max(PlaybackSidebarLayout.contentInset,
+            (sidebarWidth - PlaybackSidebarLayout.itemsWidth(panelWidth: sidebarWidth, panelHeight: sidebarHeight ?? 628,
+                panel: viewModel.selectedSidebarPanel, isPortrait: sidebarIsPortrait)) / 2) : PlaybackSidebarLayout.contentInset)
         .padding(.top, usesHeroGaps ? 0 : 12)
         .padding(.bottom, usesHeroGaps ? PlaybackSidebarLayout.gap - PlaybackSidebarLayout.volumeRowSlack : 12)
         .frame(height: PlaybackSidebarLayout.footerHeight(

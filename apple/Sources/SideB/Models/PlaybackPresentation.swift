@@ -1,3 +1,4 @@
+import QuartzCore
 import Foundation
 
 public enum PlaybackPresentation: Equatable { case bar, sidebar, fullscreen }
@@ -60,12 +61,18 @@ public struct PlaybackPresentationState: Equatable {
 /// que cada tick re-evalua el panel y no toda la ventana; la reserva de la pagina se aplica una vez al soltar.
 @MainActor @Observable final class PlaybackPanelResizeModel {
     var liveWidth: CGFloat?
+    /// Ancho con el que la PAGINA reserva espacio en vivo: sigue a `liveWidth` a lo sumo una vez por fotograma.
+    var pageWidth: CGFloat?
     var isResizing: Bool { liveWidth != nil }
-    /// Coalesce: ignora cambios sub-punto para no re-evaluar con el mismo ancho visible.
-    func update(_ width: CGFloat) {
+    @ObservationIgnored private var lastPageUpdate: CFTimeInterval = 0
+    static let pageInterval: CFTimeInterval = 1.0 / 60.0
+    /// Coalesce: ignora cambios sub-punto; el panel sigue a frecuencia completa y la pagina a <= 1 vez por fotograma.
+    func update(_ width: CGFloat, now: CFTimeInterval = CACurrentMediaTime()) {
         let rounded = width.rounded()
         if liveWidth != rounded { liveWidth = rounded }
+        if pageWidth != rounded, now - lastPageUpdate >= Self.pageInterval { pageWidth = rounded; lastPageUpdate = now }
     }
+    func finish() { liveWidth = nil; pageWidth = nil; lastPageUpdate = 0 }
 }
 
 /// Calculo puro del ancho objetivo de un arrastre (clamp 340-520 y limite por ventana).
@@ -152,6 +159,18 @@ struct PlaybackSidebarLayout {
     }
     /// Reserva de contenido: con `panelWidth` omitido usa el ancho por defecto. Si ni el ancho minimo deja
     /// `minimumContentWidth` de pagina, no se reserva (el panel se superpone).
+    /// Ancho de los items del pie y la metadata en el modo carátula cuadrada: nunca mayor que la carátula ni que `panelWidth - 40`.
+    /// Usa el mismo `cardSide` que `SidebarArtworkLayout` con la altura del hero (`panelHeight - footerHeight`).
+    static func itemsWidth(panelWidth: CGFloat, panelHeight: CGFloat, panel: PlaybackSidebarPanel, isPortrait: Bool) -> CGFloat {
+        let standard = max(0, panelWidth - contentInset * 2)
+        guard panel == .artwork, !isPortrait else { return standard }
+        let hero = max(0, panelHeight - footerHeight(for: panelHeight, panel: panel, isPortrait: isPortrait, width: panelWidth))
+        let card = SidebarArtworkLayout(width: panelWidth, height: hero, portrait: false).cardSide
+        return min(standard, max(minimumItemsWidth, card))
+    }
+    /// Suelo practico para que el transporte no se desborde cuando la altura deja una caratula diminuta.
+    static let minimumItemsWidth: CGFloat = 240
+
     static func contentReserve(windowWidth: CGFloat, leftReserve: CGFloat, presented: Bool, panelWidth: CGFloat = Self.width) -> CGFloat {
         let reserve = reserve(forWidth: panelWidth)
         return presented && windowWidth - leftReserve - reserve >= minimumContentWidth ? reserve : 0
