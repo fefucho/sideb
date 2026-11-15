@@ -1,5 +1,7 @@
 # Planes generales
 
+- [PLAN-024: Automix — transiciones automáticas con stems](PLAN-024-automix.md) — experimento en `feature/automix-lab`: banco de pruebas por línea de comandos (`labs/automix-lab`), 4 pruebas automáticas aprobadas y un render real completo; calidad sonora sin evaluar, nada integrado a las apps ni al core.
+
 - [PLAN-023: Escuchar juntos — Spotify Jam como invitado](PLAN-023-spotify-jam.md) — integrado a `main`: Mac (FIX-343, build 0006 compilada) y Windows en fuentes (FIX-344, [Windows028](../windows/plans/PLAN-028-spotify-jam.md)); validación manual en ambas y ejecución nativa en Windows pendientes (PAR-062).
 
 - [Release 1.4.0 Mac/Windows](RELEASE-1.4.0.md) — preparada, no publicada: versión 1.4.0/build 22 y notas listas; paridad Windows de [PLAN-023](../windows/plans/PLAN-023-paridad-1.4.0.md) (FIX-302…309) verificada sólo en frontend; verify/build en PC, QA y publicación pendientes.
