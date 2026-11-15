@@ -125,8 +125,8 @@ struct PlaybackSidebarLayout {
     static let metadataHeight: CGFloat = 68
     /// Header band that stays above the cover (the cover starts just inside it).
     static let coverTop: CGFloat = 56
-    /// The cover uses almost the full panel width; text and controls keep `contentInset`.
-    static let coverInset: CGFloat = 4
+    /// The cover matches the title/heart column: same side inset as text and controls.
+    static let coverInset: CGFloat = contentInset
     static let contentInset: CGFloat = 20
     /// Single vertical rhythm of the artwork panel (cover → title, transport → lyrics → volume → edge),
     /// measured between visible glyph/shape edges rather than between layout frames.

@@ -40,9 +40,8 @@ extension FullscreenNowPlayingView {
             }
         }
         .background {
-            PlaybackSidebarBackground(palette: sidebarDisplayPalette, immersive: sidebarIsImmersive)
-                .animation(reduceMotion ? nil : .easeInOut(duration: 0.6), value: sidebarDisplayPalette)
-                .animation(reduceMotion ? nil : .easeInOut(duration: 0.6), value: sidebarIsImmersive)
+            // Same blurred-artwork backdrop as fullscreen.
+            FullscreenBackdrop(thumbnail: viewModel.currentTrack?.thumbnail, trackID: viewModel.currentTrack?.videoId)
         }
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay { RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(.white.opacity(0.12), lineWidth: 0.5) }

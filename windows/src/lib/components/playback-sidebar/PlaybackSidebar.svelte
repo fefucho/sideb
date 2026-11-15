@@ -11,6 +11,7 @@
     SIDEBAR, footerHeight, panelSurface, progressToTransportSpacing, showsUpcoming, sidebarWidth, surfaceTransform,
     type SidebarPanel,
   } from '$lib/player/playbackPresentation';
+  import FullscreenBackdrop from '$lib/components/fullscreen/FullscreenBackdrop.svelte';
   import SidebarArtwork from './SidebarArtwork.svelte';
   import SidebarLyricsPreview from './SidebarLyricsPreview.svelte';
   import SidebarRecommendations from './SidebarRecommendations.svelte';
@@ -93,6 +94,9 @@
   data-panel={panel} class:layered={surfaceCss.layered} style:--sidebar-surface={surfaceCss.background} style:--sidebar-top={surfaceCss.top}
   style:--sb-top={surfaceCss.top} style:--sb-bottom={surfaceCss.bottom} style:--sb-glow={surfaceCss.glow} style:--sb-glow2={surfaceCss.glow2}
   style:--sb-glow-a={surfaceCss.glowAlpha} style:--sb-glow-y={`${surfaceCss.glowY}%`} style:--sb-glow2-a={surfaceCss.glow2Alpha} style:--sb-shade-a={surfaceCss.shadeAlpha}>
+
+  <!-- Same blurred-artwork backdrop as fullscreen. -->
+  <div class="sidebar-backdrop"><FullscreenBackdrop contained thumbnail={playback.currentTrack?.thumbnail} trackKey={playback.currentTrack?.videoId ?? ''} /></div>
 
   <header class="header" style:height={`${SIDEBAR.headerHeight}px`} data-volume-excluded>
     <button bind:this={closeButton} type="button" class="icon-button" onclick={onClose}
@@ -189,19 +193,9 @@
     isolation: isolate;
     user-select: none;
   }
-  /* Layers (top first): shade toward the controls, counter-glow low-left with the second colour, glow behind the cover,
-     the cover-coloured vertical gradient and the dark base. Radii follow Mac (~panel width, ~55 % of the height). */
-  .playback-sidebar.layered {
-    background:
-      linear-gradient(to bottom, transparent 55%, rgb(0 0 0 / var(--sb-shade-a)) 100%),
-      radial-gradient(114% 49% at 12% 96%, color-mix(in srgb, var(--sb-glow2) calc(var(--sb-glow2-a) * 100%), transparent), transparent),
-      radial-gradient(126% 55% at 50% var(--sb-glow-y), color-mix(in srgb, var(--sb-glow) calc(var(--sb-glow-a) * 100%), transparent), transparent),
-      linear-gradient(180deg, var(--sb-top), var(--sb-bottom)),
-      rgb(18 18 20);
-    transition: --sb-top .6s ease-in-out, --sb-bottom .6s ease-in-out, --sb-glow .6s ease-in-out, --sb-glow2 .6s ease-in-out,
-      --sb-glow-a .6s ease-in-out, --sb-glow-y .6s ease-in-out, --sb-glow2-a .6s ease-in-out, --sb-shade-a .6s ease-in-out;
-  }
-  @media (prefers-reduced-motion: reduce) { .playback-sidebar.layered { transition: none; } }
+  /* The surface is the fullscreen blurred-artwork backdrop (z-index -1 inside the isolated panel). */
+  .sidebar-backdrop { position: absolute; inset: 0; z-index: -1; pointer-events: none; }
+  .playback-sidebar.layered { background: rgb(18 18 20); }
   .header { position: absolute; z-index: 3; top: 0; left: 0; right: 0; box-sizing: border-box; display: flex; align-items: center; gap: 6px; padding: 0 12px; background: linear-gradient(to bottom, rgb(0 0 0 / 22%), transparent); }
   .playback-sidebar[data-panel='artwork'] .header { background: linear-gradient(to bottom, rgb(0 0 0 / 34%), transparent); }
   /* Labels never fit in 350-420 px next to the two header buttons: the shared control collapses to icons (name and tooltip stay). */
@@ -227,6 +221,7 @@
     .header, .playback-sidebar[data-panel='artwork'] .header { background: var(--sidebar-top, #1b1b1e); }
   }
   @media (forced-colors: active) {
+    .sidebar-backdrop { display: none; }
     .playback-sidebar, .playback-sidebar.layered { color: CanvasText; background: Canvas; border: 1px solid CanvasText; box-shadow: none; }
   }
 </style>

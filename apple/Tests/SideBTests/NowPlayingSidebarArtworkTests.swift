@@ -12,7 +12,7 @@ struct NowPlayingSidebarArtworkTests {
         for width: CGFloat in [350, 380, 420] {
             for height: CGFloat in [260, 380, 600] {
                 let layout = SidebarArtworkLayout(width: width, height: height, portrait: false)
-                #expect(layout.cardSide <= width - 8)
+                #expect(layout.cardSide <= width - PlaybackSidebarLayout.coverInset * 2)
                 #expect(layout.cardTop == PlaybackSidebarLayout.coverTop)
                 #expect(layout.cardTop + layout.cardSide <= height)
                 #expect(layout.metadataTop - (layout.cardTop + layout.cardSide) == PlaybackSidebarLayout.metadataSpacing)

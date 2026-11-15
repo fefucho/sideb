@@ -26,9 +26,9 @@ test('sidebar bottom content defaults to the queue like macOS, validates storage
 
 test('cover geometry keeps the square card and the immersive portrait video as macOS',()=>{
  const card=layout.sidebarArtworkGeometry(380,628,false);
- assert.equal(card.cardSide,372,'cover spans the panel minus 4 px per side (FIX-351)');assert.equal(card.cardTop,56);
+ assert.equal(card.cardSide,340,'cover matches the title column: panel minus 20 px per side');assert.equal(card.cardTop,56);
  assert.equal(card.metadataTop,card.cardTop+card.cardSide+17);assert.equal(card.metadataWidth,340,'text keeps the 20 px margin');
- assert.deepEqual([card.videoWidth,card.videoHeight,card.videoTop],[372,372,card.cardTop]);
+ assert.deepEqual([card.videoWidth,card.videoHeight,card.videoTop],[340,340,card.cardTop]);
  const shrunk=layout.sidebarArtworkGeometry(380,420,false);assert.equal(shrunk.metadataWidth,Math.min(340,shrunk.cardSide),'metadata aligns with a shrunk card');
  const portrait=layout.sidebarArtworkGeometry(380,628,true);
  assert.deepEqual([portrait.videoWidth,portrait.videoHeight,portrait.videoTop,portrait.metadataWidth],[380,628,0,340]);
@@ -78,7 +78,7 @@ test('footer and upcoming visibility follow the macOS thresholds',()=>{
  assert.equal(layout.sidebarFooterHeight(900,'artwork',true),Math.min(240,Math.max(200,900*.24)));
  assert.ok(layout.sidebarFooterHeight(900,'artwork',false)>=Math.min(240,Math.max(200,900*.24))+134);
  assert.equal(layout.progressToTransportSpacing(628),layout.sidebarLayout.progressToTransportGap,'fixed, no longer height dependent');
- assert.equal(1800-layout.sidebarFooterHeight(1800,'artwork'),56+372+17+68,'ideal hero height with the full-width cover');
+ assert.equal(1800-layout.sidebarFooterHeight(1800,'artwork'),56+340+17+68,'ideal hero height with the title-width cover');
  assert.equal(layout.sidebarLayout.metadataSpacing+6,layout.sidebarLayout.gap,'cover → title glyph gap');
  assert.equal(layout.sidebarLayout.progressTopGap+20,layout.sidebarLayout.progressGap,'artist glyph → bar top is measured from the bar');
  assert.equal(9+13+layout.sidebarLayout.progressToTransportGap,layout.sidebarLayout.progressGap+1,'bar bottom → play top = progressGap + 1 with the time labels');

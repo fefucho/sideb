@@ -2,7 +2,7 @@
   import { nextArtworkUrl, rejectArtworkAttempt, type ArtworkFailures } from '$lib/images/artwork';
   import { fullscreenBackdropCandidates } from './backdrop';
 
-  let { thumbnail, trackKey }: { thumbnail: string | null | undefined; trackKey: string } = $props();
+  let { thumbnail, trackKey, contained = false }: { thumbnail: string | null | undefined; trackKey: string; contained?: boolean } = $props();
   const candidates = $derived(fullscreenBackdropCandidates(thumbnail));
   const requestKey = $derived(JSON.stringify([trackKey, candidates]));
   let failures = $state<ArtworkFailures>({ key: '', urls: [] });
@@ -24,7 +24,7 @@
 
 <!-- Static artwork, no palette extraction, animation or RAF while hidden/awake.
      Apple order: aspectFill → scale 1.4 → blur 75 → black 72%. -->
-<div class="fullscreen-backdrop" class:missing={!thumbnail} aria-hidden="true">
+<div class="fullscreen-backdrop" class:contained class:missing={!thumbnail} aria-hidden="true">
   {#if selectedUrl}
     <div class="art-layer" class:loaded={loadedAttempt === attemptKey}>
       {#key attemptKey}{@render artworkAttempt(requestKey, selectedUrl)}{/key}
@@ -37,6 +37,8 @@
   /* Keep artwork sampling window-sized as Apple does, even though Windows clips
      the visible canvas at its sidebar. Foreground reservation stays independent. */
   .fullscreen-backdrop { position: absolute; inset: 0; left: calc(-1 * var(--sidebar-width, 0px)); width: 100vw; z-index: -1; overflow: hidden; pointer-events: none; background: #1b1b1e; }
+  /* Inside the playback sidebar: fills the panel instead of the window. */
+  .contained { left: 0; width: auto; }
   .missing { background: linear-gradient(180deg, rgb(7% 7% 8%), #1b1b1e); }
   .art-layer { position: absolute; inset: 0; filter: blur(75px); opacity: 0; }
   .art-layer.loaded { opacity: 1; }

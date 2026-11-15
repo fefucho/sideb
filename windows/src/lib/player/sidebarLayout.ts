@@ -12,8 +12,8 @@ export const sidebarLayout = {
   metadataHeight: 68,
   /** The cover starts just inside the header band (macOS `coverTop`). */
   coverTop: 56,
-  /** The cover spans the panel minus this inset per side; text and controls keep `contentInset`. */
-  coverInset: 4,
+  /** The cover matches the title/heart column: same side inset as text and controls. */
+  coverInset: 20,
   contentInset: 20,
   /** One vertical rhythm of the artwork panel, measured between visible glyph/shape edges (FIX-351). */
   gap: 23,
