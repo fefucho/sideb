@@ -91,14 +91,20 @@ struct AutomixTransition: Equatable, Sendable {
 struct AutomixProgressMarker: Equatable, Sendable {
     /// Segundos de la canción actual (los que muestra la barra).
     var songSeconds: Double
+    /// Versión de la transición que sonará: "fast" (rápida) o "stems" (buena). La barra las distingue.
+    var quality: String
 
     init?(transition: AutomixTransition) {
         let seconds = transition.aCut + transition.overlapStart
         guard seconds.isFinite, seconds >= 0 else { return nil }
         songSeconds = seconds
+        quality = transition.quality == "stems" ? "stems" : "fast"
     }
 
-    init(songSeconds: Double) { self.songSeconds = songSeconds }
+    init(songSeconds: Double, quality: String = "fast") { self.songSeconds = songSeconds; self.quality = quality }
+
+    /// La marca es de la versión buena (con stems).
+    var isGood: Bool { quality == "stems" }
 
     /// Posición en la barra (0…1), o nil si no cabe: sin duración conocida o si la mezcla empezaría al final o después.
     func fraction(duration: Double) -> Double? {

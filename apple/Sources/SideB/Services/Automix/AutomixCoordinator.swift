@@ -77,6 +77,17 @@ final class AutomixCoordinator {
             }
         }
     }
+    /// Calidad de la transición en curso (rápida o buena) y estado de la mejora a stems, para la interfaz.
+    private(set) var qualityState = AutomixQualityState()
+    /// Cuántas veces la versión buena sustituyó a la rápida (la interfaz muestra un aviso breve por cada una).
+    private(set) var goodVersionLandedCount = 0
+    /// Lo que tardó la última versión buena preparada de verdad (no reutilizada), para estimar la siguiente.
+    @ObservationIgnored private(set) var typicalUpgradeSeconds: Double?
+    /// Segundo de la canción actual en que empieza la mezcla, aunque la barra aún no tenga la marca (el archivo se
+    /// entrega al reproductor cuando el tema suena).
+    var mixStartSeconds: Double? {
+        marker?.songSeconds ?? request?.transition.flatMap(AutomixProgressMarker.init(transition:))?.songSeconds
+    }
     /// Última petición (también tras terminar), para el diagnóstico.
     @ObservationIgnored private(set) var request: AutomixRequestInfo?
     /// El plan en curso existe y está preparándose.
@@ -304,6 +315,7 @@ final class AutomixCoordinator {
         plan = nil
         cancelDrop()
         marker = nil
+        qualityState = AutomixQualityState()
         status = isEnabled ? .idle : .off
     }
 
@@ -319,6 +331,7 @@ final class AutomixCoordinator {
     func spliceFailed() {
         guard let current = plan else { return }
         marker = nil
+        qualityState = AutomixQualityState()
         log("el reproductor soltó el archivo (falló al cargar o al empalmar)")
         request?.note = "el archivo falló al cargar o al empalmar"
         var failed = current
@@ -332,6 +345,7 @@ final class AutomixCoordinator {
     /// Descarta preparación y empalme en curso (salto, cambio de cola, cuenta, Jam, apagado).
     func teardown(reason: String = "descartada") {
         marker = nil
+        qualityState = AutomixQualityState()
         cancelDrop()
         guard let plan else { return }
         plan.task?.cancel()
@@ -466,6 +480,7 @@ final class AutomixCoordinator {
         info.allowReason = allow.reason
         info.pairReadyAtRequest = ready
         self.request = info
+        qualityState = AutomixQualityState(preparing: quality)
         status = .preparing
         let task = Task { [weak self, weak host] in
             guard let host else { return }
@@ -507,6 +522,7 @@ final class AutomixCoordinator {
         request?.transition = transition
         plan?.stage = .ready
         plan?.transition = transition
+        qualityState = AutomixQualityState(preparing: nil, ready: transition.quality == "stems" ? "stems" : "fast", upgrade: .none)
         status = .ready(kind: transition.kind, bpm: transition.displayBPM)
 
         if let host {
@@ -529,9 +545,11 @@ final class AutomixCoordinator {
                     startUpgrade(key: key, from: transition, host: host)
                 } else if allow.allowed {
                     request?.upgrade = "no pedida: \(decision.reason) (se vigila la pareja)"
+                    qualityState.upgrade = directStemsFailed.contains(key) ? .notUsed(.pairFailed) : .watching
                 } else {
                     plan?.upgradeSettled = true
                     request?.upgrade = "no pedida: \(decision.reason)"
+                    qualityState.upgrade = .notUsed(settings.quality == "fast" ? .alwaysFast : .battery(lowPower: power.lowPower))
                 }
             }
         }
@@ -595,12 +613,14 @@ final class AutomixCoordinator {
         if let position = host.automixPosition(), fast.aCut - position < AutomixUpgradePlanner.minimumLeadSeconds {
             plan?.upgradeSettled = true
             request?.upgrade = "omitida: faltan \(String(format: "%.1f", max(0, fast.aCut - position))) s para el corte"
+            qualityState.upgrade = .notUsed(.tooClose)
             log("mejora a stems: no se pide — faltan \(String(format: "%.1f", fast.aCut - position)) s para el corte (< \(Int(AutomixUpgradePlanner.minimumLeadSeconds)) s)")
             return
         }
         if !host.automixCanReplaceSplice() {
             plan?.upgradeSettled = true
             request?.upgrade = "omitida: el empalme ya se comprometió"
+            qualityState.upgrade = .notUsed(.afterSplice)
             log("mejora a stems: no se pide — el empalme ya se comprometió")
             return
         }
@@ -612,6 +632,7 @@ final class AutomixCoordinator {
         log("petición \(Self.short(requestID)) [stems]: mejora de la versión rápida")
         self.request?.upgrade = "pedida (\(Self.short(requestID)))"
         self.request?.upgradeRequestedAt = started
+        qualityState.upgrade = .working(since: started)
         plan?.upgradeRequestID = requestID
         plan?.upgradeSettled = true
         plan?.upgradeTask = Task { [weak self, weak host] in
@@ -634,8 +655,10 @@ final class AutomixCoordinator {
         let seconds = now().timeIntervalSince(started)
         request?.upgradeFinishedAt = now()
         plan?.upgradeRequestID = nil
+        if !transition.reused { typicalUpgradeSeconds = typicalUpgradeSeconds.map { ($0 + seconds) / 2 } ?? seconds }
         guard transition.isConsistent, transition.fromVideoID == key.from, transition.toVideoID == key.to else {
             request?.upgrade = "descartada: contrato incoherente"
+            qualityState.upgrade = .notUsed(.invalid)
             log("stems descartada: contrato incoherente")
             return
         }
@@ -643,6 +666,7 @@ final class AutomixCoordinator {
             + "total \(String(format: "%.1f", seconds)) s; corte \(String(format: "%.2f", transition.aCut)) s (rápida \(String(format: "%.2f", fast.aCut)) s), mismo corte \(AutomixUpgradePlanner.sameCut(fast, transition) ? "sí" : "no")")
         guard plan?.stage == .ready, let host else {
             request?.upgrade = "omitida: llegó tras el empalme"
+            qualityState.upgrade = .notUsed(.afterSplice)
             log("stems llegó tras el empalme (el archivo ya suena): se queda la rápida")
             return
         }
@@ -664,6 +688,7 @@ final class AutomixCoordinator {
         switch decision {
         case .skip(let reason):
             request?.upgrade = "omitida: \(reason)"
+            qualityState.upgrade = .notUsed(.fromPlanner(reason))
             log("stems no se aplica — \(reason): se queda la rápida")
             return
         case .apply(let same):
@@ -672,6 +697,7 @@ final class AutomixCoordinator {
                 guard plan?.key == key else { return }
                 guard outcome == .armed else {
                     request?.upgrade = "omitida: el empalme se comprometió o el corte nuevo ya no cabe"
+                    qualityState.upgrade = .notUsed(.afterSplice)
                     log("stems llegó con el empalme comprometido o el corte nuevo ya no cabe: se queda la rápida")
                     return
                 }
@@ -680,6 +706,9 @@ final class AutomixCoordinator {
             request?.transition = stems
             request?.upgrade = "aplicada (\(String(format: "%.1f", seconds)) s tras pedirla\(same ? "" : "; corte nuevo \(String(format: "%.2f", stems.aCut)) s"))"
             request?.note = "empalme armado (stems)"
+            qualityState.ready = "stems"
+            qualityState.upgrade = .applied
+            goodVersionLandedCount += 1
             if case .ready = status { status = .ready(kind: stems.kind, bpm: stems.displayBPM) }
             if plan?.armed == true {
                 // El corte y el solape pueden ser otros: la marca de la barra se mueve con ellos.
@@ -697,6 +726,7 @@ final class AutomixCoordinator {
         plan?.upgradeRequestID = nil
         request?.upgradeFinishedAt = now()
         request?.upgrade = failure == .cancelled ? "cancelada" : "falló: \(failure.logLabel)"
+        qualityState.upgrade = failure == .cancelled ? .notUsed(.cancelled) : .failed
         log("stems sin resultado (\(failure.logLabel)) tras \(String(format: "%.1f", now().timeIntervalSince(started))) s: \(raw) — se queda la rápida")
     }
 
@@ -732,6 +762,7 @@ final class AutomixCoordinator {
                 current.task = nil
                 current.retryAt = now().addingTimeInterval(retryDelay)
                 plan = current
+                qualityState = AutomixQualityState()
                 status = .idle
                 log("el core canceló la petición: se reintenta en \(Int(retryDelay)) s (sin volver a pedirla ahora)")
             }
@@ -743,6 +774,7 @@ final class AutomixCoordinator {
 
     private func markFailed(_ reason: AutomixUnavailableReason) {
         marker = nil
+        qualityState = AutomixQualityState()
         guard var plan else { return }
         plan.stage = .failed
         plan.task = nil

@@ -147,9 +147,89 @@
     "es": "mezcla",
     "en": "mix"
   },
+  "automix.marker.fast": {
+    "es": "Automix: la mezcla empieza acá (%@) · sonará la versión rápida",
+    "en": "Automix: the mix starts here (%@) · the fast version will play"
+  },
+  "automix.marker.fastImproving": {
+    "es": "Automix: la mezcla empieza acá (%@) · suena la versión rápida; la buena se está preparando",
+    "en": "Automix: the mix starts here (%@) · the fast version will play; the good one is being prepared"
+  },
+  "automix.marker.good": {
+    "es": "Automix: la mezcla empieza acá (%@) · sonará la versión buena",
+    "en": "Automix: the mix starts here (%@) · the good version will play"
+  },
   "automix.marker.value": {
     "es": "Automix: la mezcla empieza acá (%@)",
     "en": "Automix: the mix starts here (%@)"
+  },
+  "automix.pill.reason.failed": {
+    "es": "no se pudo preparar",
+    "en": "could not be prepared"
+  },
+  "automix.pill.reason.jam": {
+    "es": "Jam",
+    "en": "Jam"
+  },
+  "automix.pill.reason.noNextTrack": {
+    "es": "no hay tema siguiente",
+    "en": "no next song"
+  },
+  "automix.pill.reason.repeatOne": {
+    "es": "repetición de un tema",
+    "en": "single-song repeat"
+  },
+  "automix.pill.reason.sameAlbum": {
+    "es": "mismo álbum",
+    "en": "same album"
+  },
+  "automix.pill.reason.sameTrack": {
+    "es": "mismo tema",
+    "en": "same song"
+  },
+  "automix.pill.reason.tooLate": {
+    "es": "llegó tarde",
+    "en": "ready too late"
+  },
+  "automix.pill.reason.tooLong": {
+    "es": "tema muy largo",
+    "en": "song too long"
+  },
+  "automix.pill.reason.unsupportedFormat": {
+    "es": "audio no AAC",
+    "en": "audio is not AAC"
+  },
+  "automix.pill.state.fastImproving": {
+    "es": "Automix · rápida lista · mejorando… %@ s",
+    "en": "Automix · fast version ready · improving… %@ s"
+  },
+  "automix.pill.state.fastReady": {
+    "es": "Automix · rápida lista",
+    "en": "Automix · fast version ready"
+  },
+  "automix.pill.state.goodReady": {
+    "es": "Automix · versión buena lista ✓",
+    "en": "Automix · good version ready ✓"
+  },
+  "automix.pill.state.idle": {
+    "es": "Automix · activado",
+    "en": "Automix · on"
+  },
+  "automix.pill.state.mixing": {
+    "es": "Automix · mezclando (%@)",
+    "en": "Automix · mixing (%@ version)"
+  },
+  "automix.pill.state.preparing": {
+    "es": "Automix · preparando…",
+    "en": "Automix · preparing…"
+  },
+  "automix.pill.state.preparingGood": {
+    "es": "Automix · preparando versión buena…",
+    "en": "Automix · preparing the good version…"
+  },
+  "automix.pill.state.unavailable": {
+    "es": "Automix · no disponible: %@",
+    "en": "Automix · not available: %@"
   },
   "automix.pill.title": {
     "es": "Beta · Automix",
@@ -162,6 +242,54 @@
   "automix.pill.turnOn": {
     "es": "Activar Automix (beta)",
     "en": "Turn on Automix (beta)"
+  },
+  "automix.quality.fast": {
+    "es": "rápida",
+    "en": "fast"
+  },
+  "automix.quality.good": {
+    "es": "buena",
+    "en": "good"
+  },
+  "automix.skip.afterSplice": {
+    "es": "llegó cuando la mezcla ya estaba comprometida",
+    "en": "it arrived when the mix was already committed"
+  },
+  "automix.skip.alwaysFast": {
+    "es": "la calidad está en «siempre rápida»",
+    "en": "quality is set to “always fast”"
+  },
+  "automix.skip.battery": {
+    "es": "se está usando la batería y ese ajuste pide la versión rápida",
+    "en": "the battery is in use and that setting asks for the fast version"
+  },
+  "automix.skip.cancelled": {
+    "es": "se canceló",
+    "en": "it was cancelled"
+  },
+  "automix.skip.cutPassed": {
+    "es": "el corte de la versión buena ya quedó atrás",
+    "en": "the good version's cut has already passed"
+  },
+  "automix.skip.invalid": {
+    "es": "su respuesta no era válida",
+    "en": "its answer was not valid"
+  },
+  "automix.skip.lowPower": {
+    "es": "está activo el modo de bajo consumo y ese ajuste pide la versión rápida",
+    "en": "low power mode is on and that setting asks for the fast version"
+  },
+  "automix.skip.notRecommended": {
+    "es": "este equipo aún no recomienda la versión buena y la pareja no está preparada de antes",
+    "en": "this computer does not recommend the good version yet and the pair was not prepared beforehand"
+  },
+  "automix.skip.pairFailed": {
+    "es": "la preparación directa de la versión buena ya falló para esta pareja",
+    "en": "preparing the good version directly already failed for this pair"
+  },
+  "automix.skip.tooClose": {
+    "es": "el corte queda demasiado cerca para cambiar de versión",
+    "en": "the cut is too close to switch versions"
   },
   "automix.status.idle": {
     "es": "Activado",
@@ -186,6 +314,134 @@
   "automix.status.readyNoBpm": {
     "es": "Lista: %@",
     "en": "Ready: %@"
+  },
+  "automix.summary.good.applied": {
+    "es": "Versión buena: lista a las %@ y ya sustituyó a la rápida.",
+    "en": "Good version: ready at %@ and it already replaced the fast one."
+  },
+  "automix.summary.good.failed": {
+    "es": "Versión buena: no se pudo preparar; sonará la rápida.",
+    "en": "Good version: it could not be prepared; the fast one will play."
+  },
+  "automix.summary.good.none": {
+    "es": "Versión buena: no se va a pedir.",
+    "en": "Good version: it will not be requested."
+  },
+  "automix.summary.good.notUsed": {
+    "es": "Versión buena: no se va a usar porque %@.",
+    "en": "Good version: it will not be used because %@."
+  },
+  "automix.summary.good.watching": {
+    "es": "Versión buena: aún no se pidió; se vigila por si queda lista de antes.",
+    "en": "Good version: not requested yet; watching in case it gets ready beforehand."
+  },
+  "automix.summary.good.working": {
+    "es": "Versión buena: trabajando hace %@ s.",
+    "en": "Good version: working for %@ s."
+  },
+  "automix.summary.good.workingEstimate": {
+    "es": "Versión buena: trabajando hace %@ s (estimado ~%@ s).",
+    "en": "Good version: working for %@ s (estimated ~%@ s)."
+  },
+  "automix.summary.mixStart": {
+    "es": "La mezcla empieza en %@.",
+    "en": "The mix starts at %@."
+  },
+  "automix.summary.next": {
+    "es": "Siguiente: %@.",
+    "en": "Next: %@."
+  },
+  "automix.summary.nextNone": {
+    "es": "Siguiente: no hay otro tema conocido.",
+    "en": "Next: there is no known next song."
+  },
+  "automix.summary.now": {
+    "es": "Ahora: suena %@.",
+    "en": "Now: playing %@."
+  },
+  "automix.summary.nowNone": {
+    "es": "Ahora: no suena nada.",
+    "en": "Now: nothing is playing."
+  },
+  "automix.summary.technical": {
+    "es": "Detalles técnicos (plegados)",
+    "en": "Technical details (collapsed)"
+  },
+  "automix.summary.title": {
+    "es": "Resumen",
+    "en": "Summary"
+  },
+  "automix.summary.transition.fastReady": {
+    "es": "Transición: versión rápida lista a las %@.",
+    "en": "Transition: fast version ready at %@."
+  },
+  "automix.summary.transition.goodReady": {
+    "es": "Transición: versión buena lista a las %@.",
+    "en": "Transition: good version ready at %@."
+  },
+  "automix.summary.transition.idle": {
+    "es": "Transición: todavía no hay nada que preparar.",
+    "en": "Transition: there is nothing to prepare yet."
+  },
+  "automix.summary.transition.mixingNow": {
+    "es": "Ahora mismo se está mezclando con la versión %@.",
+    "en": "The mix is playing right now with the %@ version."
+  },
+  "automix.summary.transition.off": {
+    "es": "Transición: Automix está desactivado.",
+    "en": "Transition: Automix is off."
+  },
+  "automix.summary.transition.preparing": {
+    "es": "Transición: preparando la versión rápida desde hace %@ s.",
+    "en": "Transition: preparing the fast version for %@ s."
+  },
+  "automix.summary.transition.preparingGood": {
+    "es": "Transición: preparando directamente la versión buena desde hace %@ s.",
+    "en": "Transition: preparing the good version directly for %@ s."
+  },
+  "automix.summary.transition.unavailable": {
+    "es": "Transición: no hay. %@.",
+    "en": "Transition: none. %@."
+  },
+  "automix.tip.fastImproving": {
+    "es": "La versión rápida ya está lista; se sigue preparando la buena y, si llega a tiempo, la sustituirá antes de mezclar.",
+    "en": "The fast version is ready; the good one is still being prepared and, if it arrives in time, it will replace it before the mix."
+  },
+  "automix.tip.fastReady": {
+    "es": "La versión rápida está lista y es la que sonará.",
+    "en": "The fast version is ready and is the one that will play."
+  },
+  "automix.tip.goodReady": {
+    "es": "La versión buena (con stems) está lista y es la que sonará.",
+    "en": "The good version (with stems) is ready and is the one that will play."
+  },
+  "automix.tip.idle": {
+    "es": "Automix está activado; preparará la mezcla en cuanto suene un tema con otro a continuación.",
+    "en": "Automix is on; it will prepare the mix as soon as a song plays with another one after it."
+  },
+  "automix.tip.mixing": {
+    "es": "Ahora suena la mezcla con la versión %@.",
+    "en": "The mix is playing now with the %@ version."
+  },
+  "automix.tip.mixStart": {
+    "es": "La mezcla empieza en %@.",
+    "en": "The mix starts at %@."
+  },
+  "automix.tip.off": {
+    "es": "Automix (beta) está desactivado: no se mezclan los temas.",
+    "en": "Automix (beta) is off: songs are not mixed."
+  },
+  "automix.tip.preparing": {
+    "es": "Se está preparando la mezcla con el siguiente tema; todavía no hay nada listo.",
+    "en": "The mix with the next song is being prepared; nothing is ready yet."
+  },
+  "automix.tip.preparingGood": {
+    "es": "Se está preparando directamente la versión buena (con stems); todavía no está lista.",
+    "en": "The good version (with stems) is being prepared directly; it is not ready yet."
+  },
+  "automix.toast.goodReady": {
+    "es": "Versión buena lista",
+    "en": "Good version ready"
   },
   "automix.unavailable.failed": {
     "es": "No disponible: no se pudo preparar la mezcla",

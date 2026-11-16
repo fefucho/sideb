@@ -630,6 +630,57 @@
         }
       }
     },
+    "automix.marker.fast": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automix: la mezcla empieza acá (%@) · sonará la versión rápida"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automix: the mix starts here (%@) · the fast version will play"
+          }
+        }
+      }
+    },
+    "automix.marker.fastImproving": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automix: la mezcla empieza acá (%@) · suena la versión rápida; la buena se está preparando"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automix: the mix starts here (%@) · the fast version will play; the good one is being prepared"
+          }
+        }
+      }
+    },
+    "automix.marker.good": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automix: la mezcla empieza acá (%@) · sonará la versión buena"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automix: the mix starts here (%@) · the good version will play"
+          }
+        }
+      }
+    },
     "automix.marker.value": {
       "extractionState": "manual",
       "localizations": {
@@ -643,6 +694,295 @@
           "stringUnit": {
             "state": "translated",
             "value": "Automix: the mix starts here (%@)"
+          }
+        }
+      }
+    },
+    "automix.pill.reason.failed": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "no se pudo preparar"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "could not be prepared"
+          }
+        }
+      }
+    },
+    "automix.pill.reason.jam": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Jam"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Jam"
+          }
+        }
+      }
+    },
+    "automix.pill.reason.noNextTrack": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "no hay tema siguiente"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "no next song"
+          }
+        }
+      }
+    },
+    "automix.pill.reason.repeatOne": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "repetición de un tema"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "single-song repeat"
+          }
+        }
+      }
+    },
+    "automix.pill.reason.sameAlbum": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "mismo álbum"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "same album"
+          }
+        }
+      }
+    },
+    "automix.pill.reason.sameTrack": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "mismo tema"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "same song"
+          }
+        }
+      }
+    },
+    "automix.pill.reason.tooLate": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "llegó tarde"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ready too late"
+          }
+        }
+      }
+    },
+    "automix.pill.reason.tooLong": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "tema muy largo"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "song too long"
+          }
+        }
+      }
+    },
+    "automix.pill.reason.unsupportedFormat": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "audio no AAC"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "audio is not AAC"
+          }
+        }
+      }
+    },
+    "automix.pill.state.fastImproving": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automix · rápida lista · mejorando… %@ s"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automix · fast version ready · improving… %@ s"
+          }
+        }
+      }
+    },
+    "automix.pill.state.fastReady": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automix · rápida lista"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automix · fast version ready"
+          }
+        }
+      }
+    },
+    "automix.pill.state.goodReady": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automix · versión buena lista ✓"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automix · good version ready ✓"
+          }
+        }
+      }
+    },
+    "automix.pill.state.idle": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automix · activado"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automix · on"
+          }
+        }
+      }
+    },
+    "automix.pill.state.mixing": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automix · mezclando (%@)"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automix · mixing (%@ version)"
+          }
+        }
+      }
+    },
+    "automix.pill.state.preparing": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automix · preparando…"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automix · preparing…"
+          }
+        }
+      }
+    },
+    "automix.pill.state.preparingGood": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automix · preparando versión buena…"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automix · preparing the good version…"
+          }
+        }
+      }
+    },
+    "automix.pill.state.unavailable": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automix · no disponible: %@"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automix · not available: %@"
           }
         }
       }
@@ -694,6 +1034,210 @@
           "stringUnit": {
             "state": "translated",
             "value": "Turn on Automix (beta)"
+          }
+        }
+      }
+    },
+    "automix.quality.fast": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "rápida"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "fast"
+          }
+        }
+      }
+    },
+    "automix.quality.good": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "buena"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "good"
+          }
+        }
+      }
+    },
+    "automix.skip.afterSplice": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "llegó cuando la mezcla ya estaba comprometida"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "it arrived when the mix was already committed"
+          }
+        }
+      }
+    },
+    "automix.skip.alwaysFast": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "la calidad está en «siempre rápida»"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "quality is set to “always fast”"
+          }
+        }
+      }
+    },
+    "automix.skip.battery": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "se está usando la batería y ese ajuste pide la versión rápida"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "the battery is in use and that setting asks for the fast version"
+          }
+        }
+      }
+    },
+    "automix.skip.cancelled": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "se canceló"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "it was cancelled"
+          }
+        }
+      }
+    },
+    "automix.skip.cutPassed": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "el corte de la versión buena ya quedó atrás"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "the good version's cut has already passed"
+          }
+        }
+      }
+    },
+    "automix.skip.invalid": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "su respuesta no era válida"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "its answer was not valid"
+          }
+        }
+      }
+    },
+    "automix.skip.lowPower": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "está activo el modo de bajo consumo y ese ajuste pide la versión rápida"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "low power mode is on and that setting asks for the fast version"
+          }
+        }
+      }
+    },
+    "automix.skip.notRecommended": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "este equipo aún no recomienda la versión buena y la pareja no está preparada de antes"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "this computer does not recommend the good version yet and the pair was not prepared beforehand"
+          }
+        }
+      }
+    },
+    "automix.skip.pairFailed": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "la preparación directa de la versión buena ya falló para esta pareja"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "preparing the good version directly already failed for this pair"
+          }
+        }
+      }
+    },
+    "automix.skip.tooClose": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "el corte queda demasiado cerca para cambiar de versión"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "the cut is too close to switch versions"
           }
         }
       }
@@ -796,6 +1340,550 @@
           "stringUnit": {
             "state": "translated",
             "value": "Ready: %@"
+          }
+        }
+      }
+    },
+    "automix.summary.good.applied": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Versión buena: lista a las %@ y ya sustituyó a la rápida."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Good version: ready at %@ and it already replaced the fast one."
+          }
+        }
+      }
+    },
+    "automix.summary.good.failed": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Versión buena: no se pudo preparar; sonará la rápida."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Good version: it could not be prepared; the fast one will play."
+          }
+        }
+      }
+    },
+    "automix.summary.good.none": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Versión buena: no se va a pedir."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Good version: it will not be requested."
+          }
+        }
+      }
+    },
+    "automix.summary.good.notUsed": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Versión buena: no se va a usar porque %@."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Good version: it will not be used because %@."
+          }
+        }
+      }
+    },
+    "automix.summary.good.watching": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Versión buena: aún no se pidió; se vigila por si queda lista de antes."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Good version: not requested yet; watching in case it gets ready beforehand."
+          }
+        }
+      }
+    },
+    "automix.summary.good.working": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Versión buena: trabajando hace %@ s."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Good version: working for %@ s."
+          }
+        }
+      }
+    },
+    "automix.summary.good.workingEstimate": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Versión buena: trabajando hace %@ s (estimado ~%@ s)."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Good version: working for %@ s (estimated ~%@ s)."
+          }
+        }
+      }
+    },
+    "automix.summary.mixStart": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La mezcla empieza en %@."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The mix starts at %@."
+          }
+        }
+      }
+    },
+    "automix.summary.next": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Siguiente: %@."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Next: %@."
+          }
+        }
+      }
+    },
+    "automix.summary.nextNone": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Siguiente: no hay otro tema conocido."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Next: there is no known next song."
+          }
+        }
+      }
+    },
+    "automix.summary.now": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ahora: suena %@."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Now: playing %@."
+          }
+        }
+      }
+    },
+    "automix.summary.nowNone": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ahora: no suena nada."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Now: nothing is playing."
+          }
+        }
+      }
+    },
+    "automix.summary.technical": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Detalles técnicos (plegados)"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Technical details (collapsed)"
+          }
+        }
+      }
+    },
+    "automix.summary.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Resumen"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Summary"
+          }
+        }
+      }
+    },
+    "automix.summary.transition.fastReady": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Transición: versión rápida lista a las %@."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Transition: fast version ready at %@."
+          }
+        }
+      }
+    },
+    "automix.summary.transition.goodReady": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Transición: versión buena lista a las %@."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Transition: good version ready at %@."
+          }
+        }
+      }
+    },
+    "automix.summary.transition.idle": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Transición: todavía no hay nada que preparar."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Transition: there is nothing to prepare yet."
+          }
+        }
+      }
+    },
+    "automix.summary.transition.mixingNow": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ahora mismo se está mezclando con la versión %@."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The mix is playing right now with the %@ version."
+          }
+        }
+      }
+    },
+    "automix.summary.transition.off": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Transición: Automix está desactivado."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Transition: Automix is off."
+          }
+        }
+      }
+    },
+    "automix.summary.transition.preparing": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Transición: preparando la versión rápida desde hace %@ s."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Transition: preparing the fast version for %@ s."
+          }
+        }
+      }
+    },
+    "automix.summary.transition.preparingGood": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Transición: preparando directamente la versión buena desde hace %@ s."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Transition: preparing the good version directly for %@ s."
+          }
+        }
+      }
+    },
+    "automix.summary.transition.unavailable": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Transición: no hay. %@."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Transition: none. %@."
+          }
+        }
+      }
+    },
+    "automix.tip.fastImproving": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La versión rápida ya está lista; se sigue preparando la buena y, si llega a tiempo, la sustituirá antes de mezclar."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The fast version is ready; the good one is still being prepared and, if it arrives in time, it will replace it before the mix."
+          }
+        }
+      }
+    },
+    "automix.tip.fastReady": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La versión rápida está lista y es la que sonará."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The fast version is ready and is the one that will play."
+          }
+        }
+      }
+    },
+    "automix.tip.goodReady": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La versión buena (con stems) está lista y es la que sonará."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The good version (with stems) is ready and is the one that will play."
+          }
+        }
+      }
+    },
+    "automix.tip.idle": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automix está activado; preparará la mezcla en cuanto suene un tema con otro a continuación."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automix is on; it will prepare the mix as soon as a song plays with another one after it."
+          }
+        }
+      }
+    },
+    "automix.tip.mixStart": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La mezcla empieza en %@."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The mix starts at %@."
+          }
+        }
+      }
+    },
+    "automix.tip.mixing": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ahora suena la mezcla con la versión %@."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The mix is playing now with the %@ version."
+          }
+        }
+      }
+    },
+    "automix.tip.off": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automix (beta) está desactivado: no se mezclan los temas."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automix (beta) is off: songs are not mixed."
+          }
+        }
+      }
+    },
+    "automix.tip.preparing": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Se está preparando la mezcla con el siguiente tema; todavía no hay nada listo."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The mix with the next song is being prepared; nothing is ready yet."
+          }
+        }
+      }
+    },
+    "automix.tip.preparingGood": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Se está preparando directamente la versión buena (con stems); todavía no está lista."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The good version (with stems) is being prepared directly; it is not ready yet."
+          }
+        }
+      }
+    },
+    "automix.toast.goodReady": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Versión buena lista"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Good version ready"
           }
         }
       }

@@ -238,6 +238,7 @@ struct FullscreenNowPlayingView: View, Animatable {
                 // Beta · Automix hangs over the cover's leading corner, in the same clearance as the Jam marker
                 // (disabled while a Jam is live: the Jam forces Automix off).
                 .overlay(alignment: .topLeading) { fullscreenAutomixPill(layout) }
+                .overlay(alignment: .bottom) { AutomixGoodVersionToast(viewModel: viewModel) }
                 .frame(width: layout.leftWidth, height: layout.availableContentHeight, alignment: .center)
 
                 VStack(alignment: .center, spacing: 14) {

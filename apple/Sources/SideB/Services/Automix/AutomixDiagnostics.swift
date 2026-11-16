@@ -221,6 +221,8 @@ struct AutomixDiagnosticsSnapshot: Equatable, Sendable {
     var players = AutomixPlayerCounter.Snapshot(alive: 0, peak: 0, created: 0)
     /// Dispositivo de salida predeterminado ahora mismo.
     var outputDevice: AudioOutputDevice?
+    /// Resumen en lenguaje llano (bloque de arriba de la ventana).
+    var summary = AutomixUserText.SummaryInput()
 }
 
 // MARK: - Almacén

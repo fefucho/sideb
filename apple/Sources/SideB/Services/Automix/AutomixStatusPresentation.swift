@@ -48,5 +48,11 @@ enum AutomixStatusPresentation {
         }
     }
 
+    /// Símbolo según la versión: la buena lista con el check lleno, la rápida con un rayo.
+    static func symbol(for status: AutomixCoordinator.Status, quality: AutomixQualityState) -> String {
+        if case .ready = status { return quality.isGood ? "checkmark.circle.fill" : "bolt.circle" }
+        return symbol(for: status)
+    }
+
     static func isOn(_ status: AutomixCoordinator.Status) -> Bool { status != .off }
 }

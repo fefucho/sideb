@@ -97,6 +97,7 @@ Resuelve ambos por el orquestador (se exige AAC: itag 139/140/141/256/258/325/32
 - [ ] Memoria: con CoreML, tras soltar la sesión quedan ~1,1–1,3 GB residentes (la caché de CoreML en el proceso); con el proveedor de CPU de ONNX Runtime se liberan por completo (~60–240 MB). Decidir si vale una CPU más lenta (2,2×) por liberar la memoria, o un proceso aparte para el modelo.
 - [ ] Windows: DirectML (`cfg(windows)`, CPU de respaldo) sin compilar ni medir; empaquetar `onnxruntime.dll`/`DirectML.dll`. *(Windows, ronda 2: ONNX Runtime va estático dentro del EXE —`ort-sys` enlaza `onnxruntime.lib` de pyke, que ya trae DirectML—, así que sólo se empaqueta `DirectML.dll`; ver arriba.)*
 - [x] Plan con el modelo para mezclas largas (ronda 4): ver «Calidad (dos planes)»; sigue sin oírse.
+- [x] Mac (2026-11-16): estado de Automix legible sin la ventana de diagnóstico: la píldora dice la versión («rápida lista · mejorando… N s», «versión buena lista ✓», «mezclando (buena|rápida)», «no disponible: motivo»), la marca de la barra distingue rápida (tinte claro, marca a rayas) de buena (tinte intenso, marca sólida) y se actualiza al llegar la buena, aviso breve «Versión buena lista» en pantalla completa y resumen en lenguaje llano arriba del diagnóstico (secciones técnicas plegadas). Sin cambios de core. Falta escucharlo/verlo en la app.
 
 ## Ronda 4 (2026-11-16): mezclas largas, batería y memoria
 

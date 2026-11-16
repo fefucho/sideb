@@ -60,7 +60,9 @@ struct PlayerBarProgressView: View {
 
     private var automixHelp: String? {
         guard let marker = viewModel.automix.marker, marker.fraction(duration: viewModel.duration) != nil else { return nil }
-        return L10n.text("automix.marker.value", args: [viewModel.formattedTime(at: marker.songSeconds)])
+        var quality = viewModel.automix.qualityState
+        quality.ready = marker.quality   // la marca dice qué versión sonará aunque el estado general ya se haya movido
+        return AutomixUserText.markerHelp(time: viewModel.formattedTime(at: marker.songSeconds), quality: quality)
     }
 
     private func timeLabel(_ value: String, alignment: Alignment) -> some View {
@@ -82,6 +84,7 @@ struct PlayerBarProgressView: View {
 
             let thickness: CGFloat = isHoveringScrubber || isSeeking ? 7 : 5
             let mix = automixLayout(width: width)
+            let mixGood = viewModel.automix.marker?.isGood == true
 
             ZStack(alignment: .leading) {
                 // Pista completa atenuada, extremos redondeados.
@@ -90,13 +93,14 @@ struct PlayerBarProgressView: View {
                     .frame(height: thickness)
 
                 // Automix (beta): el tramo de la canción que se mezclará, desde el inicio de la mezcla hasta el final.
+                // La versión buena (stems) va con tinte más intenso; la rápida, más claro.
                 if let mix {
                     Capsule()
                         .fill(Color.clear)
                         .frame(height: thickness)
                         .overlay(alignment: .leading) {
                             Rectangle()
-                                .fill(Color.sidebAccentHighlight.opacity(0.38))
+                                .fill(Color.sidebAccentHighlight.opacity(mixGood ? 0.5 : 0.2))
                                 .frame(width: mix.segmentWidth, height: thickness)
                                 .offset(x: mix.tickX)
                         }
@@ -111,11 +115,9 @@ struct PlayerBarProgressView: View {
                     .frame(width: max(0, fillWidth), height: thickness)
 
                 if let mix {
-                    // Marca fina del inicio de la mezcla; el halo oscuro la separa del relleno y de la pista.
-                    Capsule()
-                        .fill(Color.white.opacity(0.95))
-                        .frame(width: 2, height: thickness + 5)
-                        .shadow(color: .black.opacity(0.45), radius: 0.6)
+                    // Marca del inicio de la mezcla: sólida para la versión buena, a rayas para la rápida; el halo
+                    // oscuro la separa del relleno y de la pista.
+                    AutomixMarkerTick(good: mixGood, height: thickness + 5)
                         .offset(x: max(0, min(width - 2, mix.tickX - 1)))
                         .allowsHitTesting(false)
                         .accessibilityHidden(true)
@@ -152,5 +154,29 @@ struct PlayerBarProgressView: View {
             let delta = direction == .increment ? 5.0 : -5.0
             viewModel.seek(toFraction: min(1, max(0, (viewModel.currentTime + delta) / viewModel.duration)))
         }
+    }
+}
+
+
+/// Marca fina del inicio de la mezcla de Automix: sólida (versión buena) o a rayas (versión rápida).
+private struct AutomixMarkerTick: View {
+    let good: Bool
+    let height: CGFloat
+
+    var body: some View {
+        Group {
+            if good {
+                Capsule().fill(Color.white.opacity(0.95))
+            } else {
+                Path { path in
+                    path.move(to: CGPoint(x: 1, y: 0))
+                    path.addLine(to: CGPoint(x: 1, y: height))
+                }
+                .stroke(Color.white.opacity(0.85), style: StrokeStyle(lineWidth: 2, lineCap: .butt, dash: [2.5, 2]))
+            }
+        }
+        .frame(width: 2, height: height)
+        .shadow(color: .black.opacity(0.45), radius: 0.6)
+        .animation(.easeInOut(duration: 0.35), value: good)
     }
 }

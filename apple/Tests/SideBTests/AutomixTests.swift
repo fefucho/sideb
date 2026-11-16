@@ -2037,3 +2037,237 @@ struct AutomixMemoryAndExportTests {
         #expect(AutomixDiagnosticsFiles.header(directory: dir).contains { $0.hasPrefix("Carpeta de registros: ") })
     }
 }
+
+// MARK: - Estado para personas: calidad rápida/buena y textos
+
+@MainActor
+@Suite("Automix: estado de calidad en el coordinador")
+struct AutomixQualityStateTests {
+    private func make(quality: String = "stems", power: AutomixPowerState = AutomixPowerState(),
+                      capability: AutomixCapabilityValue? = nil, pairReady: Bool = false) -> (AutomixCoordinator, FakeHost) {
+        let host = FakeHost()
+        host.current = context()
+        host.settings.quality = quality
+        host.settings.fastOnBattery = true
+        host.power = power
+        host.capability = capability
+        host.pairReady = pairReady
+        let coordinator = AutomixCoordinator(enabled: true, log: { _ in })
+        coordinator.host = host
+        return (coordinator, host)
+    }
+
+    private func fastReady(_ coordinator: AutomixCoordinator, _ host: FakeHost) async {
+        coordinator.reconcile(); await host.settle()
+        host.complete(host.prepared[0].requestID, with: transition())
+        await host.settle()
+    }
+
+    private func stems(cut: Double = 100) -> AutomixTransition {
+        var t = transition(cut: cut); t.quality = "stems"; t.stemsModel = true; return t
+    }
+
+    @Test("Rápida lista → mejorando → la buena la sustituye: estado, marca y aviso siguen el cambio")
+    func lifecycle() async {
+        let (coordinator, host) = make()
+        coordinator.reconcile(); await host.settle()
+        #expect(coordinator.qualityState == AutomixQualityState(preparing: "fast", ready: nil, upgrade: .none))
+        host.complete(host.prepared[0].requestID, with: transition())
+        await host.settle()
+        #expect(coordinator.qualityState.ready == "fast")
+        guard case .working = coordinator.qualityState.upgrade else { Issue.record("debía estar mejorando"); return }
+        #expect(coordinator.qualityState.isImproving)
+        #expect(coordinator.marker?.quality == "fast" && coordinator.marker?.isGood == false)
+        #expect(coordinator.goodVersionLandedCount == 0)
+
+        host.complete(host.prepared[1].requestID, with: stems())
+        await host.settle()
+        #expect(coordinator.qualityState.ready == "stems" && coordinator.qualityState.upgrade == .applied)
+        #expect(coordinator.qualityState.isGood)
+        #expect(coordinator.marker?.quality == "stems" && coordinator.marker?.isGood == true)
+        #expect(coordinator.goodVersionLandedCount == 1)
+        #expect(coordinator.typicalUpgradeSeconds != nil)
+
+        coordinator.didHandover()
+        #expect(coordinator.qualityState == AutomixQualityState())
+        #expect(coordinator.marker == nil)
+    }
+
+    @Test("Si la buena se pidió directamente (pareja lista) no hay «mejorando» ni aviso")
+    func directGood() async {
+        let (coordinator, host) = make(pairReady: true)
+        coordinator.reconcile(); await host.settle()
+        #expect(coordinator.qualityState.preparing == "stems")
+        host.complete(host.prepared[0].requestID, with: stems())
+        await host.settle()
+        #expect(coordinator.qualityState == AutomixQualityState(preparing: nil, ready: "stems", upgrade: .none))
+        #expect(coordinator.marker?.isGood == true)
+        #expect(coordinator.goodVersionLandedCount == 0)
+    }
+
+    @Test("Motivos por los que no se usa la buena: ajuste, batería, ahorro de energía y capacidad")
+    func notUsedReasons() async {
+        let cases: [(String, AutomixPowerState, AutomixUpgradeState)] = [
+            ("fast", AutomixPowerState(), .notUsed(.alwaysFast)),
+            ("stems", AutomixPowerState(onBattery: true, lowPower: false), .notUsed(.battery(lowPower: false))),
+            ("stems", AutomixPowerState(onBattery: false, lowPower: true), .notUsed(.battery(lowPower: true))),
+            ("auto", AutomixPowerState(), .watching),
+        ]
+        for (quality, power, expected) in cases {
+            let (coordinator, host) = make(quality: quality, power: power)
+            await fastReady(coordinator, host)
+            #expect(coordinator.qualityState.ready == "fast")
+            #expect(coordinator.qualityState.upgrade == expected, "\(quality) \(power)")
+        }
+    }
+
+    @Test("La buena que falla, llega tarde o se cancela deja la rápida y lo dice")
+    func failures() async {
+        let (failing, failingHost) = make()
+        await fastReady(failing, failingHost)
+        failingHost.fail(failingHost.prepared[1].requestID, .modelUnavailable)
+        await failingHost.settle()
+        #expect(failing.qualityState.upgrade == .failed && failing.qualityState.ready == "fast")
+
+        let (late, lateHost) = make()
+        await fastReady(late, lateHost)
+        late.spliceEntered()
+        lateHost.complete(lateHost.prepared[1].requestID, with: stems())
+        await lateHost.settle()
+        #expect(late.qualityState.upgrade == .notUsed(.afterSplice) && late.qualityState.ready == "fast")
+        #expect(late.goodVersionLandedCount == 0)
+
+        let (cancelled, cancelledHost) = make()
+        await fastReady(cancelled, cancelledHost)
+        cancelled.teardown(reason: "prueba")
+        #expect(cancelled.qualityState == AutomixQualityState())
+    }
+
+    @Test("Los motivos del planificador se traducen a motivos estructurados")
+    func plannerReasons() {
+        #expect(AutomixUpgradeSkip.fromPlanner("llegó tras el empalme") == .afterSplice)
+        #expect(AutomixUpgradeSkip.fromPlanner("el corte de stems (95.0 s) ya quedó atrás") == .cutPassed)
+        #expect(AutomixUpgradeSkip.fromPlanner("el corte de stems queda a 5.0 s (< 8 s) y no coincide con el de la rápida") == .tooClose)
+    }
+
+    @Test("La marca del progreso distingue la versión y se mueve con la buena")
+    func markerQuality() {
+        let fast = transition()
+        var good = transition(cut: 104); good.quality = "stems"
+        #expect(AutomixProgressMarker(transition: fast)?.quality == "fast")
+        #expect(AutomixProgressMarker(transition: good)?.quality == "stems")
+        #expect(AutomixProgressMarker(transition: good)?.songSeconds == 112)
+        #expect(AutomixProgressMarker(songSeconds: 5) == AutomixProgressMarker(songSeconds: 5, quality: "fast"))
+        #expect(AutomixProgressMarker(songSeconds: 5, quality: "stems") != AutomixProgressMarker(songSeconds: 5))
+    }
+}
+
+@Suite("Automix: textos del estado para personas")
+struct AutomixUserTextTests {
+    private let now = Date(timeIntervalSince1970: 1_000)
+    private func pill(_ status: AutomixCoordinator.Status, _ quality: AutomixQualityState = AutomixQualityState(), _ language: AppLanguage = .es) -> String {
+        AutomixUserText.pillText(status: status, quality: quality, now: now, language: language)
+    }
+
+    @Test("La píldora dice en pocas palabras qué versión hay y qué se está haciendo")
+    func pillStates() {
+        #expect(pill(.off) == "Beta · Automix")
+        #expect(pill(.idle) == "Automix · activado")
+        #expect(pill(.preparing, AutomixQualityState(preparing: "fast")) == "Automix · preparando…")
+        #expect(pill(.preparing, AutomixQualityState(preparing: "stems")) == "Automix · preparando versión buena…")
+        #expect(pill(.ready(kind: "mix", bpm: 120), AutomixQualityState(ready: "fast")) == "Automix · rápida lista")
+        let improving = AutomixQualityState(ready: "fast", upgrade: .working(since: now.addingTimeInterval(-23.9)))
+        #expect(pill(.ready(kind: "mix", bpm: 120), improving) == "Automix · rápida lista · mejorando… 23 s")
+        #expect(pill(.ready(kind: "mix", bpm: 120), AutomixQualityState(ready: "stems", upgrade: .applied)) == "Automix · versión buena lista ✓")
+        #expect(pill(.mixing(kind: "mix"), AutomixQualityState(ready: "stems")) == "Automix · mezclando (buena)")
+        #expect(pill(.mixing(kind: "mix"), AutomixQualityState(ready: "fast")) == "Automix · mezclando (rápida)")
+        #expect(pill(.unavailable(.sameAlbum)) == "Automix · no disponible: mismo álbum")
+        #expect(pill(.unavailable(.jam)) == "Automix · no disponible: Jam")
+    }
+
+    @Test("Los segundos de «mejorando» no son negativos y avanzan con el reloj")
+    func elapsedSeconds() {
+        let since = now
+        let early = AutomixQualityState(ready: "fast", upgrade: .working(since: since))
+        #expect(AutomixUserText.pillText(status: .ready(kind: "mix", bpm: 0), quality: early, now: now.addingTimeInterval(-5), language: .es).hasSuffix("0 s"))
+        #expect(AutomixUserText.pillText(status: .ready(kind: "mix", bpm: 0), quality: early, now: now.addingTimeInterval(61), language: .es).hasSuffix("61 s"))
+    }
+
+    @Test("Cada estado con transición tiene una frase y el m:ss de inicio de la mezcla")
+    func tooltips() {
+        let ready = AutomixCoordinator.Status.ready(kind: "mix", bpm: 120)
+        let fast = AutomixUserText.pillTooltip(status: ready, quality: AutomixQualityState(ready: "fast"), mixStart: "2:41", language: .es)
+        #expect(fast.contains("versión rápida") && fast.hasSuffix("La mezcla empieza en 2:41."))
+        let improving = AutomixUserText.pillTooltip(status: ready, quality: AutomixQualityState(ready: "fast", upgrade: .working(since: now)), mixStart: "2:41", language: .es)
+        #expect(improving.contains("se sigue preparando la buena") && improving.hasSuffix("2:41."))
+        let good = AutomixUserText.pillTooltip(status: ready, quality: AutomixQualityState(ready: "stems"), mixStart: "2:41", language: .es)
+        #expect(good.contains("versión buena") && good.hasSuffix("2:41."))
+        #expect(!AutomixUserText.pillTooltip(status: ready, quality: AutomixQualityState(ready: "fast"), mixStart: nil, language: .es).contains("empieza"))
+        #expect(!AutomixUserText.pillTooltip(status: .preparing, quality: AutomixQualityState(preparing: "fast"), mixStart: "2:41", language: .es).contains("2:41"))
+        #expect(AutomixUserText.pillTooltip(status: .mixing(kind: "mix"), quality: AutomixQualityState(ready: "stems"), mixStart: "2:41", language: .es) == "Ahora suena la mezcla con la versión buena.")
+        #expect(AutomixUserText.pillTooltip(status: .unavailable(.sameAlbum), quality: AutomixQualityState(), mixStart: nil, language: .es) == "No disponible: temas del mismo álbum")
+    }
+
+    @Test("La ayuda de la marca nombra la versión que sonará")
+    func markerHelp() {
+        #expect(AutomixUserText.markerHelp(time: "2:41", quality: AutomixQualityState(ready: "stems"), language: .es).hasSuffix("sonará la versión buena"))
+        #expect(AutomixUserText.markerHelp(time: "2:41", quality: AutomixQualityState(ready: "fast"), language: .es).hasSuffix("sonará la versión rápida"))
+        let improving = AutomixUserText.markerHelp(time: "2:41", quality: AutomixQualityState(ready: "fast", upgrade: .working(since: now)), language: .es)
+        #expect(improving.contains("la buena se está preparando") && improving.contains("2:41"))
+        #expect(AutomixUserText.markerHelp(time: "2:41", quality: AutomixQualityState(ready: "stems"), language: .en).contains("good version"))
+    }
+
+    private func summary(_ input: AutomixUserText.SummaryInput) -> [String] {
+        AutomixUserText.summary(input, now: now, clock: { _ in "12:34:56" }, language: .es)
+    }
+
+    @Test("El resumen del diagnóstico cuenta en llano qué suena, qué viene y cómo va cada versión")
+    func summaryText() {
+        var input = AutomixUserText.SummaryInput(status: .ready(kind: "mix", bpm: 120), quality: AutomixQualityState(ready: "fast", upgrade: .working(since: now.addingTimeInterval(-23))))
+        input.current = "Canción A"; input.next = "Canción B"; input.readyAt = now; input.mixStart = "2:41"
+        #expect(summary(input) == [
+            "Ahora: suena Canción A.", "Siguiente: Canción B.",
+            "Transición: versión rápida lista a las 12:34:56. Versión buena: trabajando hace 23 s.",
+            "La mezcla empieza en 2:41."])
+        input.typicalUpgradeSeconds = 40.2
+        #expect(summary(input)[2].hasSuffix("trabajando hace 23 s (estimado ~40 s)."))
+
+        input.quality.upgrade = .applied; input.quality.ready = "stems"; input.upgradeFinishedAt = now
+        #expect(summary(input)[2] == "Transición: versión rápida lista a las 12:34:56. Versión buena: lista a las 12:34:56 y ya sustituyó a la rápida.")
+
+        input.quality = AutomixQualityState(ready: "fast", upgrade: .notUsed(.battery(lowPower: false)))
+        #expect(summary(input)[2].hasSuffix("Versión buena: no se va a usar porque se está usando la batería y ese ajuste pide la versión rápida."))
+        input.quality = AutomixQualityState(ready: "fast", upgrade: .failed)
+        #expect(summary(input)[2].hasSuffix("no se pudo preparar; sonará la rápida."))
+        input.quality = AutomixQualityState(ready: "stems")
+        #expect(summary(input)[2] == "Transición: versión buena lista a las 12:34:56.")
+    }
+
+    @Test("Resumen sin transición: apagado, sin tema, preparando y no disponible")
+    func summaryWithoutTransition() {
+        var input = AutomixUserText.SummaryInput(status: .off)
+        #expect(summary(input) == ["Ahora: no suena nada.", "Siguiente: no hay otro tema conocido.", "Transición: Automix está desactivado."])
+        input = AutomixUserText.SummaryInput(status: .preparing, quality: AutomixQualityState(preparing: "stems"), preparingSince: now.addingTimeInterval(-7.4))
+        #expect(summary(input)[2] == "Transición: preparando directamente la versión buena desde hace 7 s.")
+        input = AutomixUserText.SummaryInput(status: .unavailable(.sameAlbum), mixStart: "2:41")
+        #expect(summary(input).count == 3, "sin transición no se anuncia inicio de mezcla")
+        #expect(summary(input)[2] == "Transición: no hay. No disponible: temas del mismo álbum.")
+    }
+
+    @Test("Todos los textos nuevos existen en español e inglés y comparten argumentos")
+    func catalog() {
+        let skips: [AutomixUpgradeSkip] = [.alwaysFast, .battery(lowPower: false), .battery(lowPower: true), .notRecommended, .pairFailed, .tooClose, .cutPassed, .afterSplice, .invalid, .cancelled]
+        for skip in skips {
+            let es = L10n.text(skip.key, language: .es), en = L10n.text(skip.key, language: .en)
+            #expect(es != skip.key && en != skip.key && es != en, "\(skip.key)")
+        }
+        for reason in [AutomixUnavailableReason.jam, .repeatOne, .noNextTrack, .sameTrack, .sameAlbum, .unsupportedFormat, .tooLong, .tooLate, .failed] {
+            #expect(!AutomixUserText.shortReason(reason, language: .es).hasPrefix("automix."))
+            #expect(!AutomixUserText.shortReason(reason, language: .en).hasPrefix("automix."))
+        }
+        for language in AppLanguage.allCases {
+            #expect(L10n.text("automix.toast.goodReady", language: language) != "automix.toast.goodReady")
+            #expect(pill(.ready(kind: "mix", bpm: 1), AutomixQualityState(ready: "stems"), language).contains("✓"))
+        }
+    }
+}

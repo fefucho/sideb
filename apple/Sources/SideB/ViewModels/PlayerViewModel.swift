@@ -2513,7 +2513,15 @@ extension PlayerViewModel {
                     automixPairReady(from: context!.current.videoID, to: next.videoID)
                 }
             },
-            players: AutomixPlayerCounter.snapshot, outputDevice: store.cachedOutputDevice(now: now))
+            players: AutomixPlayerCounter.snapshot, outputDevice: store.cachedOutputDevice(now: now),
+            summary: AutomixUserText.SummaryInput(
+                status: automix.status, quality: automix.qualityState,
+                current: current?.title, next: next?.title,
+                readyAt: request?.phase == .ready ? request?.finishedAt : nil,
+                upgradeRequestedAt: request?.upgradeRequestedAt, upgradeFinishedAt: request?.upgradeFinishedAt,
+                typicalUpgradeSeconds: automix.typicalUpgradeSeconds,
+                mixStart: automix.mixStartSeconds.map { formatTime($0) },
+                preparingSince: request?.phase == .preparing ? request?.requestedAt : nil))
     }
 
     /// Depuración: salta la canción a 10 s antes del corte (sólo con una transición lista y la canción antes del corte).

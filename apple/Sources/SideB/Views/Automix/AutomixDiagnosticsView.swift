@@ -14,6 +14,8 @@ struct AutomixDiagnosticsView: View {
             VStack(spacing: 0) {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 14) {
+                        AutomixSummaryBlock(snapshot: snapshot)
+                        Text(L10n.text("automix.summary.technical")).font(.system(size: 11)).foregroundStyle(.secondary)
                         AutomixDiagnosticsSections(snapshot: snapshot)
                     }
                     .padding(14)
@@ -103,10 +105,46 @@ struct AutomixDiagnosticsView: View {
     }
 }
 
+// MARK: - Resumen en lenguaje llano
+
+/// Lo primero de la ventana: qué suena, qué viene, y en qué estado está la transición (versión rápida y buena).
+private struct AutomixSummaryBlock: View {
+    let snapshot: AutomixDiagnosticsSnapshot
+
+    private static let clockFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH:mm:ss"
+        return formatter
+    }()
+
+    var body: some View {
+        let lines = AutomixUserText.summary(snapshot.summary, now: snapshot.date, clock: { Self.clockFormatter.string(from: $0) })
+        VStack(alignment: .leading, spacing: 6) {
+            Text(L10n.text("automix.summary.title"))
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 4) {
+                ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
+                    Text(verbatim: line)
+                        .font(.system(size: 13))
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+            .padding(10)
+            .background(RoundedRectangle(cornerRadius: 8).fill(Color(nsColor: .controlBackgroundColor)))
+            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Color(nsColor: .separatorColor)))
+        }
+        .accessibilityIdentifier("automix-summary")
+    }
+}
+
 // MARK: - Secciones
 
 private struct AutomixDiagnosticsSections: View {
     let snapshot: AutomixDiagnosticsSnapshot
+    /// Las secciones técnicas arrancan plegadas; lo que el usuario abre se queda abierto entre refrescos.
+    @State private var expanded: Set<String> = []
 
     var body: some View {
         section("Audio: dispositivo y reproductores") {
@@ -259,14 +297,20 @@ private struct AutomixDiagnosticsSections: View {
 
     // MARK: Piezas
 
-    private func section(_ title: String, @ViewBuilder content: () -> some View) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(title).font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary)
-            VStack(alignment: .leading, spacing: 2) { content() }
-                .padding(8)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(RoundedRectangle(cornerRadius: 6).fill(Color(nsColor: .controlBackgroundColor)))
-                .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Color(nsColor: .separatorColor)))
+    private func section<Content: View>(_ title: String, @ViewBuilder content: @escaping () -> Content) -> some View {
+        let isOpen = Binding(get: { expanded.contains(title) },
+                             set: { if $0 { expanded.insert(title) } else { expanded.remove(title) } })
+        return VStack(alignment: .leading, spacing: 4) {
+            DisclosureGroup(isExpanded: isOpen) {
+                VStack(alignment: .leading, spacing: 2) { content() }
+                    .padding(8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(RoundedRectangle(cornerRadius: 6).fill(Color(nsColor: .controlBackgroundColor)))
+                    .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Color(nsColor: .separatorColor)))
+                    .padding(.top, 4)
+            } label: {
+                Text(title).font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary)
+            }
         }
     }
 

@@ -76,14 +76,78 @@
 	<string>fade</string>
 	<key>automix.kind.mix</key>
 	<string>mix</string>
+	<key>automix.marker.fast</key>
+	<string>Automix: the mix starts here (%@) · the fast version will play</string>
+	<key>automix.marker.fastImproving</key>
+	<string>Automix: the mix starts here (%@) · the fast version will play; the good one is being prepared</string>
+	<key>automix.marker.good</key>
+	<string>Automix: the mix starts here (%@) · the good version will play</string>
 	<key>automix.marker.value</key>
 	<string>Automix: the mix starts here (%@)</string>
+	<key>automix.pill.reason.failed</key>
+	<string>could not be prepared</string>
+	<key>automix.pill.reason.jam</key>
+	<string>Jam</string>
+	<key>automix.pill.reason.noNextTrack</key>
+	<string>no next song</string>
+	<key>automix.pill.reason.repeatOne</key>
+	<string>single-song repeat</string>
+	<key>automix.pill.reason.sameAlbum</key>
+	<string>same album</string>
+	<key>automix.pill.reason.sameTrack</key>
+	<string>same song</string>
+	<key>automix.pill.reason.tooLate</key>
+	<string>ready too late</string>
+	<key>automix.pill.reason.tooLong</key>
+	<string>song too long</string>
+	<key>automix.pill.reason.unsupportedFormat</key>
+	<string>audio is not AAC</string>
+	<key>automix.pill.state.fastImproving</key>
+	<string>Automix · fast version ready · improving… %@ s</string>
+	<key>automix.pill.state.fastReady</key>
+	<string>Automix · fast version ready</string>
+	<key>automix.pill.state.goodReady</key>
+	<string>Automix · good version ready ✓</string>
+	<key>automix.pill.state.idle</key>
+	<string>Automix · on</string>
+	<key>automix.pill.state.mixing</key>
+	<string>Automix · mixing (%@ version)</string>
+	<key>automix.pill.state.preparing</key>
+	<string>Automix · preparing…</string>
+	<key>automix.pill.state.preparingGood</key>
+	<string>Automix · preparing the good version…</string>
+	<key>automix.pill.state.unavailable</key>
+	<string>Automix · not available: %@</string>
 	<key>automix.pill.title</key>
 	<string>Beta · Automix</string>
 	<key>automix.pill.turnOff</key>
 	<string>Turn off Automix (beta)</string>
 	<key>automix.pill.turnOn</key>
 	<string>Turn on Automix (beta)</string>
+	<key>automix.quality.fast</key>
+	<string>fast</string>
+	<key>automix.quality.good</key>
+	<string>good</string>
+	<key>automix.skip.afterSplice</key>
+	<string>it arrived when the mix was already committed</string>
+	<key>automix.skip.alwaysFast</key>
+	<string>quality is set to “always fast”</string>
+	<key>automix.skip.battery</key>
+	<string>the battery is in use and that setting asks for the fast version</string>
+	<key>automix.skip.cancelled</key>
+	<string>it was cancelled</string>
+	<key>automix.skip.cutPassed</key>
+	<string>the good version's cut has already passed</string>
+	<key>automix.skip.invalid</key>
+	<string>its answer was not valid</string>
+	<key>automix.skip.lowPower</key>
+	<string>low power mode is on and that setting asks for the fast version</string>
+	<key>automix.skip.notRecommended</key>
+	<string>this computer does not recommend the good version yet and the pair was not prepared beforehand</string>
+	<key>automix.skip.pairFailed</key>
+	<string>preparing the good version directly already failed for this pair</string>
+	<key>automix.skip.tooClose</key>
+	<string>the cut is too close to switch versions</string>
 	<key>automix.status.idle</key>
 	<string>On</string>
 	<key>automix.status.mixing</key>
@@ -96,6 +160,70 @@
 	<string>Ready: %@ (%@ bpm)</string>
 	<key>automix.status.readyNoBpm</key>
 	<string>Ready: %@</string>
+	<key>automix.summary.good.applied</key>
+	<string>Good version: ready at %@ and it already replaced the fast one.</string>
+	<key>automix.summary.good.failed</key>
+	<string>Good version: it could not be prepared; the fast one will play.</string>
+	<key>automix.summary.good.none</key>
+	<string>Good version: it will not be requested.</string>
+	<key>automix.summary.good.notUsed</key>
+	<string>Good version: it will not be used because %@.</string>
+	<key>automix.summary.good.watching</key>
+	<string>Good version: not requested yet; watching in case it gets ready beforehand.</string>
+	<key>automix.summary.good.working</key>
+	<string>Good version: working for %@ s.</string>
+	<key>automix.summary.good.workingEstimate</key>
+	<string>Good version: working for %@ s (estimated ~%@ s).</string>
+	<key>automix.summary.mixStart</key>
+	<string>The mix starts at %@.</string>
+	<key>automix.summary.next</key>
+	<string>Next: %@.</string>
+	<key>automix.summary.nextNone</key>
+	<string>Next: there is no known next song.</string>
+	<key>automix.summary.now</key>
+	<string>Now: playing %@.</string>
+	<key>automix.summary.nowNone</key>
+	<string>Now: nothing is playing.</string>
+	<key>automix.summary.technical</key>
+	<string>Technical details (collapsed)</string>
+	<key>automix.summary.title</key>
+	<string>Summary</string>
+	<key>automix.summary.transition.fastReady</key>
+	<string>Transition: fast version ready at %@.</string>
+	<key>automix.summary.transition.goodReady</key>
+	<string>Transition: good version ready at %@.</string>
+	<key>automix.summary.transition.idle</key>
+	<string>Transition: there is nothing to prepare yet.</string>
+	<key>automix.summary.transition.mixingNow</key>
+	<string>The mix is playing right now with the %@ version.</string>
+	<key>automix.summary.transition.off</key>
+	<string>Transition: Automix is off.</string>
+	<key>automix.summary.transition.preparing</key>
+	<string>Transition: preparing the fast version for %@ s.</string>
+	<key>automix.summary.transition.preparingGood</key>
+	<string>Transition: preparing the good version directly for %@ s.</string>
+	<key>automix.summary.transition.unavailable</key>
+	<string>Transition: none. %@.</string>
+	<key>automix.tip.fastImproving</key>
+	<string>The fast version is ready; the good one is still being prepared and, if it arrives in time, it will replace it before the mix.</string>
+	<key>automix.tip.fastReady</key>
+	<string>The fast version is ready and is the one that will play.</string>
+	<key>automix.tip.goodReady</key>
+	<string>The good version (with stems) is ready and is the one that will play.</string>
+	<key>automix.tip.idle</key>
+	<string>Automix is on; it will prepare the mix as soon as a song plays with another one after it.</string>
+	<key>automix.tip.mixStart</key>
+	<string>The mix starts at %@.</string>
+	<key>automix.tip.mixing</key>
+	<string>The mix is playing now with the %@ version.</string>
+	<key>automix.tip.off</key>
+	<string>Automix (beta) is off: songs are not mixed.</string>
+	<key>automix.tip.preparing</key>
+	<string>The mix with the next song is being prepared; nothing is ready yet.</string>
+	<key>automix.tip.preparingGood</key>
+	<string>The good version (with stems) is being prepared directly; it is not ready yet.</string>
+	<key>automix.toast.goodReady</key>
+	<string>Good version ready</string>
 	<key>automix.unavailable.failed</key>
 	<string>Not available: the mix could not be prepared</string>
 	<key>automix.unavailable.jam</key>
