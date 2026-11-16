@@ -863,6 +863,7 @@ pub fn run() {
                                             engine: engine
                                                 .as_deref()
                                                 .map(|player| player as &dyn automix_runtime::Engine),
+                                            low_power: automix_runtime::low_power_now(),
                                         };
                                         let mut step = automix_runtime::on_position(&mut pb, raw_pos, &ctx);
                                         let Some(pos) = step.position else {
@@ -924,6 +925,7 @@ pub fn run() {
                                                 engine: engine
                                                     .as_deref()
                                                     .map(|player| player as &dyn automix_runtime::Engine),
+                                                low_power: false,
                                             };
                                             // Con un archivo de transición, la duración es la del archivo.
                                             let (mapped, step) = automix_runtime::on_duration(&mut pb, dur, &ctx);

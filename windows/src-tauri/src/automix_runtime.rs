@@ -45,6 +45,10 @@ const SEEK_NEAR: f64 = 0.75;
 const RESUME_LEAD: f64 = 0.03;
 /// Lo que tarda en abrirse el archivo con `load_at`: se suma al segundo de arranque.
 const LOAD_LEAD: f64 = 0.05;
+/// Cada cuánto se pregunta al core si el par ya tiene sus stems precargados (mientras sólo hay versión rápida).
+const PAIR_POLL: Duration = Duration::from_secs(5);
+/// El corte de la versión de stems tiene que estar al menos así de adelante de la posición para cambiarla por la rápida.
+const MIN_STEMS_AHEAD: f64 = 8.0;
 /// Marca interna dentro de `cancels` para detener la precarga del core (no es un `request_id`).
 const CANCEL_PREFETCH: &str = "\u{0}prefetch";
 
@@ -237,13 +241,34 @@ struct Ready {
 pub(crate) struct Options {
     pub skip_same_album: bool,
     pub lookahead: usize,
+    /// La calidad elegida no es «siempre rápida».
+    pub stems_by_quality: bool,
+    pub fast_on_battery: bool,
 }
 
 impl Default for Options {
     fn default() -> Self {
         // Los valores por defecto del core hasta que se lean.
-        Self { skip_same_album: true, lookahead: 1 }
+        Self { skip_same_album: true, lookahead: 1, stems_by_quality: true, fast_on_battery: false }
     }
+}
+
+impl Options {
+    /// `allow_stems` de la precarga y de la mejora: no es «siempre rápida» y no se está a batería con la regla activada.
+    pub(crate) fn allows_stems(&self, low_power: bool) -> bool {
+        self.stems_by_quality && !(self.fast_on_battery && low_power)
+    }
+}
+
+/// ¿Se permiten los stems con estos ajustes del core? (calidad ≠ «fast», y no «con batería, sólo la rápida» a batería)
+pub(crate) fn allow_stems(quality: &str, fast_on_battery: bool, low_power: bool) -> bool {
+    quality != "fast" && !(fast_on_battery && low_power)
+}
+
+/// ¿El corte de la versión de stems (`stems_a_cut`, segundo de la canción actual) está lo bastante adelante de `position`
+/// para reemplazar a la rápida? Puede ser distinto del corte rápido (el plan de stems es propio).
+pub(crate) fn stems_swap_ok(stems_a_cut: f64, position: f64) -> bool {
+    stems_a_cut.is_finite() && position.is_finite() && stems_a_cut - position >= MIN_STEMS_AHEAD
 }
 
 /// Un par de ocurrencias que ya falló: no se reintenta mientras sigan siendo actual y siguiente.
@@ -339,7 +364,7 @@ pub(crate) struct AutomixRuntime {
     tracking_stale: Option<u64>,
     options: Options,
     /// La última lista que se pidió precargar al core (canción actual y próximas).
-    prefetched: Option<Vec<(String, bool)>>,
+    prefetched: Option<(Vec<(String, bool)>, bool)>,
     skip: Option<Skip>,
     cancels: Vec<String>,
     last_status: Option<AutomixStatusDto>,
@@ -389,8 +414,7 @@ impl AutomixRuntime {
     pub(crate) fn reset_for_new_load(&mut self) {
         self.drop_plan();
         self.on_file = None;
-        // La lista nueva se pedirá al empezar la canción; si no hay ninguna, se cancela entonces.
-        self.prefetched = None;
+        // La precarga no se toca: si la lista es la misma, no se vuelve a pedir (el core ya la tiene).
     }
     pub(crate) fn take_cancels(&mut self) -> Vec<String> {
         std::mem::take(&mut self.cancels)
@@ -510,6 +534,8 @@ pub(crate) struct Ctx<'a> {
     pub jam_active: bool,
     pub auth_generation: u64,
     pub engine: Option<&'a dyn Engine>,
+    /// A batería o con el ahorro de energía (`GetSystemPowerStatus`, consultado como mucho cada 5 s).
+    pub low_power: bool,
 }
 
 // MARK: Resultado de un evento
@@ -523,6 +549,8 @@ pub(crate) struct PrepareJob {
 /// La lista que se le pide precargar al core: la canción que suena y las próximas, en orden.
 pub(crate) struct PrefetchJob {
     pub items: Vec<(String, bool)>,
+    /// `allow_stems` del core: sin él sólo descarga (sin modelo, sin memoria).
+    pub allow_stems: bool,
 }
 
 pub(crate) struct LeaveJob {
@@ -1065,11 +1093,14 @@ fn maybe_prefetch(pb: &mut PlaybackManager, ctx: &Ctx, step: &mut Step) {
     };
     let started = pb.is_playing && !pb.is_loading && pb.loaded_generation == Some(pb.generation);
     let rt = &mut pb.runtime.automix;
-    if !started || rt.prefetched.as_ref() == Some(&list) {
+    // Cambiar `allow_stems` (batería, calidad) es una lista distinta para el core; la misma lista y el mismo permiso no se repiten.
+    let allow = rt.options.allows_stems(ctx.low_power);
+    let wanted = (list, allow);
+    if !started || rt.prefetched.as_ref() == Some(&wanted) {
         return;
     }
-    rt.prefetched = Some(list.clone());
-    step.prefetch = Some(PrefetchJob { items: list });
+    rt.prefetched = Some(wanted.clone());
+    step.prefetch = Some(PrefetchJob { items: wanted.0, allow_stems: allow });
 }
 
 /// Prepara el regreso al arranque normal de la ocurrencia actual, en `position`.
@@ -1145,7 +1176,7 @@ pub(crate) fn jam_changed(app: &tauri::AppHandle) {
     let auth_generation = state.auth_generation.load(Ordering::SeqCst);
     let step = {
         let Ok(mut pb) = state.playback.lock() else { return };
-        let ctx = Ctx { now: Instant::now(), jam_active, auth_generation, engine: None };
+        let ctx = Ctx { now: Instant::now(), jam_active, auth_generation, engine: None, low_power: false };
         let mut step = Step::default();
         validate_plan(&mut pb, &ctx, &mut step);
         step.cancels.append(&mut pb.runtime.automix.cancels);
@@ -1314,7 +1345,6 @@ async fn run_prepare(app: tauri::AppHandle, job: PrepareJob) {
         fail_job(&app, &job.request_id, "failed");
         return;
     };
-    let started = Instant::now();
     // La ganancia de la canción siguiente sólo la da `resolve_stream`, y esa resolución pisa el
     // seguimiento de historial del core. Se hace ya, sin esperar a que se registre la canción que
     // suena: la escucha rehace su seguimiento antes de registrarse (`take_tracking_stale`).
@@ -1348,64 +1378,76 @@ async fn run_prepare(app: tauri::AppHandle, job: PrepareJob) {
         fail_job(&app, &job.request_id, "failed");
         return;
     };
-    let result = prepare(&core, &job.request_id, &job, to_gain, "fast", &cache_dir).await;
-    let elapsed_ms = started.elapsed().as_millis();
-    match result {
-        Ok(record) => {
-            let rec = Transition::from(&record);
-            eprintln!(
-                "[Automix] stage=prepared quality=fast kind={} bars={} elapsed_ms={elapsed_ms} detail={}",
-                rec.kind, rec.bars, rec.detail
-            );
-            let status = {
-                let auth = state.auth_generation.load(Ordering::SeqCst);
-                let Ok(mut pb) = state.playback.lock() else { return };
-                let current = pb
-                    .runtime
-                    .automix
-                    .job
-                    .as_ref()
-                    .is_some_and(|stored| stored.request_id == job.request_id && key_matches(&stored.key, &pb, auth));
-                if !current {
-                    return;
-                }
-                let rt = &mut pb.runtime.automix;
-                rt.job = None;
-                if rec.sane() {
-                    rt.ready = Some(Ready { key: job.key.clone(), rec, from_gain: job.from_gain, to_gain, missed: false, quality: "fast".into() });
-                } else {
-                    eprintln!("[Automix] stage=prepared rejected reason=bad-numbers");
-                    rt.failed = Some(Failure::of(&job.key, "failed"));
-                    return emit_after(&app, &mut pb);
-                }
-                pb.runtime.automix.take_status_change()
-            };
-            emit_status(&app, status);
+    // Con los stems permitidos y el par ya precargado (~5 s) se pide «stems» directamente; si no, «rápida» ya
+    // y, cuando el par esté listo, «stems». El core une peticiones iguales: pedir es idempotente.
+    let settings = core.get_automix_settings();
+    let stems_allowed = allow_stems(&settings.quality, settings.fast_on_battery, on_battery());
+    let direct = stems_allowed && core.automix_pair_ready(job.key.from_video.clone(), job.key.to_video.clone());
+    let mut quality = if direct { "stems" } else { "fast" };
+    let started = Instant::now();
+    let record = loop {
+        match prepare(&core, &job.request_id, &job, to_gain, quality, &cache_dir).await {
+            Ok(record) => break record,
+            Err(error) if is_cancelled(&error) => {
+                eprintln!("[Automix] stage=prepared cancelled elapsed_ms={}", started.elapsed().as_millis());
+                return;
+            }
+            // «stems» no pudo (sin modelo, sin memoria…): se sigue con la rápida.
+            Err(error) if quality == "stems" => {
+                eprintln!("[Automix] stage=prepared quality=stems failed reason={} falling-back=fast", failure_reason(&error));
+                quality = "fast";
+            }
+            Err(error) => {
+                let reason = failure_reason(&error);
+                eprintln!("[Automix] stage=prepared failed reason={reason} elapsed_ms={}", started.elapsed().as_millis());
+                fail_job(&app, &job.request_id, reason);
+                return;
+            }
         }
-        Err(error) if is_cancelled(&error) => {
-            eprintln!("[Automix] stage=prepared cancelled elapsed_ms={elapsed_ms}");
+    };
+    let rec = Transition::from(&record);
+    eprintln!(
+        "[Automix] stage=prepared quality={quality} kind={} bars={} reused={} elapsed_ms={} detail={}",
+        rec.kind, rec.bars, record.reused, started.elapsed().as_millis(), rec.detail
+    );
+    let status = {
+        let auth = state.auth_generation.load(Ordering::SeqCst);
+        let Ok(mut pb) = state.playback.lock() else { return };
+        let current = pb
+            .runtime
+            .automix
+            .job
+            .as_ref()
+            .is_some_and(|stored| stored.request_id == job.request_id && key_matches(&stored.key, &pb, auth));
+        if !current {
             return;
         }
-        Err(error) => {
-            let reason = failure_reason(&error);
-            eprintln!("[Automix] stage=prepared failed reason={reason} elapsed_ms={elapsed_ms}");
-            fail_job(&app, &job.request_id, reason);
-            return;
+        let rt = &mut pb.runtime.automix;
+        rt.job = None;
+        if rec.sane() {
+            rt.ready = Some(Ready { key: job.key.clone(), rec, from_gain: job.from_gain, to_gain, missed: false, quality: quality.into() });
+        } else {
+            eprintln!("[Automix] stage=prepared rejected reason=bad-numbers");
+            rt.failed = Some(Failure::of(&job.key, "failed"));
         }
+        pb.runtime.automix.take_status_change()
+    };
+    emit_status(&app, status);
+    if quality == "fast" {
+        wait_for_stems(&app, &core, &job, to_gain, &cache_dir).await;
     }
-    upgrade_to_stems(&app, &core, &job, to_gain, &cache_dir).await;
 }
 
 /// Una llamada a `prepare_automix` con la calidad pedida.
 async fn prepare(
-    core: &sideb_core::SideBCore,
+    core: &std::sync::Arc<sideb_core::SideBCore>,
     request_id: &str,
     job: &PrepareJob,
     to_gain: Option<f64>,
     quality: &str,
     cache_dir: &std::path::Path,
 ) -> Result<sideb_core::automix_job::AutomixTransitionRecord, sideb_core::SideBError> {
-    core.prepare_automix(
+    core.clone().prepare_automix(
         request_id.to_owned(),
         job.key.from_video.clone(),
         job.key.from_upload,
@@ -1419,19 +1461,49 @@ async fn prepare(
     .await
 }
 
-fn emit_after(app: &tauri::AppHandle, pb: &mut PlaybackManager) {
-    let status = pb.runtime.automix.take_status_change();
-    emit_status(app, status);
+/// Qué hace el sondeo con la versión rápida lista.
+enum Poll {
+    /// Ya no hay nada que mejorar: otro par, ya empalmada, ya es de stems, o a punto de empalmar.
+    Done,
+    Wait,
 }
 
-/// Con la versión rápida ya lista, se pide la de «stems» si el ajuste y la máquina lo permiten, y sólo
-/// reemplaza a la rápida mientras todavía no se haya empalmado (el corte es el mismo: `same_cut_as_fast`).
-async fn upgrade_to_stems(app: &tauri::AppHandle, core: &sideb_core::SideBCore, job: &PrepareJob, to_gain: Option<f64>, cache_dir: &std::path::Path) {
-    let settings = core.get_automix_settings();
-    let capability = core.automix_capability();
-    if !want_stems(&settings.quality, settings.fast_on_battery, capability.stems_recommended, on_battery()) {
+fn poll_state(app: &tauri::AppHandle, key: &PlanKey) -> Poll {
+    let state = app.state::<AppState>();
+    let auth = state.auth_generation.load(Ordering::SeqCst);
+    let Ok(pb) = state.playback.lock() else { return Poll::Done };
+    match pb.runtime.automix.ready.as_ref() {
+        Some(ready) if ready.quality == "fast" && ready.key == *key && key_matches(key, &pb, auth) => {
+            // El empalme es inminente: una mejora ya no llegaría a tiempo.
+            if ready.rec.a_cut - pb.position < 2.0 { Poll::Done } else { Poll::Wait }
+        }
+        _ => Poll::Done,
+    }
+}
+
+/// Mientras sólo hay versión rápida y no se haya empalmado, cada ~5 s se pregunta al core si los stems del par ya
+/// están precargados (`automix_pair_ready`, sólo mira archivos); cuando lo están (y se permiten) se pide «stems» y,
+/// si su corte queda lo bastante adelante, reemplaza a la rápida aunque el corte sea otro.
+async fn wait_for_stems(app: &tauri::AppHandle, core: &std::sync::Arc<sideb_core::SideBCore>, job: &PrepareJob, to_gain: Option<f64>, cache_dir: &std::path::Path) {
+    loop {
+        tokio::time::sleep(PAIR_POLL).await;
+        if matches!(poll_state(app, &job.key), Poll::Done) {
+            return;
+        }
+        let settings = core.get_automix_settings();
+        if !allow_stems(&settings.quality, settings.fast_on_battery, low_power_now()) {
+            continue;
+        }
+        if !core.automix_pair_ready(job.key.from_video.clone(), job.key.to_video.clone()) {
+            continue;
+        }
+        request_stems(app, core, job, to_gain, cache_dir).await;
         return;
     }
+}
+
+/// Pide «stems» (una sola vez por par) y la cambia por la rápida si su corte queda a `MIN_STEMS_AHEAD` s o más.
+async fn request_stems(app: &tauri::AppHandle, core: &std::sync::Arc<sideb_core::SideBCore>, job: &PrepareJob, to_gain: Option<f64>, cache_dir: &std::path::Path) {
     let state = app.state::<AppState>();
     let request_id = {
         let auth = state.auth_generation.load(Ordering::SeqCst);
@@ -1457,26 +1529,26 @@ async fn upgrade_to_stems(app: &tauri::AppHandle, core: &sideb_core::SideBCore, 
             return;
         }
         let valid = key_matches(&job.key, &pb, auth);
+        let position = pb.position;
         let rt = &mut pb.runtime.automix;
         rt.upgrade = None;
         match result {
             Ok(record) if valid => {
                 let rec = Transition::from(&record);
                 let swapped = match rt.ready.as_mut() {
-                    // El corte no se mueve: la marca de la barra y el mapa de tiempos siguen valiendo.
-                    Some(ready) if record.same_cut_as_fast && rec.sane()
-                        && (rec.a_cut - ready.rec.a_cut).abs() < 0.01
-                        && (rec.overlap_start - ready.rec.overlap_start).abs() < 0.01 =>
-                    {
+                    // El plan de stems es propio: su corte puede diferir del rápido. Al cambiar `ready.rec` se
+                    // re-planea el empalme (usa `ready.rec`) y se mueve la marca de la barra (sale de `ready.rec`).
+                    Some(ready) if rec.sane() && stems_swap_ok(rec.a_cut, position) => {
                         ready.rec = rec;
                         ready.quality = "stems".into();
+                        ready.missed = false;
                         true
                     }
                     _ => false,
                 };
                 eprintln!(
-                    "[Automix] stage=prepared quality=stems swapped={swapped} separated_s={:.1} elapsed_ms={elapsed_ms}",
-                    record.separated_seconds
+                    "[Automix] stage=prepared quality=stems swapped={swapped} same_cut={} reused={} separated_s={:.1} elapsed_ms={elapsed_ms}",
+                    record.same_cut_as_fast, record.reused, record.separated_seconds
                 );
             }
             Ok(_) => {}
@@ -1487,19 +1559,6 @@ async fn upgrade_to_stems(app: &tauri::AppHandle, core: &sideb_core::SideBCore, 
         pb.runtime.automix.take_status_change()
     };
     emit_status(app, status);
-}
-
-/// ¿Conviene pedir la versión de «stems»? Según el ajuste de calidad («auto» se guía por la capacidad medida
-/// de la máquina) y, con «con batería, sólo la rápida», sin batería ni ahorro de energía.
-pub(crate) fn want_stems(quality: &str, fast_on_battery: bool, stems_recommended: bool, low_power: bool) -> bool {
-    if fast_on_battery && low_power {
-        return false;
-    }
-    match quality {
-        "stems" => true,
-        "fast" => false,
-        _ => stems_recommended,
-    }
 }
 
 /// Con el equipo a batería o con el ahorro de batería activado (`GetSystemPowerStatus`).
@@ -1523,6 +1582,20 @@ fn on_battery() -> bool {
     false
 }
 
+/// `on_battery()` con una caché de 5 s: se consulta en cada evento de posición.
+pub(crate) fn low_power_now() -> bool {
+    static POWER: std::sync::Mutex<Option<(Instant, bool)>> = std::sync::Mutex::new(None);
+    let Ok(mut cached) = POWER.lock() else { return false };
+    if let Some((at, low)) = *cached {
+        if at.elapsed() < Duration::from_secs(5) {
+            return low;
+        }
+    }
+    let low = on_battery();
+    *cached = Some((Instant::now(), low));
+    low
+}
+
 fn cache_dir(app: &tauri::AppHandle) -> Option<std::path::PathBuf> {
     let dir = app.path().app_cache_dir().ok()?.join("automix");
     let _ = std::fs::create_dir_all(&dir);
@@ -1541,7 +1614,7 @@ fn prefetch(app: &tauri::AppHandle, job: PrefetchJob) {
             .into_iter()
             .map(|(video_id, is_upload)| sideb_core::automix_job::AutomixQueueItem { video_id, is_upload })
             .collect();
-        if let Err(error) = core.prefetch_automix(items).await {
+        if let Err(error) = core.prefetch_automix(items, job.allow_stems).await {
             eprintln!("[Automix] stage=prefetch failed reason={}", failure_reason(&error));
             // Una lista rechazada se vuelve a pedir con la próxima: no se da por pedida.
             if let Ok(mut pb) = state.playback.lock() {
@@ -1567,7 +1640,12 @@ pub(crate) fn init(app: &tauri::AppHandle) {
 }
 
 pub(crate) fn options_from(settings: &sideb_core::automix_job::AutomixSettings) -> Options {
-    Options { skip_same_album: settings.skip_same_album, lookahead: usize::from(settings.lookahead.clamp(1, 3)) }
+    Options {
+        skip_same_album: settings.skip_same_album,
+        lookahead: usize::from(settings.lookahead.clamp(1, 3)),
+        stems_by_quality: settings.quality != "fast",
+        fast_on_battery: settings.fast_on_battery,
+    }
 }
 
 // MARK: Comandos
@@ -1717,8 +1795,8 @@ pub(crate) fn set_automix_options(
     if let Ok(mut pb) = state.playback.lock() {
         let rt = &mut pb.runtime.automix;
         rt.set_options(options_from(&stored));
-        // Otra profundidad (o calidad): se vuelve a pedir la lista; un archivo ya preparado no cambia.
-        rt.prefetched = None;
+        // Otra profundidad o calidad cambia la lista o `allow_stems` que se compara en el próximo evento: no hace
+        // falta olvidar nada (y repetir una lista igual sería trabajo para el core). Un archivo ya preparado no cambia.
     }
     Ok(options_of(&core))
 }
@@ -1833,7 +1911,7 @@ mod tests {
     }
 
     fn ctx<'a>(engine: &'a Fake, now: Instant) -> Ctx<'a> {
-        Ctx { now, jam_active: false, auth_generation: 1, engine: Some(engine) }
+        Ctx { now, jam_active: false, auth_generation: 1, engine: Some(engine), low_power: false }
     }
 
     fn arm(pb: &mut PlaybackManager) {
@@ -2313,33 +2391,70 @@ mod tests {
     }
 
     #[test]
-    fn stems_are_wanted_by_quality_capability_and_power() {
-        // (quality, fast_on_battery, stems_recommended, low_power)
-        assert!(!want_stems("fast", true, true, false), "siempre rápida");
-        assert!(want_stems("stems", true, false, false), "siempre con stems, aunque no esté medida");
-        assert!(want_stems("auto", true, true, false));
-        assert!(!want_stems("auto", true, false, false), "automática sin capacidad medida");
-        // Con batería y la regla activada, sólo la rápida, también con «siempre con stems».
-        assert!(!want_stems("stems", true, true, true));
-        assert!(!want_stems("auto", true, true, true));
-        // Sin la regla, la batería no cuenta.
-        assert!(want_stems("stems", false, true, true));
-        assert!(want_stems("auto", false, true, true));
-        // Una calidad desconocida se trata como automática.
-        assert!(want_stems("x", true, true, false));
+    fn stems_are_allowed_unless_always_fast_or_on_battery_with_the_rule() {
+        // allow_stems = !(quality == fast) && !(fast_on_battery && low_power)
+        assert!(!allow_stems("fast", false, false), "siempre rápida");
+        assert!(!allow_stems("fast", true, true));
+        assert!(allow_stems("auto", false, false));
+        assert!(allow_stems("stems", false, false));
+        assert!(allow_stems("auto", true, false), "con corriente, la regla no cuenta");
+        assert!(!allow_stems("auto", true, true), "con batería y la regla activada, sólo la rápida");
+        assert!(!allow_stems("stems", true, true));
+        assert!(allow_stems("stems", false, true), "sin la regla, la batería no cuenta (valor por defecto del core)");
+        let defaults = Options::default();
+        assert!(!defaults.fast_on_battery && defaults.allows_stems(true), "por defecto la batería no limita");
+        assert!(!Options { fast_on_battery: true, ..defaults }.allows_stems(true));
+        assert!(Options { fast_on_battery: true, ..defaults }.allows_stems(false));
+        assert!(!Options { stems_by_quality: false, ..defaults }.allows_stems(false));
+        let from_core = sideb_core::automix_job::AutomixSettings { quality: "fast".into(), ..Default::default() };
+        assert!(!options_from(&from_core).stems_by_quality);
         // GetSystemPowerStatus: 0 sin corriente, 1 con corriente, 255 desconocido; ahorro de batería = 1.
         assert!(power_is_low(0, 0) && power_is_low(1, 1) && power_is_low(255, 1));
         assert!(!power_is_low(1, 0) && !power_is_low(255, 0));
     }
 
     #[test]
+    fn a_stems_cut_replaces_the_fast_one_only_when_it_is_far_enough_ahead() {
+        // El corte de stems puede ser otro: sólo importa que quede a 8 s o más de la posición.
+        assert!(stems_swap_ok(150.0, 100.0), "más tarde que el rápido (100)");
+        assert!(stems_swap_ok(108.0, 100.0), "exactamente 8 s");
+        assert!(!stems_swap_ok(107.9, 100.0));
+        assert!(!stems_swap_ok(90.0, 100.0), "ya pasó");
+        assert!(!stems_swap_ok(f64::NAN, 100.0) && !stems_swap_ok(150.0, f64::NAN));
+        // El empalme y la marca siguen a `ready.rec`: cambiarlo mueve ambos.
+        let engine = Fake::default();
+        let t0 = Instant::now();
+        let mut pb = playing(&[None, None]);
+        arm(&mut pb);
+        assert_eq!(pb.runtime.automix.status().marker_seconds, Some(108.0));
+        let mut stems = transition();
+        stems.a_cut = 140.0;
+        stems.overlap_start = 12.0;
+        stems.file_path = "stems.wav".into();
+        {
+            let ready = pb.runtime.automix.ready.as_mut().unwrap();
+            ready.rec = stems;
+            ready.quality = "stems".into();
+        }
+        let status = pb.runtime.automix.status();
+        assert_eq!((status.marker_seconds, status.quality.as_deref()), (Some(152.0), Some("stems")));
+        // No se empalma en el corte viejo...
+        on_position(&mut pb, 101.0, &ctx(&engine, t0));
+        assert!(pb.runtime.automix.on_file.is_none() && engine.log.borrow().is_empty());
+        // ...sino en el nuevo, con el archivo de stems.
+        on_position(&mut pb, 141.0, &ctx(&engine, t0));
+        assert_eq!(engine.log.borrow().as_slice(), ["load_at stems.wav None 1.05"]);
+        assert_eq!(pb.runtime.automix.on_file.as_ref().unwrap().quality, "stems");
+    }
+
+    #[test]
     fn the_same_album_rule_is_the_cores_setting() {
         let mut pb = playing(&[Some("a"), Some("a")]);
         assert_eq!(plan_for(&pb, false), Err(Skip::SameAlbum), "por defecto, como el core");
-        pb.runtime.automix.set_options(Options { skip_same_album: false, lookahead: 1 });
+        pb.runtime.automix.set_options(Options { skip_same_album: false, ..Options::default() });
         assert!(plan_for(&pb, false).is_ok());
         let settings = sideb_core::automix_job::AutomixSettings { lookahead: 9, skip_same_album: false, ..Default::default() };
-        assert_eq!(options_from(&settings), Options { skip_same_album: false, lookahead: 3 });
+        assert_eq!(options_from(&settings), Options { skip_same_album: false, lookahead: 3, stems_by_quality: true, fast_on_battery: false });
         let settings = sideb_core::automix_job::AutomixSettings { lookahead: 0, ..Default::default() };
         assert_eq!(options_from(&settings).lookahead, 1);
     }
@@ -2369,6 +2484,46 @@ mod tests {
     }
 
     #[test]
+    fn prefetch_carries_allow_stems_and_asks_again_only_when_it_changes() {
+        let mut pb = playing(&[None, None, None]);
+        let engine = Fake::default();
+        let t0 = Instant::now();
+        let allow = |step: &Step| step.prefetch.as_ref().map(|job| job.allow_stems);
+        assert_eq!(allow(&on_position(&mut pb, 0.5, &ctx(&engine, t0))), Some(true), "calidad automática, con corriente");
+        // A batería con la regla desactivada (valor por defecto del core): nada cambia.
+        let mut on_battery = ctx(&engine, t0);
+        on_battery.low_power = true;
+        assert_eq!(allow(&on_position(&mut pb, 0.6, &on_battery)), None);
+        // Con la regla activada, a batería es otra petición: sólo descarga.
+        pb.runtime.automix.set_options(Options { fast_on_battery: true, ..Options::default() });
+        assert_eq!(allow(&on_position(&mut pb, 0.7, &on_battery)), Some(false));
+        assert_eq!(allow(&on_position(&mut pb, 0.8, &on_battery)), None, "no se repite");
+        // Vuelve la corriente: otra vez con stems.
+        assert_eq!(allow(&on_position(&mut pb, 0.9, &ctx(&engine, t0))), Some(true));
+        // «Siempre rápida»: nunca stems.
+        pb.runtime.automix.set_options(Options { stems_by_quality: false, ..Options::default() });
+        assert_eq!(allow(&on_position(&mut pb, 1.0, &ctx(&engine, t0))), Some(false));
+    }
+
+    #[test]
+    fn identical_requests_are_not_cancelled_and_asked_again_by_the_shell() {
+        // Con el mismo par, la misma canción y la misma cola, ni se cancela ni se pide de nuevo: lo hace el core.
+        let mut pb = playing(&[None, None]);
+        let engine = Fake::default();
+        let t0 = Instant::now();
+        let request = on_position(&mut pb, 0.5, &ctx(&engine, t0)).prepare.unwrap().request_id;
+        for tick in 1..20 {
+            let step = on_position(&mut pb, 0.5 + f64::from(tick) * 0.1, &ctx(&engine, t0));
+            assert!(step.prepare.is_none() && !step.cancels.contains(&request), "tick {tick}");
+        }
+        // Un cambio de ajuste (calidad, profundidad) no toca la preparación del par.
+        pb.runtime.automix.set_options(Options { lookahead: 2, ..Options::default() });
+        let step = on_position(&mut pb, 3.0, &ctx(&engine, t0));
+        assert!(step.prepare.is_none() && step.cancels.is_empty() || step.cancels.iter().all(|c| c != &request));
+        assert!(pb.runtime.automix.job.as_ref().is_some_and(|job| job.request_id == request));
+    }
+
+    #[test]
     fn the_status_reports_the_quality_of_the_ready_file() {
         let mut pb = playing(&[None, None]);
         assert_eq!(pb.runtime.automix.status().quality, None);
@@ -2392,7 +2547,7 @@ mod tests {
         pb.queue.enqueue(vec![entry("other", None)], true);
         assert_eq!(ids(&on_position(&mut pb, 0.7, &ctx(&engine, t0))), Some(vec!["song0".into(), "other".into()]));
         // Más profundidad: hasta tres próximas.
-        pb.runtime.automix.set_options(Options { skip_same_album: true, lookahead: 3 });
+        pb.runtime.automix.set_options(Options { lookahead: 3, ..Options::default() });
         assert_eq!(ids(&on_position(&mut pb, 0.8, &ctx(&engine, t0))), Some(vec!["song0".into(), "other".into(), "song1".into(), "song2".into()]));
         // En pausa no se pide ni se cancela nada.
         pb.is_playing = false;
@@ -2412,10 +2567,11 @@ mod tests {
         assert!(ids(&on_position(&mut pb, 1.4, &ctx(&engine, t0))).is_some());
         pb.runtime.automix.enabled = false;
         assert!(on_position(&mut pb, 1.5, &ctx(&engine, t0)).cancels.contains(&CANCEL_PREFETCH.to_owned()));
-        // Una canción nueva (carga normal) vuelve a pedir su lista; sin próximas no se pide nada.
+        // Una carga normal de la misma canción no repite una lista que el core ya tiene; sin próximas no se pide nada.
         pb.runtime.automix.enabled = true;
+        assert!(ids(&on_position(&mut pb, 1.6, &ctx(&engine, t0))).is_some(), "tras apagar se vuelve a pedir");
         pb.runtime.automix.reset_for_new_load();
-        assert!(ids(&on_position(&mut pb, 0.1, &ctx(&engine, t0))).is_some());
+        assert!(ids(&on_position(&mut pb, 0.1, &ctx(&engine, t0))).is_none(), "misma lista: no se repite");
         let mut last = playing(&[None]);
         assert_eq!(ids(&on_position(&mut last, 0.5, &ctx(&engine, t0))), None);
         // Cuenta nueva o detención: se cancela aunque no se recuerde haberla pedido.

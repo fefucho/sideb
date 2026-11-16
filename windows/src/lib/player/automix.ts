@@ -139,7 +139,7 @@ export interface AutomixCacheUsage { audioBytes: number; stemsBytes: number; tra
 export interface AutomixOptions { settings: AutomixSettings; capability: AutomixCapability; cache: AutomixCacheUsage }
 
 export const defaultAutomixSettings = (): AutomixSettings =>
-  ({ quality: 'auto', fastOnBattery: true, skipSameAlbum: true, compute: 'auto', lookahead: 1, keepModelLoaded: false });
+  ({ quality: 'auto', fastOnBattery: false, skipSameAlbum: true, compute: 'auto', lookahead: 1, keepModelLoaded: false });
 
 const bytes = (value: unknown) => typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : 0;
 

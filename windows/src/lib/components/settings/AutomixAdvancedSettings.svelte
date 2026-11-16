@@ -14,7 +14,7 @@
   const options = $derived(host?.snapshot.options ?? null);
   const busy = $derived(host?.snapshot.optionsPending ?? false);
   const capability = $derived(options ? describeCapability(options.capability) : null);
-  let confirming = $state<'cache' | 'model' | null>(null);
+  let confirming = $state(false);
 
   onMount(() => { void host?.controller.refreshOptions(); });
   // While the model downloads, keep the capability line fresh.
@@ -26,29 +26,30 @@
 
   const cacheBytes = $derived(options ? options.cache.audioBytes + options.cache.stemsBytes + options.cache.transitionsBytes : 0);
   const qualityOptions = $derived([
-    { value: 'auto', label: $t('windows.automix.quality.auto') },
-    { value: 'fast', label: $t('windows.automix.quality.fast') },
-    { value: 'stems', label: $t('windows.automix.quality.stems') },
+    { value: 'auto', label: $t('settings.automix.quality.auto') },
+    { value: 'fast', label: $t('settings.automix.quality.fast') },
+    { value: 'stems', label: $t('settings.automix.quality.stems') },
   ]);
   const computeOptions = $derived([
-    { value: 'auto', label: $t('windows.automix.compute.auto') },
-    { value: 'gpu', label: $t('windows.automix.compute.gpu') },
-    { value: 'cpu', label: $t('windows.automix.compute.cpu') },
+    { value: 'auto', label: $t('settings.automix.compute.auto') },
+    { value: 'gpu', label: $t('settings.automix.compute.gpu') },
+    { value: 'cpu', label: $t('settings.automix.compute.cpu') },
   ]);
-  const lookaheadOptions = $derived([
-    { value: '1', label: $t('windows.automix.lookahead.one') },
-    { value: '2', label: $t('windows.automix.lookahead.two') },
-    { value: '3', label: $t('windows.automix.lookahead.three') },
-  ]);
-  const capabilityLine = $derived(capability ? [
-    $t(`windows.automix.capability.model.${capability.model}`),
-    capability.provider ? $t('windows.automix.capability.provider', [capability.provider]) : $t('windows.automix.capability.providerUnknown'),
-    capability.speed ? $t('windows.automix.capability.speed', [capability.speed]) : $t('windows.automix.capability.speedUnknown'),
-    $t(capability.recommended ? 'windows.automix.capability.recommended' : 'windows.automix.capability.notRecommended'),
-  ].join(' · ') : '');
-  const usageLine = $derived(options ? $t('windows.automix.cache.usage', [
-    formatBytes(options.cache.audioBytes), formatBytes(options.cache.stemsBytes),
-    formatBytes(options.cache.transitionsBytes), formatBytes(options.cache.modelBytes),
+  // The shared label already says "(songs)": the options are plain numbers.
+  const lookaheadOptions = [{ value: '1', label: '1' }, { value: '2', label: '2' }, { value: '3', label: '3' }];
+  // Same lines as the Mac panel: "This computer: 5.6× real time · DirectML" and the model state.
+  const capabilityLine = $derived.by(() => {
+    if (!capability) return '';
+    const suffix = capability.provider ? ` · ${capability.provider}` : '';
+    return capability.speed === null
+      ? $t('settings.automix.capability.unmeasured', [suffix])
+      : $t('settings.automix.capability.measured', [capability.speed, suffix]);
+  });
+  const modelLine = $derived(!options ? '' : capability?.model === 'ready'
+    ? $t('settings.automix.model.size', [formatBytes(options.cache.modelBytes)])
+    : $t(capability?.model === 'downloading' ? 'settings.automix.model.downloading' : 'settings.automix.model.absent'));
+  const usageLine = $derived(options ? $t('settings.automix.cache.usage', [
+    formatBytes(cacheBytes), formatBytes(options.cache.audioBytes), formatBytes(options.cache.stemsBytes), formatBytes(options.cache.transitionsBytes),
   ]) : '');
 
   /**
@@ -63,27 +64,25 @@
   }
 
   async function confirmDelete() {
-    const target = confirming;
-    confirming = null;
-    if (target === 'cache') await host?.controller.clearCache();
-    else if (target === 'model') await host?.controller.deleteModel();
+    confirming = false;
+    await host?.controller.deleteModel();
   }
 </script>
 {#if host && options}
-  <SettingsGroup title={$t('windows.automix.options.title')} footer={host.snapshot.optionsError ? $t('windows.automix.options.error') : undefined}>
-    <SettingsRow title={$t('windows.automix.quality.label')} subtitle={$t('windows.automix.quality.hint')}>
+  <SettingsGroup footer={host.snapshot.optionsError ? $t('windows.automix.options.error') : undefined}>
+    <SettingsRow title={$t('settings.automix.quality')}>
       {#snippet children({ labelId })}
         <SettingsSelect id="automix-quality" labelledby={labelId} value={options.settings.quality} options={qualityOptions} disabled={busy}
           onChange={value => void choose('automix-quality', 'quality', value as AutomixSettings['quality'])} />
       {/snippet}
     </SettingsRow>
-    <SettingsRow title={$t('windows.automix.fastOnBattery')}>
+    <SettingsRow title={$t('settings.automix.fastOnBattery')}>
       {#snippet children({ labelId })}
         <SettingsSwitch id="automix-fast-on-battery" labelledby={labelId} checked={options.settings.fastOnBattery} disabled={busy}
           onChange={checked => void host.controller.updateSettings({ fastOnBattery: checked })} />
       {/snippet}
     </SettingsRow>
-    <SettingsRow title={$t('windows.automix.skipSameAlbum')}>
+    <SettingsRow title={$t('settings.automix.skipSameAlbum')}>
       {#snippet children({ labelId })}
         <SettingsSwitch id="automix-skip-same-album" labelledby={labelId} checked={options.settings.skipSameAlbum} disabled={busy}
           onChange={checked => void host.controller.updateSettings({ skipSameAlbum: checked })} />
@@ -91,38 +90,38 @@
     </SettingsRow>
   </SettingsGroup>
   <details class="advanced">
-    <summary>{$t('windows.automix.advanced')}</summary>
+    <summary>{$t('settings.automix.advanced')}</summary>
     <SettingsGroup>
-      <SettingsRow title={$t('windows.automix.compute.label')}>
+      <SettingsRow title={$t('settings.automix.compute')}>
         {#snippet children({ labelId })}
           <SettingsSelect id="automix-compute" labelledby={labelId} value={options.settings.compute} options={computeOptions} disabled={busy}
             onChange={value => void choose('automix-compute', 'compute', value as AutomixSettings['compute'])} />
         {/snippet}
       </SettingsRow>
-      <SettingsRow title={$t('windows.automix.lookahead.label')}>
+      <SettingsRow title={$t('settings.automix.lookahead')}>
         {#snippet children({ labelId })}
           <SettingsSelect id="automix-lookahead" labelledby={labelId} value={String(options.settings.lookahead)} options={lookaheadOptions} disabled={busy}
             onChange={value => void choose('automix-lookahead', 'lookahead', Number(value) as AutomixSettings['lookahead'])} />
         {/snippet}
       </SettingsRow>
-      <SettingsRow title={$t('windows.automix.keepModel.label')} subtitle={$t('windows.automix.keepModel.hint')}>
+      <SettingsRow title={$t('settings.automix.keepModel')} subtitle={$t('settings.automix.keepModel.hint')}>
         {#snippet children({ labelId })}
           <SettingsSwitch id="automix-keep-model" labelledby={labelId} checked={options.settings.keepModelLoaded} disabled={busy}
             onChange={checked => void host.controller.updateSettings({ keepModelLoaded: checked })} />
         {/snippet}
       </SettingsRow>
-      <SettingsRow title={$t('windows.automix.capability.title')} subtitle={capabilityLine} />
-      <SettingsRow title={$t('windows.automix.cache.title')} subtitle={usageLine}>
+      <SettingsRow title={capabilityLine} subtitle={modelLine} />
+      <SettingsRow title={usageLine}>
         {#snippet children()}
           {#if confirming}
-            <span class="confirm" role="alertdialog" aria-label={$t(confirming === 'cache' ? 'windows.automix.cache.clearConfirm' : 'windows.automix.cache.deleteModelConfirm')}>
-              <span class="question">{$t(confirming === 'cache' ? 'windows.automix.cache.clearConfirm' : 'windows.automix.cache.deleteModelConfirm')}</span>
-              <ControlButton size="utility" emphasis="prominent" disabled={busy} onclick={confirmDelete}>{$t('windows.automix.cache.delete')}</ControlButton>
-              <ControlButton size="utility" onclick={() => { confirming = null; }}>{$t('common.cancel')}</ControlButton>
+            <span class="confirm" role="alertdialog" aria-label={$t('settings.automix.model.delete.title')}>
+              <span class="question"><strong>{$t('settings.automix.model.delete.title')}</strong> {$t('settings.automix.model.delete.message')}</span>
+              <ControlButton size="utility" emphasis="prominent" disabled={busy} onclick={confirmDelete}>{$t('settings.automix.model.delete.confirm')}</ControlButton>
+              <ControlButton size="utility" onclick={() => { confirming = false; }}>{$t('common.cancel')}</ControlButton>
             </span>
           {:else}
-            <ControlButton size="utility" id="automix-clear-cache" disabled={busy || cacheBytes === 0} onclick={() => { confirming = 'cache'; }}>{$t('windows.automix.cache.clear')}</ControlButton>
-            <ControlButton size="utility" id="automix-delete-model" disabled={busy || !options.capability.modelReady} onclick={() => { confirming = 'model'; }}>{$t('windows.automix.cache.deleteModel')}</ControlButton>
+            <ControlButton size="utility" id="automix-clear-cache" disabled={busy || cacheBytes === 0} onclick={() => { void host.controller.clearCache(); }}>{$t('settings.automix.cache.clear')}</ControlButton>
+            <ControlButton size="utility" id="automix-delete-model" disabled={busy || !options.capability.modelReady} onclick={() => { confirming = true; }}>{$t('settings.automix.model.delete')}</ControlButton>
           {/if}
         {/snippet}
       </SettingsRow>

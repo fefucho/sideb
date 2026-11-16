@@ -94,8 +94,7 @@ if(!process.execArgv.includes('--conditions=browser')){
     // Status, kind, reason, pill and marker wording are the shared Mac keys; only the new options are Windows keys.
     const resources=JSON.parse(readFileSync(path.join(root,'src/lib/i18n/windows.json'),'utf8'));
     const own=Object.keys(resources).filter(k=>k.startsWith('windows.automix.'));
-    assert.ok(own.includes('windows.automix.error'));
-    assert.deepEqual(own.filter(k=>/^windows\.automix\.(status|kind|reason|pill|detail)/.test(k)),[],'nothing the Mac keys already say');
+    assert.deepEqual(own.sort(),['windows.automix.error','windows.automix.options.error'],'only what the Mac catalog has no equivalent for');
     assert.equal(text('automix.pill.title',[],'es'),'Beta · Automix');
   });
 
@@ -219,7 +218,7 @@ if(!process.execArgv.includes('--conditions=browser')){
   });
 
   const optionsPayload=(over={})=>({
-    settings:{quality:'auto',fastOnBattery:true,skipSameAlbum:true,compute:'auto',lookahead:1,keepModelLoaded:false,...(over.settings??{})},
+    settings:{quality:'auto',fastOnBattery:false,skipSameAlbum:true,compute:'auto',lookahead:1,keepModelLoaded:false,...(over.settings??{})},
     capability:{modelReady:true,modelDownloading:false,realtimeFactor:5.57,stemsRecommended:true,provider:'DirectML',...(over.capability??{})},
     cache:{audioBytes:48*1048576,stemsBytes:70*1048576,transitionsBytes:2*1048576,modelBytes:210*1048576,...(over.cache??{})},
   });
@@ -244,7 +243,7 @@ if(!process.execArgv.includes('--conditions=browser')){
   test('advanced options: normalization, byte formatting and the capability description',()=>{
     assert.equal(automix.normalizeAutomixOptions(null),null);assert.equal(automix.normalizeAutomixOptions({}),null);
     const clean=automix.normalizeAutomixOptions({settings:{quality:'best',fastOnBattery:'yes',compute:'tpu',lookahead:9,keepModelLoaded:true,skipSameAlbum:false},capability:{realtimeFactor:-1,provider:7},cache:{audioBytes:'x',stemsBytes:-5,modelBytes:1048576}});
-    assert.deepEqual(clean.settings,{quality:'auto',fastOnBattery:true,skipSameAlbum:false,compute:'auto',lookahead:3,keepModelLoaded:true});
+    assert.deepEqual(clean.settings,{quality:'auto',fastOnBattery:false,skipSameAlbum:false,compute:'auto',lookahead:3,keepModelLoaded:true});
     assert.deepEqual(clean.capability,{modelReady:false,modelDownloading:false,realtimeFactor:null,stemsRecommended:false,provider:''});
     assert.deepEqual(clean.cache,{audioBytes:0,stemsBytes:0,transitionsBytes:0,modelBytes:1048576});
     assert.equal(automix.normalizeAutomixOptions({settings:{lookahead:0}}).settings.lookahead,1);
@@ -265,7 +264,7 @@ if(!process.execArgv.includes('--conditions=browser')){
     await h.controller.refreshOptions();
     assert.equal(h.controller.snapshot.options.settings.quality,'auto');
     await h.controller.updateSettings({quality:'stems'});
-    assert.deepEqual(h.calls.at(-1),['set_automix_options',{settings:{quality:'stems',fastOnBattery:true,skipSameAlbum:true,compute:'auto',lookahead:1,keepModelLoaded:false}}]);
+    assert.deepEqual(h.calls.at(-1),['set_automix_options',{settings:{quality:'stems',fastOnBattery:false,skipSameAlbum:true,compute:'auto',lookahead:1,keepModelLoaded:false}}]);
     assert.equal(h.controller.snapshot.options.settings.quality,'stems');
     await h.controller.updateSettings({lookahead:9});assert.equal(h.controller.snapshot.options.settings.lookahead,3,'the core corrects what is out of range');
     h.fail(new Error('boom'));await h.controller.updateSettings({compute:'cpu'});
@@ -305,57 +304,58 @@ if(!process.execArgv.includes('--conditions=browser')){
   }
   const choose=async(select,value)=>{select.value=value;select.dispatchEvent(new dom.Event('change',{bubbles:true}));await settle();};
 
-  test('advanced options section: quality, battery and album rules, processor, lookahead, model memory, capability and cache',async()=>{
+  test('advanced options section (shared Mac texts): quality, battery and album rules, processor, lookahead, model memory, capability and cache',async()=>{
     const h=optionsHarness();
     await withAdvanced(h,async target=>{
       const texts=[...target.querySelectorAll('.title')].map(n=>n.textContent);
-      for(const label of ['Quality','On battery, use only the fast version',"Don't mix consecutive songs from the same album",'Processor','Prepare ahead','Keep the model loaded','This computer','Disk space'])assert.ok(texts.includes(label),label);
-      assert.ok([...target.querySelectorAll('h3')].some(x=>x.textContent==='Automix options'));
+      for(const label of ['Quality','On battery, use only the fast version',"Don't mix consecutive songs from the same album",'Processor','Prepare ahead (songs)','Keep the model loaded'])assert.ok(texts.includes(label),label);
       assert.equal(target.querySelector('details.advanced summary').textContent,'Advanced');
       const quality=target.querySelector('#automix-quality');
       assert.deepEqual([...quality.options].map(o=>o.textContent),['Automatic (recommended)','Always fast','Always with stems']);
       assert.equal(quality.value,'auto');
-      assert.equal(target.querySelector('#automix-fast-on-battery').getAttribute('aria-checked'),'true');
+      assert.equal(target.querySelector('#automix-fast-on-battery').getAttribute('aria-checked'),'false','off by default, like the core');
       assert.equal(target.querySelector('#automix-skip-same-album').getAttribute('aria-checked'),'true');
       assert.equal(target.querySelector('#automix-keep-model').getAttribute('aria-checked'),'false');
       assert.deepEqual([...target.querySelector('#automix-compute').options].map(o=>o.textContent),['Automatic','GPU','CPU']);
-      assert.deepEqual([...target.querySelector('#automix-lookahead').options].map(o=>o.textContent),['1 song','2 songs','3 songs']);
-      assert.match(target.textContent,/Model downloaded · Processor: DirectML · 5\.6× audio speed · stems recommended/);
-      assert.match(target.textContent,/Songs 48\.0 MB · Stems 70\.0 MB · Transitions 2\.0 MB · Model 210 MB/);
+      assert.deepEqual([...target.querySelector('#automix-lookahead').options].map(o=>o.textContent),['1','2','3']);
+      assert.ok(texts.includes('This computer: 5.6× real time · DirectML'),'capability line, as on the Mac');
+      assert.match(target.textContent,/Model: 210 MB/);
+      assert.ok(texts.includes('Cache: 120 MB (songs 48.0 MB, stems 70.0 MB, transitions 2.0 MB)'),'usage line, as on the Mac');
       assert.match(target.textContent,/2 GB of memory/);
       // Each control sends the whole settings object with just its own change.
       await choose(quality,'stems');assert.equal(h.calls.at(-1)[1].settings.quality,'stems');
-      target.querySelector('#automix-fast-on-battery').click();await settle();assert.equal(h.calls.at(-1)[1].settings.fastOnBattery,false);
+      target.querySelector('#automix-fast-on-battery').click();await settle();assert.equal(h.calls.at(-1)[1].settings.fastOnBattery,true);
       target.querySelector('#automix-skip-same-album').click();await settle();assert.equal(h.calls.at(-1)[1].settings.skipSameAlbum,false);
       await choose(target.querySelector('#automix-compute'),'cpu');assert.equal(h.calls.at(-1)[1].settings.compute,'cpu');
       await choose(target.querySelector('#automix-lookahead'),'3');assert.equal(h.calls.at(-1)[1].settings.lookahead,3);
       target.querySelector('#automix-keep-model').click();await settle();assert.equal(h.calls.at(-1)[1].settings.keepModelLoaded,true);
-      assert.deepEqual(h.controller.snapshot.options.settings,{quality:'stems',fastOnBattery:false,skipSameAlbum:false,compute:'cpu',lookahead:3,keepModelLoaded:true});
+      assert.deepEqual(h.controller.snapshot.options.settings,{quality:'stems',fastOnBattery:true,skipSameAlbum:false,compute:'cpu',lookahead:3,keepModelLoaded:true});
       setLanguage('es');await settle();
       assert.ok([...target.querySelectorAll('.title')].some(n=>n.textContent==='No mezclar canciones seguidas del mismo disco'));
       assert.equal(target.querySelector('details.advanced summary').textContent,'Avanzado');
     });
   });
 
-  test('clearing the cache and deleting the model ask for confirmation first and can be cancelled',async()=>{
+  test('clearing the cache is immediate and deleting the model asks first and can be cancelled',async()=>{
     const h=optionsHarness();
     await withAdvanced(h,async target=>{
       const clear=()=>target.querySelector('#automix-clear-cache'),model=()=>target.querySelector('#automix-delete-model');
+      const dialogButton=name=>[...target.querySelectorAll('[role="alertdialog"] button')].find(b=>b.textContent.trim()===name);
       assert.equal(clear().disabled,false);assert.equal(model().disabled,false);
+      assert.equal(clear().textContent.trim(),'Clear cache');assert.equal(model().textContent.trim(),'Delete model…');
       clear().click();await settle();
-      assert.equal(h.calls.filter(c=>c[0]==='clear_automix_cache').length,0,'nothing is deleted by the first press');
-      const dialog=target.querySelector('[role="alertdialog"]');assert.equal(dialog.getAttribute('aria-label'),'Clear the Automix cache?');
-      [...dialog.querySelectorAll('button')].find(b=>b.textContent.trim()==='Cancel').click();await settle();
-      assert.equal(target.querySelector('[role="alertdialog"]'),null);assert.equal(h.calls.filter(c=>c[0]==='clear_automix_cache').length,0);
-      clear().click();await settle();
-      [...target.querySelectorAll('[role="alertdialog"] button')].find(b=>b.textContent.trim()==='Delete').click();await settle();
-      assert.equal(h.calls.filter(c=>c[0]==='clear_automix_cache').length,1);
-      assert.match(target.textContent,/Songs 0 MB · Stems 0 MB · Transitions 0 MB/);assert.equal(clear().disabled,true,'nothing left to clear');
+      assert.equal(h.calls.filter(c=>c[0]==='clear_automix_cache').length,1,'the cache is regenerable: no confirmation, like the Mac');
+      assert.ok([...target.querySelectorAll('.title')].some(n=>n.textContent==='Cache: 0 MB (songs 0 MB, stems 0 MB, transitions 0 MB)'));
+      assert.equal(clear().disabled,true,'nothing left to clear');
       model().click();await settle();
-      assert.match(target.querySelector('[role="alertdialog"]').getAttribute('aria-label'),/Delete the model/);
-      [...target.querySelectorAll('[role="alertdialog"] button')].find(b=>b.textContent.trim()==='Delete').click();await settle();
+      assert.equal(h.calls.filter(c=>c[0]==='delete_automix_model').length,0,'nothing is deleted by the first press');
+      const dialog=target.querySelector('[role="alertdialog"]');assert.equal(dialog.getAttribute('aria-label'),'Delete the Automix model?');
+      assert.match(dialog.textContent,/It takes about 210 MB\. Stem quality will not be available until it is downloaded again\./);
+      dialogButton('Cancel').click();await settle();
+      assert.ok(!target.querySelector('[role="alertdialog"]'));assert.equal(h.calls.filter(c=>c[0]==='delete_automix_model').length,0);
+      model().click();await settle();dialogButton('Delete model').click();await settle();
       assert.equal(h.calls.filter(c=>c[0]==='delete_automix_model').length,1);
-      assert.equal(model().disabled,true,'no model left');assert.match(target.textContent,/Model not downloaded/);
+      assert.equal(model().disabled,true,'no model left');assert.match(target.textContent,/Model: not downloaded/);
     });
   });
 
@@ -365,7 +365,7 @@ if(!process.execArgv.includes('--conditions=browser')){
       assert.ok(target.querySelector('#automix-toggle'),'the toggle itself is unaffected');});
     const downloading=optionsHarness(optionsPayload({capability:{modelReady:false,modelDownloading:true,realtimeFactor:null,stemsRecommended:false,provider:''}}));
     await withAdvanced(downloading,async target=>{
-      assert.match(target.textContent,/Downloading the model… · Processor not determined yet · speed not measured · stems not recommended/);
+      assert.match(target.textContent,/This computer: not measured yet/);assert.match(target.textContent,/Model: downloading/);
       assert.equal(target.querySelector('#automix-delete-model').disabled,true);
     });
     const failing=optionsHarness();
