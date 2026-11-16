@@ -199,6 +199,7 @@ struct AutomixDiagnosticsSnapshot: Equatable, Sendable {
     var prefetchRequestedAt: Date?
     /// Cronología del segundo reproductor (precarga, arranque programado, fundido, desfase medido).
     var splice: AutomixSpliceDiagnostics?
+    var memory: AutomixMemoryInfo?
 }
 
 // MARK: - Almacén
@@ -214,16 +215,69 @@ final class AutomixDiagnostics {
     @ObservationIgnored private var fileSizeCache: (path: String, size: Int64?, date: Date)?
     @ObservationIgnored private var powerCache: (value: AutomixPowerState, date: Date)?
 
-    init(capacity: Int = AutomixEventLog.defaultCapacity) { log = AutomixEventLog(capacity: capacity) }
+    /// Archivo persistente (nil hasta `configurePersistence`: las pruebas y el modo sin carpeta no escriben a disco).
+    @ObservationIgnored private(set) var file: AutomixLogFile?
+    @ObservationIgnored private var memoryTimer: Timer?
+    @ObservationIgnored private var memoryWatcher = AutomixMemoryWatcher()
+    /// Lectura de la huella (se sustituye en las pruebas).
+    @ObservationIgnored var memoryReader: () -> AutomixMemoryInfo? = { AutomixMemory.current() }
+    /// Resume la fase de Automix para las líneas de memoria (lo pone el reproductor).
+    @ObservationIgnored var phaseProvider: (@MainActor () -> String)?
 
-    /// Registra una línea (saneada) en el búfer y en el registro unificado. Nunca URLs, cookies ni cabeceras.
-    func record(_ source: String, _ message: String, date: Date = Date()) {
-        let clean = AutomixLogSanitizer.sanitize(message)
-        let entry = log.append(source: source, message: clean, date: date)
-        let line = entry.line()
-        logger.info("\(line, privacy: .public)")
+    init(capacity: Int = AutomixEventLog.defaultCapacity, memoryThresholds: [UInt64] = AutomixMemoryWatcher.defaultThresholds) {
+        log = AutomixEventLog(capacity: capacity)
+        memoryWatcher = AutomixMemoryWatcher(thresholds: memoryThresholds)
     }
 
+    /// Registra una línea en el búfer, en `diagnostics.log` y en el registro unificado (`.notice`, `.error` si es un
+    /// fallo: así se conserva). Va saneada (nunca URLs, cookies ni cabeceras), en una sola línea y con tope por entrada.
+    func record(_ source: String, _ message: String, date: Date = Date()) {
+        let clean = AutomixLogLimits.normalize(AutomixLogSanitizer.sanitize(message))
+        let entry = log.append(source: source, message: clean, date: date)
+        let line = entry.line()
+        switch AutomixLogLevel.classify(clean) {
+        case .error: logger.error("\(line, privacy: .public)")
+        case .notice: logger.notice("\(line, privacy: .public)")
+        }
+        file?.append(AutomixPersistedLine(date: date, source: source, message: clean))
+    }
+
+    /// Activa la persistencia: recarga las últimas ~1000 líneas de la sesión anterior en la ventana y deja una marca de
+    /// inicio. `maxBytes` se rota a un `.1`.
+    func configurePersistence(directory: URL, maxBytes: Int = 1 << 20, reload: Int = AutomixEventLog.defaultCapacity) {
+        let file = AutomixLogFile(directory: directory, maxBytes: maxBytes)
+        let previous = file.readLastEntries(limit: reload)
+        for line in previous { log.append(source: line.source, message: line.message, date: line.date) }
+        self.file = file
+        let info = Bundle.main.infoDictionary
+        record("sesión", "inicio de sesión — \(previous.count) líneas recargadas de la anterior; app \(info?["CFBundleShortVersionString"] as? String ?? "?") "
+            + "(\(info?["CFBundleVersion"] as? String ?? "?")), pid \(ProcessInfo.processInfo.processIdentifier), macOS \(ProcessInfo.processInfo.operatingSystemVersionString)")
+    }
+
+    /// Mide la huella cada 2 s (una llamada a `task_info`) y deja una línea al cruzar 2, 4 y 8 GB con la fase de Automix.
+    func startMemoryWatch(interval: TimeInterval = 2) {
+        memoryTimer?.invalidate()
+        let timer = Timer(timeInterval: interval, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.checkMemory() }
+        }
+        timer.tolerance = interval / 4
+        RunLoop.main.add(timer, forMode: .common)
+        memoryTimer = timer
+        checkMemory()
+    }
+
+    func checkMemory() {
+        guard let memory = memoryReader() else { return }
+        for threshold in memoryWatcher.update(footprint: memory.footprint) {
+            record("mem", "la huella de memoria cruzó \(threshold >> 30) GB: actual \(AutomixMemory.gigabytes(memory.footprint)), "
+                + "pico \(AutomixMemory.gigabytes(memory.peak)); fase de Automix: \(phaseProvider?() ?? "desconocida")")
+        }
+    }
+
+    /// Carpeta de los registros (la de las cachés de Automix) si hay persistencia.
+    var logDirectory: URL? { file?.directory }
+
+    /// Vacía la ventana; el archivo en disco se conserva (es lo que se exporta).
     func clear() { log.clear() }
 
     /// Lectura con caché breve: la ventana consulta cada 0,25 s, el sistema de ficheros no hace falta tanto.

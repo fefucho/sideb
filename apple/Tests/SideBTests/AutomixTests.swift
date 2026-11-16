@@ -1528,3 +1528,251 @@ struct AutomixCoordinatorQualityTests {
         #expect(host.prefetched.isEmpty)
     }
 }
+
+// MARK: - Registro persistente, memoria y exportación
+
+@Suite("Automix: registro persistente", .serialized)
+struct AutomixPersistentLogTests {
+    private let utc = TimeZone(identifier: "UTC")!
+
+    private func directory() throws -> URL {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("automix-log-\(UUID())", isDirectory: true)
+        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        return url
+    }
+
+    private func entry(_ n: Int, source: String = "t", message: String? = nil) -> AutomixPersistedLine {
+        AutomixPersistedLine(date: Date(timeIntervalSince1970: 1_000_000 + Double(n) + 0.25), source: source, message: message ?? "línea \(n)")
+    }
+
+    @Test("Cada línea se escribe en diagnostics.log con fecha completa y se vuelve a leer igual")
+    func roundTrip() throws {
+        let dir = try directory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let file = AutomixLogFile(directory: dir, timeZone: utc)
+        for n in 0..<5 { file.append(entry(n)) }
+        file.flush()
+        let text = try String(contentsOf: file.currentURL, encoding: .utf8)
+        #expect(text.split(separator: "\n").count == 5)
+        #expect(text.hasPrefix("1970-01-12 13:46:40.250 [t] línea 0\n"))
+        let read = file.readLastEntries(limit: 100)
+        #expect(read == (0..<5).map { entry($0) })
+        #expect(file.readLastEntries(limit: 2) == [entry(3), entry(4)])
+    }
+
+    @Test("Rota al llegar al tope: queda el actual y un solo .1, sin perder el orden")
+    func rotation() throws {
+        let dir = try directory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let file = AutomixLogFile(directory: dir, maxBytes: 1_000, timeZone: utc)
+        for n in 0..<60 { file.append(entry(n)) }
+        file.flush()
+        let manager = FileManager.default
+        #expect(manager.fileExists(atPath: file.currentURL.path))
+        #expect(manager.fileExists(atPath: file.previousURL.path))
+        let current = (try manager.attributesOfItem(atPath: file.currentURL.path)[.size] as? NSNumber)?.intValue ?? 0
+        let previous = (try manager.attributesOfItem(atPath: file.previousURL.path)[.size] as? NSNumber)?.intValue ?? 0
+        #expect(current <= 1_000 && previous <= 1_000 && current > 0 && previous > 0)
+        // Hay exactamente dos archivos (el actual y un .1): las rotaciones anteriores se descartan.
+        #expect(try manager.contentsOfDirectory(atPath: dir.path).sorted() == ["diagnostics.log", "diagnostics.log.1"])
+        // Lo que queda es el final del registro, completo y en orden.
+        let read = file.readLastEntries(limit: 1_000)
+        #expect(read.last == entry(59))
+        let numbers = read.compactMap { Int($0.message.dropFirst(6)) }
+        #expect(numbers == Array(numbers.first!...59))
+        #expect(numbers.count < 60 && numbers.count > 10)
+        #expect(file.fullText().split(separator: "\n").count == read.count)
+    }
+
+    @Test("Volver a abrir el archivo continúa donde se quedó (tamaño y rotación incluidos)")
+    func reopen() throws {
+        let dir = try directory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let first = AutomixLogFile(directory: dir, maxBytes: 600, timeZone: utc)
+        for n in 0..<8 { first.append(entry(n)) }
+        first.flush()
+        let second = AutomixLogFile(directory: dir, maxBytes: 600, timeZone: utc)
+        for n in 8..<40 { second.append(entry(n)) }
+        second.flush()
+        let numbers = second.readLastEntries(limit: 1_000).compactMap { Int($0.message.dropFirst(6)) }
+        #expect(numbers.last == 39)
+        #expect(numbers == Array(numbers.first!...39), "sin huecos ni repeticiones entre sesiones")
+        #expect(try FileManager.default.contentsOfDirectory(atPath: dir.path).count == 2)
+    }
+
+    @Test("Las líneas ilegibles se saltan al recargar y `reset` borra los dos archivos")
+    func unreadableAndReset() throws {
+        let dir = try directory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let file = AutomixLogFile(directory: dir, timeZone: utc)
+        file.append(entry(1))
+        file.flush()
+        let handle = try FileHandle(forWritingTo: file.currentURL)
+        try handle.seekToEnd()
+        try handle.write(contentsOf: Data("basura sin formato\n\n[x] sin fecha\n".utf8))
+        try handle.close()
+        file.append(entry(2))
+        file.flush()
+        #expect(file.readLastEntries(limit: 10) == [entry(1), entry(2)])
+        file.reset()
+        #expect(file.fullText().isEmpty)
+        #expect(!FileManager.default.fileExists(atPath: file.currentURL.path))
+    }
+
+    @Test("Un mensaje largo se conserva hasta 4 KB, en una línea y cortado en un límite de carácter")
+    func entryCap() {
+        let ok = String(repeating: "é", count: 1_500) // 3 000 B
+        #expect(AutomixLogLimits.normalize(ok) == ok)
+        let multi = "uno\ndos\r\ntres\rcuatro"
+        #expect(AutomixLogLimits.normalize(multi) == "uno\\ndos\\ntres\\ncuatro")
+        let long = String(repeating: "ñ", count: 5_000) // 10 000 B
+        let cut = AutomixLogLimits.normalize(long)
+        #expect(cut.hasPrefix(String(repeating: "ñ", count: 2_048)))
+        #expect(cut.contains("…[truncado: 5904 B más]"))
+        #expect(cut.utf8.count <= AutomixLogLimits.maxEntryBytes + 40)
+        #expect(!cut.contains("\n"))
+        #expect(AutomixLogLimits.normalize("x", maxBytes: 4) == "x")
+    }
+
+    @Test("Los fallos van al registro unificado como error y lo demás como aviso")
+    func levels() {
+        #expect(AutomixLogLevel.classify("sin transición (other) tras 3.1 s: error de red") == .error)
+        #expect(AutomixLogLevel.classify("stems sin resultado (model-unavailable)") == .notice)
+        #expect(AutomixLogLevel.classify("la precarga del archivo falló") == .error)
+        #expect(AutomixLogLevel.classify("armar imposible: sin elemento observado") == .error)
+        #expect(AutomixLogLevel.classify("estado: preparando → lista (mix, 124 bpm)") == .notice)
+        #expect(AutomixLogLevel.classify("traspaso: la interfaz pasa a la siguiente canción") == .notice)
+    }
+
+    @MainActor
+    @Test("El almacén escribe lo saneado en disco, un cierre no lo pierde y la sesión siguiente lo recarga en la ventana")
+    func storePersistsAndReloads() throws {
+        let dir = try directory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let first = AutomixDiagnostics(capacity: 50)
+        first.configurePersistence(directory: dir, maxBytes: 1 << 20)
+        first.record("coord", "petición 1A2B3C4D: A → B")
+        first.record("vm", "falló https://rr1.googlevideo.com/videoplayback?sig=SECRETO&key=k con un mensaje\nen dos líneas")
+        first.record("player", String(repeating: "x", count: 100) + " " + String(repeating: "mensaje largo de error ", count: 150))
+        first.file?.flush()
+        let disk = first.file?.fullText() ?? ""
+        #expect(disk.contains("[coord] petición 1A2B3C4D: A → B"))
+        #expect(!disk.contains("googlevideo") && !disk.contains("SECRETO"), "nada sin sanear llega al archivo")
+        #expect(disk.contains("<url>"))
+        #expect(!disk.contains("\\r"))
+        #expect(disk.split(separator: "\n").allSatisfy { $0.utf8.count < 4_300 }, "tope por entrada")
+        #expect(disk.contains("mensaje largo de error"), "el mensaje largo se conserva (no se trunca por debajo de 4 KB)")
+
+        // «Cierre inesperado»: otro almacén sobre la misma carpeta recarga lo anterior.
+        let second = AutomixDiagnostics(capacity: 50)
+        second.configurePersistence(directory: dir, maxBytes: 1 << 20)
+        let messages = second.log.entries.map(\.message)
+        #expect(messages.contains("petición 1A2B3C4D: A → B"))
+        #expect(messages.contains { $0.hasPrefix("falló <url>") })
+        #expect(messages.last?.hasPrefix("inicio de sesión — 4 líneas recargadas") == true || messages.last?.hasPrefix("inicio de sesión —") == true)
+        // Y las recargadas conservan fecha y origen.
+        let reloaded = try #require(second.log.entries.first { $0.message.hasPrefix("petición") })
+        #expect(reloaded.source == "coord")
+        // Limpiar la ventana no borra el archivo.
+        second.clear()
+        second.file?.flush()
+        #expect(second.log.entries.isEmpty)
+        #expect((second.file?.fullText() ?? "").contains("petición 1A2B3C4D"))
+    }
+}
+
+@Suite("Automix: memoria y exportación")
+struct AutomixMemoryAndExportTests {
+    @Test("La huella de la app es legible y el pico nunca baja de ella")
+    func footprint() throws {
+        let memory = try #require(AutomixMemory.current())
+        #expect(memory.footprint > 10 << 20, "una app de pruebas ocupa más de 10 MB")
+        #expect(memory.peak >= memory.footprint)
+        #expect(AutomixMemory.gigabytes(3 << 30) == "3.00 GB")
+    }
+
+    @Test("Avisa al cruzar 2, 4 y 8 GB una sola vez por subida y se rearma al bajar")
+    func thresholds() {
+        var watcher = AutomixMemoryWatcher()
+        let gb: UInt64 = 1 << 30
+        #expect(watcher.update(footprint: gb).isEmpty)
+        #expect(watcher.update(footprint: 2 * gb) == [2 * gb])
+        #expect(watcher.update(footprint: 3 * gb).isEmpty, "no repite el de 2 GB")
+        // Un salto grande cruza varios a la vez, en orden.
+        #expect(watcher.update(footprint: 9 * gb) == [4 * gb, 8 * gb])
+        #expect(watcher.update(footprint: 9 * gb).isEmpty)
+        // Baja un 10 % por debajo de 8 GB y de 4 GB: se rearman.
+        #expect(watcher.update(footprint: 3 * gb).isEmpty)
+        #expect(watcher.update(footprint: 4 * gb) == [4 * gb])
+        // Oscilar justo bajo el umbral no vuelve a avisar.
+        #expect(watcher.update(footprint: 4 * gb - 1_000).isEmpty)
+        #expect(watcher.update(footprint: 4 * gb).isEmpty)
+        #expect(AutomixMemoryWatcher.defaultThresholds == [2 << 30, 4 << 30, 8 << 30])
+    }
+
+    @MainActor
+    @Test("Al cruzar un umbral el almacén deja una línea con la huella, el pico y la fase de Automix; no repite")
+    func thresholdLine() {
+        let store = AutomixDiagnostics(capacity: 20)
+        store.phaseProvider = { "coordinador preparando; empalme none" }
+        var current = AutomixMemoryInfo(footprint: 1 << 30, peak: 1 << 30)
+        store.memoryReader = { current }
+        store.checkMemory()
+        #expect(store.log.entries.isEmpty)
+        current = AutomixMemoryInfo(footprint: 5 << 30, peak: 5 << 30)
+        store.checkMemory()
+        let lines = store.log.entries.map(\.message)
+        #expect(lines.count == 2, "cruzó 2 y 4 GB a la vez")
+        #expect(lines.allSatisfy { $0.contains("fase de Automix: coordinador preparando") && $0.contains("5.00 GB") })
+        #expect(lines[0].contains("cruzó 2 GB") && lines[1].contains("cruzó 4 GB"))
+        store.checkMemory()
+        #expect(store.log.entries.count == 2)
+        current = AutomixMemoryInfo(footprint: 12 << 30, peak: 12 << 30)
+        store.checkMemory()
+        #expect(store.log.entries.last?.message.contains("cruzó 8 GB") == true)
+        store.memoryReader = { nil }
+        store.checkMemory()
+        #expect(store.log.entries.count == 3)
+    }
+
+    @MainActor
+    @Test("La exportación lleva cabecera, el estado, todo el registro persistido y el del core, saneado")
+    func export() throws {
+        let suite = "AutomixExport.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let player = PlayerViewModel(rustCore: nil, audioService: AudioPlayerService(preferences: defaults, preferencePrefix: "export"))
+        var snapshot = player.automixDiagnosticsSnapshot()
+        snapshot.memory = AutomixMemoryInfo(footprint: 12 << 30, peak: 13 << 30)
+        let text = AutomixDiagnosticsExport.render(
+            header: ["Fecha: x", "App: 1 (2)"], snapshot: snapshot,
+            persistedLog: "2026-11-16 10:00:00.000 [coord] uno\n2026-11-16 10:00:01.000 [vm] dos\n",
+            coreLog: "1700000000 ok fast A→B 2.1s\n1700000001 error https://rr1.googlevideo.com/x?sig=ZZZ\n")
+        #expect(text.contains("=== Diagnóstico de Automix"))
+        #expect(text.contains("Fecha: x"))
+        #expect(text.contains("=== Estado actual ==="))
+        #expect(text.contains("Memoria: huella 12.00 GB"))
+        #expect(text.contains("pico 13.00 GB"))
+        #expect(text.contains("Estado del coordinador:"))
+        #expect(text.contains("[coord] uno") && text.contains("[vm] dos"))
+        #expect(text.contains("=== Registro del core (automix.log) ==="))
+        #expect(text.contains("1700000000 ok fast A→B 2.1s"))
+        #expect(!text.contains("googlevideo") && !text.contains("ZZZ"), "el registro del core también se sanea")
+        // Sin core ni registro: lo dice, no falla.
+        let empty = AutomixDiagnosticsExport.render(header: [], snapshot: snapshot, persistedLog: "", coreLog: nil)
+        #expect(empty.contains("(vacío)") && empty.contains("(no existe o está vacío)"))
+    }
+
+    @Test("El .txt y la carpeta: nombre con marca de tiempo y lectura del automix.log del core")
+    func files() throws {
+        let utc = TimeZone(identifier: "UTC")!
+        #expect(AutomixDiagnosticsFiles.stamp(Date(timeIntervalSince1970: 3_723), timeZone: utc) == "19700101-010203")
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("automix-core-\(UUID())", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        #expect(AutomixDiagnosticsFiles.readCoreLog(directory: dir) == nil)
+        try "línea del core\n".write(to: dir.appendingPathComponent("automix.log"), atomically: true, encoding: .utf8)
+        #expect(AutomixDiagnosticsFiles.readCoreLog(directory: dir) == "línea del core\n")
+        #expect(AutomixDiagnosticsFiles.header(directory: dir).contains { $0.hasPrefix("Carpeta de registros: ") })
+    }
+}

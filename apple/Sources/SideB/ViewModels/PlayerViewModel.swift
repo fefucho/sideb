@@ -2181,6 +2181,15 @@ extension PlayerViewModel: AutomixHost {
         audioService.onSpliceEntered = { [weak self] in self?.automix.spliceEntered() }
         audioService.onSpliceFailed = { [weak self] in self?.automix.spliceFailed() }
         audioService.onSpliceHandover = { [weak self] in self?.performAutomixHandover() }
+        AutomixDiagnostics.shared.phaseProvider = { [weak self] in self?.automixPhaseSummary() ?? "sin reproductor" }
+    }
+
+    /// Una línea con la fase de Automix (para las líneas de memoria del registro).
+    func automixPhaseSummary() -> String {
+        let request = automix.request
+        return "coordinador \(AutomixCoordinator.describe(automix.status)); "
+            + "petición \(request?.phase.rawValue ?? "ninguna") [\(request?.requestedQuality ?? "—")→\(request?.transition?.quality ?? "—")], mejora \(request?.upgrade ?? "—"); "
+            + "empalme \(audioService.spliceStage) (\(audioService.spliceDiagnostics?.phase ?? "—")); reproduciendo \(audioService.isPlaying); precarga \(automix.prefetchStatus)"
     }
 
     /// Foto para el coordinador: nil cuando no hay tema, o mientras la cola avanza al traspaso.
@@ -2439,7 +2448,8 @@ extension PlayerViewModel {
             settings: automixPreferences.settings, capability: automixPreferences.capability,
             power: store.cachedPower(now: now) { automixPower() },
             prefetchItems: automix.prefetchItems, prefetchStatus: automix.prefetchStatus,
-            prefetchRequestedAt: automix.prefetchRequestedAt, splice: audioService.spliceDiagnostics)
+            prefetchRequestedAt: automix.prefetchRequestedAt, splice: audioService.spliceDiagnostics,
+            memory: AutomixMemory.current())
     }
 
     /// Depuración: salta la canción a 10 s antes del corte (sólo con una transición lista y la canción antes del corte).

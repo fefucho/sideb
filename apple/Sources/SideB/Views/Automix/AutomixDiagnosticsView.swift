@@ -32,21 +32,64 @@ struct AutomixDiagnosticsView: View {
         .accessibilityIdentifier("automix-diagnostics")
     }
 
+    /// Guarda un .txt con el estado actual, todo el registro persistido de la app y el `automix.log` del core.
+    @MainActor
+    private static func export(_ snapshot: AutomixDiagnosticsSnapshot) {
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.plainText]
+        let stamp = AutomixDiagnosticsFiles.stamp(Date())
+        panel.nameFieldStringValue = "automix-diagnostico-\(stamp).txt"
+        panel.title = "Exportar diagnóstico de Automix"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        let store = AutomixDiagnostics.shared
+        let directory = store.logDirectory ?? AutomixPreferences.cacheDirectory
+        let file = store.file
+        let header = AutomixDiagnosticsFiles.header(directory: directory)
+        // Lectura y escritura fuera del hilo principal: los registros pueden pesar un par de MB.
+        Task.detached(priority: .userInitiated) {
+            let persisted = file?.fullText() ?? ""
+            let core = AutomixDiagnosticsFiles.readCoreLog(directory: directory)
+            let text = AutomixDiagnosticsExport.render(header: header, snapshot: snapshot, persistedLog: persisted, coreLog: core)
+            do {
+                try text.write(to: url, atomically: true, encoding: .utf8)
+                await MainActor.run { store.record("sesión", "diagnóstico exportado: \(text.utf8.count) B") }
+            } catch {
+                await MainActor.run { store.record("sesión", "no se pudo exportar el diagnóstico: \(error.localizedDescription)") }
+            }
+        }
+    }
+
+    /// Muestra en Finder la carpeta con `diagnostics.log` (y el `automix.log` del core).
+    @MainActor
+    private static func revealLogs() {
+        let store = AutomixDiagnostics.shared
+        store.file?.flush()
+        let directory = store.logDirectory ?? AutomixPreferences.cacheDirectory
+        if let log = store.file?.currentURL, FileManager.default.fileExists(atPath: log.path) {
+            NSWorkspace.shared.activateFileViewerSelecting([log])
+        } else {
+            try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            NSWorkspace.shared.open(directory)
+        }
+    }
+
     private func actions(_ snapshot: AutomixDiagnosticsSnapshot) -> some View {
         let fileURL = snapshot.transition.map { URL(fileURLWithPath: $0.filePath) }
         let fileExists = fileURL.map { FileManager.default.fileExists(atPath: $0.path) } ?? false
-        return HStack(spacing: 8) {
+        // Muchos botones: se reparten en filas según el ancho de la ventana.
+        return LazyVGrid(columns: [GridItem(.adaptive(minimum: 175), spacing: 8, alignment: .leading)], alignment: .leading, spacing: 6) {
             Button("Copiar registro") {
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(AutomixDiagnostics.shared.log.text(), forType: .string)
             }
             Button("Limpiar registro") { AutomixDiagnostics.shared.clear() }
-            Divider().frame(height: 16)
+                .help("Vacía esta ventana; diagnostics.log en disco se conserva para exportarlo")
+            Button("Exportar diagnóstico…") { Self.export(snapshot) }
+            Button("Mostrar carpeta de registros") { Self.revealLogs() }
             Button("Mostrar archivo en Finder") { if let fileURL { NSWorkspace.shared.activateFileViewerSelecting([fileURL]) } }
                 .disabled(!fileExists)
             Button("Abrir archivo en el reproductor") { if let fileURL { NSWorkspace.shared.open(fileURL) } }
                 .disabled(!fileExists)
-            Divider().frame(height: 16)
             Button("Cancelar preparación") { player.automix.cancelPreparation() }
                 .disabled(!snapshot.canCancel)
             Button("Preparar ahora") { player.automix.prepareNow() }
@@ -66,6 +109,15 @@ private struct AutomixDiagnosticsSections: View {
     let snapshot: AutomixDiagnosticsSnapshot
 
     var body: some View {
+        section("Memoria") {
+            if let m = snapshot.memory {
+                row("Huella (phys_footprint)", "\(AutomixMemory.gigabytes(m.footprint))  (\(ByteCountFormatter.string(fromByteCount: Int64(m.footprint), countStyle: .memory)))")
+                row("Pico", "\(AutomixMemory.gigabytes(m.peak))  (\(ByteCountFormatter.string(fromByteCount: Int64(m.peak), countStyle: .memory)))")
+                row("Avisos", "una línea en el registro al cruzar 2, 4 y 8 GB")
+            } else {
+                row("Huella", "no disponible")
+            }
+        }
         section("Ajuste y estado efectivo") {
             row("Ajuste guardado", onOff(snapshot.settingEnabled))
             row("Jam activo", yesNo(snapshot.jamActive))

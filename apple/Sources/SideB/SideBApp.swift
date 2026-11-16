@@ -17,6 +17,9 @@ struct SideBApp: App {
     @State private var hasBootstrappedSession = false
 
     init() {
+        // Diagnóstico de Automix: persistente (sobrevive a un cierre inesperado) y con vigilancia de la memoria.
+        AutomixDiagnostics.shared.configurePersistence(directory: AutomixPreferences.cacheDirectory)
+        AutomixDiagnostics.shared.startMemoryWatch()
         if HomeLabConfiguration.enabled && CommandLine.arguments.contains("--localization-diagnostics") {
             let report: [String: Any] = [
                 "resourceURL": L10n.resourceURL.path,
