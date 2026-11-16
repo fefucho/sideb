@@ -496,6 +496,21 @@ public final class QueueManager {
         return promoteRecommendation()
     }
 
+    /// The recommendations `nextTrack` would promote, in order, without promoting them: what plays after the
+    /// queue runs out. Same rules as `promoteRecommendation` (none while a continuation is pending).
+    public func peekUpcomingRecommendations(limit: Int) -> [SongItemRecord] {
+        guard limit > 0, continuationToken == nil, !isRepeat else { return [] }
+        var known: Set<String> = queue.indices.contains(currentIndex) ? Set(queue[currentIndex...].map(\.videoId)) : []
+        var result: [SongItemRecord] = []
+        for entry in recommendationEntries where result.count < limit {
+            let id = entry.track.videoId
+            guard !known.contains(id), !excludedRecommendations.contains(id), !recentVideoIDs.contains(id) else { continue }
+            known.insert(id)
+            result.append(entry.track)
+        }
+        return result
+    }
+
     private func promoteRecommendation() -> SongItemRecord? {
         let known: Set<String> = queue.indices.contains(currentIndex) ? Set(queue[currentIndex...].map(\.videoId)) : []
         guard continuationToken == nil else { return nil }

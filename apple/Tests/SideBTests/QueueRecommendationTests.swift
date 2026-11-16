@@ -222,3 +222,18 @@ private func recommendationSong(_ id: String) -> SongItemRecord {
     #expect(empty.playRecommendation(id: "stale", advanceThrough: true) == nil)
     #expect(empty.orderSnapshot == unchanged)
 }
+
+/// Automix (PLAN-024) prepares the transition into whatever plays next; when the queue runs out that is the
+/// recommendation `nextTrack` promotes, so the peek must name exactly that one without promoting it.
+@MainActor
+@Test func peekingUpcomingRecommendationsMatchesWhatNextTrackPromotes() {
+    let q = QueueManager()
+    q.replaceQueue(with: [recommendationSong("A")], context: .custom(title: "test"))
+    q.appendRadioTracks(["R1", "R2", "R3"].map(recommendationSong))
+    #expect(q.peekUpcomingRecommendations(limit: 2).map(\.videoId) == ["R1", "R2"])
+    #expect(q.recommendationEntries.count == 3, "peeking does not promote")
+    #expect(q.nextTrack(isManualSkip: false)?.videoId == "R1")
+    #expect(q.peekUpcomingRecommendations(limit: 3).map(\.videoId) == ["R2", "R3"])
+    q.isRepeat = true
+    #expect(q.peekUpcomingRecommendations(limit: 3).isEmpty, "repeat never promotes")
+}

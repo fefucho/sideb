@@ -2232,8 +2232,13 @@ extension PlayerViewModel: AutomixHost {
         let nextIndex = queueManager.currentIndex + 1
         // «Siguiente conocido»: sólo si la cola apunta de verdad al tema que suena.
         let pointsAtCurrent = queueManager.currentTrack?.videoId == track.videoId
-        let upcoming = pointsAtCurrent && queue.indices.contains(nextIndex)
-            ? queue[nextIndex..<min(queue.count, nextIndex + 3)].map(AutomixSong.init) : []
+        var upcomingTracks = pointsAtCurrent && queue.indices.contains(nextIndex)
+            ? Array(queue[nextIndex..<min(queue.count, nextIndex + 3)]) : []
+        // When the queue runs out, the next songs are the recommendations it promotes (radio, autoplay).
+        if pointsAtCurrent && upcomingTracks.count < 3 && nextIndex + upcomingTracks.count >= queue.count {
+            upcomingTracks += queueManager.peekUpcomingRecommendations(limit: 3 - upcomingTracks.count)
+        }
+        let upcoming = upcomingTracks.map(AutomixSong.init)
         let settings = automixPreferences.settings
         return AutomixContext(token: currentPlaybackToken, current: AutomixSong(track), next: upcoming.first,
                               jamActive: isJamSessionActive, repeatOne: queueManager.isRepeat,
@@ -2350,7 +2355,11 @@ extension PlayerViewModel: AutomixHost {
         automix.didHandover()
         let queue = queueManager.queue
         let nextIndex = queueManager.currentIndex + 1
-        guard !isJamSessionActive, queue.indices.contains(nextIndex), queue[nextIndex].videoId == nextID,
+        // The next song is the next queue row, or (queue exhausted) the recommendation `nextTrack` promotes.
+        // Checked before `nextTrack` mutates the queue, so a mismatch never advances it twice.
+        let expected = queue.indices.contains(nextIndex)
+            ? queue[nextIndex].videoId : queueManager.peekUpcomingRecommendations(limit: 1).first?.videoId
+        guard !isJamSessionActive, expected == nextID,
               let song = queueManager.nextTrack(isManualSkip: false), song.videoId == nextID else {
             isPerformingAutomixHandover = false
             AutomixDiagnostics.shared.record("vm", "traspaso sin el siguiente esperado en la cola: se sigue por la vía normal (playNext)")
