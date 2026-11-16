@@ -330,6 +330,15 @@ final class AudioSpliceSwitcher {
         diagnostics.crossfadeEndHost = nil
     }
 
+    /// Stops this switcher's timers without touching its player: used when the player has become the
+    /// service's active one and must keep playing whatever is loaded next.
+    func detach() {
+        generation += 1
+        cancelTimer()
+        prerolledFileSeconds = nil
+        phase = .done
+    }
+
     /// Suelta el reproductor y el elemento (el archivo se descarta o ya no hace falta).
     func dispose() {
         generation += 1

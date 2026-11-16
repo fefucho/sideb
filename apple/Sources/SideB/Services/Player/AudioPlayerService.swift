@@ -640,9 +640,12 @@ extension AudioPlayerService {
     fileprivate func clearSplice() {
         if let active = splice {
             AutomixDiagnostics.shared.record("player", "empalme descartado (\(spliceStage)) por reproducción nueva o stop")
-            retire(active.switcher)
+            // After the commit the file's player IS the service's player: disposing it would pause, mute and
+            // empty the player the next song is about to load into (songs then "play" in silence).
+            if active.switcher.player !== player { retire(active.switcher) } else { active.switcher.detach() }
             for base in active.base where base.switcher.player !== player { retire(base.switcher) }
         }
+        player.volume = outputVolume
         spliceItemObserver?.invalidate()
         spliceItemObserver = nil
         splice = nil

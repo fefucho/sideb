@@ -746,6 +746,28 @@ struct AutomixAudioServiceTests {
         #expect(probe.ended == 0)
     }
 
+    @Test("Tras el traspaso, la canción siguiente carga en el mismo reproductor y suena: no queda pausado, mudo ni vacío")
+    func nextSongAfterHandoverIsAudible() async throws {
+        let (audio, probe, songURL, fileURL, cleanup) = try fixture()
+        defer { cleanup() }
+        start(audio, song: songURL)
+        probe.media = 50
+        #expect(audio.armSplice(AudioSplice(asset: AVURLAsset(url: fileURL), nextVideoID: "B", timeline: transition().timeline)) == .armed)
+        await switchNow(audio)
+        audio.onSpliceHandover = { audio.completeHandover(playbackID: UUID()) }
+        probe.media = 14
+        audio.samplePlaybackProgress()
+        #expect(audio.spliceStage == .handedOver)
+        let filePlayer = audio.avPlayer
+
+        // The file ends; the next song loads into the service's player, which is the file's player.
+        audio.play(urlString: songURL.absoluteString, playbackID: UUID())
+        #expect(audio.spliceStage == .none)
+        #expect(audio.avPlayer === filePlayer)
+        #expect(audio.avPlayer.currentItem != nil, "the new song's item must not be emptied by the old splice")
+        #expect(audio.avPlayer.volume > 0, "the new song must not be muted by the old splice")
+    }
+
     @Test("Traspaso: al segundo handover se avisa; después el tiempo es el de la siguiente y su final sí cuenta")
     func handover() async throws {
         let (audio, probe, songURL, fileURL, cleanup) = try fixture()
