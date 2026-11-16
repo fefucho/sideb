@@ -257,6 +257,8 @@ enum AutomixDiagnosticsExport {
         }
         lines.append("Actual: \(track(snapshot.current))")
         lines.append("Siguiente: \(track(snapshot.next))")
+        lines.append("Estrategia: stems permitidos \(snapshot.strategy.allowStems.map(yesNo) ?? "—") (\(snapshot.strategy.allowReason.isEmpty ? "—" : snapshot.strategy.allowReason)); "
+            + "pareja lista ahora \(snapshot.pairReadyNow.map(yesNo) ?? "—"), última lectura \(snapshot.strategy.pairReady.map(yesNo) ?? "—"); precarga con stems \(snapshot.prefetchAllowStems.map { $0 ? "permitidos" : "no permitidos" } ?? "—")")
         lines.append("Precarga: \(snapshot.prefetchItems.map { $0.map(\.videoID).joined(separator: " → ") } ?? "ninguna"); estado: \(snapshot.prefetchStatus)")
         if let r = snapshot.request {
             lines.append("Petición \(r.requestID): fase \(r.phase.rawValue), \(r.from.videoID) → \(r.to.videoID)\(r.forced ? " (forzada)" : ""), "
@@ -270,7 +272,7 @@ enum AutomixDiagnosticsExport {
         }
         if let t = snapshot.transition {
             lines.append("Transición: \(t.kind) · \(t.detail)")
-            lines.append("  bpm \(f(t.bpmFrom, 1)) / \(f(t.bpmTo, 1)), compases \(t.bars), stemsModel \(yesNo(t.stemsModel)), quality \(t.quality), sameCutAsFast \(yesNo(t.sameCutAsFast))")
+            lines.append("  bpm \(f(t.bpmFrom, 1)) / \(f(t.bpmTo, 1)), compases \(t.bars), stemsModel \(yesNo(t.stemsModel)), quality \(t.quality), sameCutAsFast \(yesNo(t.sameCutAsFast)), reused \(yesNo(t.reused))")
             lines.append("  aCut \(f(t.aCut)), overlap \(f(t.overlapStart)) / \(f(t.overlapEnd)), bOffset \(f(t.bOffset)), bEntry \(f(t.bEntry)), handover \(f(t.handover)), duración \(f(t.fileDuration))")
             lines.append("  separatedSeconds \(f(t.separatedSeconds, 1)), elapsedSeconds \(f(t.elapsedSeconds, 1)), archivo \(snapshot.fileSize.map { "\($0) B" } ?? "no existe")")
         }

@@ -39,7 +39,7 @@
   "settings.automix.compute.cpu": { "es": "CPU", "en": "CPU" },
   "settings.automix.lookahead": { "es": "Preparar por adelantado (canciones)", "en": "Prepare ahead (songs)" },
   "settings.automix.keepModel": { "es": "Mantener el modelo cargado", "en": "Keep the model loaded" },
-  "settings.automix.keepModel.hint": { "es": "Evita cargar el modelo en cada mezcla, pero ocupa unos 2 GB de memoria mientras esté cargado. Si lo apagás, se libera tras 60 segundos sin usarlo.", "en": "Avoids loading the model for every mix, but uses about 2 GB of memory while loaded. When off, it is released after 60 seconds without use." },
+  "settings.automix.keepModel.hint": { "es": "Evita cargar el modelo en cada mezcla, pero ocupa unos 2 GB de memoria mientras esté cargado. Si lo apagás, se libera tras 15 segundos sin usarlo.", "en": "Avoids loading the model for every mix, but uses about 2 GB of memory while loaded. When off, it is released after 15 seconds without use." },
   "settings.automix.capability.unknown": { "es": "Este equipo: sin datos de capacidad", "en": "This computer: no capability data" },
   "settings.automix.capability.unmeasured": { "es": "Este equipo: sin medir todavía%@", "en": "This computer: not measured yet%@" },
   "settings.automix.capability.measured": { "es": "Este equipo: %@× tiempo real%@", "en": "This computer: %@× real time%@" },

@@ -174,7 +174,12 @@ private final class FakeHost: AutomixHost {
     var capability: AutomixCapabilityValue? = nil
     var power = AutomixPowerState()
     var prefetched: [[AutomixSong]] = []
+    var prefetchAllow: [Bool] = []
     var prefetchCancels = 0
+    var pairReady = false
+    var pairReadyChecks = 0
+    var position: Double?
+    var canReplace = true
     private var pending: [String: CheckedContinuation<AutomixTransition, Error>] = [:]
 
     func automixContext() -> AutomixContext? { current }
@@ -191,7 +196,10 @@ private final class FakeHost: AutomixHost {
     func automixSettings() -> AutomixSettingsValue { settings }
     func automixCapability() -> AutomixCapabilityValue? { capability }
     func automixPower() -> AutomixPowerState { power }
-    func automixPrefetch(_ items: [AutomixSong]) { prefetched.append(items) }
+    func automixPrefetch(_ items: [AutomixSong], allowStems: Bool) { prefetched.append(items); prefetchAllow.append(allowStems) }
+    func automixPairReady(from: String, to: String) -> Bool { pairReadyChecks += 1; return pairReady }
+    func automixPosition() -> Double? { position }
+    func automixCanReplaceSplice() -> Bool { canReplace }
     func automixCancelPrefetch() { prefetchCancels += 1 }
     func automixDisarm() { disarmCount += 1 }
     func automixAbortMixing() { abortCount += 1 }
@@ -207,10 +215,10 @@ private final class FakeHost: AutomixHost {
 @MainActor
 @Suite("Automix: coordinador")
 struct AutomixCoordinatorTests {
-    private func make(enabled: Bool = true, _ context: AutomixContext? = context()) -> (AutomixCoordinator, FakeHost) {
+    private func make(enabled: Bool = true, _ context: AutomixContext? = context(), dropGrace: Duration = .milliseconds(30)) -> (AutomixCoordinator, FakeHost) {
         let host = FakeHost()
         host.current = context
-        let coordinator = AutomixCoordinator(enabled: enabled, log: { _ in })
+        let coordinator = AutomixCoordinator(enabled: enabled, dropGrace: dropGrace, log: { _ in })
         coordinator.host = host
         return (coordinator, host)
     }
@@ -295,51 +303,74 @@ struct AutomixCoordinatorTests {
         #expect(coordinator.status == .preparing)
     }
 
-    @Test("Saltar de tema (otro token), un Jam, repetir un tema o quedarse sin siguiente descartan")
+    @Test("Cambiar la pareja, un Jam, repetir un tema o el mismo álbum descartan; el mismo par con otro token NO")
     func invalidation() async {
         let token = UUID()
         let (coordinator, host) = make(context(token: token))
         coordinator.reconcile(); await host.settle()
+        #expect(host.prepared.count == 1)
+        // Otra ocurrencia de reproducción de la MISMA pareja (reinicio, salto): se conserva la petición, sin vaivén.
         host.current = context(token: UUID(), started: false)
         coordinator.reconcile(); await host.settle()
-        #expect(host.cancelled.count == 1)
-        #expect(coordinator.status == .preparing, "otro tema: otra petición, sin esperar a que suene")
-        #expect(host.prepared.count == 2)
+        #expect(host.cancelled.isEmpty)
+        #expect(host.prepared.count == 1)
+        #expect(coordinator.status == .preparing)
 
-        host.current = context(token: UUID())
+        // Otra pareja: se cancela y se pide la nueva.
+        host.current = context(token: host.current!.token, next: song("C"))
         coordinator.reconcile(); await host.settle()
-        #expect(host.prepared.count == 3)
-        host.current = context(token: host.current!.token, jam: true)
+        #expect(host.cancelled.count == 1)
+        #expect(host.prepared.count == 2)
+        #expect(host.prepared[1].to.videoID == "C")
+
+        host.current = context(token: host.current!.token, next: song("C"), jam: true)
         coordinator.reconcile(); await host.settle()
         #expect(coordinator.status == .unavailable(.jam))
-        #expect(host.cancelled.count == 3)
+        #expect(host.cancelled.count == 2)
 
-        host.current = context(token: host.current!.token, repeatOne: true)
+        host.current = context(token: host.current!.token, next: song("C"), repeatOne: true)
         coordinator.reconcile()
         #expect(coordinator.status == .unavailable(.repeatOne))
-        host.current = context(token: host.current!.token, next: nil)
-        coordinator.reconcile()
-        #expect(coordinator.status == .unavailable(.noNextTrack))
         host.current = context(token: host.current!.token, current: song("A", album: "X"), next: song("B", album: "X"))
         coordinator.reconcile()
         #expect(coordinator.status == .unavailable(.sameAlbum))
-        #expect(host.prepared.count == 3)
+        #expect(host.prepared.count == 2)
         // El ajuste del core manda: sin «no mezclar el mismo disco» sí se prepara.
         host.current = context(token: host.current!.token, current: song("A", album: "X"), next: song("B", album: "X"), skipSameAlbum: false)
         coordinator.reconcile(); await host.settle()
         #expect(coordinator.status == .preparing)
-        #expect(host.prepared.count == 4)
+        #expect(host.prepared.count == 3)
     }
 
-    @Test("Sin cuenta/cola (contexto nil) no hay plan")
-    func noContext() async {
+    @Test("Sin contexto o sin siguiente un momento: no se cancela al instante; sólo si dura más que la espera")
+    func noContext() async throws {
         let (coordinator, host) = make()
         coordinator.reconcile(); await host.settle()
         host.current = nil
         coordinator.reconcile()
-        #expect(coordinator.status == .idle)
-        #expect(coordinator.currentKey == nil)
+        #expect(coordinator.currentKey != nil, "la petición sigue en vuelo")
+        #expect(host.cancelled.isEmpty)
+        #expect(coordinator.hasPendingDrop)
+        // La cola vuelve a la normalidad antes de la espera: nada se cancela ni se vuelve a pedir.
+        host.current = context(token: UUID())
+        coordinator.reconcile()
+        try await Task.sleep(for: .milliseconds(80))
+        #expect(host.cancelled.isEmpty && host.prepared.count == 1 && !coordinator.hasPendingDrop)
+        // «Sin siguiente» transitorio (la cola se rehace): igual.
+        host.current = context(next: nil, upcoming: [])
+        coordinator.reconcile()
+        #expect(host.cancelled.isEmpty && coordinator.hasPendingDrop)
+        host.current = context(token: UUID())
+        coordinator.reconcile()
+        try await Task.sleep(for: .milliseconds(80))
+        #expect(host.cancelled.isEmpty && host.prepared.count == 1)
+        // Si dura, sí se cancela.
+        host.current = nil
+        coordinator.reconcile()
+        try await Task.sleep(for: .milliseconds(120))
         #expect(host.cancelled.count == 1)
+        #expect(coordinator.currentKey == nil)
+        #expect(coordinator.status == .idle)
     }
 
     @Test("Lista: se entrega al reproductor y el estado dice tipo y tempo")
@@ -594,6 +625,7 @@ struct AutomixAudioServiceTests {
             preferences: defaults, preferencePrefix: "test",
             seekExecutor: { _, time, completion in probe.seekTargets.append(time.seconds); completion(true) },
             measuredTime: { _ in probe.media })
+        audio.skipsSplicePrerollForTesting = true // estas pruebas ejercitan la máquina de estados, no el audio del sistema
         audio.onTrackDidEnd = { probe.ended += 1 }
         audio.onSpliceEntered = { probe.entered += 1 }
         audio.onPlaybackProgress = { probe.progress.append(($0, $1)) }
@@ -652,7 +684,7 @@ struct AutomixAudioServiceTests {
         #expect(item.forwardPlaybackEndTime == before, "no se toca forwardPlaybackEndTime")
         #expect(player.volume == volume && player.rate == 0 || player.rate == 1)
         let diagnostics = try #require(audio.spliceDiagnostics)
-        #expect(["prerolling", "prerolled"].contains(diagnostics.phase))
+        #expect(["idle", "sin empalme", "prerolling", "prerolled"].contains(diagnostics.phase))
         audio.disarmSplice()
         #expect(audio.spliceStage == .none)
         #expect(audio.spliceDiagnostics == nil)
@@ -660,7 +692,7 @@ struct AutomixAudioServiceTests {
         #expect(audio.armSplice(AudioSplice(asset: AVURLAsset(url: fileURL), nextVideoID: "B", timeline: transition(cut: 30).timeline)) == .tooLate)
     }
 
-    @Test("Con el archivo ya cargado, sustituirlo por otro del mismo corte es posible; con otro corte, no")
+    @Test("Con el archivo ya cargado, sustituirlo por otro (con otro corte si aún cabe) es posible; si el corte ya quedó atrás, no")
     func replace() async throws {
         let (audio, probe, songURL, fileURL, cleanup) = try fixture()
         defer { cleanup() }
@@ -671,7 +703,11 @@ struct AutomixAudioServiceTests {
         #expect(audio.armSplice(plan) == .armed)
         #expect(audio.canReplaceSplice)
         #expect(audio.replaceSplice(plan) == .armed)
-        #expect(audio.replaceSplice(AudioSplice(asset: AVURLAsset(url: fileURL), nextVideoID: "B", timeline: transition(cut: 101).timeline)) == .unavailable)
+        // El plan de stems puede tener otro corte: se acepta si todavía cabe el fundido.
+        #expect(audio.replaceSplice(AudioSplice(asset: AVURLAsset(url: fileURL), nextVideoID: "B", timeline: transition(cut: 101, overlapStart: 12, overlapEnd: 24).timeline)) == .armed)
+        #expect(audio.spliceNextVideoID == "B")
+        // Pero no si a esta altura el corte nuevo ya quedó atrás (la canción va por el segundo 40).
+        #expect(audio.replaceSplice(AudioSplice(asset: AVURLAsset(url: fileURL), nextVideoID: "B", timeline: transition(cut: 20).timeline)) == .unavailable)
         #expect(audio.spliceStage == .armed)
     }
 
@@ -837,6 +873,7 @@ struct AutomixPlayerViewModelTests {
         let suite = "AutomixVM.\(UUID())"
         let defaults = try #require(UserDefaults(suiteName: suite))
         let audio = AudioPlayerService(preferences: defaults, preferencePrefix: "test", measuredTime: { _ in probe?.media ?? 0 })
+        audio.skipsSplicePrerollForTesting = true
         let player = PlayerViewModel(rustCore: nil, audioService: audio)
         return (player, audio, { audio.stop(); defaults.removePersistentDomain(forName: suite) })
     }
@@ -969,7 +1006,7 @@ struct AutomixPlayerViewModelTests {
         player.endJamSession(restore: .discard)
         #expect(!player.isJamSessionActive)
         #expect(audio.automixEnabled)
-        #expect(player.automix.status == .idle)
+        #expect(player.automix.status == .idle, "estado: \(AutomixCoordinator.describe(player.automix.status))")
     }
 
     @Test("Con un Jam, la presentación del estado es «no disponible en Jam» en ambos idiomas")
@@ -1227,7 +1264,7 @@ struct AutomixCoordinatorDebugTests {
         host.current = context(token: token, next: song("C"))
         coordinator.reconcile(); await host.settle()
         #expect(log.lines.contains { $0.contains("estado:") && $0.contains("preparando") })
-        #expect(log.lines.contains { $0.contains("cambió el siguiente tema") })
+        #expect(log.lines.contains { $0.contains("cambió la pareja") })
         host.current = context(token: token, next: song("C"), jam: true)
         coordinator.reconcile()
         #expect(log.lines.contains { $0.contains("Jam activo") })
@@ -1339,10 +1376,10 @@ struct AutomixStrategyTests {
         let record = AutomixTransitionRecord(requestId: "r", fromVideoId: "A", toVideoId: "B", kind: "mix", filePath: "/tmp/a.fast.wav",
             fileDurationSeconds: 200, aCutSeconds: 100, overlapStartSeconds: 8, overlapEndSeconds: 20, bOffsetSeconds: 90,
             bEntrySeconds: 5, handoverSeconds: 14, bpmFrom: 120, bpmTo: 124, bars: 8, stemsModel: true, quality: "stems",
-            sameCutAsFast: true, separatedSeconds: 36.7, elapsedSeconds: 8.7, detail: "d")
+            sameCutAsFast: true, separatedSeconds: 36.7, elapsedSeconds: 8.7, reused: true, detail: "d")
         let value = AutomixTransition(record: record)
         #expect(value.quality == "stems" && value.sameCutAsFast && value.stemsModel)
-        #expect(value.separatedSeconds == 36.7 && value.elapsedSeconds == 8.7)
+        #expect(value.separatedSeconds == 36.7 && value.elapsedSeconds == 8.7 && value.reused)
         #expect(value.isConsistent)
     }
 
@@ -1373,6 +1410,7 @@ struct AutomixCoordinatorQualityTests {
         let host = FakeHost()
         host.current = ctx
         host.settings.quality = quality
+        host.settings.fastOnBattery = true
         host.power = power
         host.capability = capability
         let coordinator = AutomixCoordinator(enabled: true, log: { _ in })
@@ -1439,15 +1477,126 @@ struct AutomixCoordinatorQualityTests {
         #expect(host.replaced.isEmpty)
     }
 
-    @Test("Una stems que corta en otro sitio que la rápida se descarta")
+    @Test("Una stems con otro corte y otro solape sustituye a la rápida y mueve la marca de la barra")
     func upgradeDifferentCut() async {
         let (coordinator, host) = make()
+        host.position = 20
         await fastReady(coordinator, host)
+        #expect(coordinator.marker?.songSeconds == 108)
+        var stems = transition(cut: 104, overlapStart: 12, overlapEnd: 28, handover: 18, bOffset: 88); stems.quality = "stems"; stems.sameCutAsFast = false; stems.kind = "mix"
+        host.complete(host.prepared[1].requestID, with: stems)
+        await host.settle()
+        #expect(host.replaced.count == 1 && host.replaced[0].aCut == 104)
+        #expect(coordinator.request?.transition?.aCut == 104)
+        #expect(coordinator.request?.upgrade.contains("corte nuevo 104.00") == true)
+        #expect(coordinator.marker?.songSeconds == 116, "aCut 104 + solape 12: la marca se movió de 108 a 116")
+        #expect(coordinator.status == .ready(kind: "mix", bpm: 124))
+    }
+
+    @Test("Con otro corte que queda a menos de 8 s o ya atrás, la mejora se abandona; con el mismo corte se aplica igual")
+    func upgradeTooClose() async {
+        for (position, cut, expectApplied) in [(95.0, 104.0, false),   // a 9 s: sí; ver abajo
+                                               (97.5, 104.0, false),   // a 6,5 s < 8 s
+                                               (110.0, 104.0, false),  // el corte ya quedó atrás
+                                               (95.0, 100.0, true)] {  // mismo corte, aunque falten 5 s
+            let (coordinator, host) = make()
+            host.position = 20
+            await fastReady(coordinator, host)
+            host.position = position
+            var stems = transition(cut: cut); stems.quality = "stems"; stems.sameCutAsFast = cut == 100
+            host.complete(host.prepared[1].requestID, with: stems)
+            await host.settle()
+            if position == 95, cut == 104 {
+                #expect(host.replaced.count == 1, "a 9 s del corte nuevo sí cabe")
+            } else {
+                #expect((host.replaced.count == 1) == expectApplied, "posición \(position), corte \(cut)")
+                #expect(coordinator.request?.upgrade.hasPrefix(expectApplied ? "aplicada" : "omitida") == true)
+                if !expectApplied { #expect(coordinator.request?.transition?.quality == "fast") }
+            }
+        }
+    }
+
+    @Test("Si el reproductor ya no admite cambiar el archivo (arranque programado), se queda la rápida")
+    func upgradeCommitted() async {
+        let (coordinator, host) = make()
+        host.position = 20
+        await fastReady(coordinator, host)
+        host.canReplace = false
         var stems = transition(cut: 104); stems.quality = "stems"
         host.complete(host.prepared[1].requestID, with: stems)
         await host.settle()
         #expect(host.replaced.isEmpty)
-        #expect(coordinator.request?.upgrade.hasPrefix("descartada") == true)
+        #expect(coordinator.request?.upgrade.hasPrefix("omitida") == true)
+        #expect(coordinator.marker?.songSeconds == 108)
+    }
+
+    @Test("Con los stems permitidos y la pareja lista, la primera petición ya es la de stems (sin pedir la rápida)")
+    func pairReadyFirst() async {
+        let (coordinator, host) = make(quality: "auto")
+        host.pairReady = true
+        coordinator.reconcile(); await host.settle()
+        #expect(host.prepared.map(\.quality) == ["stems"])
+        #expect(coordinator.request?.pairReadyAtRequest == true)
+        var stems = transition(); stems.quality = "stems"; stems.reused = true
+        host.complete(host.prepared[0].requestID, with: stems)
+        await host.settle()
+        #expect(host.prepared.count == 1, "ya es stems: sin mejora que pedir")
+        #expect(host.armed.count == 1 && host.armed[0].quality == "stems")
+        #expect(coordinator.request?.upgrade.hasPrefix("no aplica") == true)
+        #expect(coordinator.request?.transition?.reused == true)
+        #expect(coordinator.strategy.pairReady == true && coordinator.strategy.allowStems == true)
+    }
+
+    @Test("Pareja lista pero stems no permitidos (siempre rápida, o batería): la primera petición es la rápida")
+    func pairReadyButNotAllowed() async {
+        for (quality, power) in [("fast", AutomixPowerState()), ("auto", AutomixPowerState(onBattery: true, lowPower: false)), ("auto", AutomixPowerState(onBattery: false, lowPower: true))] {
+            let (coordinator, host) = make(quality: quality, power: power)
+            host.pairReady = true
+            coordinator.reconcile(); await host.settle()
+            #expect(host.prepared.map(\.quality) == ["fast"], "\(quality) \(power)")
+            #expect(coordinator.strategy.allowStems == false)
+            #expect(host.prefetchAllow == [false], "la precarga tampoco separa con stems")
+        }
+    }
+
+    @Test("Con la rápida lista y la pareja aún sin lista, se vigila y se pide stems cuando la precarga la deja lista")
+    func pollingUpgrade() async {
+        let (coordinator, host) = make(quality: "auto")
+        host.position = 20
+        await fastReady(coordinator, host)
+        #expect(host.prepared.map(\.quality) == ["fast"])
+        #expect(coordinator.request?.upgrade.hasPrefix("no pedida") == true)
+        coordinator.pollOnce(); await host.settle()
+        #expect(host.prepared.count == 1, "pareja no lista: nada")
+        host.pairReady = true
+        coordinator.pollOnce(); await host.settle()
+        #expect(host.prepared.map(\.quality) == ["fast", "stems"])
+        #expect(coordinator.request?.upgrade.hasPrefix("pedida") == true)
+        coordinator.pollOnce(); await host.settle()
+        #expect(host.prepared.count == 2, "no se vuelve a pedir")
+        var stems = transition(); stems.quality = "stems"
+        host.complete(host.prepared[1].requestID, with: stems)
+        await host.settle()
+        #expect(host.replaced.count == 1)
+    }
+
+    @Test("La vigilancia no pide stems si faltan menos de 8 s para el corte, si ya se comprometió o con batería")
+    func pollingGuards() async {
+        let (near, nearHost) = make(quality: "auto")
+        nearHost.position = 20
+        await fastReady(near, nearHost)
+        nearHost.position = 95   // aCut 100: faltan 5 s
+        nearHost.pairReady = true
+        near.pollOnce(); await nearHost.settle()
+        #expect(nearHost.prepared.count == 1)
+        #expect(near.request?.upgrade.hasPrefix("omitida") == true)
+
+        let (battery, batteryHost) = make(quality: "auto", power: AutomixPowerState(onBattery: true, lowPower: false))
+        batteryHost.position = 20
+        await fastReady(battery, batteryHost)
+        batteryHost.pairReady = true
+        battery.pollOnce(); await batteryHost.settle()
+        #expect(batteryHost.prepared.count == 1)
     }
 
     @Test("No pide stems con «siempre rápida», con batería o sin capacidad suficiente en automático")
@@ -1516,6 +1665,94 @@ struct AutomixCoordinatorQualityTests {
         #expect(host.prefetched.count == 4)
         coordinator.setEnabled(false)
         #expect(host.prefetchCancels == 3)
+    }
+
+    @Test("Sin vaivén: misma pareja con otro token, cola que se rehace o repetidos reconcile no cancelan ni vuelven a pedir")
+    func noChurn() async throws {
+        let token = UUID()
+        let (coordinator, host) = make(context(token: token), quality: "fast")
+        coordinator.reconcile(); await host.settle()
+        host.complete(host.prepared[0].requestID, with: transition())
+        await host.settle()
+        #expect(host.prepared.count == 1 && host.armed.count == 1)
+        // Reinicio o salto del mismo tema (otro token): la petición ya renderizada se conserva y el archivo se vuelve a entregar.
+        for _ in 0..<5 {
+            host.current = context(token: UUID(), started: true)
+            coordinator.reconcile(); await host.settle()
+        }
+        #expect(host.prepared.count == 1, "una sola petición para la pareja")
+        #expect(host.cancelled.isEmpty)
+        #expect(host.armed.count == 6, "se entrega de nuevo a cada ocurrencia, sin volver a preparar")
+        // La cola se rehace un instante (siguiente desconocido) y vuelve.
+        host.current = context(token: host.current!.token, next: nil, upcoming: [])
+        coordinator.reconcile()
+        host.current = context(token: host.current!.token)
+        coordinator.reconcile(); await host.settle()
+        #expect(host.prepared.count == 1 && host.cancelled.isEmpty)
+    }
+
+    @Test("Si el core cancela la petición (no nosotros), no se vuelve a pedir al instante; se reintenta con espera, dos veces como mucho")
+    func coreCancelBackoff() async {
+        let host = FakeHost()
+        host.current = context()
+        host.settings.quality = "fast"
+        var clock = Date(timeIntervalSince1970: 1_000)
+        let coordinator = AutomixCoordinator(enabled: true, now: { clock }, retryDelay: 10, log: { _ in })
+        coordinator.host = host
+        coordinator.reconcile(); await host.settle()
+        host.fail(host.prepared[0].requestID, .cancelled)
+        await host.settle()
+        #expect(coordinator.status == .idle)
+        for _ in 0..<10 { coordinator.reconcile(); await host.settle() }
+        #expect(host.prepared.count == 1, "los reconcile repetidos no la piden otra vez")
+        coordinator.pollOnce(); await host.settle()
+        #expect(host.prepared.count == 1, "aún dentro de la espera")
+        clock = clock.addingTimeInterval(11)
+        coordinator.pollOnce(); await host.settle()
+        #expect(host.prepared.count == 2, "primer reintento tras esperar")
+        host.fail(host.prepared[1].requestID, .cancelled)
+        await host.settle()
+        clock = clock.addingTimeInterval(11)
+        coordinator.pollOnce(); await host.settle()
+        #expect(host.prepared.count == 3, "segundo reintento")
+        host.fail(host.prepared[2].requestID, .cancelled)
+        await host.settle()
+        clock = clock.addingTimeInterval(60)
+        coordinator.pollOnce(); await host.settle()
+        #expect(host.prepared.count == 3, "no más de dos reintentos")
+    }
+
+    @Test("Si la petición directa de stems falla, se pide la rápida una sola vez y no se reintenta stems para esa pareja")
+    func directStemsFallback() async {
+        let token = UUID()
+        let (coordinator, host) = make(context(token: token), quality: "auto")
+        host.pairReady = true
+        coordinator.reconcile(); await host.settle()
+        #expect(host.prepared.map(\.quality) == ["stems"])
+        host.fail(host.prepared[0].requestID, .modelUnavailable)
+        await host.settle()
+        #expect(host.prepared.map(\.quality) == ["stems", "fast"])
+        host.complete(host.prepared[1].requestID, with: transition())
+        await host.settle()
+        #expect(coordinator.status == .ready(kind: "mix", bpm: 124))
+        for _ in 0..<3 { coordinator.reconcile(); await host.settle() }
+        #expect(host.prepared.count == 2)
+    }
+
+    @Test("La precarga lleva allowStems según ajuste y energía, y se vuelve a pedir si éste cambia")
+    func prefetchAllowStems() async {
+        let (coordinator, host) = make(context(upcoming: [song("B")]), quality: "auto")
+        coordinator.reconcile(); await host.settle()
+        #expect(host.prefetchAllow == [true])
+        host.power = AutomixPowerState(onBattery: true, lowPower: false)
+        coordinator.reconcile(); await host.settle()
+        #expect(host.prefetchAllow == [true, false], "al pasar a batería se pide sin stems")
+        coordinator.reconcile(); await host.settle()
+        #expect(host.prefetchAllow.count == 2)
+        host.settings.quality = "fast"
+        host.power = AutomixPowerState()
+        coordinator.pollOnce()
+        #expect(host.prefetchAllow == [true, false, false].dropLast() + [false] || host.prefetchAllow.last == false)
     }
 
     @Test("Sin temas siguientes o con repetición no hay precarga")

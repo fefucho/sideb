@@ -189,6 +189,7 @@ public final class PlayerViewModel {
         jamControl = control
         AutomixDiagnostics.shared.record("jam", "el Jam empezó: Automix se descarta (estado del empalme antes: \(audioService.spliceStage)); la preferencia guardada no cambia")
         automix.cancelPrefetch(reason: "Jam activo")
+        automix.teardown(reason: "Jam activo") // el Jam toma el control: nada de Automix, sin esperas
         automix.reconcile() // Con un Jam activo no hay Automix: descarta lo preparado.
     }
 
@@ -196,6 +197,7 @@ public final class PlayerViewModel {
     func endJamSession(restore: JamExitRestore) {
         defer { // Sin Jam, Automix vuelve a regir con la preferencia guardada.
             AutomixDiagnostics.shared.record("jam", "el Jam terminó: Automix vuelve a regir con el ajuste guardado (\(audioService.automixEnabled ? "encendido" : "apagado"))")
+            automix.teardown(reason: "el Jam terminó") // lo que se pidió con la cola del Jam no vale para la del usuario
             automix.reconcile()
         }
         let snapshot = jamSnapshot
@@ -384,7 +386,7 @@ public final class PlayerViewModel {
         self.playbackStore = playbackStore
         self.searchRecents = searchRecents ?? .shared
         self.playlistCatalog = playlistCatalog ?? .shared
-        self.automix = AutomixCoordinator(enabled: audioService.automixEnabled)
+        self.automix = AutomixCoordinator(enabled: audioService.automixEnabled, pollInterval: .seconds(5))
         self.automix.host = self
         setupAutomixCallbacks()
         setupRemoteCommands()
@@ -467,6 +469,7 @@ public final class PlayerViewModel {
         cancelInFlightRadioTasks()
         currentPlaybackToken = UUID()
         automix.cancelPrefetch(reason: "cambio de cuenta")
+        automix.teardown(reason: "cambio de cuenta")
         pendingTailSkipToken = nil
         audioService.stop()
         streamInfo = nil
@@ -2268,12 +2271,26 @@ extension PlayerViewModel: AutomixHost {
 
     func automixPower() -> AutomixPowerState { AutomixPowerState.current() }
 
-    func automixPrefetch(_ items: [AutomixSong]) {
+    func automixPairReady(from: String, to: String) -> Bool {
+        rustCore?.automixPairReady(fromVideoId: from, toVideoId: to) ?? false
+    }
+
+    func automixPosition() -> Double? {
+        guard currentTrack != nil, audioService.avPlayer.currentItem != nil else { return nil }
+        let seconds = audioService.displayedPlaybackSeconds
+        return seconds.isFinite ? seconds : nil
+    }
+
+    func automixCanReplaceSplice() -> Bool {
+        audioService.spliceStage == .none || audioService.spliceStage == .handedOver || audioService.canReplaceSplice
+    }
+
+    func automixPrefetch(_ items: [AutomixSong], allowStems: Bool) {
         guard let core = rustCore else { return }
         let queue = items.map { AutomixQueueItem(videoId: $0.videoID, isUpload: $0.isUpload) }
         Task { [weak self] in
             do {
-                try await core.prefetchAutomix(items: queue)
+                try await core.prefetchAutomix(items: queue, allowStems: allowStems)
                 self?.automix.prefetchScheduled(error: nil)
             } catch {
                 self?.automix.prefetchScheduled(error: error.localizedDescription)
@@ -2449,7 +2466,12 @@ extension PlayerViewModel {
             power: store.cachedPower(now: now) { automixPower() },
             prefetchItems: automix.prefetchItems, prefetchStatus: automix.prefetchStatus,
             prefetchRequestedAt: automix.prefetchRequestedAt, splice: audioService.spliceDiagnostics,
-            memory: AutomixMemory.current())
+            memory: AutomixMemory.current(), strategy: automix.strategy, prefetchAllowStems: automix.prefetchAllowStems,
+            pairReadyNow: context?.next.map { next in
+                store.cachedPairReady(key: "\(context!.current.videoID)>\(next.videoID)", now: now) {
+                    automixPairReady(from: context!.current.videoID, to: next.videoID)
+                }
+            })
     }
 
     /// Depuración: salta la canción a 10 s antes del corte (sólo con una transición lista y la canción antes del corte).

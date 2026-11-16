@@ -188,6 +188,14 @@ final class AudioSpliceSwitcher {
         timerQueue = nil
     }
 
+    /// Gancho de pruebas: da el archivo por precargado en ese segundo sin tocar el audio del sistema.
+    func markPrerolledForTesting(fileSeconds: Double) {
+        prerolledFileSeconds = fileSeconds
+        phase = .prerolled
+        diagnostics.phase = phase.rawValue
+        diagnostics.prerolledFileSeconds = fileSeconds
+    }
+
     func recordMeasuredOffset(milliseconds: Double) { diagnostics.measuredOffsetMilliseconds = milliseconds }
     func note(_ text: String) { diagnostics.note = text }
 

@@ -18,8 +18,8 @@ protocol AutomixHost: AnyObject {
     func automixPrepare(_ request: AutomixRequest) async throws -> AutomixTransition
     func automixCancel(requestID: String)
     func automixArm(_ transition: AutomixTransition) async -> AutomixArmOutcome
-    /// Cambia el archivo armado por otro de la misma pareja y el mismo corte (la versión de stems), si el empalme
-    /// aún no se comprometió.
+    /// Cambia el archivo armado por otro de la misma pareja (la versión de stems, cuyo corte y solape pueden ser
+    /// otros) si el empalme aún no se comprometió y el corte nuevo todavía cabe.
     func automixReplace(_ transition: AutomixTransition) async -> AutomixArmOutcome
     func automixDisarm()
     /// La cola cambió su siguiente tema mientras el archivo ya sonaba: se abandona la mezcla.
@@ -30,17 +30,28 @@ protocol AutomixHost: AnyObject {
     func automixSettings() -> AutomixSettingsValue
     func automixCapability() -> AutomixCapabilityValue?
     func automixPower() -> AutomixPowerState
+    /// `SideBCore.automixPairReady(from:to:)`: los stems de la pareja están en la caché y el modelo en disco.
+    func automixPairReady(from: String, to: String) -> Bool
+    /// Segundos de la canción que suena (los que muestra la barra), o nil si no hay.
+    func automixPosition() -> Double?
+    /// El empalme armado aún admite cambiar de archivo (no se programó el arranque). Verdadero si nada está armado.
+    func automixCanReplaceSplice() -> Bool
     /// Precarga del core: `items[0]` es el tema que suena, el resto los siguientes. Vuelve enseguida.
-    func automixPrefetch(_ items: [AutomixSong])
+    func automixPrefetch(_ items: [AutomixSong], allowStems: Bool)
     func automixCancelPrefetch()
 }
 
 /// Decide cuándo pedir la transición, la descarta cuando deja de valer y refleja su estado para la UI.
 /// No conoce AVFoundation ni el core: todo pasa por `AutomixHost`.
 ///
-/// Estrategia (PLAN-024, ronda 2): en cuanto el siguiente tema es conocido se pide la versión `"fast"` (sin modelo,
-/// segundos), sin esperar a que el tema actual haya sonado; después, si el ajuste y la capacidad lo recomiendan y no
-/// se está con batería o bajo consumo, se pide `"stems"` y se cambia sólo si llega antes de que el empalme se comprometa.
+/// Estrategia (PLAN-024, ronda 4):
+/// - Con el siguiente tema conocido: si los stems están permitidos y la pareja está lista (`automixPairReady`) se pide
+///   `"stems"` directamente (≈3–4 s); si no, `"fast"` enseguida.
+/// - Con la rápida ya lista se pide `"stems"` si el ajuste/capacidad lo recomiendan o cuando la precarga deja la pareja
+///   lista (se vigila cada pocos segundos mientras no se haya empalmado) y se cambia sólo si llega antes de comprometer
+///   el empalme y su corte aún queda a ≥ 8 s. El corte y el solape de stems pueden diferir de los de la rápida.
+/// - **Sin vaivén**: el plan se identifica por la pareja (no por la ocurrencia de reproducción) y una cancelación del
+///   core o un contexto transitorio no borran la petición; el core une las peticiones idénticas.
 @MainActor
 @Observable
 final class AutomixCoordinator {
@@ -72,8 +83,11 @@ final class AutomixCoordinator {
     var isPreparing: Bool { plan?.stage == .preparing }
     /// Lista de precarga vigente y su estado, para el diagnóstico.
     @ObservationIgnored private(set) var prefetchItems: [AutomixSong]?
+    @ObservationIgnored private(set) var prefetchAllowStems: Bool?
     @ObservationIgnored private(set) var prefetchRequestedAt: Date?
     @ObservationIgnored private(set) var prefetchStatus = "sin precarga"
+    /// Última decisión de estrategia y lectura de «pareja lista», para el diagnóstico.
+    @ObservationIgnored private(set) var strategy = AutomixStrategyInfo()
 
     @ObservationIgnored weak var host: (any AutomixHost)?
     @ObservationIgnored private(set) var isEnabled: Bool
@@ -84,6 +98,8 @@ final class AutomixCoordinator {
         var requestID: String
         var stage: Stage
         var task: Task<Void, Never>?
+        /// Calidad de la petición principal.
+        var quality = "fast"
         /// Transición vigente (la rápida, o la de stems cuando la sustituye).
         var transition: AutomixTransition?
         /// El reproductor aceptó el archivo.
@@ -91,21 +107,42 @@ final class AutomixCoordinator {
         var arming = false
         var upgradeRequestID: String?
         var upgradeTask: Task<Void, Never>?
+        /// Ya se pidió o se descartó la mejora: no se vuelve a decidir.
+        var upgradeSettled = false
+        /// Stems llegó mientras el reproductor aún cargaba la rápida: se cambia al terminar de armarla.
+        var pendingUpgrade: AutomixTransition?
+        /// Tras una cancelación del core (no pedida por nosotros): cuándo se puede volver a intentar, y cuántas veces.
+        var retryAt: Date?
+        var retries = 0
     }
     @ObservationIgnored private var plan: Plan?
     @ObservationIgnored private let now: () -> Date
     @ObservationIgnored private let log: @MainActor (String) -> Void
+    @ObservationIgnored private let dropGrace: Duration
+    @ObservationIgnored private let pollInterval: Duration?
+    @ObservationIgnored private let retryDelay: TimeInterval
+    @ObservationIgnored private var dropTask: Task<Void, Never>?
+    @ObservationIgnored private var pollTask: Task<Void, Never>?
+    /// Parejas cuya petición directa de stems falló: se vuelve a la rápida sin repetir el intento.
+    @ObservationIgnored private var directStemsFailed: Set<AutomixPlanKey> = []
 
     init(enabled: Bool = false, now: @escaping () -> Date = Date.init,
+         dropGrace: Duration = .seconds(2), pollInterval: Duration? = nil, retryDelay: TimeInterval = 10,
          log: @escaping @MainActor (String) -> Void = { AutomixDiagnostics.shared.record("coord", $0) }) {
         self.isEnabled = enabled
         self.now = now
         self.log = log
+        self.dropGrace = dropGrace
+        self.pollInterval = pollInterval
+        self.retryDelay = retryDelay
         self.status = enabled ? .idle : .off
+        if enabled { startPolling() }
     }
 
     /// Clave del plan vigente (para pruebas).
     var currentKey: AutomixPlanKey? { plan?.key }
+    /// Hay una caída diferida pendiente (para pruebas).
+    var hasPendingDrop: Bool { dropTask != nil }
 
     func setEnabled(_ enabled: Bool) {
         guard enabled != isEnabled else { return }
@@ -114,47 +151,103 @@ final class AutomixCoordinator {
         log("ajuste Automix: \(enabled ? "encendido" : "apagado")")
         // Apagar descarta todo; encender vuelve a evaluar desde cero (también reintenta un fallo anterior).
         teardown(reason: "cambió el ajuste")
+        directStemsFailed.removeAll()
         status = enabled ? .idle : .off
+        if enabled { startPolling() } else { pollTask?.cancel(); pollTask = nil }
         reconcile()
     }
+
+    // MARK: - Evaluación
 
     /// Idempotente y barato: se llama en cada cambio de cola, de tema o de modo.
     func reconcile() {
         guard isEnabled else {
             teardown(reason: "Automix apagado"); cancelPrefetch(reason: "Automix apagado"); status = .off; return
         }
-        guard let host, let context = host.automixContext() else { teardown(reason: "sin tema o contexto"); status = .idle; return }
+        guard let host, let context = host.automixContext() else {
+            // Sin tema (o la cola a medio cambiar): no se cancela nada de inmediato, sólo si dura.
+            if plan != nil { scheduleDrop(reason: "sin tema o contexto") } else { status = .idle }
+            return
+        }
+        cancelDrop()
         reconcilePrefetch(context)
 
         let key = context.next.map { AutomixPlanKey(token: context.token, from: context.current.videoID, to: $0.videoID) }
-        // Mismo plan: se conserva (también el fallido, que no se reintenta solo) mientras siga siendo elegible;
-        // con el archivo ya sonando no hay vuelta atrás.
-        if let plan, let key, plan.key == key, plan.stage == .mixing || AutomixEligibility.reason(context) == nil {
-            armIfNeeded(context: context)
-            return
-        }
+        let reason = AutomixEligibility.reason(context)
 
-        // El archivo ya suena y la cola cambió su siguiente: no hay forma de «des-oír» la mezcla.
-        if let plan, plan.stage == .mixing, plan.key.token == context.token, context.hasStarted {
-            teardown(reason: "el siguiente tema cambió con la mezcla sonando")
-            host.automixAbortMixing()
-            status = .idle
-            return
+        if let current = plan {
+            if current.stage == .mixing {
+                // El archivo ya suena: no hay forma de «des-oír» la mezcla.
+                if let key, current.key == key, current.key.token == context.token { armIfNeeded(context: context); return }
+                guard let key else { return } // siguiente transitoriamente desconocido: se deja seguir; el traspaso lo comprueba
+                _ = key
+                if current.key.token == context.token, context.hasStarted {
+                    teardown(reason: "el siguiente tema cambió con la mezcla sonando")
+                    host.automixAbortMixing()
+                    status = .idle
+                    return
+                }
+                teardown(reason: "cambió el tema que suena con la mezcla sonando")
+            } else if let key, current.key == key {
+                // Misma pareja: se conserva la petición aunque cambie la ocurrencia de reproducción (reinicio, salto).
+                if let reason {
+                    teardown(reason: "ya no es elegible (\(Self.describe(reason)))")
+                    status = .unavailable(reason)
+                    return
+                }
+                if current.key.token != context.token { adoptToken(context) }
+                armIfNeeded(context: context)
+                return
+            } else if key == nil, reason == .noNextTrack {
+                // La cola puede estar cambiando: se espera un poco antes de cancelar una petición en vuelo.
+                scheduleDrop(reason: "sin siguiente conocido")
+                return
+            } else {
+                let why: String
+                if let key, current.key.to != key.to || current.key.from != key.from { why = "cambió la pareja (\(current.key.from) → \(current.key.to) ⇒ \(key.from) → \(key.to))" }
+                else if let reason { why = "ya no es elegible (\(Self.describe(reason)))" }
+                else { why = "contexto distinto" }
+                teardown(reason: why)
+            }
         }
-
-        if let plan {
-            let why: String
-            if plan.key.token != context.token { why = "cambió el tema que suena" }
-            else if plan.key.to != key?.to { why = "cambió el siguiente tema" }
-            else if let reason = AutomixEligibility.reason(context) { why = "ya no es elegible (\(Self.describe(reason)))" }
-            else { why = "contexto distinto" }
-            teardown(reason: why)
-        }
-        if let reason = AutomixEligibility.reason(context) { status = .unavailable(reason); return }
+        if let reason { status = .unavailable(reason); return }
         // La versión rápida no necesita que el tema actual haya sonado: sólo conocer el siguiente.
         guard let next = context.next, let key else { status = .idle; return }
         start(key: key, from: context.current, to: next, host: host, forced: false)
     }
+
+    /// Misma pareja con otra ocurrencia de reproducción: el archivo del empalme anterior se perdió con la reproducción
+    /// vieja, la petición (y su resultado) no.
+    private func adoptToken(_ context: AutomixContext) {
+        log("misma pareja con otra ocurrencia de reproducción: se conserva la petición, se vuelve a entregar el archivo")
+        plan?.key.token = context.token
+        if plan?.stage == .ready {
+            if plan?.armed == true || plan?.arming == true { host?.automixDisarm() }
+            plan?.armed = false
+            plan?.arming = false
+            marker = nil
+        }
+    }
+
+    private func scheduleDrop(reason: String) {
+        guard dropTask == nil else { return }
+        log("contexto transitorio (\(reason)): se espera \(dropGrace) antes de cancelar la petición")
+        dropTask = Task { [weak self, dropGrace] in
+            try? await Task.sleep(for: dropGrace)
+            guard !Task.isCancelled, let self else { return }
+            self.dropTask = nil
+            // Si el contexto sigue sin servir, ahora sí.
+            let stillGone = self.host?.automixContext().map { $0.next == nil } ?? true
+            if stillGone, self.plan?.stage != .mixing {
+                self.teardown(reason: "\(reason) durante más de \(dropGrace)")
+                self.status = .idle
+            } else {
+                self.reconcile()
+            }
+        }
+    }
+
+    private func cancelDrop() { dropTask?.cancel(); dropTask = nil }
 
     /// Depuración: pide una transición ya. Respeta el ajuste, el Jam y la elegibilidad; descarta cualquier plan anterior.
     @discardableResult
@@ -180,6 +273,8 @@ final class AutomixCoordinator {
         host?.automixCancel(requestID: current.requestID)
         current.stage = .failed
         current.task = nil
+        current.retryAt = nil
+        current.retries = 99
         plan = current
         request?.phase = .cancelled
         request?.finishedAt = now()
@@ -207,6 +302,7 @@ final class AutomixCoordinator {
         if let upgrade = plan?.upgradeRequestID, plan?.stage != .failed { host?.automixCancel(requestID: upgrade) }
         plan?.upgradeTask?.cancel()
         plan = nil
+        cancelDrop()
         marker = nil
         status = isEnabled ? .idle : .off
     }
@@ -228,6 +324,7 @@ final class AutomixCoordinator {
         var failed = current
         failed.stage = .failed
         failed.armed = false
+        failed.retries = 99
         plan = failed
         status = .unavailable(.failed)
     }
@@ -235,6 +332,7 @@ final class AutomixCoordinator {
     /// Descarta preparación y empalme en curso (salto, cambio de cola, cuenta, Jam, apagado).
     func teardown(reason: String = "descartada") {
         marker = nil
+        cancelDrop()
         guard let plan else { return }
         plan.task?.cancel()
         plan.upgradeTask?.cancel()
@@ -258,6 +356,53 @@ final class AutomixCoordinator {
         self.plan = nil
     }
 
+    // MARK: - Vigilancia periódica
+
+    private func startPolling() {
+        pollTask?.cancel()
+        guard let pollInterval else { pollTask = nil; return }
+        pollTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: pollInterval)
+                guard !Task.isCancelled else { return }
+                self?.pollOnce()
+            }
+        }
+    }
+
+    /// Cada pocos segundos: refresca la precarga (por si cambió la batería), reintenta tras una cancelación del core y,
+    /// mientras la rápida espera sin empalmarse, mira si la precarga dejó la pareja lista para pedir stems.
+    func pollOnce() {
+        guard isEnabled, let host, let context = host.automixContext() else { return }
+        reconcilePrefetch(context)
+
+        guard var current = plan else { return }
+        if current.stage == .failed, let retryAt = current.retryAt, now() >= retryAt, current.retries < 2,
+           context.next.map({ AutomixPlanKey(token: context.token, from: context.current.videoID, to: $0.videoID) == current.key }) == true,
+           AutomixEligibility.reason(context) == nil, let next = context.next {
+            log("reintento tras la cancelación del core (\(current.retries + 1)/2)")
+            current.retries += 1
+            let retries = current.retries
+            plan = nil
+            start(key: current.key, from: context.current, to: next, host: host, forced: false)
+            plan?.retries = retries
+            return
+        }
+        guard current.stage == .ready, !current.upgradeSettled, current.upgradeRequestID == nil,
+              let fast = current.transition, fast.quality == "fast" else { return }
+        let settings = host.automixSettings()
+        let power = host.automixPower()
+        let allow = AutomixStrategy.allowStems(settings: settings, power: power)
+        guard allow.allowed else { return }
+        let ready = host.automixPairReady(from: current.key.from, to: current.key.to)
+        noteStrategy(pairReady: ready, allow: allow)
+        let decision = AutomixStrategy.wantsStems(settings: settings, capability: host.automixCapability(), power: power, pairReady: ready)
+        if decision.wants, !directStemsFailed.contains(current.key) {
+            log("mejora a stems: sí — \(decision.reason) (vigilancia periódica)")
+            startUpgrade(key: current.key, from: fast, host: host)
+        }
+    }
+
     // MARK: - Precarga
 
     private func reconcilePrefetch(_ context: AutomixContext) {
@@ -265,18 +410,21 @@ final class AutomixCoordinator {
         guard !context.repeatOne else { cancelPrefetch(reason: "repetición de un tema"); return }
         guard !context.upcoming.isEmpty else { cancelPrefetch(reason: "sin temas siguientes"); return }
         let items = AutomixPrefetchPlan.items(current: context.current, upcoming: context.upcoming, lookahead: context.lookahead)
-        guard items != prefetchItems else { return }
+        let allow = host.map { AutomixStrategy.allowStems(settings: $0.automixSettings(), power: $0.automixPower()) } ?? (allowed: true, reason: "sin anfitrión")
+        guard items != prefetchItems || allow.allowed != prefetchAllowStems else { return }
         prefetchItems = items
+        prefetchAllowStems = allow.allowed
         prefetchRequestedAt = now()
         prefetchStatus = "en curso"
-        log("precarga: \(items.map(\.videoID).joined(separator: " → ")) (adelanto \(context.lookahead))")
-        host?.automixPrefetch(items)
+        log("precarga: \(items.map(\.videoID).joined(separator: " → ")) (adelanto \(context.lookahead)), stems \(allow.allowed ? "permitidos" : "no permitidos") — \(allow.reason)")
+        host?.automixPrefetch(items, allowStems: allow.allowed)
     }
 
     /// Cancela la precarga del core (apagado, Jam, cambio de cuenta).
     func cancelPrefetch(reason: String) {
         guard prefetchItems != nil else { return }
         prefetchItems = nil
+        prefetchAllowStems = nil
         prefetchStatus = "cancelada: \(reason)"
         log("precarga cancelada: \(reason)")
         host?.automixCancelPrefetch()
@@ -290,15 +438,34 @@ final class AutomixCoordinator {
 
     // MARK: - Preparación
 
+    private func noteStrategy(pairReady: Bool, allow: (allowed: Bool, reason: String)) {
+        if strategy.pairReady != pairReady { log("pareja \(pairReady ? "lista" : "no lista") en la caché de stems") }
+        strategy.pairReady = pairReady
+        strategy.pairReadyAt = now()
+        strategy.allowStems = allow.allowed
+        strategy.allowReason = allow.reason
+    }
+
     private func start(key: AutomixPlanKey, from: AutomixSong, to: AutomixSong, host: any AutomixHost, forced: Bool) {
+        let settings = host.automixSettings()
+        let allow = AutomixStrategy.allowStems(settings: settings, power: host.automixPower())
+        let ready = allow.allowed && host.automixPairReady(from: from.videoID, to: to.videoID)
+        noteStrategy(pairReady: ready, allow: allow)
+        var quality = AutomixStrategy.initialQuality(allowStems: allow.allowed, pairReady: ready)
+        if quality == "stems", directStemsFailed.contains(key) { quality = "fast" }
+        log("estrategia: stems \(allow.allowed ? "permitidos" : "no permitidos") (\(allow.reason)); pareja \(ready ? "lista" : "no lista") ⇒ primera petición \(quality)")
         let requestID = UUID().uuidString
-        let request = AutomixRequest(requestID: requestID, from: from, to: to, cacheDirectory: host.automixCacheDirectory(), quality: "fast")
+        let request = AutomixRequest(requestID: requestID, from: from, to: to, cacheDirectory: host.automixCacheDirectory(), quality: quality)
         let started = now()
         let model = host.automixModelReady().map { $0 ? "listo" : "no descargado" } ?? "desconocido"
-        log("petición \(Self.short(requestID)) [fast]: \(from.videoID) → \(to.videoID)\(forced ? " (forzada)" : ""); modelo \(model)")
-        self.request = AutomixRequestInfo(requestID: requestID, from: from, to: to, requestedAt: started, finishedAt: nil,
-                                          phase: .preparing, forced: forced, rawError: nil, failureLabel: nil,
-                                          transition: nil, note: nil, requestedQuality: "fast", upgrade: "sin decidir")
+        log("petición \(Self.short(requestID)) [\(quality)]: \(from.videoID) → \(to.videoID)\(forced ? " (forzada)" : ""); modelo \(model)")
+        var info = AutomixRequestInfo(requestID: requestID, from: from, to: to, requestedAt: started, finishedAt: nil,
+                                      phase: .preparing, forced: forced, rawError: nil, failureLabel: nil,
+                                      transition: nil, note: nil, requestedQuality: quality, upgrade: "sin decidir")
+        info.allowStems = allow.allowed
+        info.allowReason = allow.reason
+        info.pairReadyAtRequest = ready
+        self.request = info
         status = .preparing
         let task = Task { [weak self, weak host] in
             guard let host else { return }
@@ -309,7 +476,9 @@ final class AutomixCoordinator {
                 self?.fail(key: key, requestID: requestID, error: error, started: started)
             }
         }
-        plan = Plan(key: key, requestID: requestID, stage: .preparing, task: task)
+        var newPlan = Plan(key: key, requestID: requestID, stage: .preparing, task: task)
+        newPlan.quality = quality
+        plan = newPlan
     }
 
     private func isCurrent(_ key: AutomixPlanKey, _ requestID: String) -> Bool {
@@ -330,7 +499,7 @@ final class AutomixCoordinator {
             markFailed(.failed)
             return
         }
-        log("lista \(Self.short(requestID)) [\(transition.quality)]: \(transition.kind) \(String(format: "%.0f", transition.displayBPM)) bpm, compases \(transition.bars), "
+        log("lista \(Self.short(requestID)) [\(transition.quality)]\(transition.reused ? " (reutilizada)" : ""): \(transition.kind) \(String(format: "%.0f", transition.displayBPM)) bpm, compases \(transition.bars), "
             + "modelo \(transition.stemsModel ? "sí" : "no"), aCut \(String(format: "%.2f", transition.aCut)), traspaso \(String(format: "%.2f", transition.handover)) "
             + "en archivo, core \(String(format: "%.1f", transition.elapsedSeconds)) s (separó \(String(format: "%.1f", transition.separatedSeconds)) s), "
             + "total \(String(format: "%.1f", seconds)) s — \(transition.detail)")
@@ -340,14 +509,30 @@ final class AutomixCoordinator {
         plan?.transition = transition
         status = .ready(kind: transition.kind, bpm: transition.displayBPM)
 
-        // ¿Hay que intentar la versión de stems? Se decide con los ajustes y la capacidad de ahora.
         if let host {
-            let decision = AutomixStrategy.wantsStems(settings: host.automixSettings(), capability: host.automixCapability(), power: host.automixPower())
-            log("mejora a stems: \(decision.wants ? "sí" : "no") — \(decision.reason)")
-            if decision.wants {
-                startUpgrade(key: key, from: transition, host: host)
+            if transition.quality == "stems" {
+                // La primera petición ya fue la de stems: no hay nada que mejorar.
+                plan?.upgradeSettled = true
+                request?.upgrade = "no aplica: la primera petición ya fue la de stems"
+                log("mejora a stems: no aplica — la pareja estaba lista y se pidió stems directamente")
             } else {
-                request?.upgrade = "no pedida: \(decision.reason)"
+                // ¿Hay que intentar la versión de stems? Con los ajustes, la capacidad y si la pareja ya quedó lista.
+                let settings = host.automixSettings()
+                let power = host.automixPower()
+                let allow = AutomixStrategy.allowStems(settings: settings, power: power)
+                let ready = allow.allowed && host.automixPairReady(from: key.from, to: key.to)
+                noteStrategy(pairReady: ready, allow: allow)
+                var decision = AutomixStrategy.wantsStems(settings: settings, capability: host.automixCapability(), power: power, pairReady: ready)
+                if decision.wants, directStemsFailed.contains(key) { decision = (false, "la petición directa de stems ya falló para esta pareja") }
+                log("mejora a stems: \(decision.wants ? "sí" : "no") — \(decision.reason)")
+                if decision.wants {
+                    startUpgrade(key: key, from: transition, host: host)
+                } else if allow.allowed {
+                    request?.upgrade = "no pedida: \(decision.reason) (se vigila la pareja)"
+                } else {
+                    plan?.upgradeSettled = true
+                    request?.upgrade = "no pedida: \(decision.reason)"
+                }
             }
         }
         if let host, let context = host.automixContext(), context.hasStarted { armIfNeeded(context: context) }
@@ -379,8 +564,13 @@ final class AutomixCoordinator {
         switch outcome {
         case .armed:
             plan?.armed = true
-            request?.note = "empalme armado (\(plan?.transition?.quality ?? transition.quality))"
-            marker = AutomixProgressMarker(transition: plan?.transition ?? transition)
+            request?.note = "empalme armado (\(transition.quality))"
+            marker = AutomixProgressMarker(transition: transition)
+            // Stems llegó mientras se cargaba la rápida: se cambia ahora.
+            if let pending = plan?.pendingUpgrade {
+                plan?.pendingUpgrade = nil
+                Task { [weak self] in await self?.applyUpgrade(key: key, stems: pending, fast: transition, requested: self?.request?.upgradeRequestedAt ?? Date()) }
+            }
         case .enteredLate:
             plan?.armed = true
             request?.note = "entrada tardía al archivo"
@@ -400,7 +590,20 @@ final class AutomixCoordinator {
     // MARK: - Mejora a stems
 
     private func startUpgrade(key: AutomixPlanKey, from fast: AutomixTransition, host: any AutomixHost) {
-        guard plan?.key == key, plan?.upgradeRequestID == nil else { return }
+        guard plan?.key == key, plan?.upgradeRequestID == nil, plan?.upgradeSettled == false else { return }
+        // Ya no merece la pena si el corte está encima: la de stems tardaría unos segundos y su corte puede moverse.
+        if let position = host.automixPosition(), fast.aCut - position < AutomixUpgradePlanner.minimumLeadSeconds {
+            plan?.upgradeSettled = true
+            request?.upgrade = "omitida: faltan \(String(format: "%.1f", max(0, fast.aCut - position))) s para el corte"
+            log("mejora a stems: no se pide — faltan \(String(format: "%.1f", fast.aCut - position)) s para el corte (< \(Int(AutomixUpgradePlanner.minimumLeadSeconds)) s)")
+            return
+        }
+        if !host.automixCanReplaceSplice() {
+            plan?.upgradeSettled = true
+            request?.upgrade = "omitida: el empalme ya se comprometió"
+            log("mejora a stems: no se pide — el empalme ya se comprometió")
+            return
+        }
         let requestID = UUID().uuidString
         let request = AutomixRequest(requestID: requestID, from: AutomixSong(videoID: key.from, isUpload: self.request?.from.isUpload ?? false),
                                      to: AutomixSong(videoID: key.to, isUpload: self.request?.to.isUpload ?? false),
@@ -410,6 +613,7 @@ final class AutomixCoordinator {
         self.request?.upgrade = "pedida (\(Self.short(requestID)))"
         self.request?.upgradeRequestedAt = started
         plan?.upgradeRequestID = requestID
+        plan?.upgradeSettled = true
         plan?.upgradeTask = Task { [weak self, weak host] in
             guard let host else { return }
             do {
@@ -435,31 +639,54 @@ final class AutomixCoordinator {
             log("stems descartada: contrato incoherente")
             return
         }
-        guard transition.sameCutAsFast, abs(transition.aCut - fast.aCut) < 0.001, abs(transition.overlapStart - fast.overlapStart) < 0.001 else {
-            request?.upgrade = "descartada: el corte cambió respecto de la rápida"
-            log("stems descartada: no corta en el mismo sitio que la rápida")
-            return
-        }
-        log("stems lista \(Self.short(requestID)): core \(String(format: "%.1f", transition.elapsedSeconds)) s, separó \(String(format: "%.1f", transition.separatedSeconds)) s, total \(String(format: "%.1f", seconds)) s")
+        log("stems lista \(Self.short(requestID))\(transition.reused ? " (reutilizada)" : ""): core \(String(format: "%.1f", transition.elapsedSeconds)) s, separó \(String(format: "%.1f", transition.separatedSeconds)) s, "
+            + "total \(String(format: "%.1f", seconds)) s; corte \(String(format: "%.2f", transition.aCut)) s (rápida \(String(format: "%.2f", fast.aCut)) s), mismo corte \(AutomixUpgradePlanner.sameCut(fast, transition) ? "sí" : "no")")
         guard plan?.stage == .ready, let host else {
             request?.upgrade = "omitida: llegó tras el empalme"
             log("stems llegó tras el empalme (el archivo ya suena): se queda la rápida")
             return
         }
-        if plan?.armed == true {
-            let outcome = await host.automixReplace(transition)
-            guard isCurrent(key, plan?.requestID ?? "") else { return }
-            guard outcome == .armed else {
-                request?.upgrade = "omitida: el empalme ya estaba comprometido"
-                log("stems llegó con el empalme comprometido: se queda la rápida")
-                return
-            }
+        if plan?.arming == true {
+            // El reproductor aún carga la rápida: se cambia en cuanto la acepte.
+            plan?.pendingUpgrade = transition
+            request?.upgrade = "pendiente: se cambia al terminar de armar la rápida"
+            return
         }
-        plan?.transition = transition
-        request?.transition = transition
-        request?.upgrade = "aplicada (\(String(format: "%.1f", seconds)) s tras pedirla)"
-        request?.note = "empalme armado (stems)"
-        log("la versión de stems sustituyó a la rápida antes de comprometer el empalme")
+        await applyUpgrade(key: key, stems: transition, fast: fast, requested: started, host: host)
+    }
+
+    /// Decide con la posición actual y aplica la sustitución (o la descarta con el motivo).
+    private func applyUpgrade(key: AutomixPlanKey, stems: AutomixTransition, fast: AutomixTransition, requested: Date, host: (any AutomixHost)? = nil) async {
+        guard plan?.key == key, plan?.stage == .ready, let host = host ?? self.host else { return }
+        let seconds = now().timeIntervalSince(requested)
+        let decision = AutomixUpgradePlanner.decide(fast: fast, stems: stems, position: host.automixPosition(),
+                                                    committed: plan?.armed == true && !host.automixCanReplaceSplice())
+        switch decision {
+        case .skip(let reason):
+            request?.upgrade = "omitida: \(reason)"
+            log("stems no se aplica — \(reason): se queda la rápida")
+            return
+        case .apply(let same):
+            if plan?.armed == true {
+                let outcome = await host.automixReplace(stems)
+                guard plan?.key == key else { return }
+                guard outcome == .armed else {
+                    request?.upgrade = "omitida: el empalme se comprometió o el corte nuevo ya no cabe"
+                    log("stems llegó con el empalme comprometido o el corte nuevo ya no cabe: se queda la rápida")
+                    return
+                }
+            }
+            plan?.transition = stems
+            request?.transition = stems
+            request?.upgrade = "aplicada (\(String(format: "%.1f", seconds)) s tras pedirla\(same ? "" : "; corte nuevo \(String(format: "%.2f", stems.aCut)) s"))"
+            request?.note = "empalme armado (stems)"
+            if case .ready = status { status = .ready(kind: stems.kind, bpm: stems.displayBPM) }
+            if plan?.armed == true {
+                // El corte y el solape pueden ser otros: la marca de la barra se mueve con ellos.
+                marker = AutomixProgressMarker(transition: stems)
+            }
+            log("la versión de stems sustituyó a la rápida antes de comprometer el empalme\(same ? "" : " (corte y solape nuevos: se vuelve a planear la línea de tiempo y se mueve la marca)")")
+        }
     }
 
     private func failUpgrade(key: AutomixPlanKey, requestID: String, error: Error, started: Date) {
@@ -473,7 +700,7 @@ final class AutomixCoordinator {
         log("stems sin resultado (\(failure.logLabel)) tras \(String(format: "%.1f", now().timeIntervalSince(started))) s: \(raw) — se queda la rápida")
     }
 
-    // MARK: - Fallos de la preparación rápida
+    // MARK: - Fallos de la petición principal
 
     private func fail(key: AutomixPlanKey, requestID: String, error: Error, started: Date) {
         guard isCurrent(key, requestID) else { return }
@@ -485,11 +712,29 @@ final class AutomixCoordinator {
         request?.finishedAt = now()
         request?.rawError = raw
         request?.failureLabel = failure.logLabel
+
+        // La petición directa de stems falló (modelo que se fue, etc.): se pide la rápida, una sola vez.
+        if plan?.quality == "stems", failure != .cancelled, !directStemsFailed.contains(key), let host, let context = host.automixContext(),
+           let next = context.next, next.videoID == key.to {
+            directStemsFailed.insert(key)
+            log("la petición directa de stems falló (\(failure.logLabel)): se pide la versión rápida")
+            plan = nil
+            start(key: key, from: context.current, to: next, host: host, forced: false)
+            return
+        }
         request?.upgrade = "no aplica"
         guard let reason = failure.reason else {
-            // Cancelada por nosotros o reemplazada por una petición más nueva del mismo core.
+            // Cancelada y no por nosotros (el core la sustituyó por otra pareja o la soltó): no se borra el plan para que
+            // el siguiente `reconcile` no la vuelva a pedir al instante; se reintenta con espera, un par de veces.
             request?.phase = .cancelled
-            if plan?.stage == .preparing { plan = nil; status = .idle }
+            if var current = plan, current.stage == .preparing {
+                current.stage = .failed
+                current.task = nil
+                current.retryAt = now().addingTimeInterval(retryDelay)
+                plan = current
+                status = .idle
+                log("el core canceló la petición: se reintenta en \(Int(retryDelay)) s (sin volver a pedirla ahora)")
+            }
             return
         }
         request?.phase = .failed

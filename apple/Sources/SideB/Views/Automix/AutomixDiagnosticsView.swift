@@ -127,6 +127,17 @@ private struct AutomixDiagnosticsSections: View {
             row("Estado del coordinador", snapshot.coordinatorStatus)
             row("Modelo (automixModelReady)", snapshot.modelReady.map(yesNo) ?? "—")
         }
+        section("Estrategia de calidad") {
+            let st = snapshot.strategy
+            row("Stems permitidos", (st.allowStems ?? snapshot.request?.allowStems).map(yesNo) ?? "—")
+            row("Por qué", st.allowReason.isEmpty ? (snapshot.request?.allowReason ?? "—") : st.allowReason)
+            row("Pareja lista (ahora)", snapshot.pairReadyNow.map(yesNo) ?? "—")
+            row("Pareja lista (última lectura)", st.pairReady.map { yesNo($0) + (st.pairReadyAt.map { " a las " + Self.clock($0) } ?? "") } ?? "—")
+            row("Precarga con stems", snapshot.prefetchAllowStems.map { $0 ? "permitidos" : "no permitidos" } ?? "—")
+            if let r = snapshot.request {
+                row("Primera petición", "\(r.requestedQuality) (pareja lista al pedir: \(yesNo(r.pairReadyAtRequest)))")
+            }
+        }
         section("Ajustes del core, capacidad y energía") {
             let st = snapshot.settings
             row("Calidad", "\(st.quality)   (auto = decide la capacidad)")
@@ -182,6 +193,7 @@ private struct AutomixDiagnosticsSections: View {
                 row("bpmFrom / bpmTo / bars", "\(f(t.bpmFrom, 1)) / \(f(t.bpmTo, 1)) / \(t.bars)")
                 row("stemsModel", yesNo(t.stemsModel))
                 row("quality / sameCutAsFast", "\(t.quality) / \(yesNo(t.sameCutAsFast))")
+                row("reused", yesNo(t.reused) + (t.reused ? " (el core devolvió el archivo ya renderizado)" : ""))
                 row("separatedSeconds", f(t.separatedSeconds, 1) + " s")
                 row("elapsedSeconds (core)", f(t.elapsedSeconds, 1) + " s")
                 row("aCut", f(t.aCut) + " s")

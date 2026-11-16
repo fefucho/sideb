@@ -32,25 +32,28 @@ struct AutomixTransition: Equatable, Sendable {
     var detail: String
     /// Calidad pedida al core: "fast" o "stems".
     var quality: String
-    /// El render de stems corta en el mismo sitio que el rápido (se puede cambiar de uno al otro sin mover el corte).
+    /// El render de stems corta en el mismo sitio que el rápido. Puede ser falso: el plan de stems es propio (con voces,
+    /// hasta 16 compases) y su corte y solape pueden diferir de los de la versión rápida.
     var sameCutAsFast: Bool
     /// Segundos de audio que separó el modelo en esta llamada (0 con «fast» o con una precarga).
     var separatedSeconds: Double
     /// Segundos de pared que tardó la preparación en el core, descargas incluidas.
     var elapsedSeconds: Double
+    /// El core devolvió un archivo ya renderizado en vez de volver a prepararlo.
+    var reused: Bool
 
     init(requestID: String, fromVideoID: String, toVideoID: String, kind: String, filePath: String,
          fileDuration: Double, aCut: Double, overlapStart: Double, overlapEnd: Double, bOffset: Double,
          bEntry: Double, handover: Double, bpmFrom: Double = 0, bpmTo: Double = 0, bars: Int = 0,
          stemsModel: Bool = false, detail: String = "", quality: String = "fast", sameCutAsFast: Bool = true,
-         separatedSeconds: Double = 0, elapsedSeconds: Double = 0) {
+         separatedSeconds: Double = 0, elapsedSeconds: Double = 0, reused: Bool = false) {
         self.requestID = requestID; self.fromVideoID = fromVideoID; self.toVideoID = toVideoID
         self.kind = kind; self.filePath = filePath; self.fileDuration = fileDuration; self.aCut = aCut
         self.overlapStart = overlapStart; self.overlapEnd = overlapEnd; self.bOffset = bOffset
         self.bEntry = bEntry; self.handover = handover; self.bpmFrom = bpmFrom; self.bpmTo = bpmTo
         self.bars = bars; self.stemsModel = stemsModel; self.detail = detail
         self.quality = quality; self.sameCutAsFast = sameCutAsFast
-        self.separatedSeconds = separatedSeconds; self.elapsedSeconds = elapsedSeconds
+        self.separatedSeconds = separatedSeconds; self.elapsedSeconds = elapsedSeconds; self.reused = reused
     }
 
     init(record: AutomixTransitionRecord) {
@@ -62,7 +65,7 @@ struct AutomixTransition: Equatable, Sendable {
                   bpmFrom: record.bpmFrom, bpmTo: record.bpmTo, bars: Int(record.bars),
                   stemsModel: record.stemsModel, detail: record.detail, quality: record.quality,
                   sameCutAsFast: record.sameCutAsFast, separatedSeconds: record.separatedSeconds,
-                  elapsedSeconds: record.elapsedSeconds)
+                  elapsedSeconds: record.elapsedSeconds, reused: record.reused)
     }
 
     /// Rechaza un registro incoherente en vez de reproducirlo: cualquier valor no finito o fuera de orden.
@@ -145,10 +148,16 @@ struct AutomixContext: Equatable, Sendable {
     var lookahead: Int = 1
 }
 
+/// Identidad de un plan de preparación: **la pareja** (de → a). El `token` (la ocurrencia de reproducción que suena)
+/// no forma parte de la igualdad: reiniciar o buscar en el mismo tema cambia el token pero no la pareja, y cancelar y
+/// volver a pedir la misma pareja es justo el vaivén que el core evita uniendo peticiones idénticas.
 struct AutomixPlanKey: Hashable, Sendable {
     var token: UUID
     var from: String
     var to: String
+
+    static func == (lhs: Self, rhs: Self) -> Bool { lhs.from == rhs.from && lhs.to == rhs.to }
+    func hash(into hasher: inout Hasher) { hasher.combine(from); hasher.combine(to) }
 }
 
 enum AutomixUnavailableReason: Equatable, Sendable {
@@ -244,7 +253,8 @@ struct AutomixRequest: Equatable, Sendable {
 struct AutomixSettingsValue: Equatable, Sendable {
     /// "auto", "fast" o "stems".
     var quality = "auto"
-    var fastOnBattery = true
+    /// Apagado por defecto (como en el core).
+    var fastOnBattery = false
     var skipSameAlbum = true
     /// "auto", "gpu" o "cpu".
     var compute = "auto"
@@ -302,23 +312,63 @@ struct AutomixPowerState: Equatable, Sendable {
     }
 }
 
-/// Decide si, además de la versión rápida, se pide la de stems para cambiarla si llega a tiempo.
+/// Estrategia de calidad (PLAN-024, ronda 4).
 enum AutomixStrategy {
-    /// Decisión y motivo (para el registro).
-    static func wantsStems(settings: AutomixSettingsValue, capability: AutomixCapabilityValue?,
-                           power: AutomixPowerState) -> (wants: Bool, reason: String) {
-        switch settings.quality {
-        case "fast": return (false, "calidad «siempre rápida»")
-        case "stems": break
-        default:
-            guard let capability, capability.stemsRecommended else {
-                return (false, "automática: esta Mac aún no recomienda stems (capacidad \(capability == nil ? "desconocida" : "insuficiente o sin medir"))")
-            }
-        }
+    /// ¿Se permiten los stems? Es el `allowStems` de la precarga y la condición para pedir `"stems"`:
+    /// la calidad no es «siempre rápida» y no se está (con el ajuste activo) con batería o bajo consumo.
+    static func allowStems(settings: AutomixSettingsValue, power: AutomixPowerState) -> (allowed: Bool, reason: String) {
+        if settings.quality == "fast" { return (false, "calidad «siempre rápida»") }
         if settings.fastOnBattery, power.onBattery || power.lowPower {
             return (false, "con \(power.lowPower ? "bajo consumo" : "batería") sólo la versión rápida")
         }
-        return (true, settings.quality == "stems" ? "calidad «siempre con stems»" : "automática: stems recomendado")
+        return (true, settings.quality == "stems" ? "calidad «siempre con stems»" : "calidad automática")
+    }
+
+    /// Calidad de la primera petición: stems directo si están permitidos y la pareja ya está lista en la caché
+    /// (≈3–4 s); si no, la rápida enseguida.
+    static func initialQuality(allowStems: Bool, pairReady: Bool) -> String { allowStems && pairReady ? "stems" : "fast" }
+
+    /// Decisión y motivo para pedir stems además de la rápida: permitidos y (pareja lista, «siempre con stems» o
+    /// automática con la capacidad recomendada).
+    static func wantsStems(settings: AutomixSettingsValue, capability: AutomixCapabilityValue?, power: AutomixPowerState,
+                           pairReady: Bool = false) -> (wants: Bool, reason: String) {
+        let allow = allowStems(settings: settings, power: power)
+        guard allow.allowed else { return (false, allow.reason) }
+        if pairReady { return (true, "la pareja está lista en la caché de stems") }
+        if settings.quality == "stems" { return (true, allow.reason) }
+        guard let capability, capability.stemsRecommended else {
+            return (false, "automática: esta Mac aún no recomienda stems (capacidad \(capability == nil ? "desconocida" : "insuficiente o sin medir")) y la pareja no está lista")
+        }
+        return (true, "automática: stems recomendado")
+    }
+}
+
+/// Qué hacer cuando llega la versión de stems con la rápida ya entregada: su corte y solape pueden ser otros.
+enum AutomixUpgradePlanner {
+    /// Margen mínimo entre «ahora» y el corte de stems para cambiar a ella (le da tiempo al segundo reproductor).
+    static let minimumLeadSeconds = 8.0
+
+    enum Decision: Equatable {
+        case apply(sameCut: Bool)
+        case skip(String)
+    }
+
+    static func sameCut(_ a: AutomixTransition, _ b: AutomixTransition) -> Bool {
+        abs(a.aCut - b.aCut) < 0.001 && abs(a.overlapStart - b.overlapStart) < 0.001 && abs(a.overlapEnd - b.overlapEnd) < 0.001
+    }
+
+    /// `position`: segundos de la canción que suena, o nil si aún no suena. `committed`: el arranque ya está programado
+    /// o el archivo suena.
+    static func decide(fast: AutomixTransition, stems: AutomixTransition, position: Double?, committed: Bool) -> Decision {
+        if committed { return .skip("llegó tras el empalme") }
+        let same = sameCut(fast, stems)
+        guard let position, position.isFinite else { return .apply(sameCut: same) }
+        let lead = stems.aCut - position
+        if lead <= 0 { return .skip("el corte de stems (\(String(format: "%.1f", stems.aCut)) s) ya quedó atrás") }
+        if !same, lead < minimumLeadSeconds {
+            return .skip("el corte de stems queda a \(String(format: "%.1f", lead)) s (< \(Int(minimumLeadSeconds)) s) y no coincide con el de la rápida")
+        }
+        return .apply(sameCut: same)
     }
 }
 

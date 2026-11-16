@@ -143,8 +143,21 @@ struct AutomixRequestInfo: Equatable, Sendable {
     var upgrade: String = "sin decidir"
     var upgradeRequestedAt: Date?
     var upgradeFinishedAt: Date?
+    /// Si los stems estaban permitidos al pedir y por qué.
+    var allowStems = false
+    var allowReason = ""
+    /// `automixPairReady` en el momento de pedir.
+    var pairReadyAtRequest = false
 
     func elapsed(now: Date) -> TimeInterval { max(0, (finishedAt ?? now).timeIntervalSince(requestedAt)) }
+}
+
+/// Última decisión de estrategia (permiso de stems y estado de la pareja), para el diagnóstico.
+struct AutomixStrategyInfo: Equatable, Sendable {
+    var allowStems: Bool?
+    var allowReason = ""
+    var pairReady: Bool?
+    var pairReadyAt: Date?
 }
 
 // MARK: - Instantánea
@@ -200,6 +213,10 @@ struct AutomixDiagnosticsSnapshot: Equatable, Sendable {
     /// Cronología del segundo reproductor (precarga, arranque programado, fundido, desfase medido).
     var splice: AutomixSpliceDiagnostics?
     var memory: AutomixMemoryInfo?
+    var strategy = AutomixStrategyInfo()
+    var prefetchAllowStems: Bool?
+    /// `automixPairReady` leído ahora (con caché breve) para la pareja actual → siguiente.
+    var pairReadyNow: Bool?
 }
 
 // MARK: - Almacén
@@ -214,6 +231,7 @@ final class AutomixDiagnostics {
     @ObservationIgnored private var modelReadyCache: (value: Bool?, date: Date)?
     @ObservationIgnored private var fileSizeCache: (path: String, size: Int64?, date: Date)?
     @ObservationIgnored private var powerCache: (value: AutomixPowerState, date: Date)?
+    @ObservationIgnored private var pairReadyCache: (key: String, value: Bool, date: Date)?
 
     /// Archivo persistente (nil hasta `configurePersistence`: las pruebas y el modo sin carpeta no escriben a disco).
     @ObservationIgnored private(set) var file: AutomixLogFile?
@@ -285,6 +303,13 @@ final class AutomixDiagnostics {
         if let cache = modelReadyCache, now.timeIntervalSince(cache.date) < 1 { return cache.value }
         let value = read()
         modelReadyCache = (value, now)
+        return value
+    }
+
+    func cachedPairReady(key: String, now: Date, read: () -> Bool) -> Bool {
+        if let cache = pairReadyCache, cache.key == key, now.timeIntervalSince(cache.date) < 2 { return cache.value }
+        let value = read()
+        pairReadyCache = (key, value, now)
         return value
     }
 

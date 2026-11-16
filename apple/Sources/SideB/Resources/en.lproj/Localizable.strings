@@ -1870,7 +1870,7 @@ History: %@</string>
 	<key>settings.automix.keepModel</key>
 	<string>Keep the model loaded</string>
 	<key>settings.automix.keepModel.hint</key>
-	<string>Avoids loading the model for every mix, but uses about 2 GB of memory while loaded. When off, it is released after 60 seconds without use.</string>
+	<string>Avoids loading the model for every mix, but uses about 2 GB of memory while loaded. When off, it is released after 15 seconds without use.</string>
 	<key>settings.automix.lookahead</key>
 	<string>Prepare ahead (songs)</string>
 	<key>settings.automix.model.absent</key>

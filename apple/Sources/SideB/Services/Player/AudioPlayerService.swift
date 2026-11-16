@@ -127,6 +127,9 @@ public final class AudioPlayerService {
     @ObservationIgnored private var spliceItemObserver: NSKeyValueObservation?
     /// Hay una confirmación del empalme en curso (preparando o programando el arranque).
     @ObservationIgnored private var isCommitting = false
+    /// Gancho de pruebas: no precarga el archivo en el segundo reproductor (las pruebas de la máquina de estados no
+    /// dependen de que el sistema arranque audio). Nunca se activa en la app.
+    @ObservationIgnored var skipsSplicePrerollForTesting = false
     /// The item the end/status observers were installed for.
     @ObservationIgnored private weak var observedItem: AVPlayerItem?
     private var timeObserverToken: Any?
@@ -643,10 +646,11 @@ extension AudioPlayerService {
     /// Cambia el archivo armado por otro de la misma pareja y el mismo corte (stems en lugar de la versión rápida)
     /// mientras el empalme no se haya comprometido (arranque programado).
     func replaceSplice(_ plan: AudioSplice) -> AudioSpliceArmResult {
+        // El plan de stems puede tener otro corte y otro solape que la rápida: se vuelve a planear la línea de tiempo.
+        // Sólo se rechaza si el empalme ya se comprometió o si a esta altura ya no cabe el fundido en el archivo nuevo.
         guard var active = splice, active.stage == .armed, !active.switcher.isCommitted, !isCommitting,
-              abs(plan.timeline.cut - active.plan.timeline.cut) < 0.001,
-              abs(plan.timeline.overlapStart - active.plan.timeline.overlapStart) < 0.001 else {
-            AutomixDiagnostics.shared.record("player", "sustitución rechazada: el empalme ya se comprometió, no hay empalme armado o el corte cambia")
+              plan.timeline.commitDecision(position: displayedMediaTime()) != .giveUp else {
+            AutomixDiagnostics.shared.record("player", "sustitución rechazada: el empalme ya se comprometió, no hay empalme armado o el corte nuevo ya no cabe")
             return .unavailable
         }
         active.switcher.dispose()
@@ -656,7 +660,7 @@ extension AudioPlayerService {
         splice = active
         observeSpliceItem(switcher)
         startPreroll(switcher, fileSeconds: 0)
-        AutomixDiagnostics.shared.record("player", "archivo sustituido antes de comprometer el empalme (mismo corte)")
+        AutomixDiagnostics.shared.record("player", "archivo sustituido antes de comprometer el empalme: corte \(Self.fmt(plan.timeline.cut)) s, solape \(Self.fmt(plan.timeline.overlapStart))–\(Self.fmt(plan.timeline.overlapEnd)) s")
         return .armed
     }
 
@@ -674,6 +678,7 @@ extension AudioPlayerService {
     }
 
     private func startPreroll(_ switcher: AudioSpliceSwitcher, fileSeconds: Double) {
+        guard !skipsSplicePrerollForTesting else { return }
         Task { @MainActor [weak self, weak switcher] in
             guard let switcher else { return }
             let result = await switcher.prepare(fileSeconds: fileSeconds)
@@ -846,6 +851,12 @@ extension AudioPlayerService {
         isCommitting = true
         currentTime = seconds
         AutomixDiagnostics.shared.record("player", "salto dentro del archivo: canción \(Self.fmt(seconds)) s → archivo \(Self.fmt(file)) s (entrada inmediata)")
+        if skipsSplicePrerollForTesting {
+            switcher.markPrerolledForTesting(fileSeconds: file)
+            isCommitting = false
+            completeSwitch(immediate: true)
+            return true
+        }
         Task { @MainActor [weak self] in
             guard let self else { return }
             defer { self.isCommitting = false }

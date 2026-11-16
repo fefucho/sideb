@@ -570,6 +570,14 @@ public protocol SideBCoreProtocol : AnyObject {
      */
     func automixModelReady()  -> Bool
     
+    /**
+     * Whether a `"stems"` preparation of this pair would separate nothing:
+     * the stems for the end of `from` and the start of `to` are in the cache
+     * (a prefetch put them there) and the model is on disk. Looks at files
+     * only, so it is cheap enough to ask whenever the queue changes.
+     */
+    func automixPairReady(fromVideoId: String, toVideoId: String)  -> Bool
+    
     func cancelAnimatedArtwork(requestId: String) 
     
     /**
@@ -820,13 +828,17 @@ public protocol SideBCoreProtocol : AnyObject {
      * Replaces the prefetch list. `items[0]` is the song that is playing
      * (its end is the one a transition reads), the rest the upcoming ones in
      * order; at most `lookahead + 1` are used. Downloads each in turn and,
-     * once the model is on disk and the setting `quality` is not "fast",
-     * separates (at low priority, never while a preparation runs) the last
-     * stretch of the playing song and the first and last of the next ones.
-     * Returns as soon as the work is scheduled; calling it again cancels the
-     * previous list. Bounded by the cache limits (12 songs, 500 MB of stems).
+     * **only if `allow_stems` is true** (and the setting `quality` is not
+     * "fast", and the model is on disk), separates, at low priority and never
+     * while a preparation runs, the last 62 s of the playing song and the
+     * first 64 s of the next ones (what the vocal-aware plan reads). With
+     * `allow_stems` false it only downloads: no model, no decoding, no memory.
+     * Pass false on battery with the rule on, in low-power mode, or when the
+     * quality is "fast". Returns as soon as the work is scheduled; calling it
+     * again cancels the previous list. Bounded by the cache limits (12 songs,
+     * 500 MB of stems).
      */
-    func prefetchAutomix(items: [AutomixQueueItem]) async throws 
+    func prefetchAutomix(items: [AutomixQueueItem], allowStems: Bool) async throws 
     
     /**
      * Optional public album artwork; never part of the audio or lyrics request path.
@@ -839,20 +851,40 @@ public protocol SideBCoreProtocol : AnyObject {
      * one plays: resolves both streams (AAC is required, so a song that
      * resolves to Opus only fails with an `automix:unsupported-format`
      * stream error), downloads them into `<cache_dir>/audio/`, and writes
-     * `<cache_dir>/transitions/<from>__<to>.wav` with the first song
+     * `<cache_dir>/transitions/<from>__<to>.<fast|stems>.wav` with the first song
      * untouched, the transition and the whole rest of the second.
      *
      * Gains are baked into the file (the player must not apply its own to
-     * it). At most one preparation runs at a time and a newer request
-     * supersedes an older one: the older fails with `automix:cancelled`, as
-     * does one cancelled by [`cancel_automix`](Self::cancel_automix); its work
-     * may still run to the end of its current stage in the background.
-     * Nothing here touches the playback-history tracking `resolve_stream`
-     * records.
+     * it).
      *
-     * First transition on a machine without the stem model: it gets the
-     * frequency-split stand-in and the model downloads in the background
-     * (`automix_model_ready` turns true once it has).
+     * **Same request, same work.** A request with the same pair, quality and
+     * gains as one already running joins it (it gets the same result under
+     * its own `request_id`); one whose file is already rendered and still on
+     * disk returns that record at once with `reused = true`; cancelling one of
+     * several requests waiting for a job leaves it running for the others.
+     * A request for a *different pair* supersedes the jobs of every other pair
+     * (they fail with `automix:cancelled`); the same pair at the other quality
+     * runs alongside. So a shell never needs to debounce, de-duplicate or
+     * re-ask: asking is idempotent.
+     *
+     * `"fast"` plans from a frequency split (a bass swap with the highs and
+     * mids crossing over gradually; up to 16 bars when B's intro is
+     * instrumental by band cues, else up to 8) and takes a few seconds.
+     * `"stems"` plans from HT-Demucs stems of the last 62 s of the first song
+     * and the first 64 s of the second (where each sings, so B may sing over
+     * A's instrumental outro, long outros are skipped and clashing harmonies
+     * are kept apart; up to 16 bars / 36 s): ~5 s when
+     * [`automix_pair_ready`](Self::automix_pair_ready) is true, ~30 s when it
+     * has to separate them now. Its cut may differ from the fast one's:
+     * `same_cut_as_fast` says. A "stems" request for a pair that ends up a
+     * "cut" or "fade" has nothing to separate. Fails with
+     * `automix:model-unavailable` without the model.
+     *
+     * At most one preparation runs at a time; a superseded one fails with
+     * `automix:cancelled` as does one cancelled by
+     * [`cancel_automix`](Self::cancel_automix); its work may still run to the
+     * end of its current stage in the background. Nothing here touches the
+     * playback-history tracking `resolve_stream` records.
      */
     func prepareAutomix(requestId: String, fromVideoId: String, fromIsUpload: Bool, fromGainDb: Double?, toVideoId: String, toIsUpload: Bool, toGainDb: Double?, quality: String, cacheDir: String) async throws  -> AutomixTransitionRecord
     
@@ -1092,6 +1124,21 @@ open func automixCapability() -> AutomixCapability {
 open func automixModelReady() -> Bool {
     return try!  FfiConverterBool.lift(try! rustCall() {
     uniffi_sideb_core_fn_method_sidebcore_automix_model_ready(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * Whether a `"stems"` preparation of this pair would separate nothing:
+     * the stems for the end of `from` and the start of `to` are in the cache
+     * (a prefetch put them there) and the model is on disk. Looks at files
+     * only, so it is cheap enough to ask whenever the queue changes.
+     */
+open func automixPairReady(fromVideoId: String, toVideoId: String) -> Bool {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+    uniffi_sideb_core_fn_method_sidebcore_automix_pair_ready(self.uniffiClonePointer(),
+        FfiConverterString.lower(fromVideoId),
+        FfiConverterString.lower(toVideoId),$0
     )
 })
 }
@@ -2067,19 +2114,23 @@ open func pinItem(id: String, kind: String, title: String, subtitle: String?, th
      * Replaces the prefetch list. `items[0]` is the song that is playing
      * (its end is the one a transition reads), the rest the upcoming ones in
      * order; at most `lookahead + 1` are used. Downloads each in turn and,
-     * once the model is on disk and the setting `quality` is not "fast",
-     * separates (at low priority, never while a preparation runs) the last
-     * stretch of the playing song and the first and last of the next ones.
-     * Returns as soon as the work is scheduled; calling it again cancels the
-     * previous list. Bounded by the cache limits (12 songs, 500 MB of stems).
+     * **only if `allow_stems` is true** (and the setting `quality` is not
+     * "fast", and the model is on disk), separates, at low priority and never
+     * while a preparation runs, the last 62 s of the playing song and the
+     * first 64 s of the next ones (what the vocal-aware plan reads). With
+     * `allow_stems` false it only downloads: no model, no decoding, no memory.
+     * Pass false on battery with the rule on, in low-power mode, or when the
+     * quality is "fast". Returns as soon as the work is scheduled; calling it
+     * again cancels the previous list. Bounded by the cache limits (12 songs,
+     * 500 MB of stems).
      */
-open func prefetchAutomix(items: [AutomixQueueItem])async throws  {
+open func prefetchAutomix(items: [AutomixQueueItem], allowStems: Bool)async throws  {
     return
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_sideb_core_fn_method_sidebcore_prefetch_automix(
                     self.uniffiClonePointer(),
-                    FfiConverterSequenceTypeAutomixQueueItem.lower(items)
+                    FfiConverterSequenceTypeAutomixQueueItem.lower(items),FfiConverterBool.lower(allowStems)
                 )
             },
             pollFunc: ffi_sideb_core_rust_future_poll_void,
@@ -2116,20 +2167,40 @@ open func prepareAnimatedArtwork(request: AnimatedArtworkRequest, requestId: Str
      * one plays: resolves both streams (AAC is required, so a song that
      * resolves to Opus only fails with an `automix:unsupported-format`
      * stream error), downloads them into `<cache_dir>/audio/`, and writes
-     * `<cache_dir>/transitions/<from>__<to>.wav` with the first song
+     * `<cache_dir>/transitions/<from>__<to>.<fast|stems>.wav` with the first song
      * untouched, the transition and the whole rest of the second.
      *
      * Gains are baked into the file (the player must not apply its own to
-     * it). At most one preparation runs at a time and a newer request
-     * supersedes an older one: the older fails with `automix:cancelled`, as
-     * does one cancelled by [`cancel_automix`](Self::cancel_automix); its work
-     * may still run to the end of its current stage in the background.
-     * Nothing here touches the playback-history tracking `resolve_stream`
-     * records.
+     * it).
      *
-     * First transition on a machine without the stem model: it gets the
-     * frequency-split stand-in and the model downloads in the background
-     * (`automix_model_ready` turns true once it has).
+     * **Same request, same work.** A request with the same pair, quality and
+     * gains as one already running joins it (it gets the same result under
+     * its own `request_id`); one whose file is already rendered and still on
+     * disk returns that record at once with `reused = true`; cancelling one of
+     * several requests waiting for a job leaves it running for the others.
+     * A request for a *different pair* supersedes the jobs of every other pair
+     * (they fail with `automix:cancelled`); the same pair at the other quality
+     * runs alongside. So a shell never needs to debounce, de-duplicate or
+     * re-ask: asking is idempotent.
+     *
+     * `"fast"` plans from a frequency split (a bass swap with the highs and
+     * mids crossing over gradually; up to 16 bars when B's intro is
+     * instrumental by band cues, else up to 8) and takes a few seconds.
+     * `"stems"` plans from HT-Demucs stems of the last 62 s of the first song
+     * and the first 64 s of the second (where each sings, so B may sing over
+     * A's instrumental outro, long outros are skipped and clashing harmonies
+     * are kept apart; up to 16 bars / 36 s): ~5 s when
+     * [`automix_pair_ready`](Self::automix_pair_ready) is true, ~30 s when it
+     * has to separate them now. Its cut may differ from the fast one's:
+     * `same_cut_as_fast` says. A "stems" request for a pair that ends up a
+     * "cut" or "fade" has nothing to separate. Fails with
+     * `automix:model-unavailable` without the model.
+     *
+     * At most one preparation runs at a time; a superseded one fails with
+     * `automix:cancelled` as does one cancelled by
+     * [`cancel_automix`](Self::cancel_automix); its work may still run to the
+     * end of its current stage in the background. Nothing here touches the
+     * playback-history tracking `resolve_stream` records.
      */
 open func prepareAutomix(requestId: String, fromVideoId: String, fromIsUpload: Bool, fromGainDb: Double?, toVideoId: String, toIsUpload: Bool, toGainDb: Double?, quality: String, cacheDir: String)async throws  -> AutomixTransitionRecord {
     return
@@ -3650,9 +3721,9 @@ public struct AutomixSettings {
      */
     public var quality: String
     /**
-     * Whether the shell should stick to "fast" when on battery or in low
-     * power mode. The core only stores the rule; platform state is the
-     * shell's.
+     * Whether the shell should stick to "fast" (and pass `allow_stems:
+     * false` to `prefetch_automix`) when on battery. Off by default. The
+     * core only stores the rule; platform state is the shell's.
      */
     public var fastOnBattery: Bool
     /**
@@ -3670,7 +3741,7 @@ public struct AutomixSettings {
     public var lookahead: UInt8
     /**
      * Keep the model in memory between transitions; otherwise it is
-     * released after 60 seconds without use.
+     * released after 15 seconds without use (it holds 2-3 GB while loaded).
      */
     public var keepModelLoaded: Bool
 
@@ -3681,9 +3752,9 @@ public struct AutomixSettings {
          * "auto" (the shell decides from `automix_capability`), "fast" or "stems".
          */quality: String, 
         /**
-         * Whether the shell should stick to "fast" when on battery or in low
-         * power mode. The core only stores the rule; platform state is the
-         * shell's.
+         * Whether the shell should stick to "fast" (and pass `allow_stems:
+         * false` to `prefetch_automix`) when on battery. Off by default. The
+         * core only stores the rule; platform state is the shell's.
          */fastOnBattery: Bool, 
         /**
          * Whether the shell should not transition between two songs of the same
@@ -3697,7 +3768,7 @@ public struct AutomixSettings {
          */lookahead: UInt8, 
         /**
          * Keep the model in memory between transitions; otherwise it is
-         * released after 60 seconds without use.
+         * released after 15 seconds without use (it holds 2-3 GB while loaded).
          */keepModelLoaded: Bool) {
         self.quality = quality
         self.fastOnBattery = fastOnBattery
@@ -3871,9 +3942,16 @@ public struct AutomixTransitionRecord {
      */
     public var separatedSeconds: Double
     /**
-     * Wall-clock seconds this call took, downloads included.
+     * Wall-clock seconds this call took, downloads included (0 when
+     * `reused`).
      */
     public var elapsedSeconds: Double
+    /**
+     * True when this is the result of an earlier (or a concurrent) request
+     * for the same pair, quality and gains rather than new work: see
+     * [`SideBCore::prepare_automix`].
+     */
+    public var reused: Bool
     /**
      * One line, in Spanish, about what was done and why.
      */
@@ -3943,8 +4021,14 @@ public struct AutomixTransitionRecord {
          * when a prefetch had separated the stretches already).
          */separatedSeconds: Double, 
         /**
-         * Wall-clock seconds this call took, downloads included.
+         * Wall-clock seconds this call took, downloads included (0 when
+         * `reused`).
          */elapsedSeconds: Double, 
+        /**
+         * True when this is the result of an earlier (or a concurrent) request
+         * for the same pair, quality and gains rather than new work: see
+         * [`SideBCore::prepare_automix`].
+         */reused: Bool, 
         /**
          * One line, in Spanish, about what was done and why.
          */detail: String) {
@@ -3968,6 +4052,7 @@ public struct AutomixTransitionRecord {
         self.sameCutAsFast = sameCutAsFast
         self.separatedSeconds = separatedSeconds
         self.elapsedSeconds = elapsedSeconds
+        self.reused = reused
         self.detail = detail
     }
 }
@@ -4036,6 +4121,9 @@ extension AutomixTransitionRecord: Equatable, Hashable {
         if lhs.elapsedSeconds != rhs.elapsedSeconds {
             return false
         }
+        if lhs.reused != rhs.reused {
+            return false
+        }
         if lhs.detail != rhs.detail {
             return false
         }
@@ -4063,6 +4151,7 @@ extension AutomixTransitionRecord: Equatable, Hashable {
         hasher.combine(sameCutAsFast)
         hasher.combine(separatedSeconds)
         hasher.combine(elapsedSeconds)
+        hasher.combine(reused)
         hasher.combine(detail)
     }
 }
@@ -4095,6 +4184,7 @@ public struct FfiConverterTypeAutomixTransitionRecord: FfiConverterRustBuffer {
                 sameCutAsFast: FfiConverterBool.read(from: &buf), 
                 separatedSeconds: FfiConverterDouble.read(from: &buf), 
                 elapsedSeconds: FfiConverterDouble.read(from: &buf), 
+                reused: FfiConverterBool.read(from: &buf), 
                 detail: FfiConverterString.read(from: &buf)
         )
     }
@@ -4120,6 +4210,7 @@ public struct FfiConverterTypeAutomixTransitionRecord: FfiConverterRustBuffer {
         FfiConverterBool.write(value.sameCutAsFast, into: &buf)
         FfiConverterDouble.write(value.separatedSeconds, into: &buf)
         FfiConverterDouble.write(value.elapsedSeconds, into: &buf)
+        FfiConverterBool.write(value.reused, into: &buf)
         FfiConverterString.write(value.detail, into: &buf)
     }
 }
@@ -9741,6 +9832,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_sideb_core_checksum_method_sidebcore_automix_model_ready() != 42958) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_sideb_core_checksum_method_sidebcore_automix_pair_ready() != 38399) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_sideb_core_checksum_method_sidebcore_cancel_animated_artwork() != 50775) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -9912,13 +10006,13 @@ private let initializationResult: InitializationResult = {
     if (uniffi_sideb_core_checksum_method_sidebcore_pin_item() != 25725) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_sideb_core_checksum_method_sidebcore_prefetch_automix() != 11021) {
+    if (uniffi_sideb_core_checksum_method_sidebcore_prefetch_automix() != 53675) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_sideb_core_checksum_method_sidebcore_prepare_animated_artwork() != 41957) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_sideb_core_checksum_method_sidebcore_prepare_automix() != 456) {
+    if (uniffi_sideb_core_checksum_method_sidebcore_prepare_automix() != 21788) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_sideb_core_checksum_method_sidebcore_rate_song() != 25083) {

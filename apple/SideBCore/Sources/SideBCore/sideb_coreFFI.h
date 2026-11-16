@@ -314,6 +314,11 @@ RustBuffer uniffi_sideb_core_fn_method_sidebcore_automix_capability(void*_Nonnul
 int8_t uniffi_sideb_core_fn_method_sidebcore_automix_model_ready(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_FN_METHOD_SIDEBCORE_AUTOMIX_PAIR_READY
+#define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_FN_METHOD_SIDEBCORE_AUTOMIX_PAIR_READY
+int8_t uniffi_sideb_core_fn_method_sidebcore_automix_pair_ready(void*_Nonnull ptr, RustBuffer from_video_id, RustBuffer to_video_id, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_FN_METHOD_SIDEBCORE_CANCEL_ANIMATED_ARTWORK
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_FN_METHOD_SIDEBCORE_CANCEL_ANIMATED_ARTWORK
 void uniffi_sideb_core_fn_method_sidebcore_cancel_animated_artwork(void*_Nonnull ptr, RustBuffer request_id, RustCallStatus *_Nonnull out_status
@@ -601,7 +606,7 @@ void uniffi_sideb_core_fn_method_sidebcore_pin_item(void*_Nonnull ptr, RustBuffe
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_FN_METHOD_SIDEBCORE_PREFETCH_AUTOMIX
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_FN_METHOD_SIDEBCORE_PREFETCH_AUTOMIX
-uint64_t uniffi_sideb_core_fn_method_sidebcore_prefetch_automix(void*_Nonnull ptr, RustBuffer items
+uint64_t uniffi_sideb_core_fn_method_sidebcore_prefetch_automix(void*_Nonnull ptr, RustBuffer items, int8_t allow_stems
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_FN_METHOD_SIDEBCORE_PREPARE_ANIMATED_ARTWORK
@@ -1066,6 +1071,12 @@ uint16_t uniffi_sideb_core_checksum_method_sidebcore_automix_capability(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_AUTOMIX_MODEL_READY
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_AUTOMIX_MODEL_READY
 uint16_t uniffi_sideb_core_checksum_method_sidebcore_automix_model_ready(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_AUTOMIX_PAIR_READY
+#define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_AUTOMIX_PAIR_READY
+uint16_t uniffi_sideb_core_checksum_method_sidebcore_automix_pair_ready(void
     
 );
 #endif
