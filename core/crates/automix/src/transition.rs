@@ -159,7 +159,12 @@ pub fn prepare(a: &Track, b: &Track, cache: &Path, opts: &Options) -> Result<Tra
                 };
                 let fast_cut = fast.as_ref().ok().map(|p| (p.a_beats[0], p.beats, p.a_skipped_bars));
                 let mut chosen: Option<Plan> = None;
-                if stems_wanted {
+                // The model cannot fix what the stems do not touch: a pair the
+                // fast plan turns away for its tempos or its length is turned
+                // away by the stems plan too, after 30 s of separating. Only a
+                // weak grid (where the drum stem may do better) is worth it.
+                let stems_can_help = matches!(fast, Ok(_) | Err(Refusal::WeakGrid { .. }));
+                if stems_wanted && stems_can_help {
                     match mix::plan_stems(a, b, opts, cache, crate::model::Priority::Normal) {
                         Ok(plan) => chosen = Some(plan),
                         Err(Refusal::Cancelled(c)) => return Err(c.into()),
@@ -304,6 +309,15 @@ impl Svf {
     }
 }
 
+/// The second of B at which a cut lets B into the file: just before its first
+/// audible sound, but no more than `pickup_max` before its downbeat, never
+/// after the downbeat and never before B's first sample. The last clamp has to
+/// come last: the grid's first downbeat can fall a few hundredths before 0, and
+/// B has no audio there to include.
+fn cut_entry(first_audible: f64, downbeat: f64, pickup_max: f64) -> f64 {
+    (first_audible - 0.02).max(downbeat - pickup_max).min(downbeat).max(0.0)
+}
+
 /// Bars of B's start that come through an opening low-pass in a cut.
 const SWEEP_BARS: u32 = 2;
 
@@ -334,7 +348,7 @@ fn render_cut(a: &Track, b: &Track, sa: &Side, sb: &Side, opts: &Options, why: &
         bail!("{} es demasiado corta para entrar en compás", b.name);
     }
     let pickup_max = 0.5 * bar_a.min(bar_b);
-    let entry = (sb.first - 0.02).max(downbeat - pickup_max).max(0.0).min(downbeat);
+    let entry = cut_entry(sb.first, downbeat, pickup_max);
 
     let pre = opts.pre_seconds.min(exit_start);
     let a_cut = exit_start - pre;
@@ -676,5 +690,36 @@ mod tests {
         assert_eq!(again.separated_seconds, 0.0);
         assert_eq!(again.a_cut, full.a_cut);
         std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn a_cut_never_enters_b_before_its_first_sample() {
+        // The numbers of a real failure: B audible from 0.01 s and a grid
+        // whose first downbeat falls at -0.04 s.
+        assert_eq!(cut_entry(0.01, -0.04, 1.2), 0.0);
+        assert_eq!(cut_entry(0.0, -0.02, 0.8), 0.0);
+        // The ordinary cases are unchanged: just before the first sound...
+        assert!((cut_entry(1.9, 2.0, 1.2) - 1.88).abs() < 1e-12);
+        // ...but never more than the pickup before the downbeat...
+        assert!((cut_entry(0.2, 4.0, 1.2) - 2.8).abs() < 1e-12);
+        // ...and never after it.
+        assert_eq!(cut_entry(5.0, 4.0, 1.2), 4.0);
+    }
+
+    #[test]
+    fn a_cut_of_a_song_that_is_audible_at_once_keeps_the_contract() {
+        // B starts sounding within hundredths of a second, at tempos far from
+        // A's: whatever the grid says about its first downbeat, `b_entry` is a
+        // second of B.
+        for lead_in in [0.0, 0.01, 0.02, 0.04] {
+            let (a, _) = track(100.0, 36, 40, 0.37, 7);
+            let (audio, _) = generate(&Spec { bpm: 75.0, root: 38, bars: 40, lead_in, seed: 9, intro_bars: 8, outro_bars: 8 });
+            let b = Track::new("b".into(), "b".into(), audio);
+            let t = prepare(&a, &b, Path::new("unused"), &options()).unwrap();
+            assert_eq!(t.kind, Kind::Cut, "{}", t.detail);
+            assert!(t.b_entry >= 0.0, "lead-in {lead_in}: b_entry {}", t.b_entry);
+            check_contract(&t, &a, &b, 1.0, 1.0);
+            assert!(t.file_seconds() - t.b_offset > 0.0);
+        }
     }
 }

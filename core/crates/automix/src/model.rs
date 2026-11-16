@@ -721,6 +721,13 @@ impl Drop for Active {
 /// is checked between windows, and [`Priority::Low`] callers also yield to
 /// normal ones between windows.
 pub fn separate(audio: &Stereo, cancel: Option<&AtomicBool>, priority: Priority) -> Result<[Stereo; 4]> {
+    separate_boostable(audio, cancel, priority, None)
+}
+
+/// [`separate`] for a caller that may be waited for: while `boost` is set, a
+/// [`Priority::Low`] separation stops yielding to foreground work (someone
+/// foreground needs exactly what it is making, and waiting for it).
+pub fn separate_boostable(audio: &Stereo, cancel: Option<&AtomicBool>, priority: Priority, boost: Option<&AtomicBool>) -> Result<[Stereo; 4]> {
     let _active = Active::new(priority);
     let n = audio.len();
     let stride = (WINDOW as f64 * STRIDE) as usize;
@@ -738,7 +745,7 @@ pub fn separate(audio: &Stereo, cancel: Option<&AtomicBool>, priority: Priority)
     let mut start = 0usize;
     let mut retried_on_cpu = false;
     loop {
-        while priority == Priority::Low && ACTIVE.load(Ordering::SeqCst) > 0 {
+        while priority == Priority::Low && ACTIVE.load(Ordering::SeqCst) > 0 && !boost.is_some_and(|b| b.load(Ordering::SeqCst)) {
             if cancel.is_some_and(|c| c.load(Ordering::Relaxed)) {
                 bail!("separación cancelada");
             }

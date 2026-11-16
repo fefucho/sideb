@@ -291,10 +291,55 @@ pub(crate) struct AutomixState {
     engine: Arc<Mutex<()>>,
     /// Request ids that stopped waiting, until their waiter notices.
     cancelled_ids: Mutex<Vec<String>>,
-    /// The prefetch in progress, if any: its token and cancel flag.
-    prefetch: Mutex<Option<(u64, Arc<AtomicBool>)>>,
-    /// Preparations in progress (the prefetch waits for them to end).
-    preparing: Arc<std::sync::atomic::AtomicUsize>,
+    /// The prefetch in progress, if any: its token, cancel flag and what it
+    /// was asked to do (the list and `allow_stems`).
+    prefetch: Mutex<Option<(u64, Arc<AtomicBool>, (Vec<(String, bool)>, bool))>>,
+    /// Stems cache entries the pruning must not delete: those of the pair in
+    /// preparation and of the songs the prefetch is working on.
+    protected: Mutex<Vec<String>>,
+}
+
+/// What the shells check before they trust a record: every field finite, the
+/// change starts after the first second of A, lies inside the file, has the
+/// handover in it, B enters at a second of B, and B is not entirely before the
+/// file's end. Returns what is wrong, if anything.
+pub(crate) fn contract_violation(r: &AutomixTransitionRecord) -> Option<String> {
+    let numbers = [
+        r.file_duration_seconds,
+        r.a_cut_seconds,
+        r.overlap_start_seconds,
+        r.overlap_end_seconds,
+        r.b_offset_seconds,
+        r.b_entry_seconds,
+        r.handover_seconds,
+        r.bpm_from,
+        r.bpm_to,
+        r.separated_seconds,
+        r.elapsed_seconds,
+    ];
+    let wrong = |what: &str| Some(format!("contrato incoherente: {what}"));
+    if numbers.iter().any(|v| !v.is_finite()) {
+        return wrong("hay un valor que no es un número");
+    }
+    if r.file_duration_seconds <= 0.0 || r.a_cut_seconds < 0.0 {
+        return wrong("duración o corte inválidos");
+    }
+    if r.overlap_start_seconds <= 0.0 {
+        return wrong("el cambio empieza en 0 s o antes");
+    }
+    if r.overlap_start_seconds > r.overlap_end_seconds || r.overlap_end_seconds > r.file_duration_seconds {
+        return wrong("el cambio no cabe en el archivo");
+    }
+    if r.handover_seconds < r.overlap_start_seconds || r.handover_seconds > r.file_duration_seconds {
+        return wrong("el traspaso cae fuera del archivo");
+    }
+    if r.b_entry_seconds < 0.0 {
+        return wrong("B entra antes de su primer segundo");
+    }
+    if r.file_duration_seconds - r.b_offset_seconds <= 0.0 {
+        return wrong("B terminaría antes de empezar");
+    }
+    None
 }
 
 /// How many rendered results are remembered.
@@ -313,6 +358,10 @@ impl AutomixState {
         let rendered = self.rendered.lock().unwrap_or_else(|e| e.into_inner());
         let (_, record) = rendered.iter().rev().find(|(k, _)| k == key)?;
         std::fs::metadata(&record.file_path).is_ok_and(|m| m.len() > 0).then(|| record.clone())
+    }
+
+    fn forget_rendered(&self, key: &Key) {
+        self.rendered.lock().unwrap_or_else(|e| e.into_inner()).retain(|(k, _)| k != key);
     }
 
     fn remember_rendered(&self, key: &Key, record: &AutomixTransitionRecord) {
@@ -377,24 +426,56 @@ impl AutomixState {
     }
 
     /// Replaces the prefetch in progress (cancelling it) with a new one.
-    fn begin_prefetch(&self) -> (u64, Arc<AtomicBool>) {
+    /// Starts a prefetch of `what`, cancelling the one in progress, unless that
+    /// one is already doing exactly this (`None`: leave it be).
+    fn begin_prefetch(&self, what: (Vec<(String, bool)>, bool)) -> Option<(u64, Arc<AtomicBool>)> {
+        let mut current = self.prefetch.lock().unwrap_or_else(|e| e.into_inner());
+        if current.as_ref().is_some_and(|(_, cancel, doing)| !cancel.load(Ordering::SeqCst) && *doing == what) {
+            return None;
+        }
         let token = self.counter.fetch_add(1, Ordering::SeqCst) + 1;
         let cancel = Arc::new(AtomicBool::new(false));
-        let mut current = self.prefetch.lock().unwrap_or_else(|e| e.into_inner());
-        if let Some((_, older)) = current.replace((token, cancel.clone())) {
+        if let Some((_, older, _)) = current.replace((token, cancel.clone(), what)) {
             older.store(true, Ordering::SeqCst);
         }
-        (token, cancel)
+        Some((token, cancel))
     }
 
     fn prefetch_is_current(&self, token: u64) -> bool {
-        self.prefetch.lock().unwrap_or_else(|e| e.into_inner()).as_ref().is_some_and(|(t, _)| *t == token)
+        self.prefetch.lock().unwrap_or_else(|e| e.into_inner()).as_ref().is_some_and(|(t, _, _)| *t == token)
+    }
+
+    /// The prefetch `token` has nothing left to do.
+    fn finish_prefetch(&self, token: u64) {
+        let mut current = self.prefetch.lock().unwrap_or_else(|e| e.into_inner());
+        if current.as_ref().is_some_and(|(t, _, _)| *t == token) {
+            *current = None;
+        }
     }
 
     pub(crate) fn cancel_prefetch(&self) {
-        if let Some((_, flag)) = self.prefetch.lock().unwrap_or_else(|e| e.into_inner()).take() {
+        if let Some((_, flag, _)) = self.prefetch.lock().unwrap_or_else(|e| e.into_inner()).take() {
             flag.store(true, Ordering::SeqCst);
         }
+    }
+
+    /// Replaces (`replace`) or adds to the stems entries that must survive pruning.
+    fn protect(&self, tags: Vec<String>, replace: bool) {
+        let mut protected = self.protected.lock().unwrap_or_else(|e| e.into_inner());
+        if replace {
+            protected.clear();
+        }
+        for tag in tags {
+            if !protected.contains(&tag) {
+                protected.push(tag);
+            }
+        }
+        let excess = protected.len().saturating_sub(24);
+        protected.drain(..excess);
+    }
+
+    fn protected(&self) -> Vec<String> {
+        self.protected.lock().unwrap_or_else(|e| e.into_inner()).clone()
     }
 
     /// Stops waiting for `request_id`; the job it was waiting for stops only
@@ -830,7 +911,16 @@ pub(crate) async fn prepare(core: Arc<SideBCore>, request: Request) -> Result<Au
     let key = Key::new(&request, &from, &to);
 
     // The same work again: already rendered (and the file is still there)...
-    if let Some(mut record) = core.automix.rendered_for(&key) {
+    let reusable = core.automix.rendered_for(&key).filter(|record| match contract_violation(record) {
+        None => true,
+        Some(why) => {
+            // Never hand a shell a record it would reject: render it again.
+            log_event(&root, &format!("prepare {} {from} -> {to} quality={} the rendered record was discarded ({why})", request.request_id, request.quality));
+            core.automix.forget_rendered(&key);
+            false
+        }
+    });
+    if let Some(mut record) = reusable {
         log_event(&root, &format!("prepare {} {from} -> {to} quality={} reused the rendered file", request.request_id, request.quality));
         record.request_id = request.request_id.clone();
         record.reused = true;
@@ -848,7 +938,6 @@ pub(crate) async fn prepare(core: Arc<SideBCore>, request: Request) -> Result<Au
             tokio::spawn(async move {
                 // Background separations make way while this runs.
                 let _busy = automix::model::busy();
-                let _preparing = Counted::new(core.automix.preparing.clone());
                 let root = PathBuf::from(&request.cache_dir);
                 let outcome = run(&core, &request, &from, &to, stems, &cancel).await;
                 match &outcome {
@@ -860,8 +949,11 @@ pub(crate) async fn prepare(core: Arc<SideBCore>, request: Request) -> Result<Au
                                 r.kind, r.quality, r.stems_model, r.same_cut_as_fast, r.separated_seconds, r.elapsed_seconds, r.a_cut_seconds, r.file_duration_seconds
                             ),
                         );
-                        if !cancel.load(Ordering::SeqCst) {
-                            core.automix.remember_rendered(&key, r);
+                        match contract_violation(r) {
+                            // A record the shells would reject is not worth keeping.
+                            Some(why) => log_event(&root, &format!("prepare #{token} produced a record that breaks the contract: {why}")),
+                            None if !cancel.load(Ordering::SeqCst) => core.automix.remember_rendered(&key, r),
+                            None => {}
                         }
                     }
                     Err(e) => log_event(&root, &format!("prepare #{token} failed: {e}")),
@@ -885,22 +977,6 @@ pub(crate) async fn prepare(core: Arc<SideBCore>, request: Request) -> Result<Au
             _ = changed.notified() => {}
             _ = tokio::time::sleep(Duration::from_millis(250)) => {}
         }
-    }
-}
-
-/// Counts something in progress for as long as it lives.
-struct Counted(Arc<std::sync::atomic::AtomicUsize>);
-
-impl Counted {
-    fn new(counter: Arc<std::sync::atomic::AtomicUsize>) -> Self {
-        counter.fetch_add(1, Ordering::SeqCst);
-        Counted(counter)
-    }
-}
-
-impl Drop for Counted {
-    fn drop(&mut self) {
-        self.0.fetch_sub(1, Ordering::SeqCst);
     }
 }
 
@@ -938,6 +1014,9 @@ async fn run(
         ..automix::Options::default()
     };
 
+    // The stretches this pair reads must survive any pruning meanwhile.
+    core.automix.protect(vec![format!("{from}-tail"), format!("{to}-head")], false);
+    let protected = core.automix.protected();
     let engine = core.automix.engine.clone();
     let job_cancel = cancel.clone();
     let (from_key, to_key, wav) = (from.to_owned(), to.to_owned(), wav_path.clone());
@@ -964,7 +1043,7 @@ async fn run(
         }
         automix::audio::save_for_playback(&wav, &transition.audio)
             .map_err(|e| SideBError::Other { message: format!("no se pudo escribir la transición: {e}") })?;
-        automix::stems::prune_cache(&stems_dir, STEMS_CACHE_BYTES);
+        automix::stems::prune_entries(&stems_dir, STEMS_CACHE_BYTES, &protected);
         // The rendered file can be 100 MB of samples: let go of them now.
         let file_seconds = transition.file_seconds();
         let mut transition = transition;
@@ -1037,7 +1116,6 @@ pub(crate) async fn prefetch(core: Arc<SideBCore>, items: Vec<AutomixQueueItem>,
     }
     let root = cache_dir(&core).ok_or_else(|| stream_error(format!("{ERR_NO_CACHE_DIR}: falta la carpeta de caché de automix")))?;
     let settings = load_settings(&core);
-    let (token, cancel) = core.automix.begin_prefetch();
     let wanted = settings.lookahead as usize + 1;
     let items: Vec<_> = items.into_iter().take(wanted).collect();
     if items.is_empty() {
@@ -1046,11 +1124,25 @@ pub(crate) async fn prefetch(core: Arc<SideBCore>, items: Vec<AutomixQueueItem>,
     // The model is only worth having (and its memory, and its battery) if
     // the shell allows stems now and the user's quality does not forbid them.
     let stems = allow_stems && settings.quality != "fast";
+    // The same list again (a shell asks on every queue event) leaves the work
+    // in progress alone: restarting it would throw away a half-separated song.
+    let what = (items.iter().map(|i| (i.video_id.clone(), i.is_upload)).collect::<Vec<_>>(), stems);
+    let Some((token, cancel)) = core.automix.begin_prefetch(what) else {
+        log_event(&root, "prefetch asked again for the same list: the one in progress goes on");
+        return Ok(());
+    };
+    // What the pruning must keep: the tail of every song in the list (its
+    // transition to the next) and the head of every one but the first.
+    core.automix.protect(
+        items.iter().enumerate().flat_map(|(i, item)| [Some(format!("{}-tail", item.video_id)), (i > 0).then(|| format!("{}-head", item.video_id))]).flatten().collect(),
+        true,
+    );
     if stems && !automix::model::ready() {
         automix::model::start_download();
     }
     tokio::spawn(async move {
         let _ = prefetch_run(&core, &items, &root, stems, token, &cancel).await;
+        core.automix.finish_prefetch(token);
     });
     Ok(())
 }
@@ -1066,14 +1158,10 @@ async fn prefetch_run(
     let audio_dir = root.join("audio");
     let stems_dir = root.join("stems");
     for (index, item) in items.iter().enumerate() {
-        // Never compete with a preparation: wait until none is running.
-        while core.automix.preparing.load(Ordering::SeqCst) > 0 {
-            if cancel.load(Ordering::SeqCst) || !core.automix.prefetch_is_current(token) {
-                return Err(cancelled());
-            }
-            tokio::time::sleep(Duration::from_millis(300)).await;
-        }
-        if cancel.load(Ordering::SeqCst) {
+        // Competing with a preparation is the model's business, not this
+        // loop's: a separation at low priority gives way between windows, and
+        // one stretch is only ever separated once (see `stems::separate_span`).
+        if cancel.load(Ordering::SeqCst) || !core.automix.prefetch_is_current(token) {
             return Err(cancelled());
         }
         log_event(root, &format!("prefetch #{token} {} ({} of {})", item.video_id, index + 1, items.len()));
@@ -1085,26 +1173,30 @@ async fn prefetch_run(
             }
         };
         prune_files(&audio_dir, KEEP_AUDIO_FILES, &[&path]);
-        // Stems are worth separating once the model is there, and only for
-        // the ends a transition can read: the first song is playing (its
-        // tail is the one wanted), the last has nothing after it (its head).
+        // Stems are worth separating once the model is there. Every song's
+        // tail (its transition to whatever follows it: the last of the list
+        // is the next song, and its tail is ready long before it starts, so
+        // the pair after it only waits for the head of its successor) and
+        // every head but the first's (the playing song is already past it).
         if !stems || !automix::model::ready() {
             continue;
         }
-        let (tail, head) = (index + 1 < items.len(), index > 0);
+        let (tail, head) = (true, index > 0);
+        let protected = core.automix.protected();
         let key = item.video_id.clone();
         let (job_cancel, dir) = (cancel.clone(), stems_dir.clone());
         let done = tokio::task::spawn_blocking(move || -> Result<(), SideBError> {
             let track = decode(&path, &key)?;
-            automix::prefetch::prefetch(&track, &dir, tail, head, Some(&job_cancel))
+            let result = automix::prefetch::prefetch(&track, &dir, tail, head, Some(&job_cancel))
                 .map(|_| ())
-                .map_err(|e| stream_error(format!("separación anticipada: {e}")))
+                .map_err(|e| stream_error(format!("separación anticipada: {e}")));
+            automix::stems::prune_entries(&dir, STEMS_CACHE_BYTES, &protected);
+            result
         })
         .await
         .map_err(|e| SideBError::Other { message: format!("la separación anticipada se interrumpió: {e}") })?;
         match &done {
             Ok(()) => {
-                automix::stems::prune_cache(&stems_dir, STEMS_CACHE_BYTES);
                 remember_speed(core);
                 log_event(root, &format!("prefetch #{token} {} stems ready (tail={tail} head={head})", item.video_id));
             }
@@ -1129,7 +1221,7 @@ mod tests {
             to_video_id: "b".into(),
             kind: "mix".into(),
             file_path: path.to_string_lossy().into_owned(),
-            file_duration_seconds: 10.0,
+            file_duration_seconds: 100.0,
             a_cut_seconds: 1.0,
             overlap_start_seconds: 8.0,
             overlap_end_seconds: 20.0,
@@ -1252,8 +1344,8 @@ mod tests {
     #[test]
     fn a_prefetch_is_cancelled_by_the_next_one() {
         let state = AutomixState::default();
-        let (first, first_cancel) = state.begin_prefetch();
-        let (second, _) = state.begin_prefetch();
+        let (first, first_cancel) = state.begin_prefetch((vec![("a".into(), false)], true)).unwrap();
+        let (second, _) = state.begin_prefetch((vec![("b".into(), false)], true)).unwrap();
         assert!(first_cancel.load(Ordering::SeqCst) && !state.prefetch_is_current(first) && state.prefetch_is_current(second));
     }
 
@@ -1426,9 +1518,9 @@ mod tests {
     #[test]
     fn a_new_prefetch_cancels_the_old_one() {
         let state = AutomixState::default();
-        let (first, first_cancel) = state.begin_prefetch();
+        let (first, first_cancel) = state.begin_prefetch((vec![("a".into(), false)], true)).unwrap();
         assert!(state.prefetch_is_current(first));
-        let (second, second_cancel) = state.begin_prefetch();
+        let (second, second_cancel) = state.begin_prefetch((vec![("b".into(), false)], true)).unwrap();
         assert!(first_cancel.load(Ordering::SeqCst) && !state.prefetch_is_current(first));
         assert!(state.prefetch_is_current(second) && !second_cancel.load(Ordering::SeqCst));
         state.cancel_prefetch();
@@ -1493,5 +1585,145 @@ mod tests {
         let log = std::fs::read_to_string(dir.join("automix").join("automix.log")).unwrap_or_default();
         println!("jobs started for fein->highest stems: {}", log.lines().filter(|l| l.contains("prepare #") && l.contains("quality=stems") && l.contains(fein)).count());
         std::fs::remove_dir_all(dir).ok();
+    }
+
+    /// Two synthetic songs as the files the core would have downloaded.
+    fn plant_songs(cache: &Path, ids: &[&str]) {
+        use automix::synth::{generate, Spec};
+        std::fs::create_dir_all(cache.join("audio")).unwrap();
+        for (i, id) in ids.iter().enumerate() {
+            let (audio, _) = generate(&Spec {
+                bpm: 120.0 + 3.0 * i as f64,
+                root: 36 + 2 * i as i32,
+                bars: 100,
+                lead_in: 0.3 + 0.1 * i as f64,
+                seed: 3 + i as u64,
+                intro_bars: 8,
+                outro_bars: 8,
+            });
+            // The container does not matter to the decoder, which probes the bytes.
+            automix::audio::save_for_playback(&cache.join("audio").join(format!("{id}.m4a")), &audio).unwrap();
+        }
+    }
+
+    async fn wait_for(what: &str, limit: u64, mut done: impl FnMut() -> bool) {
+        let t = std::time::Instant::now();
+        while !done() {
+            tokio::time::sleep(Duration::from_millis(250)).await;
+            assert!(t.elapsed() < Duration::from_secs(limit), "{what} never happened");
+        }
+    }
+
+    /// The whole promise of the prefetch, with the model: after it runs for
+    /// [A, B] the pair is ready and a "stems" preparation separates nothing.
+    /// `cargo test --release -p sideb-core prefetch_makes_the_pair -- --ignored --nocapture`
+    #[tokio::test(flavor = "multi_thread")]
+    #[ignore = "needs the HT-Demucs model on disk"]
+    async fn prefetch_makes_the_pair_ready_and_stems_separate_nothing() {
+        let (core, dir) = core_in("prefetch-ready");
+        assert!(core.automix_model_ready(), "the model has to be on disk for this test");
+        let cache = dir.join("cache");
+        let (a, b, c) = ("AAAAAAAAAAA", "BBBBBBBBBBB", "CCCCCCCCCCC");
+        plant_songs(&cache, &[a, b, c]);
+        core.set_automix_cache_dir(cache.to_string_lossy().into_owned());
+        let item = |id: &str| AutomixQueueItem { video_id: id.into(), is_upload: false };
+
+        assert!(!core.automix_pair_ready(a.into(), b.into()));
+        let t = std::time::Instant::now();
+        core.clone().prefetch_automix(vec![item(a), item(b)], true).await.unwrap();
+        wait_for("the prefetch", 600, || core.automix_pair_ready(a.into(), b.into())).await;
+        println!("prefetch of [A, B] done in {:.1} s", t.elapsed().as_secs_f64());
+        // B's tail is prefetched too, with B as the "next" song: B -> C is half ready.
+        wait_for("B's tail", 600, || automix::stems::has_entry(&cache.join("stems"), &format!("{b}-tail"), automix::prefetch::TAIL_SECONDS)).await;
+
+        let record = core
+            .clone()
+            .prepare_automix("r".into(), a.into(), false, None, b.into(), false, None, "stems".into(), cache.to_string_lossy().into_owned())
+            .await
+            .unwrap();
+        println!("stems prepare after the prefetch: {:.1} s, separated {:.1} s, kind {}", record.elapsed_seconds, record.separated_seconds, record.kind);
+        assert!(record.stems_model || record.kind != "mix", "{}", record.detail);
+        assert_eq!(record.separated_seconds, 0.0, "the prefetch's spans are the ones the plan reads");
+
+        // Prefetching [B, C] now only has C's head left to separate.
+        core.clone().prefetch_automix(vec![item(b), item(c)], true).await.unwrap();
+        wait_for("B -> C", 600, || core.automix_pair_ready(b.into(), c.into())).await;
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn the_contract_check_catches_what_the_mac_rejects() {
+        let good = record(Path::new("x"));
+        assert_eq!(contract_violation(&good), None);
+        let broken = |edit: &dyn Fn(&mut AutomixTransitionRecord)| {
+            let mut r = record(Path::new("x"));
+            edit(&mut r);
+            contract_violation(&r).is_some()
+        };
+        assert!(broken(&|r| r.b_entry_seconds = -0.04));
+        assert!(broken(&|r| r.overlap_start_seconds = 0.0));
+        assert!(broken(&|r| r.overlap_end_seconds = r.overlap_start_seconds - 1.0));
+        assert!(broken(&|r| r.overlap_end_seconds = r.file_duration_seconds + 1.0));
+        assert!(broken(&|r| r.handover_seconds = r.overlap_start_seconds - 0.5));
+        assert!(broken(&|r| r.handover_seconds = r.file_duration_seconds + 0.5));
+        assert!(broken(&|r| r.b_offset_seconds = r.file_duration_seconds));
+        assert!(broken(&|r| r.a_cut_seconds = f64::NAN));
+        assert!(broken(&|r| r.bpm_to = f64::INFINITY));
+        assert!(broken(&|r| r.file_duration_seconds = 0.0));
+    }
+
+    #[tokio::test]
+    async fn a_rendered_record_that_breaks_the_contract_is_not_reused() {
+        let (core, dir) = core_in("badreuse");
+        let cache = dir.join("cache");
+        std::fs::create_dir_all(cache.join("transitions")).unwrap();
+        let file = cache.join("transitions").join("a__b.fast.wav");
+        std::fs::write(&file, b"riff").unwrap();
+        let k = Key { from: "AAAAAAAAAAA".into(), to: "BBBBBBBBBBB".into(), quality: "fast".into(), gains: (None, None) };
+        let mut bad = record(&file);
+        bad.b_entry_seconds = -0.04;
+        core.automix.remember_rendered(&k, &bad);
+        // Asking for it must not return the bad record: it is rendered again
+        // (from songs planted in the audio cache, so no network is involved).
+        plant_songs(&cache, &["AAAAAAAAAAA", "BBBBBBBBBBB"]);
+        let fresh = core
+            .clone()
+            .prepare_automix("r".into(), "AAAAAAAAAAA".into(), false, None, "BBBBBBBBBBB".into(), false, None, "fast".into(), cache.to_string_lossy().into_owned())
+            .await
+            .expect("rendered again");
+        assert!(!fresh.reused, "the discarded record was not handed back");
+        assert_eq!(contract_violation(&fresh), None, "{fresh:?}");
+        assert!(fresh.b_entry_seconds >= 0.0);
+        let log = std::fs::read_to_string(cache.join("automix.log")).unwrap();
+        assert!(log.contains("discarded"), "{log}");
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn asking_for_the_same_prefetch_again_leaves_it_alone() {
+        let state = AutomixState::default();
+        let list = |ids: &[&str]| (ids.iter().map(|i| (i.to_string(), false)).collect::<Vec<_>>(), true);
+        let (first, first_cancel) = state.begin_prefetch(list(&["a", "b"])).unwrap();
+        // The same list, the same permission: nothing restarts, nothing is cancelled.
+        assert!(state.begin_prefetch(list(&["a", "b"])).is_none());
+        assert!(!first_cancel.load(Ordering::SeqCst) && state.prefetch_is_current(first));
+        // Another list, or the same one without stems, replaces it.
+        assert!(state.begin_prefetch((list(&["a", "b"]).0, false)).is_some());
+        assert!(first_cancel.load(Ordering::SeqCst));
+        // Once it has finished the same list is work to do again.
+        let (token, _) = state.begin_prefetch(list(&["c", "d"])).unwrap();
+        state.finish_prefetch(token);
+        assert!(state.begin_prefetch(list(&["c", "d"])).is_some());
+    }
+
+    #[test]
+    fn the_pairs_stems_are_protected_from_pruning() {
+        let state = AutomixState::default();
+        state.protect(vec!["a-tail".into(), "b-head".into()], true);
+        state.protect(vec!["b-tail".into(), "a-tail".into()], false);
+        assert_eq!(state.protected(), ["a-tail", "b-head", "b-tail"]);
+        // A new prefetch list replaces what was protected for the old one.
+        state.protect(vec!["c-tail".into()], true);
+        assert_eq!(state.protected(), ["c-tail"]);
     }
 }

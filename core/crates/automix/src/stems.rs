@@ -154,8 +154,9 @@ fn cached(audio: &Stereo, (from, to): (i64, i64), dir: &Path, tag: &str) -> Opti
     for (i, path) in paths.iter().enumerate() {
         stem[i] = audio::load_wav(path).ok()?.slice(0, len as usize);
     }
-    // Reading refreshes the entry for the cache's oldest-first pruning.
-    for path in &paths {
+    // Reading refreshes the entry for the cache's least-recently-used pruning.
+    let touched = [dir.join(format!("{tag}.meta")), dir.join(format!("{tag}.sig"))];
+    for path in paths.iter().chain(&touched) {
         if let Ok(file) = std::fs::OpenOptions::new().write(true).open(path) {
             let _ = file.set_modified(std::time::SystemTime::now());
         }
@@ -170,7 +171,9 @@ fn cached(audio: &Stereo, (from, to): (i64, i64), dir: &Path, tag: &str) -> Opti
 pub fn has_entry(dir: &Path, tag: &str, min_seconds: f64) -> bool {
     let Ok(meta) = std::fs::read_to_string(dir.join(format!("{tag}.meta"))) else { return false };
     let len = meta.split_whitespace().nth(1).and_then(|v| v.parse::<f64>().ok()).unwrap_or(0.0);
-    len >= min_seconds * audio::SRF && dir.join(format!("{tag}.sig")).exists() && stem_paths(dir, tag).iter().all(|p| p.exists())
+    // Half a second of slack: a window clamped at the start of a song is a
+    // sample or two short of its nominal length.
+    len >= (min_seconds - 0.5) * audio::SRF && dir.join(format!("{tag}.sig")).exists() && stem_paths(dir, tag).iter().all(|p| p.exists())
 }
 
 /// Writes `stem` (the stems of `audio[from..to)`) into the cache under `tag`;
@@ -205,26 +208,142 @@ pub fn separate_span(
         anyhow::bail!("tramo demasiado corto para separar");
     }
     std::fs::create_dir_all(cache_dir)?;
-    if let Some(hit) = cached(audio, (from, to), cache_dir, tag) {
-        return Ok(hit);
-    }
+    // Single flight: one separation of a stretch at a time, process-wide.
+    // Whoever needs a stretch somebody else is already separating waits for
+    // it and reads it from the cache (a foreground caller waiting for a
+    // background one speeds it up: see `model::separate_boostable`).
+    let flight = loop {
+        if let Some(hit) = cached(audio, (from, to), cache_dir, tag) {
+            return Ok(hit);
+        }
+        match claim(cache_dir, tag, (from, to), priority) {
+            Claim::Owner(flight) => break flight,
+            Claim::Wait(done) => {
+                while !done.finished() {
+                    if cancel.is_some_and(|c| c.load(std::sync::atomic::Ordering::Relaxed)) {
+                        anyhow::bail!("separación cancelada");
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(50));
+                }
+            }
+        }
+    };
     let _ = std::fs::remove_file(cache_dir.join(format!("{tag}.meta")));
     let window = audio.slice(from, (to - from) as usize);
     let started = std::time::Instant::now();
     let loads_before = crate::model::loads();
-    let mut stem = crate::model::separate(&window, cancel, priority)?;
+    let mut stem = crate::model::separate_boostable(&window, cancel, priority, Some(&flight.boost))?;
     let mut elapsed = started.elapsed().as_secs_f64();
     if crate::model::loads() != loads_before {
         elapsed = (elapsed - crate::model::info().map_or(0.0, |i| i.load_seconds)).max(0.01);
     }
     fold_residual(&window, &mut stem);
     store(audio, (from, to), &stem, cache_dir, tag)?;
+    drop(flight);
     Ok(Span {
         stems: Stems { stem },
         start: from,
         model_seconds: window.seconds(),
         model_run_seconds: elapsed,
     })
+}
+
+/// A stretch being separated now.
+struct Running {
+    key: (std::path::PathBuf, String),
+    span: (i64, i64),
+    boost: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    done: std::sync::Arc<std::sync::atomic::AtomicBool>,
+}
+
+fn running() -> &'static std::sync::Mutex<Vec<Running>> {
+    static R: std::sync::OnceLock<std::sync::Mutex<Vec<Running>>> = std::sync::OnceLock::new();
+    R.get_or_init(Default::default)
+}
+
+/// Held by the separation in progress; releases the stretch (and wakes the
+/// ones waiting for it) when dropped, finished or not.
+struct Flight {
+    key: (std::path::PathBuf, String),
+    boost: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    done: std::sync::Arc<std::sync::atomic::AtomicBool>,
+}
+
+impl Drop for Flight {
+    fn drop(&mut self) {
+        self.done.store(true, std::sync::atomic::Ordering::SeqCst);
+        let mut running = running().lock().unwrap_or_else(|e| e.into_inner());
+        running.retain(|r| r.key != self.key || !std::sync::Arc::ptr_eq(&r.done, &self.done));
+    }
+}
+
+struct Finished(std::sync::Arc<std::sync::atomic::AtomicBool>);
+
+impl Finished {
+    fn finished(&self) -> bool {
+        self.0.load(std::sync::atomic::Ordering::SeqCst)
+    }
+}
+
+enum Claim {
+    Owner(Flight),
+    Wait(Finished),
+}
+
+fn claim(dir: &Path, tag: &str, span: (i64, i64), priority: crate::model::Priority) -> Claim {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
+    let key = (dir.to_path_buf(), tag.to_owned());
+    let mut running = running().lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(other) = running.iter().find(|r| r.key == key && r.span.0 <= span.0 && r.span.1 >= span.1) {
+        if priority == crate::model::Priority::Normal {
+            other.boost.store(true, Ordering::SeqCst);
+        }
+        return Claim::Wait(Finished(other.done.clone()));
+    }
+    let (boost, done) = (Arc::new(AtomicBool::new(priority == crate::model::Priority::Normal)), Arc::new(AtomicBool::new(false)));
+    running.push(Running { key: key.clone(), span, boost: boost.clone(), done: done.clone() });
+    Claim::Owner(Flight { key, boost, done })
+}
+
+/// Deletes whole cache entries, least recently used first, until the cache is
+/// under `max_bytes`, never an entry whose tag is in `protect` (the stretches
+/// of the pair about to be prepared: if they alone are over the cap, the cap
+/// is exceeded rather than make them useless). An entry is deleted `.meta`
+/// first, so a half-deleted one is never mistaken for a finished one.
+pub fn prune_entries(dir: &Path, max_bytes: u64, protect: &[String]) {
+    let Ok(read) = std::fs::read_dir(dir) else { return };
+    // tag -> (newest modification, bytes, files)
+    let mut entries: std::collections::HashMap<String, (std::time::SystemTime, u64, Vec<std::path::PathBuf>)> = Default::default();
+    for file in read.flatten() {
+        let Ok(meta) = file.metadata() else { continue };
+        if !meta.is_file() {
+            continue;
+        }
+        let name = file.file_name().to_string_lossy().into_owned();
+        let tag = ["_vocals.wav", "_drums.wav", "_bass.wav", "_other.wav", ".sig", ".meta"]
+            .iter()
+            .find_map(|suffix| name.strip_suffix(suffix))
+            .unwrap_or(&name)
+            .to_owned();
+        let entry = entries.entry(tag).or_insert((std::time::UNIX_EPOCH, 0, Vec::new()));
+        entry.0 = entry.0.max(meta.modified().unwrap_or(std::time::UNIX_EPOCH));
+        entry.1 += meta.len();
+        entry.2.push(file.path());
+    }
+    let mut total: u64 = entries.values().map(|e| e.1).sum();
+    let mut order: Vec<_> = entries.into_iter().filter(|(tag, _)| !protect.contains(tag)).collect();
+    order.sort_by_key(|(_, e)| e.0);
+    for (_, (_, bytes, mut files)) in order {
+        if total <= max_bytes {
+            break;
+        }
+        files.sort_by_key(|f| f.extension().is_none_or(|x| x != "meta"));
+        for file in files {
+            let _ = std::fs::remove_file(file);
+        }
+        total = total.saturating_sub(bytes);
+    }
 }
 
 /// A stand-in that needs no model: three bands in the stems' slots. [`BASS`]
@@ -354,5 +473,76 @@ mod tests {
         std::fs::remove_file(dir.join("x-tail_bass.wav")).unwrap();
         assert!(!has_entry(&dir, "x-tail", 60.0), "a missing stem is not ready");
         std::fs::remove_dir_all(dir).ok();
+    }
+
+    fn fake_entry(dir: &Path, tag: &str, bytes: usize, age_seconds: u64) {
+        let now = std::time::SystemTime::now();
+        let files: Vec<String> = ["vocals", "drums", "bass", "other"].iter().map(|n| format!("{tag}_{n}.wav")).chain([format!("{tag}.sig"), format!("{tag}.meta")]).collect();
+        for name in files {
+            let path = dir.join(&name);
+            std::fs::write(&path, vec![0u8; bytes]).unwrap();
+            std::fs::OpenOptions::new().write(true).open(&path).unwrap().set_modified(now - std::time::Duration::from_secs(age_seconds)).unwrap();
+        }
+    }
+
+    #[test]
+    fn pruning_deletes_whole_entries_and_spares_the_protected_ones() {
+        let dir = std::env::temp_dir().join(format!("automix-entries-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        // Six bytes-per-file entries of 6 * 1000 bytes; the oldest is the one
+        // the upcoming pair needs.
+        fake_entry(&dir, "old-tail", 1000, 5000);
+        fake_entry(&dir, "mid-tail", 1000, 3000);
+        fake_entry(&dir, "new-head", 1000, 1000);
+        fake_entry(&dir, "newest-tail", 1000, 10);
+        let count = |tag: &str| std::fs::read_dir(&dir).unwrap().flatten().filter(|e| e.file_name().to_string_lossy().starts_with(tag)).count();
+        // Room for two entries: the two oldest go, whole, and not one file of
+        // anything else.
+        prune_entries(&dir, 12_000, &[]);
+        assert_eq!((count("old-tail"), count("mid-tail"), count("new-head"), count("newest-tail")), (0, 0, 6, 6));
+        // Protected entries stay even when they alone are over the cap.
+        fake_entry(&dir, "old-tail", 1000, 9000);
+        prune_entries(&dir, 1, &["old-tail".to_owned(), "new-head".to_owned()]);
+        assert_eq!((count("old-tail"), count("new-head"), count("newest-tail")), (6, 6, 0));
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn a_hit_makes_the_entry_the_most_recently_used() {
+        let dir = std::env::temp_dir().join(format!("automix-lru-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let audio = song(44_100 * 30, 1.0);
+        let window = audio.slice(0, 44_100 * 20);
+        let stem = split_by_frequency(&window).stem;
+        store(&audio, (0, 44_100 * 20), &stem, &dir, "x-tail").unwrap();
+        for entry in std::fs::read_dir(&dir).unwrap().flatten() {
+            entry.path().metadata().unwrap();
+            std::fs::OpenOptions::new().write(true).open(entry.path()).unwrap().set_modified(std::time::SystemTime::now() - std::time::Duration::from_secs(10_000)).unwrap();
+        }
+        assert!(cached(&audio, (44_100, 44_100 * 10), &dir, "x-tail").is_some());
+        let age = std::fs::metadata(dir.join("x-tail.meta")).unwrap().modified().unwrap().elapsed().unwrap();
+        assert!(age < std::time::Duration::from_secs(60), "the meta was touched by the hit: {age:?}");
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn a_stretch_being_separated_is_waited_for_not_separated_twice() {
+        let dir = std::path::PathBuf::from("/nonexistent-automix-single-flight");
+        let low = crate::model::Priority::Low;
+        // The first claim owns the stretch; a second for a stretch inside it
+        // waits, and a foreground waiter speeds a background owner up.
+        let Claim::Owner(owner) = claim(&dir, "t-tail", (0, 1000), low) else { panic!("first claim owns") };
+        assert!(!owner.boost.load(std::sync::atomic::Ordering::SeqCst));
+        let Claim::Wait(done) = claim(&dir, "t-tail", (100, 900), crate::model::Priority::Normal) else { panic!("second waits") };
+        assert!(owner.boost.load(std::sync::atomic::Ordering::SeqCst), "the foreground waiter boosts the background owner");
+        assert!(!done.finished());
+        // A stretch that is not inside it is its own work, and so is another tag.
+        assert!(matches!(claim(&dir, "t-tail", (0, 5000), low), Claim::Owner(_)));
+        assert!(matches!(claim(&dir, "other-tail", (0, 1000), low), Claim::Owner(_)));
+        drop(owner);
+        assert!(done.finished(), "the waiter is released when the owner is done");
+        assert!(matches!(claim(&dir, "t-tail", (100, 900), low), Claim::Owner(_)));
     }
 }
