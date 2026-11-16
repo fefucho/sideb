@@ -67,7 +67,7 @@ private final class PlaylistPlaybackLatencyCore: SideBCore, @unchecked Sendable 
 
     override func resolveStream(videoId: String, isUpload: Bool) async throws -> StreamPlaybackInfo {
         await streams.record(videoId)
-        return StreamPlaybackInfo(videoId: videoId, streamUrl: TestAudioFixture.silentWAV.absoluteString,
+        return StreamPlaybackInfo(videoId: videoId, streamUrl: URL(fileURLWithPath: "/tmp/sideb-playlist-latency-\(videoId).m4a").absoluteString,
             itag: 140, loudnessDb: nil, expiresInSeconds: 3_600, isVideo: false, streamClient: "test",
             title: videoId, artists: "Artist", duration: "120", thumbnail: nil, headers: [:])
     }
@@ -103,7 +103,7 @@ private func latencyTrack(_ id: String) -> SongItemRecord {
 @Test @MainActor func playlistStartsFromLoadedPrefixAndLatePagePreservesActiveAudioAndOccurrence() async {
     let core = PlaylistPlaybackLatencyCore()
     let player = latencyPlayer(core)
-    let originalItem = AVPlayerItem(url: TestAudioFixture.silentWAV)
+    let originalItem = AVPlayerItem(url: URL(fileURLWithPath: "/tmp/playlist-latency-old.m4a"))
     player.audioService.avPlayer.replaceCurrentItem(with: originalItem)
     let prefix = [latencyTrack("prefix-0"), latencyTrack("prefix-1"), latencyTrack("prefix-2")]
 

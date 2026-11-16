@@ -75,6 +75,29 @@ private struct AutomixDiagnosticsSections: View {
             row("Estado del coordinador", snapshot.coordinatorStatus)
             row("Modelo (automixModelReady)", snapshot.modelReady.map(yesNo) ?? "—")
         }
+        section("Ajustes del core, capacidad y energía") {
+            let st = snapshot.settings
+            row("Calidad", "\(st.quality)   (auto = decide la capacidad)")
+            row("Rápida con batería", yesNo(st.fastOnBattery))
+            row("Saltar mismo álbum", yesNo(st.skipSameAlbum))
+            row("Procesador / adelanto", "\(st.compute) / \(st.lookahead)")
+            row("Modelo en memoria", yesNo(st.keepModelLoaded))
+            if let c = snapshot.capability {
+                row("Capacidad", "modelo \(c.modelReady ? "listo" : "no listo")\(c.modelDownloading ? " (descargando)" : ""); "
+                    + "factor \(c.realtimeFactor.map { String(format: "%.2f×", $0) } ?? "sin medir"); "
+                    + "stems recomendado: \(yesNo(c.stemsRecommended)); proveedor \(c.provider.isEmpty ? "—" : c.provider)")
+            } else {
+                row("Capacidad", "—")
+            }
+            row("Energía", "batería: \(yesNo(snapshot.power.onBattery)); bajo consumo: \(yesNo(snapshot.power.lowPower))")
+            if let items = snapshot.prefetchItems {
+                row("Precarga", items.map(\.videoID).joined(separator: " → "))
+                if let at = snapshot.prefetchRequestedAt { row("Precarga pedida", Self.clock(at)) }
+            } else {
+                row("Precarga", "ninguna")
+            }
+            row("Estado de la precarga", snapshot.prefetchStatus)
+        }
         section("Temas") {
             row("Actual", track(snapshot.current))
             row("Siguiente", track(snapshot.next))
@@ -86,6 +109,12 @@ private struct AutomixDiagnosticsSections: View {
                 row("Par", "\(request.from.videoID) → \(request.to.videoID)\(request.forced ? " (forzada)" : "")")
                 row("Pedida", Self.clock(request.requestedAt))
                 row("Transcurrido", String(format: "%.1f s", request.elapsed(now: snapshot.date)) + (request.finishedAt == nil ? " (en curso)" : ""))
+                row("Calidad pedida / obtenida", "\(request.requestedQuality) / \(request.transition?.quality ?? "—")")
+                row("Mejora a stems", request.upgrade)
+                if let at = request.upgradeRequestedAt {
+                    let end = request.upgradeFinishedAt ?? snapshot.date
+                    row("Mejora: tiempo", String(format: "%.1f s", max(0, end.timeIntervalSince(at))) + (request.upgradeFinishedAt == nil && request.upgrade.hasPrefix("pedida") ? " (en curso)" : ""))
+                }
                 if let note = request.note { row("Nota", note) }
                 if let label = request.failureLabel { row("Fallo", label) }
                 if let raw = request.rawError { row("Mensaje del core", raw) }
@@ -100,6 +129,9 @@ private struct AutomixDiagnosticsSections: View {
                 row("detail", t.detail)
                 row("bpmFrom / bpmTo / bars", "\(f(t.bpmFrom, 1)) / \(f(t.bpmTo, 1)) / \(t.bars)")
                 row("stemsModel", yesNo(t.stemsModel))
+                row("quality / sameCutAsFast", "\(t.quality) / \(yesNo(t.sameCutAsFast))")
+                row("separatedSeconds", f(t.separatedSeconds, 1) + " s")
+                row("elapsedSeconds (core)", f(t.elapsedSeconds, 1) + " s")
                 row("aCut", f(t.aCut) + " s")
                 row("overlapStart / End", "\(f(t.overlapStart)) / \(f(t.overlapEnd)) s")
                 row("bOffset", f(t.bOffset) + " s")
@@ -124,6 +156,18 @@ private struct AutomixDiagnosticsSections: View {
             row("isPlaying / isBuffering", "\(yesNo(p.isPlaying)) / \(yesNo(p.isBuffering))")
             row("timeControlStatus", p.timeControlStatus)
             row("reasonForWaitingToPlay", p.waitingReason ?? "—")
+        }
+        section("Segundo reproductor (empalme)") {
+            if let sp = snapshot.splice {
+                row("Fase", sp.phase)
+                row("Precarga", sp.prerolledFileSeconds.map { "lista en el segundo \(f($0)) del archivo" + (sp.prerollMilliseconds.map { " (\(f($0, 0)) ms)" } ?? "") } ?? "pendiente")
+                row("Arranque programado", sp.scheduledHostSeconds.map { "hora de host \(f($0)) s, archivo \(f(sp.scheduledFileSeconds ?? 0)) s, con \(f((sp.scheduledLeadSeconds ?? 0) * 1000, 0)) ms de adelanto" } ?? "no")
+                row("Inicio / fin del fundido", "\(sp.crossfadeStartHost.map { f($0) } ?? "—") / \(sp.crossfadeEndHost.map { f($0) } ?? "—") s de host (50 ms)")
+                row("Desfase medido", sp.measuredOffsetMilliseconds.map { f($0, 2) + " ms (canción − archivo)" } ?? "—")
+                if let note = sp.note { row("Nota", note) }
+            } else {
+                row("Empalme", "no hay archivo cargado en un segundo reproductor")
+            }
         }
         section("Cuentas atrás (negativo = ya pasó)") {
             if let c = snapshot.countdown {

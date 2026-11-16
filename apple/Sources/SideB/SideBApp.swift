@@ -39,6 +39,8 @@ struct SideBApp: App {
             let core = try SideBCore(dataDir: appSupport.path)
             core.setCipherJsRuntime(runtime: NativeCipherJsRuntime())
             _rustCore = State(initialValue: core)
+            // Automix: dónde viven sus cachés y los ajustes del core, desde el arranque (precarga, uso de disco, ajustes).
+            AutomixPreferences.shared.attach(core: core, cacheDirectory: AutomixPreferences.cacheDirectory)
             _playerViewModel = State(initialValue: PlayerViewModel(rustCore: core))
         } catch {
             _initError = State(initialValue: AppMessage(key: "app.startDetails", args: [error.localizedDescription]))

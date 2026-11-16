@@ -1843,8 +1843,60 @@ History: %@</string>
 	<string>Appearance</string>
 	<key>settings.automix</key>
 	<string>Automix (beta)</string>
+	<key>settings.automix.advanced</key>
+	<string>Advanced</string>
+	<key>settings.automix.cache.clear</key>
+	<string>Clear cache</string>
+	<key>settings.automix.cache.usage</key>
+	<string>Cache: %@ (songs %@, stems %@, transitions %@)</string>
+	<key>settings.automix.capability.measured</key>
+	<string>This computer: %@× real time%@</string>
+	<key>settings.automix.capability.unknown</key>
+	<string>This computer: no capability data</string>
+	<key>settings.automix.capability.unmeasured</key>
+	<string>This computer: not measured yet%@</string>
+	<key>settings.automix.compute</key>
+	<string>Processor</string>
+	<key>settings.automix.compute.auto</key>
+	<string>Automatic</string>
+	<key>settings.automix.compute.cpu</key>
+	<string>CPU</string>
+	<key>settings.automix.compute.gpu</key>
+	<string>GPU</string>
+	<key>settings.automix.fastOnBattery</key>
+	<string>On battery, use only the fast version</string>
 	<key>settings.automix.hint</key>
 	<string>Prepares a DJ-style transition into the next song while the current one plays. The first use downloads a model of about 210 MB. It needs AAC streams and does not act during a Jam (your preference is kept and applies again when it ends), with single-song repeat or between songs of the same album.</string>
+	<key>settings.automix.keepModel</key>
+	<string>Keep the model loaded</string>
+	<key>settings.automix.keepModel.hint</key>
+	<string>Avoids loading the model for every mix, but uses about 2 GB of memory while loaded. When off, it is released after 60 seconds without use.</string>
+	<key>settings.automix.lookahead</key>
+	<string>Prepare ahead (songs)</string>
+	<key>settings.automix.model.absent</key>
+	<string>Model: not downloaded</string>
+	<key>settings.automix.model.delete</key>
+	<string>Delete model…</string>
+	<key>settings.automix.model.delete.confirm</key>
+	<string>Delete model</string>
+	<key>settings.automix.model.delete.message</key>
+	<string>It takes about 210 MB. Stem quality will not be available until it is downloaded again.</string>
+	<key>settings.automix.model.delete.title</key>
+	<string>Delete the Automix model?</string>
+	<key>settings.automix.model.downloading</key>
+	<string>Model: downloading</string>
+	<key>settings.automix.model.size</key>
+	<string>Model: %@</string>
+	<key>settings.automix.quality</key>
+	<string>Quality</string>
+	<key>settings.automix.quality.auto</key>
+	<string>Automatic (recommended)</string>
+	<key>settings.automix.quality.fast</key>
+	<string>Always fast</string>
+	<key>settings.automix.quality.stems</key>
+	<string>Always with stems</string>
+	<key>settings.automix.skipSameAlbum</key>
+	<string>Don't mix consecutive songs from the same album</string>
 	<key>settings.categories</key>
 	<string>Home categories</string>
 	<key>settings.categoriesHint</key>

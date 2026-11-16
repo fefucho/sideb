@@ -1,4 +1,5 @@
 import Foundation
+import IOKit.ps
 import SideBCore
 
 // PLAN-024: lógica pura del Automix (DJ) del Mac. Nada aquí toca red, AVFoundation ni el core:
@@ -29,16 +30,27 @@ struct AutomixTransition: Equatable, Sendable {
     var bars: Int
     var stemsModel: Bool
     var detail: String
+    /// Calidad pedida al core: "fast" o "stems".
+    var quality: String
+    /// El render de stems corta en el mismo sitio que el rápido (se puede cambiar de uno al otro sin mover el corte).
+    var sameCutAsFast: Bool
+    /// Segundos de audio que separó el modelo en esta llamada (0 con «fast» o con una precarga).
+    var separatedSeconds: Double
+    /// Segundos de pared que tardó la preparación en el core, descargas incluidas.
+    var elapsedSeconds: Double
 
     init(requestID: String, fromVideoID: String, toVideoID: String, kind: String, filePath: String,
          fileDuration: Double, aCut: Double, overlapStart: Double, overlapEnd: Double, bOffset: Double,
          bEntry: Double, handover: Double, bpmFrom: Double = 0, bpmTo: Double = 0, bars: Int = 0,
-         stemsModel: Bool = false, detail: String = "") {
+         stemsModel: Bool = false, detail: String = "", quality: String = "fast", sameCutAsFast: Bool = true,
+         separatedSeconds: Double = 0, elapsedSeconds: Double = 0) {
         self.requestID = requestID; self.fromVideoID = fromVideoID; self.toVideoID = toVideoID
         self.kind = kind; self.filePath = filePath; self.fileDuration = fileDuration; self.aCut = aCut
         self.overlapStart = overlapStart; self.overlapEnd = overlapEnd; self.bOffset = bOffset
         self.bEntry = bEntry; self.handover = handover; self.bpmFrom = bpmFrom; self.bpmTo = bpmTo
         self.bars = bars; self.stemsModel = stemsModel; self.detail = detail
+        self.quality = quality; self.sameCutAsFast = sameCutAsFast
+        self.separatedSeconds = separatedSeconds; self.elapsedSeconds = elapsedSeconds
     }
 
     init(record: AutomixTransitionRecord) {
@@ -48,7 +60,9 @@ struct AutomixTransition: Equatable, Sendable {
                   overlapEnd: record.overlapEndSeconds, bOffset: record.bOffsetSeconds,
                   bEntry: record.bEntrySeconds, handover: record.handoverSeconds,
                   bpmFrom: record.bpmFrom, bpmTo: record.bpmTo, bars: Int(record.bars),
-                  stemsModel: record.stemsModel, detail: record.detail)
+                  stemsModel: record.stemsModel, detail: record.detail, quality: record.quality,
+                  sameCutAsFast: record.sameCutAsFast, separatedSeconds: record.separatedSeconds,
+                  elapsedSeconds: record.elapsedSeconds)
     }
 
     /// Rechaza un registro incoherente en vez de reproducirlo: cualquier valor no finito o fuera de orden.
@@ -123,6 +137,12 @@ struct AutomixContext: Equatable, Sendable {
     var repeatOne: Bool
     /// El tema ya está sonando de verdad (no sólo resolviéndose o cargando).
     var hasStarted: Bool
+    /// Ajuste del core: no mezclar canciones seguidas del mismo álbum.
+    var skipSameAlbum: Bool = true
+    /// Siguientes temas conocidos de la cola, en orden (para la precarga del core).
+    var upcoming: [AutomixSong] = []
+    /// Ajuste del core: cuántos temas siguientes se precargan (1 a 3).
+    var lookahead: Int = 1
 }
 
 struct AutomixPlanKey: Hashable, Sendable {
@@ -151,7 +171,7 @@ enum AutomixEligibility {
         guard let next = context.next else { return .noNextTrack }
         if next.videoID == context.current.videoID { return .sameTrack }
         // Pistas del mismo disco suenan seguidas a propósito (discos conceptuales, en vivo): no se mezclan.
-        if let from = context.current.albumID, !from.isEmpty, from == next.albumID { return .sameAlbum }
+        if context.skipSameAlbum, let from = context.current.albumID, !from.isEmpty, from == next.albumID { return .sameAlbum }
         return nil
     }
 }
@@ -162,6 +182,10 @@ enum AutomixFailure: Error, Equatable, Sendable {
     case unsupportedFormat
     case tooLong
     case badID
+    /// `quality: "stems"` sin el modelo en disco (empieza a bajarse): se conserva la versión rápida.
+    case modelUnavailable
+    case badQuality
+    case noCacheDir
     case other
 
     init(coreMessage message: String) {
@@ -169,6 +193,9 @@ enum AutomixFailure: Error, Equatable, Sendable {
         else if message.hasPrefix("automix:unsupported-format") { self = .unsupportedFormat }
         else if message.hasPrefix("automix:too-long") { self = .tooLong }
         else if message.hasPrefix("automix:bad-id") { self = .badID }
+        else if message.hasPrefix("automix:model-unavailable") { self = .modelUnavailable }
+        else if message.hasPrefix("automix:bad-quality") { self = .badQuality }
+        else if message.hasPrefix("automix:no-cache-dir") { self = .noCacheDir }
         else { self = .other }
     }
 
@@ -179,6 +206,9 @@ enum AutomixFailure: Error, Equatable, Sendable {
         case .unsupportedFormat: "unsupported-format"
         case .tooLong: "too-long"
         case .badID: "bad-id"
+        case .modelUnavailable: "model-unavailable"
+        case .badQuality: "bad-quality"
+        case .noCacheDir: "no-cache-dir"
         case .other: "other"
         }
     }
@@ -188,7 +218,7 @@ enum AutomixFailure: Error, Equatable, Sendable {
         case .cancelled: nil
         case .unsupportedFormat: .unsupportedFormat
         case .tooLong: .tooLong
-        case .badID, .other: .failed
+        case .badID, .modelUnavailable, .badQuality, .noCacheDir, .other: .failed
         }
     }
 }
@@ -204,6 +234,99 @@ struct AutomixRequest: Equatable, Sendable {
     var from: AutomixSong
     var to: AutomixSong
     var cacheDirectory: URL
+    /// "fast" (sin modelo) o "stems".
+    var quality: String = "fast"
+}
+
+// MARK: - Ajustes, capacidad y estrategia de calidad
+
+/// Ajustes del core (`AutomixSettings`) en un tipo propio, para que la lógica no dependa de UniFFI.
+struct AutomixSettingsValue: Equatable, Sendable {
+    /// "auto", "fast" o "stems".
+    var quality = "auto"
+    var fastOnBattery = true
+    var skipSameAlbum = true
+    /// "auto", "gpu" o "cpu".
+    var compute = "auto"
+    var lookahead = 1
+    var keepModelLoaded = false
+
+    init() {}
+
+    init(record: AutomixSettings) {
+        quality = record.quality; fastOnBattery = record.fastOnBattery; skipSameAlbum = record.skipSameAlbum
+        compute = record.compute; lookahead = Int(record.lookahead); keepModelLoaded = record.keepModelLoaded
+    }
+
+    var record: AutomixSettings {
+        AutomixSettings(quality: quality, fastOnBattery: fastOnBattery, skipSameAlbum: skipSameAlbum, compute: compute,
+                        lookahead: UInt8(max(1, min(3, lookahead))), keepModelLoaded: keepModelLoaded)
+    }
+}
+
+struct AutomixCapabilityValue: Equatable, Sendable {
+    var modelReady = false
+    var modelDownloading = false
+    var realtimeFactor: Double?
+    var stemsRecommended = false
+    var provider = ""
+
+    init() {}
+
+    init(record: AutomixCapability) {
+        modelReady = record.modelReady; modelDownloading = record.modelDownloading
+        realtimeFactor = record.realtimeFactor; stemsRecommended = record.stemsRecommended; provider = record.provider
+    }
+}
+
+struct AutomixCacheUsageValue: Equatable, Sendable {
+    var audioBytes: UInt64 = 0
+    var stemsBytes: UInt64 = 0
+    var transitionsBytes: UInt64 = 0
+    var modelBytes: UInt64 = 0
+    var total: UInt64 { audioBytes + stemsBytes + transitionsBytes }
+}
+
+/// Estado de energía del Mac: la batería (IOPowerSources) y el modo de bajo consumo.
+struct AutomixPowerState: Equatable, Sendable {
+    var onBattery = false
+    var lowPower = false
+
+    static func current(lowPower: Bool = ProcessInfo.processInfo.isLowPowerModeEnabled) -> AutomixPowerState {
+        var onBattery = false
+        if let info = IOPSCopyPowerSourcesInfo()?.takeRetainedValue(),
+           let type = IOPSGetProvidingPowerSourceType(info)?.takeRetainedValue() as String? {
+            onBattery = type == kIOPMBatteryPowerKey
+        }
+        return AutomixPowerState(onBattery: onBattery, lowPower: lowPower)
+    }
+}
+
+/// Decide si, además de la versión rápida, se pide la de stems para cambiarla si llega a tiempo.
+enum AutomixStrategy {
+    /// Decisión y motivo (para el registro).
+    static func wantsStems(settings: AutomixSettingsValue, capability: AutomixCapabilityValue?,
+                           power: AutomixPowerState) -> (wants: Bool, reason: String) {
+        switch settings.quality {
+        case "fast": return (false, "calidad «siempre rápida»")
+        case "stems": break
+        default:
+            guard let capability, capability.stemsRecommended else {
+                return (false, "automática: esta Mac aún no recomienda stems (capacidad \(capability == nil ? "desconocida" : "insuficiente o sin medir"))")
+            }
+        }
+        if settings.fastOnBattery, power.onBattery || power.lowPower {
+            return (false, "con \(power.lowPower ? "bajo consumo" : "batería") sólo la versión rápida")
+        }
+        return (true, settings.quality == "stems" ? "calidad «siempre con stems»" : "automática: stems recomendado")
+    }
+}
+
+/// Qué temas se le pasan a `prefetchAutomix`: el que suena y los siguientes (hasta `lookahead`).
+enum AutomixPrefetchPlan {
+    static func items(current: AutomixSong, upcoming: [AutomixSong], lookahead: Int) -> [AutomixSong] {
+        [current] + upcoming.prefix(max(1, min(3, lookahead)))
+    }
 }
 
 // MARK: - Línea de tiempo del archivo
@@ -220,11 +343,12 @@ enum AudioSeekRoute: Equatable, Sendable {
     case restream
 }
 
-enum AudioSpliceArmDecision: Equatable, Sendable {
-    /// Aún falta para el corte: empalme sin cortes con `forwardPlaybackEndTime`.
-    case arm
-    /// El corte ya pasó pero el archivo todavía es la canción tal cual: entrar al archivo en ese segundo.
-    case lateEntry(fileSeconds: Double)
+enum AudioSpliceCommitDecision: Equatable, Sendable {
+    /// Aún falta más de `commitLead` para el corte: seguir precargando.
+    case wait
+    /// Programar el arranque del archivo en ese segundo del archivo (0 = el corte; más = entrada tardía).
+    case commit(fileSeconds: Double)
+    /// Ya no cabe el fundido dentro de la parte del archivo que es la canción tal cual.
     case giveUp
 }
 
@@ -269,11 +393,24 @@ struct AudioSpliceTimeline: Equatable, Sendable {
     /// Fin de la canción siguiente tal como suena en el archivo.
     var nextDuration: Double { max(0, fileDuration - bOffset) }
 
-    func armDecision(position: Double) -> AudioSpliceArmDecision {
+    /// Cuánto antes del corte se programa el arranque del archivo (hay tiempo de sobra tras la precarga).
+    static let commitLead = 0.9
+    /// Cuánto después de «ahora» se pone el punto de empalme cuando el corte ya pasó o está encima.
+    static let switchLead = 0.45
+    /// Margen entre el fin del fundido y el fin de la parte del archivo idéntica a la canción.
+    static let crossfadeEndMargin = 0.15
+
+    /// Qué hacer con el empalme según la posición de la canción (segundos de la canción mostrada).
+    func commitDecision(position: Double) -> AudioSpliceCommitDecision {
         guard position.isFinite else { return .giveUp }
-        if position <= cut - Self.armMargin { return .arm }
-        if position <= cut + overlapStart - Self.overlapMargin { return .lateEntry(fileSeconds: max(0, position - cut)) }
-        return .giveUp
+        if position < cut - Self.commitLead { return .wait }
+        let file = max(0, position + Self.switchLead - cut)
+        return fits(fileSeconds: file) ? .commit(fileSeconds: file) : .giveUp
+    }
+
+    /// El fundido de 50 ms que empieza en `fileSeconds` cabe dentro de la primera parte del archivo.
+    func fits(fileSeconds: Double) -> Bool {
+        fileSeconds + AudioCrossfade.duration <= overlapStart - Self.crossfadeEndMargin
     }
 
     /// `target` está en segundos de la canción mostrada.

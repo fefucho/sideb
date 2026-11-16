@@ -90,6 +90,8 @@ struct ExperimentalLyricsPanel: View {
             if newOccurrence { offsetMS = 0 }
             startClock(recenterAfterUpdate: true)
         }
+        // El empalme de Automix sustituye al AVPlayer activo: el reloj de letras se reengancha al nuevo.
+        .onChange(of: ObjectIdentifier(player)) { _, _ in startClock(recenterAfterUpdate: false) }
         .onChange(of: duration) { _, next in
             let previousIDs = cachedItems.items.map(\.id)
             let previousTarget = scrollTarget

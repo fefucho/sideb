@@ -106,25 +106,28 @@ public final class AudioPlayerService {
 
     // MARK: - Privados
     private var player: AVPlayer
-    public var avPlayer: AVPlayer { player }
+    /// Se incrementa cada vez que el reproductor activo cambia de objeto (empalme de Automix con un segundo
+    /// `AVPlayer`): quien lea `avPlayer` desde una vista de SwiftUI se vuelve a evaluar.
+    private(set) var playerEpoch = 0
+    public var avPlayer: AVPlayer { _ = playerEpoch; return player }
     /// Displayed song seconds = player item seconds − `timeBias`. Zero for a streamed song; while the transition
     /// file plays it maps the file to the song the UI shows (see `AudioSpliceTimeline.bias`).
     @ObservationIgnored private(set) var timeBias: Double = 0
     private struct ActiveSplice {
         var plan: AudioSplice
-        var fileItem: AVPlayerItem
+        /// El segundo `AVPlayer` con el archivo de la transición.
+        var switcher: AudioSpliceSwitcher
         var stage: AudioSpliceStage
-        var originalForwardEnd: CMTime
         var handoverFired = false
         /// A song that is itself playing out of a previous transition file keeps its mapping while the next
-        /// file is queued behind it (chained A→B→C); disarming gives it back.
+        /// file is prepared behind it (chained A→B→C); disarming gives it back.
         var base: [ActiveSplice] = []
     }
     @ObservationIgnored private var splice: ActiveSplice?
     @ObservationIgnored private var spliceItemObserver: NSKeyValueObservation?
-    @ObservationIgnored private var currentItemObserver: NSKeyValueObservation?
-    /// The item the end/status observers were installed for. A queue player drops a finished item (and
-    /// moves `currentItem`) before the end notification is delivered, so equality with `currentItem` is not enough.
+    /// Hay una confirmación del empalme en curso (preparando o programando el arranque).
+    @ObservationIgnored private var isCommitting = false
+    /// The item the end/status observers were installed for.
     @ObservationIgnored private weak var observedItem: AVPlayerItem?
     private var timeObserverToken: Any?
     private var itemStatusObserver: NSKeyValueObservation?
@@ -153,7 +156,7 @@ public final class AudioPlayerService {
     }
 
     init(preferences: UserDefaults, preferencePrefix: String,
-         player: AVPlayer = AVQueuePlayer(),
+         player: AVPlayer = AVPlayer(),
          seekExecutor: @escaping (AVPlayer, CMTime, @escaping @Sendable (Bool) -> Void) -> Void = { player, time, completion in
              player.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero, completionHandler: completion)
          },
@@ -181,9 +184,6 @@ public final class AudioPlayerService {
         storedExponentialVolume = preferences.bool(forKey: exponentialVolumeKey)
         storedAutomixEnabled = preferences.bool(forKey: automixEnabledKey)
         player.volume = outputVolume
-        currentItemObserver = player.observe(\.currentItem, options: [.new]) { [weak self] _, _ in
-            Task { @MainActor in self?.currentItemDidChange() }
-        }
     }
 
     deinit {
@@ -241,7 +241,7 @@ public final class AudioPlayerService {
 
         observePlayerItem(playerItem)
 
-        installItem(playerItem)
+        player.replaceCurrentItem(with: playerItem)
         playbackStatusObserver = player.observe(\.timeControlStatus, options: [.new]) { [weak self, weak playerItem] _, change in
             guard change.newValue == .playing else { return }
             Task { @MainActor in
@@ -257,6 +257,7 @@ public final class AudioPlayerService {
     }
 
     public func pause() {
+        abortCommittedSwitch(reason: "pausa")
         reportedPlaybackID = nil
         player.pause()
         self.isPlaying = false
@@ -284,6 +285,7 @@ public final class AudioPlayerService {
         // `target` is in displayed song seconds; the player item runs `timeBias` ahead of it.
         let targetTime = CMTime(seconds: target + timeBias, preferredTimescale: 1000)
         guard targetTime.isNumeric else { return false }
+        abortCommittedSwitch(reason: "salto")
         // A superseded request may complete with finished=false later; its ticket can
         // never publish into this request or a replacement item's playback occurrence.
         item.cancelPendingSeeks()
@@ -322,7 +324,7 @@ public final class AudioPlayerService {
         cleanupItemObservers()
         cleanupTimeObserver()
         player.pause()
-        installItem(nil)
+        player.replaceCurrentItem(with: nil)
         self.isPlaying = false
         self.isBuffering = false
         self.hasTriggeredTrackEnd = false
@@ -383,6 +385,7 @@ public final class AudioPlayerService {
         // Until the handover the UI shows the previous song, whose length the file may outrun.
         if spliceStage == .inFile, duration > 0 { seconds = min(seconds, duration) }
         currentTime = seconds
+        driveSplice()
         // This callback feeds listened-history accounting. An unresolved target is
         // UI preview only and must never count as effective playback progress.
         guard seekState.pendingTicket == nil else { return }
@@ -529,8 +532,6 @@ public final class AudioPlayerService {
             MainActor.assumeIsolated {
                 // A queue player may already have moved `currentItem` on; the observed item is what ended.
                 guard let self = self, item === self.observedItem else { return }
-                // A queued transition: the item reached its forward end time at the cut and the file takes over.
-                if self.spliceStage == .armed { self.commitSpliceEntered(); return }
                 self.handleTrackEnded()
             }
         }
@@ -592,100 +593,240 @@ struct AudioSplice {
 }
 
 enum AudioSpliceArmResult: Equatable {
-    /// The file is queued behind the current song; AVFoundation advances gaplessly at the cut.
+    /// The file is loading in a second player; the switch happens by itself at the cut (or right away if late).
     case armed
-    /// The cut had passed but the file is still the song untouched: the player entered the file.
-    case enteredLate
     case tooLate
     case unavailable
 }
 
 extension AudioPlayerService {
-    /// Replaces whatever is loaded. A queue player keeps its remaining items on `replaceCurrentItem` and
-    /// advances on `nil`, so it is emptied explicitly; a plain `AVPlayer` (tests) just replaces.
-    fileprivate func installItem(_ item: AVPlayerItem?) {
-        if let queue = player as? AVQueuePlayer {
-            queue.removeAllItems()
-            if let item { queue.insert(item, after: nil) }
-        } else {
-            player.replaceCurrentItem(with: item)
-        }
-    }
+    fileprivate static func fmt(_ value: Double) -> String { value.isFinite ? String(format: "%.3f", value) : "—" }
 
     fileprivate func clearSplice() {
-        if splice != nil { AutomixDiagnostics.shared.record("player", "empalme descartado (\(spliceStage)) por reproducción nueva o stop") }
+        if let active = splice {
+            AutomixDiagnostics.shared.record("player", "empalme descartado (\(spliceStage)) por reproducción nueva o stop")
+            active.switcher.dispose()
+            for base in active.base { base.switcher.dispose() }
+        }
         spliceItemObserver?.invalidate()
         spliceItemObserver = nil
         splice = nil
+        isCommitting = false
         if spliceStage != .none { spliceStage = .none }
         timeBias = 0
     }
 
-    fileprivate func currentItemDidChange() {
-        if let active = splice, active.stage == .armed, player.currentItem === active.fileItem {
-            commitSpliceEntered()
-        }
-    }
-
-    /// Queues the transition file behind the current song and ends the song at `cut` (gapless), or, when the
-    /// cut is just behind and the file is still the song itself, enters the file at the current position.
+    /// Carga el archivo en un segundo reproductor y lo precarga bien antes del corte. No toca el elemento que suena:
+    /// ni su `forwardPlaybackEndTime`, ni una cola. El cambio lo hace `driveSplice` al acercarse el corte.
     @discardableResult
     func armSplice(_ plan: AudioSplice) -> AudioSpliceArmResult {
-        guard splice == nil || splice?.stage == .handedOver, let queue = player as? AVQueuePlayer,
-              let item = queue.currentItem, observedItem === item, loadedPlaybackID != nil,
-              !hasTriggeredTrackEnd else {
+        guard splice == nil || splice?.stage == .handedOver, let item = player.currentItem,
+              observedItem === item, loadedPlaybackID != nil, !hasTriggeredTrackEnd else {
             AutomixDiagnostics.shared.record("player", "armar imposible: sin elemento observado, empalme previo o fin ya disparado")
             return .unavailable
         }
         let position = displayedMediaTime()
-        let decision = plan.timeline.armDecision(position: position)
-        if decision == .giveUp {
+        if plan.timeline.commitDecision(position: position) == .giveUp {
             AutomixDiagnostics.shared.record("player", "armar rechazado: la canción (\(Self.fmt(position)) s) ya pasó el solape del archivo")
             return .tooLate
         }
-
-        let fileItem = AVPlayerItem(asset: plan.asset)
-        let originalEnd = item.forwardPlaybackEndTime
-        AutomixDiagnostics.shared.record("player", "armar: canción en \(Self.fmt(position)) s, corte en \(Self.fmt(plan.timeline.cut)) s, decisión \(decision), "
-            + "sesgo \(Self.fmt(timeBias)), tiempo crudo \(Self.fmt(measuredTime(player))) s")
-        splice = ActiveSplice(plan: plan, fileItem: fileItem, stage: .armed, originalForwardEnd: originalEnd,
-                              base: splice.map { [$0] } ?? [])
+        let switcher = AudioSpliceSwitcher(asset: plan.asset)
+        splice = ActiveSplice(plan: plan, switcher: switcher, stage: .armed, base: splice.map { [$0] } ?? [])
         spliceStage = .armed
-        spliceItemObserver = fileItem.observe(\.status, options: [.new]) { [weak self] observed, _ in
-            guard observed.status == .failed else { return }
-            Task { @MainActor in self?.fileItemFailed(observed) }
-        }
-        // Sample-exact end of the current song: its item seconds are the cut plus the mapping in force.
-        let endSeconds = plan.timeline.cut + timeBias
-        item.forwardPlaybackEndTime = CMTime(value: Int64((endSeconds * 44_100).rounded()), timescale: 44_100)
-        queue.insert(fileItem, after: item)
-
-        if case .lateEntry = decision {
-            // The file is identical to the song from the cut on: step into it and resume where we were.
-            queue.advanceToNextItem()
-            commitSpliceEntered()
-            seek(toSeconds: position + 0.15)
-            AutomixDiagnostics.shared.record("player", "entrada tardía: salta al archivo y busca la canción \(Self.fmt(position + 0.15)) s")
-            return .enteredLate
-        }
-        AutomixDiagnostics.shared.record("player", "empalme armado: fin del elemento en \(Self.fmt(endSeconds)) s (tiempo del elemento), archivo en cola")
+        observeSpliceItem(switcher)
+        startPreroll(switcher, fileSeconds: 0)
+        AutomixDiagnostics.shared.record("player", "armar: canción en \(Self.fmt(position)) s, corte en \(Self.fmt(plan.timeline.cut)) s; "
+            + "segundo reproductor cargando el archivo, sesgo \(Self.fmt(timeBias)); el elemento que suena no se toca")
         return .armed
     }
 
-    /// Takes the queued file out and gives the current song back its own end. Harmless when nothing is queued
+    /// Cambia el archivo armado por otro de la misma pareja y el mismo corte (stems en lugar de la versión rápida)
+    /// mientras el empalme no se haya comprometido (arranque programado).
+    func replaceSplice(_ plan: AudioSplice) -> AudioSpliceArmResult {
+        guard var active = splice, active.stage == .armed, !active.switcher.isCommitted, !isCommitting,
+              abs(plan.timeline.cut - active.plan.timeline.cut) < 0.001,
+              abs(plan.timeline.overlapStart - active.plan.timeline.overlapStart) < 0.001 else {
+            AutomixDiagnostics.shared.record("player", "sustitución rechazada: el empalme ya se comprometió, no hay empalme armado o el corte cambia")
+            return .unavailable
+        }
+        active.switcher.dispose()
+        let switcher = AudioSpliceSwitcher(asset: plan.asset)
+        active.plan = plan
+        active.switcher = switcher
+        splice = active
+        observeSpliceItem(switcher)
+        startPreroll(switcher, fileSeconds: 0)
+        AutomixDiagnostics.shared.record("player", "archivo sustituido antes de comprometer el empalme (mismo corte)")
+        return .armed
+    }
+
+    private func observeSpliceItem(_ switcher: AudioSpliceSwitcher) {
+        spliceItemObserver?.invalidate()
+        spliceItemObserver = switcher.item.observe(\.status, options: [.new]) { [weak self, weak switcher] observed, _ in
+            guard observed.status == .failed else { return }
+            Task { @MainActor in
+                guard let self, let switcher, self.splice?.switcher === switcher else { return }
+                AutomixDiagnostics.shared.record("player", "el archivo del segundo reproductor falló al cargar")
+                self.disarmSplice()
+                self.onSpliceFailed?()
+            }
+        }
+    }
+
+    private func startPreroll(_ switcher: AudioSpliceSwitcher, fileSeconds: Double) {
+        Task { @MainActor [weak self, weak switcher] in
+            guard let switcher else { return }
+            let result = await switcher.prepare(fileSeconds: fileSeconds)
+            guard let self, self.splice?.switcher === switcher else { return }
+            switch result {
+            case .ready:
+                AutomixDiagnostics.shared.record("player", "precarga lista en el segundo \(Self.fmt(fileSeconds)) del archivo (\(String(format: "%.0f", switcher.diagnostics.prerollMilliseconds ?? 0)) ms)")
+            case .failed:
+                AutomixDiagnostics.shared.record("player", "la precarga del archivo falló")
+                self.disarmSplice()
+                self.onSpliceFailed?()
+            case .superseded:
+                break
+            }
+        }
+    }
+
+    /// Lo llama el reloj de 10 Hz: con el empalme armado decide cuándo programar el arranque del archivo.
+    fileprivate func driveSplice() {
+        guard let active = splice, active.stage == .armed else { return }
+        let switcher = active.switcher
+        if switcher.isCommitted {
+            // Ya hay un arranque programado: si la canción deja de sonar con normalidad, se deshace.
+            if player.timeControlStatus != .playing || seekState.pendingTicket != nil, switcher.phase != .done {
+                abortCommittedSwitch(reason: "la canción dejó de sonar con normalidad (\(player.timeControlStatus.rawValue))")
+            }
+            return
+        }
+        guard !isCommitting, player.timeControlStatus == .playing, seekState.pendingTicket == nil else { return }
+        if switcher.phase == .aborted || switcher.phase == .idle {
+            startPreroll(switcher, fileSeconds: 0)
+            return
+        }
+        guard switcher.phase == .prerolled else { return }
+        let position = displayedMediaTime()
+        switch active.plan.timeline.commitDecision(position: position) {
+        case .wait: return
+        case .giveUp:
+            AutomixDiagnostics.shared.record("player", "empalme abandonado: la canción (\(Self.fmt(position)) s) ya no deja sitio al fundido dentro de la parte idéntica")
+            disarmSplice()
+            onSpliceFailed?()
+        case .commit(let fileSeconds):
+            commitSplice(fileSeconds: fileSeconds)
+        }
+    }
+
+    /// Alinea el arranque del archivo con la posición de la canción y programa el fundido de 50 ms.
+    private func commitSplice(fileSeconds first: Double) {
+        guard !isCommitting, let active = splice, active.stage == .armed else { return }
+        isCommitting = true
+        let switcher = active.switcher
+        let timeline = active.plan.timeline
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer { self.isCommitting = false }
+            var file = first
+            for attempt in 1...3 {
+                if switcher.prerolledFileSeconds != file {
+                    switch await switcher.prepare(fileSeconds: file) {
+                    case .ready: break
+                    case .superseded: return
+                    case .failed:
+                        AutomixDiagnostics.shared.record("player", "la precarga en el segundo \(Self.fmt(file)) falló")
+                        self.disarmSplice(); self.onSpliceFailed?()
+                        return
+                    }
+                }
+                guard self.splice?.switcher === switcher, self.splice?.stage == .armed,
+                      self.player.timeControlStatus == .playing, let oldItem = self.player.currentItem,
+                      let timebase = oldItem.timebase else { return }
+                // Segundo de la canción en que ocurre el empalme y hora de host a la que el elemento viejo llega a él.
+                let song = timeline.cut + file
+                let itemTime = CMTime(seconds: song + self.timeBias, preferredTimescale: 44_100)
+                let host = CMSyncConvertTime(itemTime, from: timebase, to: CMClockGetHostTimeClock())
+                if switcher.commit(fileSeconds: file, hostTime: host, old: self.player, output: self.outputVolume,
+                                   onFinished: { [weak self] in self?.completeSwitch() }) {
+                    AutomixDiagnostics.shared.record("player", "empalme comprometido: archivo en \(Self.fmt(file)) s ↔ canción en \(Self.fmt(song)) s; "
+                        + "arranca en \(String(format: "%.0f", (switcher.diagnostics.scheduledLeadSeconds ?? 0) * 1000)) ms (intento \(attempt))")
+                    return
+                }
+                // Demasiado cerca para programarlo: se empalma un poco más adelante.
+                file += 0.35
+                guard timeline.fits(fileSeconds: file) else { break }
+            }
+            AutomixDiagnostics.shared.record("player", "no se pudo programar el arranque del archivo a tiempo")
+            self.disarmSplice(); self.onSpliceFailed?()
+        }
+    }
+
+    /// Deshace un arranque programado o un fundido en curso (pausa, salto, parada de la canción).
+    fileprivate func abortCommittedSwitch(reason: String) {
+        guard let active = splice, active.stage == .armed, active.switcher.isCommitted, active.switcher.phase != .done else { return }
+        active.switcher.abort(restoring: player, output: outputVolume)
+        AutomixDiagnostics.shared.record("player", "arranque programado deshecho (\(reason)); se vuelve a precargar")
+    }
+
+    /// Fin del fundido: el reproductor del archivo pasa a ser el del servicio y el viejo se retira.
+    fileprivate func completeSwitch(immediate: Bool = false) {
+        guard var active = splice, active.stage == .armed else { return }
+        let switcher = active.switcher
+        // Medida real de la alineación (diagnóstico): canción menos (aCut + archivo), en milisegundos.
+        let oldSeconds = player.currentTime().seconds
+        let fileSeconds = switcher.player.currentTime().seconds
+        if !immediate, oldSeconds.isFinite, fileSeconds.isFinite {
+            let offset = ((oldSeconds - timeBias) - (active.plan.timeline.cut + fileSeconds)) * 1000
+            switcher.recordMeasuredOffset(milliseconds: offset)
+            AutomixDiagnostics.shared.record("player", "fin del fundido: desfase medido entre reproductores \(String(format: "%.1f", offset)) ms")
+        }
+        // El nuevo debe estar sonando; si no, se arranca (red de seguridad).
+        if switcher.player.rate == 0 && isPlaying { switcher.player.play() }
+        // Retira el reproductor viejo con todos sus observadores.
+        cleanupTimeObserver()
+        cleanupItemObservers()
+        let old = player
+        old.pause()
+        old.replaceCurrentItem(with: nil)
+        player = switcher.player
+        player.volume = outputVolume
+        player.automaticallyWaitsToMinimizeStalling = true
+        playerEpoch &+= 1
+
+        active.stage = .inFile
+        active.base = []
+        splice = active
+        spliceStage = .inFile
+        spliceItemObserver?.invalidate()
+        spliceItemObserver = nil
+        timeBias = active.plan.timeline.bias(for: .inFile)
+        AutomixDiagnostics.shared.record("player", "el archivo es ahora el reproductor activo: sesgo \(Self.fmt(timeBias)), tiempo crudo \(Self.fmt(measuredTime(player))) s")
+        invalidateSeek(playbackID: loadedPlaybackID, mediaSeconds: displayedMediaTime())
+        observePlayerItem(switcher.item)
+        if let id = loadedPlaybackID { setupTimeObserver(for: switcher.item, playbackID: id) }
+        hasTriggeredTrackEnd = false
+        isBuffering = false
+        onSpliceEntered?()
+    }
+
+    /// Takes the second player out and gives the current song back its volume. Harmless when nothing is armed
     /// or the file already plays (it cannot be un-heard; the handover completes normally).
     func disarmSplice() {
         guard let active = splice, active.stage == .armed else { return }
         spliceItemObserver?.invalidate()
         spliceItemObserver = nil
-        (player as? AVQueuePlayer)?.remove(active.fileItem)
-        observedItem?.forwardPlaybackEndTime = active.originalForwardEnd
-        AutomixDiagnostics.shared.record("player", "empalme desarmado: archivo fuera de la cola, fin de la canción restituido")
+        isCommitting = false
+        if active.switcher.isCommitted { active.switcher.abort(restoring: player, output: outputVolume) }
+        active.switcher.dispose()
+        player.volume = outputVolume
+        AutomixDiagnostics.shared.record("player", "empalme desarmado: segundo reproductor descartado, la canción sigue tal cual")
         splice = active.base.first
         spliceStage = splice?.stage ?? .none
     }
 
-    /// The video id of the song the file hands over to; nil when no file is queued or playing.
+    /// The video id of the song the file hands over to; nil when no file is prepared or playing.
     var spliceNextVideoID: String? { splice?.plan.nextVideoID }
 
     /// Where a seek to `seconds` (displayed song seconds) must go given the current splice.
@@ -694,13 +835,26 @@ extension AudioPlayerService {
         return active.plan.timeline.route(forSeek: seconds, stage: active.stage)
     }
 
-    /// Steps into the queued file now and seeks it to the displayed song second `seconds`.
+    /// Enters the prepared file now at the displayed song second `seconds` (a seek, not a gapless switch).
     @discardableResult
     func seekIntoSplice(toSeconds seconds: Double) -> Bool {
-        guard let active = splice, active.stage == .armed, let queue = player as? AVQueuePlayer else { return false }
-        queue.advanceToNextItem()
-        commitSpliceEntered()
-        return seek(toSeconds: seconds)
+        guard let active = splice, active.stage == .armed else { return false }
+        let switcher = active.switcher
+        let file = seconds - active.plan.timeline.cut
+        guard file >= 0 else { return false }
+        abortCommittedSwitch(reason: "salto dentro del archivo")
+        isCommitting = true
+        currentTime = seconds
+        AutomixDiagnostics.shared.record("player", "salto dentro del archivo: canción \(Self.fmt(seconds)) s → archivo \(Self.fmt(file)) s (entrada inmediata)")
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer { self.isCommitting = false }
+            guard await switcher.prepare(fileSeconds: file) == .ready, self.splice?.switcher === switcher, self.splice?.stage == .armed else { return }
+            switcher.player.volume = self.outputVolume
+            if self.isPlaying { switcher.player.play() }
+            self.completeSwitch(immediate: true)
+        }
+        return true
     }
 
     /// The UI now shows the next song: from here the file reads as that song, from its own second 0 mapping.
@@ -717,49 +871,36 @@ extension AudioPlayerService {
         reportedPlaybackID = playbackID
         hasTriggeredTrackEnd = false
         invalidateSeek(playbackID: playbackID, mediaSeconds: displayedMediaTime())
-        setupTimeObserver(for: active.fileItem, playbackID: playbackID)
+        setupTimeObserver(for: active.switcher.item, playbackID: playbackID)
         currentTime = max(0, displayedMediaTime())
     }
 
-    fileprivate func commitSpliceEntered() {
-        guard var active = splice, active.stage == .armed else { return }
-        active.stage = .inFile
-        active.base = []
-        splice = active
-        spliceStage = .inFile
-        spliceItemObserver?.invalidate()
-        spliceItemObserver = nil
-        timeBias = active.plan.timeline.bias(for: .inFile)
-        AutomixDiagnostics.shared.record("player", "el archivo entró en reproducción: sesgo \(Self.fmt(timeBias)), tiempo crudo \(Self.fmt(measuredTime(player))) s")
-        invalidateSeek(playbackID: loadedPlaybackID, mediaSeconds: displayedMediaTime())
-        cleanupItemObservers()
-        observePlayerItem(active.fileItem)
-        if let id = loadedPlaybackID { setupTimeObserver(for: active.fileItem, playbackID: id) }
-        hasTriggeredTrackEnd = false
-        isBuffering = false
-        onSpliceEntered?()
+    /// Gancho de pruebas: da por terminado el fundido y retira el reproductor viejo sin esperar al reloj de host.
+    func completeSwitchForTesting() { completeSwitch(immediate: true) }
+
+    /// True while a switch can still be replaced by another file of the same cut (nothing scheduled yet).
+    var canReplaceSplice: Bool {
+        guard let active = splice, active.stage == .armed else { return false }
+        return !active.switcher.isCommitted && !isCommitting
     }
 
-    private func fileItemFailed(_ item: AVPlayerItem) {
-        guard let active = splice, active.stage == .armed, active.fileItem === item else { return }
-        AutomixDiagnostics.shared.record("player", "el archivo en cola falló al cargar")
-        disarmSplice()
-        onSpliceFailed?()
-    }
+    /// Estado del segundo reproductor para el diagnóstico.
+    var spliceDiagnostics: AutomixSpliceDiagnostics? { splice?.switcher.diagnostics }
 }
 
 // MARK: - Diagnóstico (PLAN-024)
 
 extension AudioPlayerService {
-    fileprivate static func fmt(_ value: Double) -> String { value.isFinite ? String(format: "%.3f", value) : "—" }
+    /// Segundos de la canción mostrada medidos ahora mismo sobre el reproductor activo (para el diagnóstico y las pruebas).
+    var displayedPlaybackSeconds: Double { displayedMediaTime() }
 
     /// Línea de tiempo del archivo vigente (armado, sonando o ya traspasado); nil sin transición.
     var spliceTimeline: AudioSpliceTimeline? { splice?.plan.timeline }
 
     /// Estado del reproductor para la ventana de diagnóstico. Sólo lectura: no cambia nada.
     func diagnosticsSnapshot() -> AutomixPlayerSnapshot {
-        let queueItems = (player as? AVQueuePlayer)?.items() ?? (player.currentItem.map { [$0] } ?? [])
         let current = player.currentItem
+        let queueItems = current.map { [$0] } ?? []
         let descriptions = queueItems.enumerated().map { index, item -> String in
             let kind: String
             if let url = (item.asset as? AVURLAsset)?.url { kind = url.isFileURL ? url.lastPathComponent : "stream" } else { kind = "?" }

@@ -399,6 +399,22 @@ fileprivate class UniffiHandleMap<T>: @unchecked Sendable {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterUInt8: FfiConverterPrimitive {
+    typealias FfiType = UInt8
+    typealias SwiftType = UInt8
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> UInt8 {
+        return try lift(readInt(&buf))
+    }
+
+    public static func write(_ value: UInt8, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterUInt32: FfiConverterPrimitive {
     typealias FfiType = UInt32
     typealias SwiftType = UInt32
@@ -540,9 +556,17 @@ public protocol SideBCoreProtocol : AnyObject {
      */
     func applySongLibraryAction(token: String) async throws 
     
+    func automixCacheUsage()  -> AutomixCacheUsage
+    
     /**
-     * Whether the stem-separation model is on disk. Until it is, transitions
-     * that would use stems get a frequency split instead.
+     * What this machine can do: see `AutomixCapability`.
+     */
+    func automixCapability()  -> AutomixCapability
+    
+    /**
+     * Whether the stem-separation model is on disk. Until it is, `"stems"`
+     * requests fail with `automix:model-unavailable` (and the model starts
+     * downloading).
      */
     func automixModelReady()  -> Bool
     
@@ -554,6 +578,11 @@ public protocol SideBCoreProtocol : AnyObject {
      */
     func cancelAutomix(requestId: String) 
     
+    /**
+     * Stops the prefetch in progress.
+     */
+    func cancelAutomixPrefetch() 
+    
     func chooseGenius(track: GeniusTrackRecord, songId: Int64) async throws  -> GeniusResolutionRecord
     
     /**
@@ -561,12 +590,23 @@ public protocol SideBCoreProtocol : AnyObject {
      */
     func clearAnimatedArtworkCache(cacheDir: String) async throws  -> UInt64
     
+    /**
+     * Deletes the downloaded songs, stems and transitions (not the model).
+     */
+    func clearAutomixCache() 
+    
     func clearGeniusChoice(track: GeniusTrackRecord) 
     
     /**
      * Create a playlist and return the server's playlist ID.
      */
     func createPlaylist(title: String, description: String, privacy: String) async throws  -> String
+    
+    /**
+     * Unloads and deletes the stem model (~210 MB); `"stems"` is unavailable
+     * until it is downloaded again.
+     */
+    func deleteAutomixModel() throws 
     
     func deletePlaylist(playlistId: String) async throws 
     
@@ -603,6 +643,8 @@ public protocol SideBCoreProtocol : AnyObject {
      * Artist page by browse ID.
      */
     func getArtistJson(browseId: String) async throws  -> String
+    
+    func getAutomixSettings()  -> AutomixSettings
     
     /**
      * Cards behind an artist carousel's "See all" browse endpoint.
@@ -775,6 +817,18 @@ public protocol SideBCoreProtocol : AnyObject {
     func pinItem(id: String, kind: String, title: String, subtitle: String?, thumbnail: String?) throws 
     
     /**
+     * Replaces the prefetch list. `items[0]` is the song that is playing
+     * (its end is the one a transition reads), the rest the upcoming ones in
+     * order; at most `lookahead + 1` are used. Downloads each in turn and,
+     * once the model is on disk and the setting `quality` is not "fast",
+     * separates (at low priority, never while a preparation runs) the last
+     * stretch of the playing song and the first and last of the next ones.
+     * Returns as soon as the work is scheduled; calling it again cancels the
+     * previous list. Bounded by the cache limits (12 songs, 500 MB of stems).
+     */
+    func prefetchAutomix(items: [AutomixQueueItem]) async throws 
+    
+    /**
      * Optional public album artwork; never part of the audio or lyrics request path.
      * The shell retains request_id until its native player releases the local file.
      */
@@ -800,7 +854,7 @@ public protocol SideBCoreProtocol : AnyObject {
      * frequency-split stand-in and the model downloads in the background
      * (`automix_model_ready` turns true once it has).
      */
-    func prepareAutomix(requestId: String, fromVideoId: String, fromIsUpload: Bool, fromGainDb: Double?, toVideoId: String, toIsUpload: Bool, toGainDb: Double?, cacheDir: String) async throws  -> AutomixTransitionRecord
+    func prepareAutomix(requestId: String, fromVideoId: String, fromIsUpload: Bool, fromGainDb: Double?, toVideoId: String, toIsUpload: Bool, toGainDb: Double?, quality: String, cacheDir: String) async throws  -> AutomixTransitionRecord
     
     /**
      * Rate song (LIKE, DISLIKE, INDIFFERENT).
@@ -877,6 +931,20 @@ public protocol SideBCoreProtocol : AnyObject {
      * Search video uploads, returning a typed list of SongItemRecord.
      */
     func searchVideos(query: String) async throws  -> [SongItemRecord]
+    
+    /**
+     * Tells the core where the automix caches live (`<dir>/audio`,
+     * `/stems`, `/transitions`) without preparing anything, so that
+     * `prefetch_automix`, `automix_cache_usage` and `clear_automix_cache`
+     * work from app start. `prepare_automix` remembers its `cache_dir` too.
+     */
+    func setAutomixCacheDir(cacheDir: String) 
+    
+    /**
+     * Stores the settings (out-of-range values are corrected) and returns
+     * what was stored. `compute` and `keep_model_loaded` take effect at once.
+     */
+    func setAutomixSettings(settings: AutomixSettings)  -> AutomixSettings
     
     func setCipherJsRuntime(runtime: CipherJsRuntime) 
     
@@ -999,9 +1067,27 @@ open func applySongLibraryAction(token: String)async throws  {
         )
 }
     
+open func automixCacheUsage() -> AutomixCacheUsage {
+    return try!  FfiConverterTypeAutomixCacheUsage.lift(try! rustCall() {
+    uniffi_sideb_core_fn_method_sidebcore_automix_cache_usage(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
     /**
-     * Whether the stem-separation model is on disk. Until it is, transitions
-     * that would use stems get a frequency split instead.
+     * What this machine can do: see `AutomixCapability`.
+     */
+open func automixCapability() -> AutomixCapability {
+    return try!  FfiConverterTypeAutomixCapability.lift(try! rustCall() {
+    uniffi_sideb_core_fn_method_sidebcore_automix_capability(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * Whether the stem-separation model is on disk. Until it is, `"stems"`
+     * requests fail with `automix:model-unavailable` (and the model starts
+     * downloading).
      */
 open func automixModelReady() -> Bool {
     return try!  FfiConverterBool.lift(try! rustCall() {
@@ -1024,6 +1110,15 @@ open func cancelAnimatedArtwork(requestId: String) {try! rustCall() {
 open func cancelAutomix(requestId: String) {try! rustCall() {
     uniffi_sideb_core_fn_method_sidebcore_cancel_automix(self.uniffiClonePointer(),
         FfiConverterString.lower(requestId),$0
+    )
+}
+}
+    
+    /**
+     * Stops the prefetch in progress.
+     */
+open func cancelAutomixPrefetch() {try! rustCall() {
+    uniffi_sideb_core_fn_method_sidebcore_cancel_automix_prefetch(self.uniffiClonePointer(),$0
     )
 }
 }
@@ -1065,6 +1160,15 @@ open func clearAnimatedArtworkCache(cacheDir: String)async throws  -> UInt64 {
         )
 }
     
+    /**
+     * Deletes the downloaded songs, stems and transitions (not the model).
+     */
+open func clearAutomixCache() {try! rustCall() {
+    uniffi_sideb_core_fn_method_sidebcore_clear_automix_cache(self.uniffiClonePointer(),$0
+    )
+}
+}
+    
 open func clearGeniusChoice(track: GeniusTrackRecord) {try! rustCall() {
     uniffi_sideb_core_fn_method_sidebcore_clear_genius_choice(self.uniffiClonePointer(),
         FfiConverterTypeGeniusTrackRecord.lower(track),$0
@@ -1090,6 +1194,16 @@ open func createPlaylist(title: String, description: String, privacy: String)asy
             liftFunc: FfiConverterString.lift,
             errorHandler: FfiConverterTypeSideBError.lift
         )
+}
+    
+    /**
+     * Unloads and deletes the stem model (~210 MB); `"stems"` is unavailable
+     * until it is downloaded again.
+     */
+open func deleteAutomixModel()throws  {try rustCallWithError(FfiConverterTypeSideBError.lift) {
+    uniffi_sideb_core_fn_method_sidebcore_delete_automix_model(self.uniffiClonePointer(),$0
+    )
+}
 }
     
 open func deletePlaylist(playlistId: String)async throws  {
@@ -1261,6 +1375,13 @@ open func getArtistJson(browseId: String)async throws  -> String {
             liftFunc: FfiConverterString.lift,
             errorHandler: FfiConverterTypeSideBError.lift
         )
+}
+    
+open func getAutomixSettings() -> AutomixSettings {
+    return try!  FfiConverterTypeAutomixSettings.lift(try! rustCall() {
+    uniffi_sideb_core_fn_method_sidebcore_get_automix_settings(self.uniffiClonePointer(),$0
+    )
+})
 }
     
     /**
@@ -1943,6 +2064,33 @@ open func pinItem(id: String, kind: String, title: String, subtitle: String?, th
 }
     
     /**
+     * Replaces the prefetch list. `items[0]` is the song that is playing
+     * (its end is the one a transition reads), the rest the upcoming ones in
+     * order; at most `lookahead + 1` are used. Downloads each in turn and,
+     * once the model is on disk and the setting `quality` is not "fast",
+     * separates (at low priority, never while a preparation runs) the last
+     * stretch of the playing song and the first and last of the next ones.
+     * Returns as soon as the work is scheduled; calling it again cancels the
+     * previous list. Bounded by the cache limits (12 songs, 500 MB of stems).
+     */
+open func prefetchAutomix(items: [AutomixQueueItem])async throws  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_sideb_core_fn_method_sidebcore_prefetch_automix(
+                    self.uniffiClonePointer(),
+                    FfiConverterSequenceTypeAutomixQueueItem.lower(items)
+                )
+            },
+            pollFunc: ffi_sideb_core_rust_future_poll_void,
+            completeFunc: ffi_sideb_core_rust_future_complete_void,
+            freeFunc: ffi_sideb_core_rust_future_free_void,
+            liftFunc: { $0 },
+            errorHandler: FfiConverterTypeSideBError.lift
+        )
+}
+    
+    /**
      * Optional public album artwork; never part of the audio or lyrics request path.
      * The shell retains request_id until its native player releases the local file.
      */
@@ -1983,13 +2131,13 @@ open func prepareAnimatedArtwork(request: AnimatedArtworkRequest, requestId: Str
      * frequency-split stand-in and the model downloads in the background
      * (`automix_model_ready` turns true once it has).
      */
-open func prepareAutomix(requestId: String, fromVideoId: String, fromIsUpload: Bool, fromGainDb: Double?, toVideoId: String, toIsUpload: Bool, toGainDb: Double?, cacheDir: String)async throws  -> AutomixTransitionRecord {
+open func prepareAutomix(requestId: String, fromVideoId: String, fromIsUpload: Bool, fromGainDb: Double?, toVideoId: String, toIsUpload: Bool, toGainDb: Double?, quality: String, cacheDir: String)async throws  -> AutomixTransitionRecord {
     return
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_sideb_core_fn_method_sidebcore_prepare_automix(
                     self.uniffiClonePointer(),
-                    FfiConverterString.lower(requestId),FfiConverterString.lower(fromVideoId),FfiConverterBool.lower(fromIsUpload),FfiConverterOptionDouble.lower(fromGainDb),FfiConverterString.lower(toVideoId),FfiConverterBool.lower(toIsUpload),FfiConverterOptionDouble.lower(toGainDb),FfiConverterString.lower(cacheDir)
+                    FfiConverterString.lower(requestId),FfiConverterString.lower(fromVideoId),FfiConverterBool.lower(fromIsUpload),FfiConverterOptionDouble.lower(fromGainDb),FfiConverterString.lower(toVideoId),FfiConverterBool.lower(toIsUpload),FfiConverterOptionDouble.lower(toGainDb),FfiConverterString.lower(quality),FfiConverterString.lower(cacheDir)
                 )
             },
             pollFunc: ffi_sideb_core_rust_future_poll_rust_buffer,
@@ -2366,6 +2514,31 @@ open func searchVideos(query: String)async throws  -> [SongItemRecord] {
             liftFunc: FfiConverterSequenceTypeSongItemRecord.lift,
             errorHandler: FfiConverterTypeSideBError.lift
         )
+}
+    
+    /**
+     * Tells the core where the automix caches live (`<dir>/audio`,
+     * `/stems`, `/transitions`) without preparing anything, so that
+     * `prefetch_automix`, `automix_cache_usage` and `clear_automix_cache`
+     * work from app start. `prepare_automix` remembers its `cache_dir` too.
+     */
+open func setAutomixCacheDir(cacheDir: String) {try! rustCall() {
+    uniffi_sideb_core_fn_method_sidebcore_set_automix_cache_dir(self.uniffiClonePointer(),
+        FfiConverterString.lower(cacheDir),$0
+    )
+}
+}
+    
+    /**
+     * Stores the settings (out-of-range values are corrected) and returns
+     * what was stored. `compute` and `keep_model_loaded` take effect at once.
+     */
+open func setAutomixSettings(settings: AutomixSettings) -> AutomixSettings {
+    return try!  FfiConverterTypeAutomixSettings.lift(try! rustCall() {
+    uniffi_sideb_core_fn_method_sidebcore_set_automix_settings(self.uniffiClonePointer(),
+        FfiConverterTypeAutomixSettings.lower(settings),$0
+    )
+})
 }
     
 open func setCipherJsRuntime(runtime: CipherJsRuntime) {try! rustCall() {
@@ -3188,6 +3361,432 @@ public func FfiConverterTypeArtistDetailRecord_lower(_ value: ArtistDetailRecord
 
 
 /**
+ * Disk used by the automix caches, in bytes.
+ */
+public struct AutomixCacheUsage {
+    public var audioBytes: UInt64
+    public var stemsBytes: UInt64
+    public var transitionsBytes: UInt64
+    public var modelBytes: UInt64
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(audioBytes: UInt64, stemsBytes: UInt64, transitionsBytes: UInt64, modelBytes: UInt64) {
+        self.audioBytes = audioBytes
+        self.stemsBytes = stemsBytes
+        self.transitionsBytes = transitionsBytes
+        self.modelBytes = modelBytes
+    }
+}
+
+
+
+extension AutomixCacheUsage: Equatable, Hashable {
+    public static func ==(lhs: AutomixCacheUsage, rhs: AutomixCacheUsage) -> Bool {
+        if lhs.audioBytes != rhs.audioBytes {
+            return false
+        }
+        if lhs.stemsBytes != rhs.stemsBytes {
+            return false
+        }
+        if lhs.transitionsBytes != rhs.transitionsBytes {
+            return false
+        }
+        if lhs.modelBytes != rhs.modelBytes {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(audioBytes)
+        hasher.combine(stemsBytes)
+        hasher.combine(transitionsBytes)
+        hasher.combine(modelBytes)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAutomixCacheUsage: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AutomixCacheUsage {
+        return
+            try AutomixCacheUsage(
+                audioBytes: FfiConverterUInt64.read(from: &buf), 
+                stemsBytes: FfiConverterUInt64.read(from: &buf), 
+                transitionsBytes: FfiConverterUInt64.read(from: &buf), 
+                modelBytes: FfiConverterUInt64.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: AutomixCacheUsage, into buf: inout [UInt8]) {
+        FfiConverterUInt64.write(value.audioBytes, into: &buf)
+        FfiConverterUInt64.write(value.stemsBytes, into: &buf)
+        FfiConverterUInt64.write(value.transitionsBytes, into: &buf)
+        FfiConverterUInt64.write(value.modelBytes, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAutomixCacheUsage_lift(_ buf: RustBuffer) throws -> AutomixCacheUsage {
+    return try FfiConverterTypeAutomixCacheUsage.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAutomixCacheUsage_lower(_ value: AutomixCacheUsage) -> RustBuffer {
+    return FfiConverterTypeAutomixCacheUsage.lower(value)
+}
+
+
+/**
+ * What this machine can do, for a shell to choose between "fast" and "stems".
+ */
+public struct AutomixCapability {
+    /**
+     * The stem model is on disk.
+     */
+    public var modelReady: Bool
+    public var modelDownloading: Bool
+    /**
+     * Seconds of audio the model separates per second of wall clock, once
+     * loaded, from the real separations this machine has done (prefetches and
+     * "stems" transitions); `None` until it has done one.
+     */
+    public var realtimeFactor: Double?
+    /**
+     * The model is there and fast enough that a "stems" transition arrives
+     * in time: `realtime_factor >= 2` (a typical one separates ~40 s of
+     * audio, so about 20 s or less). False while unmeasured.
+     */
+    public var stemsRecommended: Bool
+    /**
+     * What the model runs on: "CoreML (CPUOnly MLProgram)", "DirectML",
+     * "CPU"; empty until the model has been loaded once.
+     */
+    public var provider: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The stem model is on disk.
+         */modelReady: Bool, modelDownloading: Bool, 
+        /**
+         * Seconds of audio the model separates per second of wall clock, once
+         * loaded, from the real separations this machine has done (prefetches and
+         * "stems" transitions); `None` until it has done one.
+         */realtimeFactor: Double?, 
+        /**
+         * The model is there and fast enough that a "stems" transition arrives
+         * in time: `realtime_factor >= 2` (a typical one separates ~40 s of
+         * audio, so about 20 s or less). False while unmeasured.
+         */stemsRecommended: Bool, 
+        /**
+         * What the model runs on: "CoreML (CPUOnly MLProgram)", "DirectML",
+         * "CPU"; empty until the model has been loaded once.
+         */provider: String) {
+        self.modelReady = modelReady
+        self.modelDownloading = modelDownloading
+        self.realtimeFactor = realtimeFactor
+        self.stemsRecommended = stemsRecommended
+        self.provider = provider
+    }
+}
+
+
+
+extension AutomixCapability: Equatable, Hashable {
+    public static func ==(lhs: AutomixCapability, rhs: AutomixCapability) -> Bool {
+        if lhs.modelReady != rhs.modelReady {
+            return false
+        }
+        if lhs.modelDownloading != rhs.modelDownloading {
+            return false
+        }
+        if lhs.realtimeFactor != rhs.realtimeFactor {
+            return false
+        }
+        if lhs.stemsRecommended != rhs.stemsRecommended {
+            return false
+        }
+        if lhs.provider != rhs.provider {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(modelReady)
+        hasher.combine(modelDownloading)
+        hasher.combine(realtimeFactor)
+        hasher.combine(stemsRecommended)
+        hasher.combine(provider)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAutomixCapability: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AutomixCapability {
+        return
+            try AutomixCapability(
+                modelReady: FfiConverterBool.read(from: &buf), 
+                modelDownloading: FfiConverterBool.read(from: &buf), 
+                realtimeFactor: FfiConverterOptionDouble.read(from: &buf), 
+                stemsRecommended: FfiConverterBool.read(from: &buf), 
+                provider: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: AutomixCapability, into buf: inout [UInt8]) {
+        FfiConverterBool.write(value.modelReady, into: &buf)
+        FfiConverterBool.write(value.modelDownloading, into: &buf)
+        FfiConverterOptionDouble.write(value.realtimeFactor, into: &buf)
+        FfiConverterBool.write(value.stemsRecommended, into: &buf)
+        FfiConverterString.write(value.provider, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAutomixCapability_lift(_ buf: RustBuffer) throws -> AutomixCapability {
+    return try FfiConverterTypeAutomixCapability.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAutomixCapability_lower(_ value: AutomixCapability) -> RustBuffer {
+    return FfiConverterTypeAutomixCapability.lower(value)
+}
+
+
+/**
+ * A song of the queue, for [`SideBCore::prefetch_automix`].
+ */
+public struct AutomixQueueItem {
+    public var videoId: String
+    public var isUpload: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(videoId: String, isUpload: Bool) {
+        self.videoId = videoId
+        self.isUpload = isUpload
+    }
+}
+
+
+
+extension AutomixQueueItem: Equatable, Hashable {
+    public static func ==(lhs: AutomixQueueItem, rhs: AutomixQueueItem) -> Bool {
+        if lhs.videoId != rhs.videoId {
+            return false
+        }
+        if lhs.isUpload != rhs.isUpload {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(videoId)
+        hasher.combine(isUpload)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAutomixQueueItem: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AutomixQueueItem {
+        return
+            try AutomixQueueItem(
+                videoId: FfiConverterString.read(from: &buf), 
+                isUpload: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: AutomixQueueItem, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.videoId, into: &buf)
+        FfiConverterBool.write(value.isUpload, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAutomixQueueItem_lift(_ buf: RustBuffer) throws -> AutomixQueueItem {
+    return try FfiConverterTypeAutomixQueueItem.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAutomixQueueItem_lower(_ value: AutomixQueueItem) -> RustBuffer {
+    return FfiConverterTypeAutomixQueueItem.lower(value)
+}
+
+
+/**
+ * User-facing settings, shared by both apps and kept in the core's database.
+ */
+public struct AutomixSettings {
+    /**
+     * "auto" (the shell decides from `automix_capability`), "fast" or "stems".
+     */
+    public var quality: String
+    /**
+     * Whether the shell should stick to "fast" when on battery or in low
+     * power mode. The core only stores the rule; platform state is the
+     * shell's.
+     */
+    public var fastOnBattery: Bool
+    /**
+     * Whether the shell should not transition between two songs of the same
+     * album.
+     */
+    public var skipSameAlbum: Bool
+    /**
+     * "auto", "gpu" or "cpu": where the model may run.
+     */
+    public var compute: String
+    /**
+     * How many upcoming songs are prefetched, 1 to 3.
+     */
+    public var lookahead: UInt8
+    /**
+     * Keep the model in memory between transitions; otherwise it is
+     * released after 60 seconds without use.
+     */
+    public var keepModelLoaded: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * "auto" (the shell decides from `automix_capability`), "fast" or "stems".
+         */quality: String, 
+        /**
+         * Whether the shell should stick to "fast" when on battery or in low
+         * power mode. The core only stores the rule; platform state is the
+         * shell's.
+         */fastOnBattery: Bool, 
+        /**
+         * Whether the shell should not transition between two songs of the same
+         * album.
+         */skipSameAlbum: Bool, 
+        /**
+         * "auto", "gpu" or "cpu": where the model may run.
+         */compute: String, 
+        /**
+         * How many upcoming songs are prefetched, 1 to 3.
+         */lookahead: UInt8, 
+        /**
+         * Keep the model in memory between transitions; otherwise it is
+         * released after 60 seconds without use.
+         */keepModelLoaded: Bool) {
+        self.quality = quality
+        self.fastOnBattery = fastOnBattery
+        self.skipSameAlbum = skipSameAlbum
+        self.compute = compute
+        self.lookahead = lookahead
+        self.keepModelLoaded = keepModelLoaded
+    }
+}
+
+
+
+extension AutomixSettings: Equatable, Hashable {
+    public static func ==(lhs: AutomixSettings, rhs: AutomixSettings) -> Bool {
+        if lhs.quality != rhs.quality {
+            return false
+        }
+        if lhs.fastOnBattery != rhs.fastOnBattery {
+            return false
+        }
+        if lhs.skipSameAlbum != rhs.skipSameAlbum {
+            return false
+        }
+        if lhs.compute != rhs.compute {
+            return false
+        }
+        if lhs.lookahead != rhs.lookahead {
+            return false
+        }
+        if lhs.keepModelLoaded != rhs.keepModelLoaded {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(quality)
+        hasher.combine(fastOnBattery)
+        hasher.combine(skipSameAlbum)
+        hasher.combine(compute)
+        hasher.combine(lookahead)
+        hasher.combine(keepModelLoaded)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAutomixSettings: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AutomixSettings {
+        return
+            try AutomixSettings(
+                quality: FfiConverterString.read(from: &buf), 
+                fastOnBattery: FfiConverterBool.read(from: &buf), 
+                skipSameAlbum: FfiConverterBool.read(from: &buf), 
+                compute: FfiConverterString.read(from: &buf), 
+                lookahead: FfiConverterUInt8.read(from: &buf), 
+                keepModelLoaded: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: AutomixSettings, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.quality, into: &buf)
+        FfiConverterBool.write(value.fastOnBattery, into: &buf)
+        FfiConverterBool.write(value.skipSameAlbum, into: &buf)
+        FfiConverterString.write(value.compute, into: &buf)
+        FfiConverterUInt8.write(value.lookahead, into: &buf)
+        FfiConverterBool.write(value.keepModelLoaded, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAutomixSettings_lift(_ buf: RustBuffer) throws -> AutomixSettings {
+    return try FfiConverterTypeAutomixSettings.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAutomixSettings_lower(_ value: AutomixSettings) -> RustBuffer {
+    return FfiConverterTypeAutomixSettings.lower(value)
+}
+
+
+/**
  * The rendered transition and where everything sits in it. Seconds named
  * "file" are into the WAV at `file_path`; the others are into the song.
  */
@@ -3254,6 +3853,28 @@ public struct AutomixTransitionRecord {
      */
     public var stemsModel: Bool
     /**
+     * The quality asked for: "fast" or "stems". A "stems" request for a pair
+     * that ends up as "cut" or "fade" has `stems_model == false`: there was
+     * nothing to separate.
+     */
+    public var quality: String
+    /**
+     * Whether this render cuts at the same place the "fast" one does, so a
+     * shell that swapped to the fast file can swap again without the cut
+     * moving. Always true today: both renders share one plan (made on the
+     * frequency split) and "stems" only re-renders it with the model's stems.
+     */
+    public var sameCutAsFast: Bool
+    /**
+     * Seconds of audio the model ran on for this call (0 for "fast", and
+     * when a prefetch had separated the stretches already).
+     */
+    public var separatedSeconds: Double
+    /**
+     * Wall-clock seconds this call took, downloads included.
+     */
+    public var elapsedSeconds: Double
+    /**
      * One line, in Spanish, about what was done and why.
      */
     public var detail: String
@@ -3307,6 +3928,24 @@ public struct AutomixTransitionRecord {
          * frequency split, or no stems at all for "cut" and "fade").
          */stemsModel: Bool, 
         /**
+         * The quality asked for: "fast" or "stems". A "stems" request for a pair
+         * that ends up as "cut" or "fade" has `stems_model == false`: there was
+         * nothing to separate.
+         */quality: String, 
+        /**
+         * Whether this render cuts at the same place the "fast" one does, so a
+         * shell that swapped to the fast file can swap again without the cut
+         * moving. Always true today: both renders share one plan (made on the
+         * frequency split) and "stems" only re-renders it with the model's stems.
+         */sameCutAsFast: Bool, 
+        /**
+         * Seconds of audio the model ran on for this call (0 for "fast", and
+         * when a prefetch had separated the stretches already).
+         */separatedSeconds: Double, 
+        /**
+         * Wall-clock seconds this call took, downloads included.
+         */elapsedSeconds: Double, 
+        /**
          * One line, in Spanish, about what was done and why.
          */detail: String) {
         self.requestId = requestId
@@ -3325,6 +3964,10 @@ public struct AutomixTransitionRecord {
         self.bpmTo = bpmTo
         self.bars = bars
         self.stemsModel = stemsModel
+        self.quality = quality
+        self.sameCutAsFast = sameCutAsFast
+        self.separatedSeconds = separatedSeconds
+        self.elapsedSeconds = elapsedSeconds
         self.detail = detail
     }
 }
@@ -3381,6 +4024,18 @@ extension AutomixTransitionRecord: Equatable, Hashable {
         if lhs.stemsModel != rhs.stemsModel {
             return false
         }
+        if lhs.quality != rhs.quality {
+            return false
+        }
+        if lhs.sameCutAsFast != rhs.sameCutAsFast {
+            return false
+        }
+        if lhs.separatedSeconds != rhs.separatedSeconds {
+            return false
+        }
+        if lhs.elapsedSeconds != rhs.elapsedSeconds {
+            return false
+        }
         if lhs.detail != rhs.detail {
             return false
         }
@@ -3404,6 +4059,10 @@ extension AutomixTransitionRecord: Equatable, Hashable {
         hasher.combine(bpmTo)
         hasher.combine(bars)
         hasher.combine(stemsModel)
+        hasher.combine(quality)
+        hasher.combine(sameCutAsFast)
+        hasher.combine(separatedSeconds)
+        hasher.combine(elapsedSeconds)
         hasher.combine(detail)
     }
 }
@@ -3432,6 +4091,10 @@ public struct FfiConverterTypeAutomixTransitionRecord: FfiConverterRustBuffer {
                 bpmTo: FfiConverterDouble.read(from: &buf), 
                 bars: FfiConverterUInt32.read(from: &buf), 
                 stemsModel: FfiConverterBool.read(from: &buf), 
+                quality: FfiConverterString.read(from: &buf), 
+                sameCutAsFast: FfiConverterBool.read(from: &buf), 
+                separatedSeconds: FfiConverterDouble.read(from: &buf), 
+                elapsedSeconds: FfiConverterDouble.read(from: &buf), 
                 detail: FfiConverterString.read(from: &buf)
         )
     }
@@ -3453,6 +4116,10 @@ public struct FfiConverterTypeAutomixTransitionRecord: FfiConverterRustBuffer {
         FfiConverterDouble.write(value.bpmTo, into: &buf)
         FfiConverterUInt32.write(value.bars, into: &buf)
         FfiConverterBool.write(value.stemsModel, into: &buf)
+        FfiConverterString.write(value.quality, into: &buf)
+        FfiConverterBool.write(value.sameCutAsFast, into: &buf)
+        FfiConverterDouble.write(value.separatedSeconds, into: &buf)
+        FfiConverterDouble.write(value.elapsedSeconds, into: &buf)
         FfiConverterString.write(value.detail, into: &buf)
     }
 }
@@ -8400,6 +9067,31 @@ fileprivate struct FfiConverterSequenceTypeArtistCarouselRecord: FfiConverterRus
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeAutomixQueueItem: FfiConverterRustBuffer {
+    typealias SwiftType = [AutomixQueueItem]
+
+    public static func write(_ value: [AutomixQueueItem], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeAutomixQueueItem.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [AutomixQueueItem] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [AutomixQueueItem]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeAutomixQueueItem.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeBrowseCardRecord: FfiConverterRustBuffer {
     typealias SwiftType = [BrowseCardRecord]
 
@@ -9040,7 +9732,13 @@ private let initializationResult: InitializationResult = {
     if (uniffi_sideb_core_checksum_method_sidebcore_apply_song_library_action() != 10220) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_sideb_core_checksum_method_sidebcore_automix_model_ready() != 47565) {
+    if (uniffi_sideb_core_checksum_method_sidebcore_automix_cache_usage() != 53842) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_sideb_core_checksum_method_sidebcore_automix_capability() != 6206) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_sideb_core_checksum_method_sidebcore_automix_model_ready() != 42958) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_sideb_core_checksum_method_sidebcore_cancel_animated_artwork() != 50775) {
@@ -9049,16 +9747,25 @@ private let initializationResult: InitializationResult = {
     if (uniffi_sideb_core_checksum_method_sidebcore_cancel_automix() != 20913) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_sideb_core_checksum_method_sidebcore_cancel_automix_prefetch() != 42546) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_sideb_core_checksum_method_sidebcore_choose_genius() != 51171) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_sideb_core_checksum_method_sidebcore_clear_animated_artwork_cache() != 23891) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_sideb_core_checksum_method_sidebcore_clear_automix_cache() != 34807) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_sideb_core_checksum_method_sidebcore_clear_genius_choice() != 58473) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_sideb_core_checksum_method_sidebcore_create_playlist() != 48181) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_sideb_core_checksum_method_sidebcore_delete_automix_model() != 13922) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_sideb_core_checksum_method_sidebcore_delete_playlist() != 22705) {
@@ -9086,6 +9793,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_sideb_core_checksum_method_sidebcore_get_artist_json() != 59144) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_sideb_core_checksum_method_sidebcore_get_automix_settings() != 56225) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_sideb_core_checksum_method_sidebcore_get_browse_grid() != 45993) {
@@ -9202,10 +9912,13 @@ private let initializationResult: InitializationResult = {
     if (uniffi_sideb_core_checksum_method_sidebcore_pin_item() != 25725) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_sideb_core_checksum_method_sidebcore_prefetch_automix() != 11021) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_sideb_core_checksum_method_sidebcore_prepare_animated_artwork() != 41957) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_sideb_core_checksum_method_sidebcore_prepare_automix() != 17762) {
+    if (uniffi_sideb_core_checksum_method_sidebcore_prepare_automix() != 456) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_sideb_core_checksum_method_sidebcore_rate_song() != 25083) {
@@ -9266,6 +9979,12 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_sideb_core_checksum_method_sidebcore_search_videos() != 42948) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_sideb_core_checksum_method_sidebcore_set_automix_cache_dir() != 38567) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_sideb_core_checksum_method_sidebcore_set_automix_settings() != 28825) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_sideb_core_checksum_method_sidebcore_set_cipher_js_runtime() != 26775) {

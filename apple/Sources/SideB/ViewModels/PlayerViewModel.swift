@@ -188,6 +188,7 @@ public final class PlayerViewModel {
         queueManager.sessionEditor = editor
         jamControl = control
         AutomixDiagnostics.shared.record("jam", "el Jam empezó: Automix se descarta (estado del empalme antes: \(audioService.spliceStage)); la preferencia guardada no cambia")
+        automix.cancelPrefetch(reason: "Jam activo")
         automix.reconcile() // Con un Jam activo no hay Automix: descarta lo preparado.
     }
 
@@ -363,6 +364,8 @@ public final class PlayerViewModel {
             }
         }
     }
+    /// Ajustes del core de Automix (en pruebas se sustituye).
+    var automixPreferences = AutomixPreferences.shared
     public let audioService: AudioPlayerService
     private let searchRecents: SearchRecentStore
     private let playbackStore: PlaybackStateStore
@@ -463,6 +466,7 @@ public final class PlayerViewModel {
         genius.reset()
         cancelInFlightRadioTasks()
         currentPlaybackToken = UUID()
+        automix.cancelPrefetch(reason: "cambio de cuenta")
         pendingTailSkipToken = nil
         audioService.stop()
         streamInfo = nil
@@ -2185,11 +2189,14 @@ extension PlayerViewModel: AutomixHost {
         let queue = queueManager.queue
         let nextIndex = queueManager.currentIndex + 1
         // «Siguiente conocido»: sólo si la cola apunta de verdad al tema que suena.
-        let next = queueManager.currentTrack?.videoId == track.videoId && queue.indices.contains(nextIndex)
-            ? AutomixSong(queue[nextIndex]) : nil
-        return AutomixContext(token: currentPlaybackToken, current: AutomixSong(track), next: next,
+        let pointsAtCurrent = queueManager.currentTrack?.videoId == track.videoId
+        let upcoming = pointsAtCurrent && queue.indices.contains(nextIndex)
+            ? queue[nextIndex..<min(queue.count, nextIndex + 3)].map(AutomixSong.init) : []
+        let settings = automixPreferences.settings
+        return AutomixContext(token: currentPlaybackToken, current: AutomixSong(track), next: upcoming.first,
                               jamActive: isJamSessionActive, repeatOne: queueManager.isRepeat,
-                              hasStarted: automixStartedToken == currentPlaybackToken && !isLoadingStream)
+                              hasStarted: automixStartedToken == currentPlaybackToken && !isLoadingStream,
+                              skipSameAlbum: settings.skipSameAlbum, upcoming: upcoming, lookahead: settings.lookahead)
     }
 
     func automixPrepare(_ request: AutomixRequest) async throws -> AutomixTransition {
@@ -2199,7 +2206,7 @@ extension PlayerViewModel: AutomixHost {
             let record = try await core.prepareAutomix(
                 requestId: request.requestID, fromVideoId: request.from.videoID, fromIsUpload: request.from.isUpload,
                 fromGainDb: nil, toVideoId: request.to.videoID, toIsUpload: request.to.isUpload, toGainDb: nil,
-                cacheDir: request.cacheDirectory.path)
+                quality: request.quality, cacheDir: request.cacheDirectory.path)
             return AutomixTransition(record: record)
         } catch SideBError.StreamError(let message) {
             throw AutomixFailureReport(failure: AutomixFailure(coreMessage: message), message: message)
@@ -2216,21 +2223,56 @@ extension PlayerViewModel: AutomixHost {
         rustCore?.cancelAutomix(requestId: requestID)
     }
 
-    func automixArm(_ transition: AutomixTransition) async -> AutomixArmOutcome {
-        guard FileManager.default.fileExists(atPath: transition.filePath) else { return .failed }
-        let asset = AVURLAsset(url: URL(fileURLWithPath: transition.filePath))
-        do { guard try await asset.load(.isPlayable) else { return .failed } } catch { return .failed }
+    /// Abre el archivo como activo reproducible sin bloquear el hilo principal (la carga es asíncrona de AVFoundation).
+    private func automixSplicePlan(for transition: AutomixTransition) async -> AudioSplice? {
+        let path = transition.filePath
+        let exists = await Task.detached(priority: .userInitiated) { FileManager.default.fileExists(atPath: path) }.value
+        guard exists else { return nil }
+        let asset = AVURLAsset(url: URL(fileURLWithPath: path))
+        do { guard try await asset.load(.isPlayable) else { return nil } } catch { return nil }
         // El tema pudo cambiar mientras el archivo se abría.
-        guard !Task.isCancelled, currentTrack?.videoId == transition.fromVideoID,
+        guard !Task.isCancelled, currentTrack?.videoId == transition.fromVideoID else { return nil }
+        return AudioSplice(asset: asset, nextVideoID: transition.toVideoID, timeline: transition.timeline)
+    }
+
+    func automixArm(_ transition: AutomixTransition) async -> AutomixArmOutcome {
+        guard let plan = await automixSplicePlan(for: transition),
               audioService.spliceStage == .none || audioService.spliceStage == .handedOver else { return .failed }
-        let splice = AudioSplice(asset: asset, nextVideoID: transition.toVideoID, timeline: transition.timeline)
-        switch audioService.armSplice(splice) {
+        switch audioService.armSplice(plan) {
         case .armed: return .armed
-        case .enteredLate: return .enteredLate
         case .tooLate: return .tooLate
         case .unavailable: return .failed
         }
     }
+
+    func automixReplace(_ transition: AutomixTransition) async -> AutomixArmOutcome {
+        guard audioService.canReplaceSplice, let plan = await automixSplicePlan(for: transition) else { return .failed }
+        return audioService.replaceSplice(plan) == .armed ? .armed : .failed
+    }
+
+    func automixSettings() -> AutomixSettingsValue { automixPreferences.settings }
+
+    func automixCapability() -> AutomixCapabilityValue? {
+        automixPreferences.refreshCapability()
+        return automixPreferences.capability
+    }
+
+    func automixPower() -> AutomixPowerState { AutomixPowerState.current() }
+
+    func automixPrefetch(_ items: [AutomixSong]) {
+        guard let core = rustCore else { return }
+        let queue = items.map { AutomixQueueItem(videoId: $0.videoID, isUpload: $0.isUpload) }
+        Task { [weak self] in
+            do {
+                try await core.prefetchAutomix(items: queue)
+                self?.automix.prefetchScheduled(error: nil)
+            } catch {
+                self?.automix.prefetchScheduled(error: error.localizedDescription)
+            }
+        }
+    }
+
+    func automixCancelPrefetch() { rustCore?.cancelAutomixPrefetch() }
 
     func automixDisarm() {
         audioService.disarmSplice()
@@ -2241,12 +2283,7 @@ extension PlayerViewModel: AutomixHost {
         playNext(isManualSkip: false)
     }
 
-    func automixCacheDirectory() -> URL {
-        let bundle = Bundle.main.bundleIdentifier ?? "com.fefucho.SideB"
-        return FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent(bundle, isDirectory: true)
-            .appendingPathComponent(HomeLabConfiguration.enabled ? "automix-lab" : "automix", isDirectory: true)
-    }
+    func automixCacheDirectory() -> URL { AutomixPreferences.cacheDirectory }
 
     /// El archivo llegó a su segundo de traspaso: la interfaz pasa a la siguiente canción sin resolver ni
     /// reproducir su stream (ya suena desde el archivo).
@@ -2398,7 +2435,11 @@ extension PlayerViewModel {
             transition: transition, fileSize: transition.flatMap { store.cachedFileSize(path: $0.filePath, now: now) },
             player: player, countdown: countdown,
             canPrepareNow: audioService.automixEnabled && context != nil && reason == nil,
-            canCancel: automix.isPreparing, jumpTarget: jumpTarget)
+            canCancel: automix.isPreparing, jumpTarget: jumpTarget,
+            settings: automixPreferences.settings, capability: automixPreferences.capability,
+            power: store.cachedPower(now: now) { automixPower() },
+            prefetchItems: automix.prefetchItems, prefetchStatus: automix.prefetchStatus,
+            prefetchRequestedAt: automix.prefetchRequestedAt, splice: audioService.spliceDiagnostics)
     }
 
     /// Depuración: salta la canción a 10 s antes del corte (sólo con una transición lista y la canción antes del corte).

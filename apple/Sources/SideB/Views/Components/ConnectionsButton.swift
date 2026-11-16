@@ -112,6 +112,8 @@ final class AirPlayRoutePresenter {
 
 private struct AirPlayRouteAnchor: NSViewRepresentable {
     let presenter: AirPlayRoutePresenter
+    /// Cambia cuando el empalme de Automix sustituye al `AVPlayer` activo (ver `AirPlayRoutePickerView`).
+    var playerEpoch = 0
 
     func makeNSView(context: Context) -> AVRoutePickerView {
         let picker = AVRoutePickerView()
@@ -180,7 +182,7 @@ struct ConnectionsButton: View {
         .accessibilityHint(L10n.text("connections.help"))
         .background {
             // Real route picker kept out of the way; the popover row triggers it.
-            AirPlayRouteAnchor(presenter: presenter)
+            AirPlayRouteAnchor(presenter: presenter, playerEpoch: AudioPlayerService.shared.playerEpoch)
                 .frame(width: 32, height: 32)
                 .opacity(0.001)
                 .allowsHitTesting(false)

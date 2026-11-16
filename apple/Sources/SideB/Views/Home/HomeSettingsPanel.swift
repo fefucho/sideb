@@ -179,6 +179,7 @@ struct HomeSettingsPanel: View {
                     }
                     Text(L10n.text("settings.automix.hint"))
                         .font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    AutomixSettingsSection(preferences: AutomixPreferences.shared)
                     Toggle(L10n.text("settings.animatedArtwork"), isOn: $animatedArtworkEnabled)
                         .toggleStyle(.checkbox)
                         .font(.system(size: 12))

@@ -13,8 +13,10 @@ private func song(_ id: String, album: String? = nil, upload: Bool = false) -> A
 }
 
 private func context(token: UUID = UUID(), current: AutomixSong = song("A"), next: AutomixSong? = song("B"),
-                     jam: Bool = false, repeatOne: Bool = false, started: Bool = true) -> AutomixContext {
-    AutomixContext(token: token, current: current, next: next, jamActive: jam, repeatOne: repeatOne, hasStarted: started)
+                     jam: Bool = false, repeatOne: Bool = false, started: Bool = true, skipSameAlbum: Bool = true,
+                     upcoming: [AutomixSong]? = nil, lookahead: Int = 1) -> AutomixContext {
+    AutomixContext(token: token, current: current, next: next, jamActive: jam, repeatOne: repeatOne, hasStarted: started,
+                   skipSameAlbum: skipSameAlbum, upcoming: upcoming ?? next.map { [$0] } ?? [], lookahead: lookahead)
 }
 
 private func transition(from: String = "A", to: String = "B", kind: String = "mix", cut: Double = 100,
@@ -91,15 +93,37 @@ struct AutomixTimelineTests {
         #expect(timeline.nextDuration == 210)
     }
 
-    @Test("Armado: sin cortes antes del corte, entrada tardía poco después, nada si ya pasó el solape")
-    func arm() {
-        #expect(timeline.armDecision(position: 10) == .arm)
-        #expect(timeline.armDecision(position: 99.5) == .arm)
-        #expect(timeline.armDecision(position: 99.6) == .lateEntry(fileSeconds: 0))
-        #expect(timeline.armDecision(position: 103) == .lateEntry(fileSeconds: 3))
-        #expect(timeline.armDecision(position: 107.5) == .lateEntry(fileSeconds: 7.5))
-        #expect(timeline.armDecision(position: 107.6) == .giveUp)
-        #expect(timeline.armDecision(position: .nan) == .giveUp)
+    @Test("Confirmación: espera hasta 0,9 s antes del corte, empalma en el corte o poco después, abandona si no cabe el fundido")
+    func commit() {
+        #expect(timeline.commitDecision(position: 10) == .wait)
+        #expect(timeline.commitDecision(position: 99.0) == .wait)
+        // A menos de 0,9 s del corte ya se programa; si el punto de empalme (posición + 0,45 s) cae antes del corte, es el corte.
+        #expect(timeline.commitDecision(position: 99.1) == .commit(fileSeconds: 0))
+        #expect(timeline.commitDecision(position: 99.55) == .commit(fileSeconds: 0))
+        // Pasado el corte (o encima) el empalme se aleja de «ahora» lo justo.
+        if case .commit(let late) = timeline.commitDecision(position: 100) { #expect(abs(late - 0.45) < 1e-9) } else { Issue.record("debía confirmar") }
+        if case .commit(let later) = timeline.commitDecision(position: 105) { #expect(abs(later - 5.45) < 1e-9) } else { Issue.record("debía confirmar") }
+        // El fundido (50 ms) y el margen de 0,15 s deben caber antes de overlapStart (8 s): hasta file = 7.8 s.
+        #expect(timeline.commitDecision(position: 107.3) != .giveUp)
+        #expect(timeline.commitDecision(position: 107.4) == .giveUp)
+        #expect(timeline.commitDecision(position: .nan) == .giveUp)
+        #expect(timeline.fits(fileSeconds: 7.8) && !timeline.fits(fileSeconds: 7.9))
+    }
+
+    @Test("Fundido de 50 ms: ganancias complementarias que suman el volumen de salida")
+    func crossfade() {
+        #expect(AudioCrossfade.duration == 0.05)
+        #expect(AudioCrossfade.progress(hostSeconds: 9.99, startSeconds: 10) == 0)
+        #expect(abs(AudioCrossfade.progress(hostSeconds: 10.025, startSeconds: 10) - 0.5) < 1e-9)
+        #expect(AudioCrossfade.progress(hostSeconds: 11, startSeconds: 10) == 1)
+        for step in 0...20 {
+            let gains = AudioCrossfade.gains(progress: Double(step) / 20, output: 0.8)
+            #expect(abs(gains.new + gains.old - 0.8) < 1e-6)
+        }
+        let start = AudioCrossfade.gains(progress: 0, output: 1)
+        #expect(start.new == 0 && start.old == 1)
+        let end = AudioCrossfade.gains(progress: 1, output: 1)
+        #expect(end.new == 1 && end.old == 0)
     }
 
     @Test("Saltos con el empalme armado")
@@ -144,6 +168,13 @@ private final class FakeHost: AutomixHost {
     var armOutcome: AutomixArmOutcome = .armed
     var disarmCount = 0
     var abortCount = 0
+    var replaced: [AutomixTransition] = []
+    var replaceOutcome: AutomixArmOutcome = .armed
+    var settings = AutomixSettingsValue()
+    var capability: AutomixCapabilityValue? = nil
+    var power = AutomixPowerState()
+    var prefetched: [[AutomixSong]] = []
+    var prefetchCancels = 0
     private var pending: [String: CheckedContinuation<AutomixTransition, Error>] = [:]
 
     func automixContext() -> AutomixContext? { current }
@@ -156,6 +187,12 @@ private final class FakeHost: AutomixHost {
         pending.removeValue(forKey: requestID)?.resume(throwing: AutomixFailure.cancelled)
     }
     func automixArm(_ transition: AutomixTransition) async -> AutomixArmOutcome { armed.append(transition); return armOutcome }
+    func automixReplace(_ transition: AutomixTransition) async -> AutomixArmOutcome { replaced.append(transition); return replaceOutcome }
+    func automixSettings() -> AutomixSettingsValue { settings }
+    func automixCapability() -> AutomixCapabilityValue? { capability }
+    func automixPower() -> AutomixPowerState { power }
+    func automixPrefetch(_ items: [AutomixSong]) { prefetched.append(items) }
+    func automixCancelPrefetch() { prefetchCancels += 1 }
     func automixDisarm() { disarmCount += 1 }
     func automixAbortMixing() { abortCount += 1 }
     func automixCacheDirectory() -> URL { URL(fileURLWithPath: "/tmp/automix-tests", isDirectory: true) }
@@ -197,17 +234,25 @@ struct AutomixCoordinatorTests {
         #expect(host.cancelled == [request.requestID])
     }
 
-    @Test("No prepara hasta que el tema suena de verdad")
-    func waitsForStart() async {
-        let (coordinator, host) = make(context(started: false))
-        coordinator.reconcile()
-        await host.settle()
-        #expect(host.prepared.isEmpty)
-        #expect(coordinator.status == .idle)
-        host.current = context(token: host.current!.token, started: true)
+    @Test("Pide la versión rápida en cuanto conoce el siguiente, sin esperar a que el tema suene; el archivo se entrega al empezar")
+    func fastWithoutWaitingForStart() async {
+        let token = UUID()
+        let (coordinator, host) = make(context(token: token, started: false))
         coordinator.reconcile()
         await host.settle()
         #expect(host.prepared.count == 1)
+        #expect(host.prepared[0].quality == "fast")
+        #expect(coordinator.status == .preparing)
+        host.complete(host.prepared[0].requestID, with: transition())
+        await host.settle()
+        #expect(host.armed.isEmpty, "el tema aún no suena: no se entrega al reproductor")
+        #expect(coordinator.status == .ready(kind: "mix", bpm: 124))
+        host.current = context(token: token, started: true)
+        coordinator.reconcile()
+        await host.settle()
+        #expect(host.armed.count == 1, "al empezar a sonar se entrega")
+        #expect(host.prepared.count == 1, "sin pedir otra preparación")
+        #expect(coordinator.marker != nil)
     }
 
     @Test("Es idempotente: reevaluar lo mismo no pide otra preparación")
@@ -258,14 +303,16 @@ struct AutomixCoordinatorTests {
         host.current = context(token: UUID(), started: false)
         coordinator.reconcile(); await host.settle()
         #expect(host.cancelled.count == 1)
-        #expect(coordinator.status == .idle)
+        #expect(coordinator.status == .preparing, "otro tema: otra petición, sin esperar a que suene")
+        #expect(host.prepared.count == 2)
 
         host.current = context(token: UUID())
         coordinator.reconcile(); await host.settle()
+        #expect(host.prepared.count == 3)
         host.current = context(token: host.current!.token, jam: true)
         coordinator.reconcile(); await host.settle()
         #expect(coordinator.status == .unavailable(.jam))
-        #expect(host.cancelled.count == 2)
+        #expect(host.cancelled.count == 3)
 
         host.current = context(token: host.current!.token, repeatOne: true)
         coordinator.reconcile()
@@ -276,7 +323,12 @@ struct AutomixCoordinatorTests {
         host.current = context(token: host.current!.token, current: song("A", album: "X"), next: song("B", album: "X"))
         coordinator.reconcile()
         #expect(coordinator.status == .unavailable(.sameAlbum))
-        #expect(host.prepared.count == 2)
+        #expect(host.prepared.count == 3)
+        // El ajuste del core manda: sin «no mezclar el mismo disco» sí se prepara.
+        host.current = context(token: host.current!.token, current: song("A", album: "X"), next: song("B", album: "X"), skipSameAlbum: false)
+        coordinator.reconcile(); await host.settle()
+        #expect(coordinator.status == .preparing)
+        #expect(host.prepared.count == 4)
     }
 
     @Test("Sin cuenta/cola (contexto nil) no hay plan")
@@ -305,15 +357,8 @@ struct AutomixCoordinatorTests {
         #expect(coordinator.currentKey == nil)
     }
 
-    @Test("Empalme tardío, llegada tarde y fallo del reproductor")
+    @Test("Llegada tarde y fallo del reproductor")
     func armOutcomes() async {
-        let (coordinator, host) = make()
-        host.armOutcome = .enteredLate
-        coordinator.reconcile(); await host.settle()
-        host.complete(host.prepared[0].requestID, with: transition())
-        await host.settle()
-        #expect(coordinator.status == .mixing(kind: "mix"))
-
         let (late, lateHost) = make()
         lateHost.armOutcome = .tooLate
         late.reconcile(); await lateHost.settle()
@@ -565,8 +610,9 @@ struct AutomixAudioServiceTests {
 
     private func drain() async { for _ in 0..<10 { await Task.yield() } }
 
-    private func endCurrentItem(_ audio: AudioPlayerService) async {
-        NotificationCenter.default.post(name: .AVPlayerItemDidPlayToEndTime, object: audio.avPlayer.currentItem)
+    /// Da por hecho el cambio al reproductor del archivo (el reloj de host real lo prueba `AutomixTwoPlayerTests`).
+    private func switchNow(_ audio: AudioPlayerService) async {
+        audio.completeSwitchForTesting()
         await drain()
     }
 
@@ -584,29 +630,49 @@ struct AutomixAudioServiceTests {
         #expect(seen == [true])
         #expect(AudioPlayerService(preferences: defaults, preferencePrefix: "test").automixEnabled)
         #expect(!AudioPlayerService(preferences: defaults, preferencePrefix: "other").automixEnabled)
-        #expect(audio.avPlayer is AVQueuePlayer)
+        #expect(!(audio.avPlayer is AVQueuePlayer), "el empalme ya no usa una cola: dos AVPlayer")
     }
 
-    @Test("Armar pone el final de la canción en aCut y deja el archivo en cola; desarmar lo restituye")
+    @Test("Armar no toca el reproductor ni el elemento que suena; desarmar descarta el segundo reproductor")
     func armAndDisarm() async throws {
         let (audio, probe, songURL, fileURL, cleanup) = try fixture()
         defer { cleanup() }
         start(audio, song: songURL)
         probe.media = 40
-        let queue = try #require(audio.avPlayer as? AVQueuePlayer)
-        let item = try #require(queue.currentItem)
+        let player = audio.avPlayer
+        let item = try #require(player.currentItem)
         let before = item.forwardPlaybackEndTime
+        let volume = player.volume
         let plan = AudioSplice(asset: AVURLAsset(url: fileURL), nextVideoID: "B", timeline: transition().timeline)
         #expect(audio.armSplice(plan) == .armed)
         #expect(audio.spliceStage == .armed)
-        #expect(queue.items().count == 2)
-        #expect(abs(item.forwardPlaybackEndTime.seconds - 100) < 1e-6)
         #expect(audio.spliceNextVideoID == "B")
+        await drain()
+        #expect(audio.avPlayer === player && player.currentItem === item, "el reproductor y el elemento de la canción siguen siendo los mismos")
+        #expect(item.forwardPlaybackEndTime == before, "no se toca forwardPlaybackEndTime")
+        #expect(player.volume == volume && player.rate == 0 || player.rate == 1)
+        let diagnostics = try #require(audio.spliceDiagnostics)
+        #expect(["prerolling", "prerolled"].contains(diagnostics.phase))
         audio.disarmSplice()
         #expect(audio.spliceStage == .none)
-        #expect(queue.items().count == 1)
-        #expect(item.forwardPlaybackEndTime == before)
+        #expect(audio.spliceDiagnostics == nil)
+        #expect(audio.avPlayer === player && player.currentItem === item)
         #expect(audio.armSplice(AudioSplice(asset: AVURLAsset(url: fileURL), nextVideoID: "B", timeline: transition(cut: 30).timeline)) == .tooLate)
+    }
+
+    @Test("Con el archivo ya cargado, sustituirlo por otro del mismo corte es posible; con otro corte, no")
+    func replace() async throws {
+        let (audio, probe, songURL, fileURL, cleanup) = try fixture()
+        defer { cleanup() }
+        start(audio, song: songURL)
+        probe.media = 40
+        let plan = AudioSplice(asset: AVURLAsset(url: fileURL), nextVideoID: "B", timeline: transition().timeline)
+        #expect(!audio.canReplaceSplice)
+        #expect(audio.armSplice(plan) == .armed)
+        #expect(audio.canReplaceSplice)
+        #expect(audio.replaceSplice(plan) == .armed)
+        #expect(audio.replaceSplice(AudioSplice(asset: AVURLAsset(url: fileURL), nextVideoID: "B", timeline: transition(cut: 101).timeline)) == .unavailable)
+        #expect(audio.spliceStage == .armed)
     }
 
     @Test("Llegar al límite del empalme no es el fin del tema ni llama a playNext; el archivo toma el relevo")
@@ -623,10 +689,13 @@ struct AutomixAudioServiceTests {
         #expect(probe.ended == 0)
 
         probe.media = 99
-        await endCurrentItem(audio) // el elemento llegó a su forwardPlaybackEndTime
+        let old = audio.avPlayer
+        await switchNow(audio) // el segundo reproductor toma el relevo
         #expect(probe.ended == 0)
         #expect(probe.entered == 1)
         #expect(audio.spliceStage == .inFile)
+        #expect(audio.avPlayer !== old)
+        #expect(old.currentItem == nil)
         #expect(!audio.hasReachedEnd)
 
         // Segundo 10 del archivo = segundo 110 de la canción anterior; el final mostrado no se dispara
@@ -648,7 +717,7 @@ struct AutomixAudioServiceTests {
         start(audio, song: songURL)
         probe.media = 50
         #expect(audio.armSplice(AudioSplice(asset: AVURLAsset(url: fileURL), nextVideoID: "B", timeline: transition().timeline)) == .armed)
-        await endCurrentItem(audio)
+        await switchNow(audio)
         var handovers = 0
         let nextID = UUID()
         audio.onSpliceHandover = { handovers += 1; audio.completeHandover(playbackID: nextID) }
@@ -697,43 +766,45 @@ struct AutomixAudioServiceTests {
         #expect(audio.seekRoute(forSeconds: 103) == .intoFile)
         #expect(audio.seekRoute(forSeconds: 150) == .disarmThenDirect)
         #expect(audio.seekIntoSplice(toSeconds: 103))
+        let deadline = Date().addingTimeInterval(4)
+        while audio.spliceStage != .inFile, Date() < deadline { try await Task.sleep(for: .milliseconds(20)) }
         #expect(audio.spliceStage == .inFile)
         #expect(probe.entered == 1)
-        #expect(abs((probe.seekTargets.last ?? 0) - 3) < 1e-6) // 103 de la canción = segundo 3 del archivo
+        #expect(audio.spliceDiagnostics?.prerolledFileSeconds == 3) // 103 de la canción = segundo 3 del archivo
         #expect(audio.seekRoute(forSeconds: 90) == .restream)
     }
 
-    @Test("Encadenado A→B→C: la canción que suena del archivo anterior termina en su corte con su mapa")
+    @Test("Encadenado A→B→C: la canción que suena del archivo anterior se puede empalmar con su propio mapa")
     func chained() async throws {
         let (audio, probe, songURL, fileURL, cleanup) = try fixture()
         defer { cleanup() }
         start(audio, song: songURL)
         probe.media = 50
         #expect(audio.armSplice(AudioSplice(asset: AVURLAsset(url: fileURL), nextVideoID: "B", timeline: transition().timeline)) == .armed)
-        await endCurrentItem(audio)
-        (audio.avPlayer as? AVQueuePlayer)?.advanceToNextItem() // AVFoundation pasa al archivo en el corte
+        await switchNow(audio)
         audio.onSpliceHandover = { audio.completeHandover(playbackID: UUID()) }
         probe.media = 20
         audio.samplePlaybackProgress()
         #expect(audio.spliceStage == .handedOver)
 
-        // B suena del archivo con sesgo 90: su corte en el segundo 150 de B es el 240 del elemento.
-        probe.media = 120 // = segundo 30 de B
+        // B suena del archivo con sesgo 90 (segundo 30 de B = 120 del elemento): se arma el siguiente empalme.
+        probe.media = 120
         let second = transition(from: "B", to: "C", cut: 150, bOffset: 40, fileDuration: 260)
         let plan = AudioSplice(asset: AVURLAsset(url: fileURL), nextVideoID: "C", timeline: second.timeline)
+        let player = audio.avPlayer
         #expect(audio.armSplice(plan) == .armed)
-        let queue = try #require(audio.avPlayer as? AVQueuePlayer)
-        let current = try #require(queue.currentItem)
-        #expect(abs(current.forwardPlaybackEndTime.seconds - 240) < 1e-6)
+        #expect(audio.spliceStage == .armed)
+        #expect(audio.avPlayer === player, "armar no toca al reproductor de B")
         // Desarmar devuelve el mapa de B.
         audio.disarmSplice()
         #expect(audio.spliceStage == .handedOver)
         #expect(audio.timeBias == 90)
         #expect(audio.armSplice(plan) == .armed)
-        await endCurrentItem(audio)
+        await switchNow(audio)
         #expect(audio.spliceStage == .inFile)
         #expect(audio.timeBias == -150)
         #expect(audio.spliceNextVideoID == "C")
+        #expect(audio.avPlayer !== player)
         #expect(probe.ended == 0)
     }
 
@@ -747,10 +818,8 @@ struct AutomixAudioServiceTests {
         audio.play(urlString: songURL.absoluteString, expectedDuration: 100, playbackID: UUID())
         #expect(audio.spliceStage == .none)
         #expect(audio.timeBias == 0)
-        #expect((audio.avPlayer as? AVQueuePlayer)?.items().count == 1)
         audio.stop()
         #expect(audio.avPlayer.currentItem == nil)
-        #expect((audio.avPlayer as? AVQueuePlayer)?.items().isEmpty == true)
     }
 }
 
@@ -835,7 +904,7 @@ struct AutomixPlayerViewModelTests {
 
         let plan = AudioSplice(asset: AVURLAsset(url: wav), nextVideoID: "B", timeline: transition().timeline)
         #expect(audio.armSplice(plan) == .armed)
-        NotificationCenter.default.post(name: .AVPlayerItemDidPlayToEndTime, object: audio.avPlayer.currentItem)
+        audio.completeSwitchForTesting()
         for _ in 0..<10 { await Task.yield() }
         #expect(audio.spliceStage == .inFile)
         #expect(player.currentTrack?.videoId == "A", "hasta el traspaso la interfaz sigue en la anterior")
@@ -875,7 +944,7 @@ struct AutomixPlayerViewModelTests {
         audio.duration = 200
         probe.media = 50
         #expect(audio.armSplice(AudioSplice(asset: AVURLAsset(url: wav), nextVideoID: "B", timeline: transition().timeline)) == .armed)
-        NotificationCenter.default.post(name: .AVPlayerItemDidPlayToEndTime, object: audio.avPlayer.currentItem)
+        audio.completeSwitchForTesting()
         for _ in 0..<10 { await Task.yield() }
         #expect(audio.spliceStage == .inFile)
 
@@ -1062,14 +1131,15 @@ struct AutomixCoordinatorDebugTests {
 
     @MainActor final class LogBox { var lines: [String] = [] }
 
-    @Test("«Preparar ahora» ignora sólo la espera a que el tema suene; respeta ajuste, Jam y elegibilidad")
+    @Test("«Preparar ahora» fuerza una petición nueva; respeta ajuste, Jam y elegibilidad")
     func prepareNow() async {
         let (coordinator, host, log) = make(context(started: false))
         coordinator.reconcile(); await host.settle()
-        #expect(host.prepared.isEmpty)
+        #expect(host.prepared.count == 1, "la rápida ya se pidió sin esperar a que el tema suene")
         #expect(coordinator.prepareNow())
         await host.settle()
-        #expect(host.prepared.count == 1)
+        #expect(host.prepared.count == 2)
+        #expect(host.cancelled.count == 1)
         #expect(coordinator.request?.forced == true)
         #expect(coordinator.request?.phase == .preparing)
         #expect(log.lines.contains { $0.contains("forzada") })
@@ -1146,7 +1216,7 @@ struct AutomixCoordinatorDebugTests {
         await okHost.settle()
         #expect(ok.request?.phase == .ready)
         #expect(ok.request?.transition?.kind == "mix")
-        #expect(ok.request?.note == "empalme armado")
+        #expect(ok.request?.note == "empalme armado (fast)")
     }
 
     @Test("Los cambios de estado y las razones de descarte quedan en el registro")
@@ -1192,5 +1262,269 @@ struct AutomixDiagnosticsViewTests {
             let pill = ImageRenderer(content: AutomixPill(viewModel: player).environment(\.colorScheme, scheme))
             #expect(pill.nsImage != nil)
         }
+    }
+}
+
+// MARK: - Ronda 2: calidad, mejora a stems, precarga y ajustes
+
+@Suite("Automix: estrategia de calidad")
+struct AutomixStrategyTests {
+    private func settings(_ quality: String, battery: Bool = true) -> AutomixSettingsValue {
+        var value = AutomixSettingsValue(); value.quality = quality; value.fastOnBattery = battery; return value
+    }
+    private func capability(recommended: Bool, factor: Double? = 5.6) -> AutomixCapabilityValue {
+        var value = AutomixCapabilityValue(); value.stemsRecommended = recommended; value.realtimeFactor = factor; value.modelReady = true; return value
+    }
+    private let plugged = AutomixPowerState(onBattery: false, lowPower: false)
+
+    @Test("«Siempre rápida» nunca pide stems; «siempre con stems» sí, con o sin capacidad medida")
+    func fixedQualities() {
+        #expect(!AutomixStrategy.wantsStems(settings: settings("fast"), capability: capability(recommended: true), power: plugged).wants)
+        #expect(AutomixStrategy.wantsStems(settings: settings("stems"), capability: nil, power: plugged).wants)
+        #expect(AutomixStrategy.wantsStems(settings: settings("stems"), capability: capability(recommended: false, factor: 0.5), power: plugged).wants)
+    }
+
+    @Test("«Automática» depende de que la Mac recomiende stems")
+    func automatic() {
+        #expect(AutomixStrategy.wantsStems(settings: settings("auto"), capability: capability(recommended: true), power: plugged).wants)
+        #expect(!AutomixStrategy.wantsStems(settings: settings("auto"), capability: capability(recommended: false, factor: 1.1), power: plugged).wants)
+        #expect(!AutomixStrategy.wantsStems(settings: settings("auto"), capability: capability(recommended: false, factor: nil), power: plugged).wants)
+        #expect(!AutomixStrategy.wantsStems(settings: settings("auto"), capability: nil, power: plugged).wants)
+        // Un valor desconocido se trata como automático.
+        #expect(AutomixStrategy.wantsStems(settings: settings("otra"), capability: capability(recommended: true), power: plugged).wants)
+    }
+
+    @Test("Con batería o bajo consumo y el ajuste activo, sólo la rápida; sin el ajuste, no importa")
+    func battery() {
+        for power in [AutomixPowerState(onBattery: true, lowPower: false), AutomixPowerState(onBattery: false, lowPower: true), AutomixPowerState(onBattery: true, lowPower: true)] {
+            #expect(!AutomixStrategy.wantsStems(settings: settings("auto"), capability: capability(recommended: true), power: power).wants)
+            #expect(!AutomixStrategy.wantsStems(settings: settings("stems"), capability: nil, power: power).wants)
+            #expect(AutomixStrategy.wantsStems(settings: settings("stems", battery: false), capability: nil, power: power).wants)
+        }
+        #expect(AutomixStrategy.wantsStems(settings: settings("auto"), capability: capability(recommended: true), power: AutomixPowerState(onBattery: false, lowPower: false)).wants)
+        // El motivo queda en el registro.
+        #expect(AutomixStrategy.wantsStems(settings: settings("stems"), capability: nil, power: AutomixPowerState(onBattery: true, lowPower: false)).reason.contains("batería"))
+        #expect(AutomixStrategy.wantsStems(settings: settings("stems"), capability: nil, power: AutomixPowerState(onBattery: false, lowPower: true)).reason.contains("bajo consumo"))
+        #expect(AutomixPowerState.current(lowPower: true).lowPower)
+    }
+
+    @Test("La precarga lleva el tema que suena y hasta `lookahead` siguientes")
+    func prefetchItems() {
+        let list = ["B", "C", "D", "E"].map { song($0) }
+        #expect(AutomixPrefetchPlan.items(current: song("A"), upcoming: list, lookahead: 1).map(\.videoID) == ["A", "B"])
+        #expect(AutomixPrefetchPlan.items(current: song("A"), upcoming: list, lookahead: 3).map(\.videoID) == ["A", "B", "C", "D"])
+        #expect(AutomixPrefetchPlan.items(current: song("A"), upcoming: list, lookahead: 9).map(\.videoID) == ["A", "B", "C", "D"])
+        #expect(AutomixPrefetchPlan.items(current: song("A"), upcoming: list, lookahead: 0).map(\.videoID) == ["A", "B"])
+        #expect(AutomixPrefetchPlan.items(current: song("A"), upcoming: [song("B")], lookahead: 3).map(\.videoID) == ["A", "B"])
+    }
+
+    @Test("Los ajustes viajan al core sin perder ni salirse de rango, y los prefijos nuevos se clasifican")
+    func settingsAndFailures() {
+        var value = AutomixSettingsValue()
+        value.quality = "stems"; value.compute = "cpu"; value.lookahead = 7; value.keepModelLoaded = true; value.fastOnBattery = false; value.skipSameAlbum = false
+        let record = value.record
+        #expect(record.lookahead == 3)
+        let back = AutomixSettingsValue(record: record)
+        #expect(back.quality == "stems" && back.compute == "cpu" && back.lookahead == 3 && back.keepModelLoaded && !back.fastOnBattery && !back.skipSameAlbum)
+        #expect(AutomixSettingsValue().record.lookahead == 1)
+        #expect(AutomixSettingsValue().quality == "auto")
+        #expect(AutomixFailure(coreMessage: "automix:model-unavailable: descargando") == .modelUnavailable)
+        #expect(AutomixFailure(coreMessage: "automix:bad-quality") == .badQuality)
+        #expect(AutomixFailure(coreMessage: "automix:no-cache-dir") == .noCacheDir)
+        #expect(AutomixFailure.modelUnavailable.logLabel == "model-unavailable")
+    }
+
+    @Test("El registro del core trae calidad, mismo corte, segundos separados y tiempo")
+    func recordFields() {
+        let record = AutomixTransitionRecord(requestId: "r", fromVideoId: "A", toVideoId: "B", kind: "mix", filePath: "/tmp/a.fast.wav",
+            fileDurationSeconds: 200, aCutSeconds: 100, overlapStartSeconds: 8, overlapEndSeconds: 20, bOffsetSeconds: 90,
+            bEntrySeconds: 5, handoverSeconds: 14, bpmFrom: 120, bpmTo: 124, bars: 8, stemsModel: true, quality: "stems",
+            sameCutAsFast: true, separatedSeconds: 36.7, elapsedSeconds: 8.7, detail: "d")
+        let value = AutomixTransition(record: record)
+        #expect(value.quality == "stems" && value.sameCutAsFast && value.stemsModel)
+        #expect(value.separatedSeconds == 36.7 && value.elapsedSeconds == 8.7)
+        #expect(value.isConsistent)
+    }
+
+    @Test("Textos de capacidad y de uso de disco, en los dos idiomas")
+    func texts() {
+        var measured = AutomixCapabilityValue(); measured.realtimeFactor = 5.6; measured.provider = "CoreML (CPUOnly MLProgram)"
+        #expect(AutomixCapabilityText.line(measured, language: .es).hasPrefix("Este equipo: 5,6× tiempo real"))
+        #expect(AutomixCapabilityText.line(measured, language: .en).hasPrefix("This computer: 5.6× real time"))
+        #expect(AutomixCapabilityText.line(measured, language: .es).contains("CoreML"))
+        let unmeasured = AutomixCapabilityValue()
+        #expect(AutomixCapabilityText.line(unmeasured, language: .es) == "Este equipo: sin medir todavía")
+        #expect(AutomixCapabilityText.line(nil, language: .en) == "This computer: no capability data")
+        let usage = AutomixCacheUsageValue(audioBytes: 10 << 20, stemsBytes: 70 << 20, transitionsBytes: 20 << 20, modelBytes: 210 << 20)
+        #expect(usage.total == 100 << 20)
+        for language in AppLanguage.allCases {
+            #expect(!AutomixCacheText.cacheLine(usage, language: language).contains("settings."))
+            #expect(!AutomixCacheText.modelLine(usage, capability: nil, language: language).contains("settings."))
+            #expect(!AutomixCacheText.modelLine(AutomixCacheUsageValue(), capability: nil, language: language).contains("settings."))
+        }
+    }
+}
+
+@MainActor
+@Suite("Automix: coordinador con calidad y precarga")
+struct AutomixCoordinatorQualityTests {
+    private func make(_ ctx: AutomixContext? = context(), quality: String = "stems", power: AutomixPowerState = AutomixPowerState(),
+                      capability: AutomixCapabilityValue? = nil) -> (AutomixCoordinator, FakeHost) {
+        let host = FakeHost()
+        host.current = ctx
+        host.settings.quality = quality
+        host.power = power
+        host.capability = capability
+        let coordinator = AutomixCoordinator(enabled: true, log: { _ in })
+        coordinator.host = host
+        return (coordinator, host)
+    }
+
+    private func fastReady(_ coordinator: AutomixCoordinator, _ host: FakeHost) async {
+        coordinator.reconcile(); await host.settle()
+        host.complete(host.prepared[0].requestID, with: transition())
+        await host.settle()
+    }
+
+    @Test("Primero la rápida; con «siempre con stems» pide enseguida la de stems y la cambia si llega antes del empalme")
+    func upgradeApplied() async {
+        let (coordinator, host) = make()
+        await fastReady(coordinator, host)
+        #expect(host.prepared.map(\.quality) == ["fast", "stems"])
+        #expect(host.armed.count == 1 && host.armed[0].quality == "fast")
+        #expect(coordinator.request?.upgrade.hasPrefix("pedida") == true)
+        #expect(coordinator.request?.requestedQuality == "fast")
+        var stems = transition(); stems.quality = "stems"; stems.stemsModel = true; stems.separatedSeconds = 36.7; stems.elapsedSeconds = 8.7
+        host.complete(host.prepared[1].requestID, with: stems)
+        await host.settle()
+        #expect(host.replaced.count == 1 && host.replaced[0].quality == "stems")
+        #expect(coordinator.request?.transition?.quality == "stems")
+        #expect(coordinator.request?.upgrade.hasPrefix("aplicada") == true)
+        #expect(coordinator.status == .ready(kind: "mix", bpm: 124))
+        #expect(coordinator.marker != nil)
+    }
+
+    @Test("Si el empalme ya se comprometió, la de stems llega tarde y se queda la rápida")
+    func upgradeTooLate() async {
+        let (coordinator, host) = make()
+        host.replaceOutcome = .failed
+        await fastReady(coordinator, host)
+        var stems = transition(); stems.quality = "stems"
+        host.complete(host.prepared[1].requestID, with: stems)
+        await host.settle()
+        #expect(host.replaced.count == 1)
+        #expect(coordinator.request?.transition?.quality == "fast")
+        #expect(coordinator.request?.upgrade.hasPrefix("omitida") == true)
+
+        // Y si el archivo ya suena, ni se intenta sustituir.
+        let (second, secondHost) = make()
+        await fastReady(second, secondHost)
+        second.spliceEntered()
+        secondHost.complete(secondHost.prepared[1].requestID, with: stems)
+        await secondHost.settle()
+        #expect(secondHost.replaced.isEmpty)
+        #expect(second.request?.transition?.quality == "fast")
+        #expect(second.request?.upgrade.hasPrefix("omitida") == true)
+    }
+
+    @Test("Sin el modelo (o con cualquier fallo) se queda la rápida sin error visible")
+    func upgradeFails() async {
+        let (coordinator, host) = make()
+        await fastReady(coordinator, host)
+        host.fail(host.prepared[1].requestID, .modelUnavailable)
+        await host.settle()
+        #expect(coordinator.request?.upgrade == "falló: model-unavailable")
+        #expect(coordinator.status == .ready(kind: "mix", bpm: 124))
+        #expect(coordinator.request?.transition?.quality == "fast")
+        #expect(host.replaced.isEmpty)
+    }
+
+    @Test("Una stems que corta en otro sitio que la rápida se descarta")
+    func upgradeDifferentCut() async {
+        let (coordinator, host) = make()
+        await fastReady(coordinator, host)
+        var stems = transition(cut: 104); stems.quality = "stems"
+        host.complete(host.prepared[1].requestID, with: stems)
+        await host.settle()
+        #expect(host.replaced.isEmpty)
+        #expect(coordinator.request?.upgrade.hasPrefix("descartada") == true)
+    }
+
+    @Test("No pide stems con «siempre rápida», con batería o sin capacidad suficiente en automático")
+    func noUpgrade() async {
+        for (quality, power, capability) in [
+            ("fast", AutomixPowerState(), nil as AutomixCapabilityValue?),
+            ("stems", AutomixPowerState(onBattery: true, lowPower: false), nil),
+            ("stems", AutomixPowerState(onBattery: false, lowPower: true), nil),
+            ("auto", AutomixPowerState(), nil),
+            ("auto", AutomixPowerState(), { var c = AutomixCapabilityValue(); c.stemsRecommended = false; c.realtimeFactor = 1.0; return c }())
+        ] {
+            let (coordinator, host) = make(quality: quality, power: power, capability: capability)
+            await fastReady(coordinator, host)
+            #expect(host.prepared.map(\.quality) == ["fast"], "\(quality) \(power)")
+            #expect(coordinator.request?.upgrade.hasPrefix("no pedida") == true)
+        }
+        var good = AutomixCapabilityValue(); good.stemsRecommended = true; good.realtimeFactor = 5.6
+        let (auto, host) = make(quality: "auto", capability: good)
+        await fastReady(auto, host)
+        #expect(host.prepared.map(\.quality) == ["fast", "stems"])
+    }
+
+    @Test("Cambiar de tema o apagar cancela también la mejora en curso")
+    func upgradeCancelled() async {
+        let token = UUID()
+        let (coordinator, host) = make(context(token: token))
+        await fastReady(coordinator, host)
+        let stemsID = host.prepared[1].requestID
+        host.current = context(token: token, next: song("C"))
+        coordinator.reconcile(); await host.settle()
+        #expect(host.cancelled.contains(stemsID))
+        #expect(host.disarmCount >= 1)
+    }
+
+    @Test("La precarga se pide con el tema y los siguientes, no se repite y se cancela con Jam, apagado o cambio de cuenta")
+    func prefetch() async {
+        let token = UUID()
+        let (coordinator, host) = make(context(token: token, upcoming: [song("B"), song("C"), song("D")], lookahead: 2), quality: "fast")
+        coordinator.reconcile(); await host.settle()
+        #expect(host.prefetched.map { $0.map(\.videoID) } == [["A", "B", "C"]])
+        coordinator.reconcile(); coordinator.reconcile()
+        #expect(host.prefetched.count == 1)
+        // La cola cambia: lista nueva.
+        host.current = context(token: token, next: song("X"), upcoming: [song("X"), song("C")], lookahead: 2)
+        coordinator.reconcile(); await host.settle()
+        #expect(host.prefetched.last?.map(\.videoID) == ["A", "X", "C"])
+        #expect(coordinator.prefetchItems?.map(\.videoID) == ["A", "X", "C"])
+        coordinator.prefetchScheduled(error: nil)
+        #expect(coordinator.prefetchStatus.contains("programada"))
+        // Jam: se cancela.
+        host.current = context(token: token, jam: true)
+        coordinator.reconcile(); await host.settle()
+        #expect(host.prefetchCancels == 1)
+        #expect(coordinator.prefetchItems == nil)
+        // Se retoma al terminar el Jam.
+        host.current = context(token: token, upcoming: [song("B")])
+        coordinator.reconcile(); await host.settle()
+        #expect(host.prefetched.count == 3)
+        // Cambio de cuenta.
+        coordinator.cancelPrefetch(reason: "cambio de cuenta")
+        #expect(host.prefetchCancels == 2)
+        coordinator.cancelPrefetch(reason: "otra vez")
+        #expect(host.prefetchCancels == 2, "sin precarga no hay nada que cancelar")
+        // Apagado.
+        coordinator.reconcile(); await host.settle()
+        #expect(host.prefetched.count == 4)
+        coordinator.setEnabled(false)
+        #expect(host.prefetchCancels == 3)
+    }
+
+    @Test("Sin temas siguientes o con repetición no hay precarga")
+    func noPrefetch() async {
+        let (coordinator, host) = make(context(next: nil, upcoming: []), quality: "fast")
+        coordinator.reconcile(); await host.settle()
+        #expect(host.prefetched.isEmpty)
+        host.current = context(repeatOne: true)
+        coordinator.reconcile(); await host.settle()
+        #expect(host.prefetched.isEmpty)
     }
 }

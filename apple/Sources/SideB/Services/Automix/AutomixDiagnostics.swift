@@ -137,6 +137,12 @@ struct AutomixRequestInfo: Equatable, Sendable {
     var transition: AutomixTransition?
     /// Qué pasó después de prepararse (entrega al reproductor, descarte…).
     var note: String?
+    /// Calidad pedida en esta petición ("fast"); la obtenida está en `transition.quality`.
+    var requestedQuality: String = "fast"
+    /// Estado de la mejora a stems: sin decidir, no pedida (motivo), pedida, aplicada, omitida, falló…
+    var upgrade: String = "sin decidir"
+    var upgradeRequestedAt: Date?
+    var upgradeFinishedAt: Date?
 
     func elapsed(now: Date) -> TimeInterval { max(0, (finishedAt ?? now).timeIntervalSince(requestedAt)) }
 }
@@ -185,6 +191,14 @@ struct AutomixDiagnosticsSnapshot: Equatable, Sendable {
     var canPrepareNow: Bool
     var canCancel: Bool
     var jumpTarget: Double?
+    var settings: AutomixSettingsValue = AutomixSettingsValue()
+    var capability: AutomixCapabilityValue?
+    var power: AutomixPowerState = AutomixPowerState()
+    var prefetchItems: [AutomixSong]?
+    var prefetchStatus: String = "sin precarga"
+    var prefetchRequestedAt: Date?
+    /// Cronología del segundo reproductor (precarga, arranque programado, fundido, desfase medido).
+    var splice: AutomixSpliceDiagnostics?
 }
 
 // MARK: - Almacén
@@ -198,6 +212,7 @@ final class AutomixDiagnostics {
     @ObservationIgnored private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.fefucho.SideB", category: "automix")
     @ObservationIgnored private var modelReadyCache: (value: Bool?, date: Date)?
     @ObservationIgnored private var fileSizeCache: (path: String, size: Int64?, date: Date)?
+    @ObservationIgnored private var powerCache: (value: AutomixPowerState, date: Date)?
 
     init(capacity: Int = AutomixEventLog.defaultCapacity) { log = AutomixEventLog(capacity: capacity) }
 
@@ -216,6 +231,13 @@ final class AutomixDiagnostics {
         if let cache = modelReadyCache, now.timeIntervalSince(cache.date) < 1 { return cache.value }
         let value = read()
         modelReadyCache = (value, now)
+        return value
+    }
+
+    func cachedPower(now: Date, read: () -> AutomixPowerState) -> AutomixPowerState {
+        if let cache = powerCache, now.timeIntervalSince(cache.date) < 2 { return cache.value }
+        let value = read()
+        powerCache = (value, now)
         return value
     }
 
