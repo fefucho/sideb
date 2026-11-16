@@ -31,7 +31,9 @@ let package = Package(
             dependencies: ["SideBCoreXCFramework"],
             path: "SideBCore/Sources/SideBCore",
             linkerSettings: [
-                .linkedFramework("SystemConfiguration")
+                .linkedFramework("SystemConfiguration"),
+                // The automix engine (ONNX Runtime, Signalsmith Stretch) is C++.
+                .linkedLibrary("c++")
             ]
         ),
         .binaryTarget(

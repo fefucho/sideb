@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
+    "crates/automix",
     "crates/innertube",
     "crates/listen-protocol",
     "crates/sideb-core",
@@ -22,6 +23,19 @@ thiserror = "2"
 futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
 rand = "0.8"
 listen-protocol = { path = "crates/listen-protocol" }
+
+# The audio engine is useless unoptimised (a test of one transition takes
+# minutes); dependencies of it are built the same way in debug.
+[profile.dev.package.automix]
+opt-level = 3
+[profile.dev.package.realfft]
+opt-level = 3
+[profile.dev.package.rustfft]
+opt-level = 3
+[profile.dev.package.signalsmith-stretch]
+opt-level = 3
+[profile.dev.package.symphonia-codec-aac]
+opt-level = 3
 
 [profile.release]
 lto = "thin"

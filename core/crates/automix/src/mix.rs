@@ -14,8 +14,24 @@ use crate::audio::{self, Stereo, SRF};
 use crate::grid::{self, Envelope, Grid};
 use crate::stems::{self, Stems, BASS, DRUMS, GROUPS, KICK, OTHER, VOCALS};
 use crate::stretch::{self, TimeMap};
-use anyhow::{bail, Result};
+use anyhow::Result;
 use std::path::Path;
+
+/// Why a full beat-matched mix was not planned. Everything but
+/// [`Refusal::Other`] is a judgement about the two songs, not a failure.
+#[derive(Debug, thiserror::Error)]
+pub enum Refusal {
+    #[error("tempos demasiado lejanos para sincronizar: {a:.1} y {b:.1} BPM")]
+    TempoGap { a: f64, b: f64 },
+    #[error("grilla de beats poco confiable (A {a:.2}, B {b:.2}; mínimo {MIN_GRID_CONFIDENCE})")]
+    WeakGrid { a: f64, b: f64 },
+    #[error("«{0}» es demasiado corta para mezclar")]
+    TooShort(String),
+    #[error(transparent)]
+    Cancelled(#[from] Cancelled),
+    #[error(transparent)]
+    Other(#[from] anyhow::Error),
+}
 
 pub struct Track {
     pub name: String,
@@ -34,29 +50,75 @@ impl Track {
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum StemMode {
-    /// HT-Demucs.
+    /// HT-Demucs. Downloads the model if it is not on disk yet (blocking).
     Model,
     /// Frequency split only; no model, no download, no structure evidence.
     Frequency,
+    /// [`StemMode::Model`] when the model is already on disk, else
+    /// [`StemMode::Frequency`] for this transition and the model downloads in
+    /// the background for the next ones.
+    Auto,
 }
 
+#[derive(Clone, Debug)]
 pub struct Options {
     /// Longest overlap allowed, in bars.
     pub max_bars: u32,
+    /// Seconds of A kept, untouched, before anything changes.
     pub pre_seconds: f64,
+    /// Seconds of B kept after the transition; infinite keeps all the rest.
     pub post_seconds: f64,
     pub stem_mode: StemMode,
     /// Shift the detected downbeat by this many beats, per deck.
     pub a_downbeat_shift: i64,
     pub b_downbeat_shift: i64,
+    /// Linear gain baked into each song, for players that level tracks.
+    pub a_gain: f32,
+    pub b_gain: f32,
+    /// Also render the plain-crossfade comparison.
+    pub baseline: bool,
+    /// Set from another thread to abandon the work at its next checkpoint
+    /// (between stages; a stem separation in progress runs to its end).
+    pub cancel: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
+}
+
+/// What [`crate::prepare`] fails with when [`Options::cancel`] was set.
+#[derive(Debug, thiserror::Error)]
+#[error("preparación cancelada")]
+pub struct Cancelled;
+
+impl Options {
+    pub(crate) fn check_cancel(&self) -> std::result::Result<(), Cancelled> {
+        match &self.cancel {
+            Some(flag) if flag.load(std::sync::atomic::Ordering::Relaxed) => Err(Cancelled),
+            _ => Ok(()),
+        }
+    }
+}
+
+impl Default for Options {
+    fn default() -> Self {
+        Options {
+            max_bars: 16,
+            pre_seconds: 8.0,
+            post_seconds: f64::INFINITY,
+            stem_mode: StemMode::Auto,
+            a_downbeat_shift: 0,
+            b_downbeat_shift: 0,
+            a_gain: 1.0,
+            b_gain: 1.0,
+            baseline: true,
+            cancel: None,
+        }
+    }
 }
 
 /// One song's side of the transition: the stretch of it that was separated,
 /// and the beat grid fitted there.
 pub struct Deck {
     /// Track sample of the window's first sample.
-    win_start: i64,
-    stems: Stems,
+    pub(crate) win_start: i64,
+    pub(crate) stems: Stems,
     pub grid: Grid,
     /// Whether the grid's beat phase came from the drum stem.
     pub grid_from_drums: bool,
@@ -85,6 +147,8 @@ pub struct Plan {
     pub a_skipped_bars: i64,
     /// Pitch-content similarity of the two decks over the overlap, 0..1.
     pub harmony: f64,
+    /// Which separation actually produced the stems.
+    pub stem_mode: StemMode,
 }
 
 /// Lowest on-grid/off-grid onset ratio at which a grid is trusted enough to
@@ -97,10 +161,30 @@ const MAX_OVERLAP_SECONDS: f64 = 36.0;
 /// Below this pitch-content similarity the two songs are kept from playing
 /// their harmony at once. Provisional.
 const HARMONY_CLASH: f64 = 0.8;
-const WINDOW_SECONDS: f64 = 90.0;
+/// How much of each song is separated into stems: enough for the longest
+/// overlap plus the structure scan, not the whole song (stems cost about
+/// real time).
+const WINDOW_SECONDS: f64 = 60.0;
+/// Whether the two windows are separated on two threads. See `plan`.
+const PARALLEL_SEPARATION: bool = true;
 
 fn n(seconds: f64) -> i64 {
     (seconds * SRF).round() as i64
+}
+
+/// Separates one window of a track. The model is tried only for
+/// [`StemMode::Model`]; if it fails (no model, no network, a crash inside the
+/// runtime) the frequency split stands in, and the bool says so.
+fn separate_window(track: &Track, from: f64, to: f64, tag: &str, mode: StemMode, cache: &Path) -> (Stems, bool) {
+    let window = track.audio.slice(n(from), (n(to) - n(from)) as usize);
+    if mode == StemMode::Model {
+        let key = format!("{}-{tag}", track.key);
+        let tried = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| stems::separate(&window, cache, &key)));
+        if let Ok(Ok(stems)) = tried {
+            return (stems, true);
+        }
+    }
+    (stems::split_by_frequency(&window), false)
 }
 
 fn build_deck(
@@ -109,16 +193,10 @@ fn build_deck(
     to: f64,
     fit: (f64, f64),
     bpm_guess: f64,
-    tag: &str,
-    opts: &Options,
-    cache: &Path,
-) -> Result<Deck> {
+    stems: Stems,
+) -> Deck {
     let win_start = n(from);
     let window = track.audio.slice(win_start, (n(to) - win_start) as usize);
-    let stems = match opts.stem_mode {
-        StemMode::Model => stems::separate(&window, cache, &format!("{}-{tag}", track.key))?,
-        StemMode::Frequency => stems::split_by_frequency(&window),
-    };
 
     // Bar phase from the full mix (that is where the harmony is); beat phase
     // and tempo from the drum stem when it is the clearer of the two.
@@ -135,7 +213,7 @@ fn build_deck(
             grid_from_drums = true;
         }
     }
-    Ok(Deck { win_start, stems, grid, grid_from_drums })
+    Deck { win_start, stems, grid, grid_from_drums }
 }
 
 impl Deck {
@@ -215,54 +293,68 @@ impl Deck {
     }
 }
 
-pub fn plan(a: &Track, b: &Track, opts: &Options, cache: &Path) -> Result<Plan> {
+/// Tempo of each song in the octave a DJ would count them in, before any
+/// stems: A from its end, B from its start, B moved by powers of two to sit
+/// within 1.42x of A. `None` when a song is too short to say.
+pub fn rough_tempos(a: &Track, b: &Track) -> Option<(f64, f64)> {
     let (a_first, a_last) = grid::audible_range(&a.env);
     let (b_first, b_last) = grid::audible_range(&b.env);
-
     let a_bpm = grid::estimate_bpm(&a.env, (a_last - 90.0).max(a_first), a_last);
-    if a_bpm <= 0.0 {
-        bail!("{}: demasiado corta para estimar el tempo", a.name);
-    }
     let mut b_bpm = grid::estimate_bpm(&b.env, b_first, (b_first + 90.0).min(b_last));
-    if b_bpm <= 0.0 {
-        bail!("{}: demasiado corta para estimar el tempo", b.name);
+    if a_bpm <= 0.0 || b_bpm <= 0.0 {
+        return None;
     }
-    // Count B in A's octave, the way a DJ counts 70 BPM against 140.
     while b_bpm < a_bpm / 1.42 {
         b_bpm *= 2.0;
     }
     while b_bpm > a_bpm * 1.42 {
         b_bpm /= 2.0;
     }
+    Some((a_bpm, b_bpm))
+}
 
+/// Whether two rough tempos can be beat-matched at all.
+pub fn tempos_compatible(a_bpm: f64, b_bpm: f64) -> bool {
+    (1.0 / (MAX_TEMPO_RATIO * 1.03)..=MAX_TEMPO_RATIO * 1.03).contains(&(a_bpm / b_bpm))
+}
+
+pub fn plan(a: &Track, b: &Track, opts: &Options, cache: &Path) -> std::result::Result<Plan, Refusal> {
+    let (a_first, a_last) = grid::audible_range(&a.env);
+    let (b_first, b_last) = grid::audible_range(&b.env);
+
+    let Some((a_bpm, b_bpm)) = rough_tempos(a, b) else {
+        let short = if grid::estimate_bpm(&a.env, (a_last - 90.0).max(a_first), a_last) <= 0.0 { a } else { b };
+        return Err(Refusal::TooShort(short.name.clone()));
+    };
     // Hopeless pairs are turned away before paying for stems.
-    let rough = a_bpm / b_bpm;
-    if !(1.0 / (MAX_TEMPO_RATIO * 1.03)..=MAX_TEMPO_RATIO * 1.03).contains(&rough) {
-        bail!("tempos demasiado lejanos para sincronizar: {a_bpm:.1} y {b_bpm:.1} BPM");
+    if !tempos_compatible(a_bpm, b_bpm) {
+        return Err(Refusal::TempoGap { a: a_bpm, b: b_bpm });
     }
 
+    // Stems of the stretch of each song the transition can read, both at
+    // once. Measured on an M1 Pro (60 s windows, ~55-65 s each): in a fresh
+    // process 146 s at once against 184 s one after the other (the model's
+    // start-up overlaps); warm, 124 s against 127 s, since the runtime already
+    // spreads one window over every core.
     let a_from = (a_last - WINDOW_SECONDS).max(0.0);
-    let mut deck_a = build_deck(
-        a,
-        a_from,
-        (a_last + 2.0).min(a.audio.seconds()),
-        ((a_last - 60.0).max(a_first), a_last),
-        a_bpm,
-        "tail",
-        opts,
-        cache,
-    )?;
+    let a_to = (a_last + 2.0).min(a.audio.seconds());
     let b_from = (b_first - 2.0).max(0.0);
-    let mut deck_b = build_deck(
-        b,
-        b_from,
-        (b_first + WINDOW_SECONDS).min(b.audio.seconds()),
-        (b_first, (b_first + 60.0).min(b_last)),
-        b_bpm,
-        "head",
-        opts,
-        cache,
-    )?;
+    let b_to = (b_first + WINDOW_SECONDS).min(b.audio.seconds());
+    let mode = stems::resolve(opts.stem_mode);
+    let ((stems_a, a_model), (stems_b, b_model)) = if PARALLEL_SEPARATION && mode == StemMode::Model {
+        std::thread::scope(|scope| {
+            let tail = scope.spawn(|| separate_window(a, a_from, a_to, "tail", mode, cache));
+            let head = separate_window(b, b_from, b_to, "head", mode, cache);
+            (tail.join().unwrap_or_else(|_| (stems::split_by_frequency(&a.audio.slice(n(a_from), (n(a_to) - n(a_from)) as usize)), false)), head)
+        })
+    } else {
+        (separate_window(a, a_from, a_to, "tail", mode, cache), separate_window(b, b_from, b_to, "head", mode, cache))
+    };
+    let stem_mode = if a_model && b_model { StemMode::Model } else { StemMode::Frequency };
+    opts.check_cancel()?;
+
+    let mut deck_a = build_deck(a, a_from, a_to, ((a_last - 60.0).max(a_first), a_last), a_bpm, stems_a);
+    let mut deck_b = build_deck(b, b_from, b_to, (b_first, (b_first + 60.0).min(b_last)), b_bpm, stems_b);
     let shift = |g: &mut Grid, by: i64| {
         g.anchor_bar_position = (g.anchor_bar_position as i64 - by).rem_euclid(4) as u32;
     };
@@ -271,18 +363,10 @@ pub fn plan(a: &Track, b: &Track, opts: &Options, cache: &Path) -> Result<Plan> 
 
     let ratio = deck_a.grid.bpm / deck_b.grid.bpm;
     if !(1.0 / MAX_TEMPO_RATIO..=MAX_TEMPO_RATIO).contains(&ratio) {
-        bail!(
-            "tempos demasiado lejanos para sincronizar: {:.1} y {:.1} BPM",
-            deck_a.grid.bpm,
-            deck_b.grid.bpm
-        );
+        return Err(Refusal::TempoGap { a: deck_a.grid.bpm, b: deck_b.grid.bpm });
     }
     if deck_a.grid.confidence < MIN_GRID_CONFIDENCE || deck_b.grid.confidence < MIN_GRID_CONFIDENCE {
-        bail!(
-            "grilla de beats poco confiable (A {:.2}, B {:.2}; mínimo {MIN_GRID_CONFIDENCE})",
-            deck_a.grid.confidence,
-            deck_b.grid.confidence
-        );
+        return Err(Refusal::WeakGrid { a: deck_a.grid.confidence, b: deck_b.grid.confidence });
     }
 
     // --- B: how long before it sings or drops? The overlap must fit there.
@@ -319,51 +403,74 @@ pub fn plan(a: &Track, b: &Track, opts: &Options, cache: &Path) -> Result<Plan> 
         }
     }
 
-    let bar_seconds = 4.0 * 60.0 / ((deck_a.grid.bpm + deck_b.grid.bpm) / 2.0);
-    let mut bars = 4i64;
-    for candidate in [16i64, 8, 4] {
-        if candidate <= opts.max_bars as i64
-            && candidate <= b_intro_bars.unwrap_or(16).max(4)
-            && candidate as f64 * bar_seconds <= MAX_OVERLAP_SECONDS
-            && candidate + 2 <= b_bars_available
-        {
-            bars = candidate;
-            break;
-        }
-    }
-
-    // --- A: where does it stop singing? A long outro after that is skipped.
+    // --- A: where does it stop singing? Everything after that is outro.
     let a_end_bar = deck_a.grid.beat_at_or_before(a_last).div_euclid(4);
     let a_bars_available =
         ((deck_a.grid.beat(a_end_bar * 4) - a_from - 3.0) / (4.0 * deck_a.grid.interval())).floor() as i64;
-    if a_bars_available < bars {
-        bars = if a_bars_available >= 8 { 8 } else { 4 };
-        if a_bars_available < bars {
-            bail!("{}: demasiado corta para mezclar", a.name);
-        }
+    if a_bars_available < 4 {
+        return Err(Refusal::TooShort(a.name.clone()));
+    }
+    if b_bars_available < 4 {
+        return Err(Refusal::TooShort(b.name.clone()));
     }
     let a_loud = deck_a.loud_reference(&[VOCALS, DRUMS, BASS, OTHER]);
     let a_outro_bars = (1..=a_bars_available).find(|j| deck_a.bar_sung(a_end_bar - j, a_loud)).map(|j| j - 1);
-    let a_skipped_bars = match a_outro_bars {
-        Some(outro) if outro > bars => (outro - bars).min(16).min(a_bars_available - bars),
-        _ => 0,
-    };
-    let a_last_beat = (a_end_bar - a_skipped_bars) * 4;
-    let beats = (bars * 4) as usize;
-    let a_first_beat = a_last_beat - beats as i64;
-    let b_first_beat = b_first_bar * 4;
 
-    // --- Beats that follow the hits, from the drum stem when there is one.
-    let refine = |deck: &Deck, first: i64, from_drums: bool| -> (Vec<f64>, bool) {
-        let source = if from_drums { vec![DRUMS] } else { vec![VOCALS, DRUMS, BASS, OTHER] };
+    // --- How long. B's intro bounds the overlap: it has to be over before B
+    // sings or drops. Unless A leaves an instrumental outro at least as long:
+    // then B may sing over it, the way a DJ brings a verse in over a beat.
+    // That second reading is dropped when the two songs clash harmonically.
+    let bar_seconds = 4.0 * 60.0 / ((deck_a.grid.bpm + deck_b.grid.bpm) / 2.0);
+    let b_limit = b_intro_bars.unwrap_or(16).max(4);
+    let a_limit = a_outro_bars.unwrap_or(16);
+    let choose = |limit: i64| -> i64 {
+        [16i64, 8, 4]
+            .into_iter()
+            .find(|c| {
+                *c <= opts.max_bars as i64
+                    && *c <= limit
+                    && *c as f64 * bar_seconds <= MAX_OVERLAP_SECONDS
+                    && *c + 2 <= b_bars_available
+                    && *c <= a_bars_available
+            })
+            .unwrap_or(4)
+    };
+    let b_first_beat = b_first_bar * 4;
+    let refine = |deck: &Deck, first: i64, count: usize| -> (Vec<f64>, bool) {
+        let source = if deck.grid_from_drums { vec![DRUMS] } else { vec![VOCALS, DRUMS, BASS, OTHER] };
         let len = deck.stems.stem[0].len();
         let mono: Vec<f32> = (0..len)
             .map(|i| source.iter().map(|s| deck.stems.stem[*s].ch[0][i] + deck.stems.stem[*s].ch[1][i]).sum::<f32>() * 0.5)
             .collect();
-        grid::refine_beats(&mono, deck.win_start as f64 / SRF, &deck.grid, first, beats)
+        grid::refine_beats(&mono, deck.win_start as f64 / SRF, &deck.grid, first, count)
     };
-    let (a_beats, a_refined) = refine(&deck_a, a_first_beat, deck_a.grid_from_drums);
-    let (b_beats, b_refined) = refine(&deck_b, b_first_beat, deck_b.grid_from_drums);
+
+    let mut bars = choose(b_limit.max(a_limit));
+    let (beats, a_skipped_bars, a_beats, a_refined, b_beats, b_refined, harmony) = loop {
+        let a_skipped_bars = match a_outro_bars {
+            Some(outro) if outro > bars => (outro - bars).min(16).min(a_bars_available - bars),
+            _ => 0,
+        };
+        let beats = (bars * 4) as usize;
+        let a_first_beat = (a_end_bar - a_skipped_bars) * 4 - beats as i64;
+
+        // Beats that follow the hits, from the drum stem when there is one.
+        let (a_beats, a_refined) = refine(&deck_a, a_first_beat, beats);
+        let (b_beats, b_refined) = refine(&deck_b, b_first_beat, beats);
+
+        let pa = deck_a.chroma(a_beats[0], a_beats[beats]);
+        let pb = deck_b.chroma(b_beats[0], b_beats[beats]);
+        let dot: f32 = pa.iter().zip(&pb).map(|(x, y)| x * y).sum();
+        let norm = pa.iter().map(|x| x * x).sum::<f32>().sqrt() * pb.iter().map(|x| x * x).sum::<f32>().sqrt();
+        let harmony = if norm > 0.0 { (dot / norm) as f64 } else { 1.0 };
+
+        let shorter = choose(b_limit);
+        if harmony < HARMONY_CLASH && shorter < bars {
+            bars = shorter;
+            continue;
+        }
+        break (beats, a_skipped_bars, a_beats, a_refined, b_beats, b_refined, harmony);
+    };
 
     // The mix tempo glides between the tempos actually measured on each side.
     let a_local = 60.0 * beats as f64 / (a_beats[beats] - a_beats[0]);
@@ -381,12 +488,6 @@ pub fn plan(a: &Track, b: &Track, opts: &Options, cache: &Path) -> Result<Plan> 
         _ => beats as f64,
     };
 
-    let pa = deck_a.chroma(a_beats[0], a_beats[beats]);
-    let pb = deck_b.chroma(b_beats[0], b_beats[beats]);
-    let dot: f32 = pa.iter().zip(&pb).map(|(x, y)| x * y).sum();
-    let norm = pa.iter().map(|x| x * x).sum::<f32>().sqrt() * pb.iter().map(|x| x * x).sum::<f32>().sqrt();
-    let harmony = if norm > 0.0 { (dot / norm) as f64 } else { 1.0 };
-
     Ok(Plan {
         a: deck_a,
         b: deck_b,
@@ -401,6 +502,7 @@ pub fn plan(a: &Track, b: &Track, opts: &Options, cache: &Path) -> Result<Plan> 
         a_outro_bars,
         a_skipped_bars,
         harmony,
+        stem_mode,
     })
 }
 
@@ -447,9 +549,19 @@ fn bass_swap_gains(x: f64, k: f64, b_vocal: f64, clash: bool) -> ([f32; GROUPS],
 pub struct Rendered {
     pub mix: Stereo,
     /// Same excerpt with a plain equal-power crossfade, for comparison.
+    /// Empty unless [`Options::baseline`] asked for it.
     pub baseline: Stereo,
-    /// Output second at which the overlap starts and ends.
+    /// Output second at which the overlap starts and ends: where beat 0 and
+    /// beat `k` of the plan fall.
     pub overlap: (f64, f64),
+    /// Output seconds between which the file differs from the originals:
+    /// the overlap and the seams around it. Before it the output is A, after
+    /// it B, sample for sample.
+    pub changed: (f64, f64),
+    /// Second of A heard at output second 0.
+    pub a_start: f64,
+    /// Second of B heard at `overlap.1`; B runs untouched from there.
+    pub b_resume: f64,
 }
 
 const SEAM_LEAD: f64 = 0.5;
@@ -461,10 +573,12 @@ pub fn render(a: &Track, b: &Track, plan: &Plan, opts: &Options) -> Result<Rende
     let (a_start, a_end) = (plan.a_beats[0], plan.a_beats[k]);
     let (b_start, b_end) = (plan.b_beats[0], plan.b_beats[k]);
     let overlap_len = n(plan.beat_times[k]);
-    let pre = n(opts.pre_seconds.min(a_start));
+    // `pre_seconds` of plain A before anything changes, seam included.
+    let pre = n((opts.pre_seconds + SEAM_LEAD).min(a_start));
     let post = n(opts.post_seconds.min(b.audio.seconds() - b_end).max(1.0));
     let lead = n(SEAM_LEAD);
     let fade = n(SEAM_FADE);
+    let (a_gain, b_gain) = (opts.a_gain, opts.b_gain);
 
     // The stretch each deck is rendered from, cut out of its separated window.
     let a_src_start = n(a_start - WINDOW_MARGIN - SEAM_LEAD);
@@ -499,7 +613,7 @@ pub fn render(a: &Track, b: &Track, plan: &Plan, opts: &Options) -> Result<Rende
 
     let total = (pre + overlap_len + post) as usize;
     let mut mix = Stereo::zeros(total);
-    let mut baseline = Stereo::zeros(total);
+    let mut baseline = Stereo::zeros(if opts.baseline { total } else { 0 });
     let a_start_n = n(a_start);
     let b_start_n = n(b_start);
     let b_end_n = n(b_end);
@@ -512,80 +626,118 @@ pub fn render(a: &Track, b: &Track, plan: &Plan, opts: &Options) -> Result<Rende
     for i in 0..total {
         let o = i as i64 - pre;
 
-        // Beat position inside the overlap, for the gain curves.
-        let x = if o <= 0 {
-            0.0
-        } else if o >= overlap_len {
-            k as f64
-        } else {
-            while beat + 1 < k && (o as f64) >= out_knots[beat + 1] {
-                beat += 1;
+        // Outside the processed stretch the output is one song, untouched.
+        if o < -lead {
+            for c in 0..2 {
+                mix.ch[c][i] = a_gain * read(&a.audio, c, a_start_n + o);
             }
-            beat as f64 + (o as f64 - out_knots[beat]) / (out_knots[beat + 1] - out_knots[beat])
-        };
-        let (ga, gb) = bass_swap_gains(x, k as f64, plan.b_vocal_beat, clash);
-
-        for c in 0..2 {
-            // Deck A: original, then (after a short seam) its processed stems.
-            let a_orig = read(&a.audio, c, a_start_n + o);
-            let a_val = if o < -lead {
-                a_orig
-            } else if o < overlap_len {
-                let j = (o + lead) as usize;
-                let processed: f32 = (0..GROUPS).map(|s| ga[s] * a_proc[2 * s + c][j]).sum();
-                let w = ((o + lead) as f32 / fade as f32).clamp(0.0, 1.0);
-                a_orig * (1.0 - w) + processed * w
-            } else {
+        } else if o >= overlap_len + lead {
+            for c in 0..2 {
+                mix.ch[c][i] = b_gain * read(&b.audio, c, b_end_n + (o - overlap_len));
+            }
+        } else {
+            // Beat position inside the overlap, for the gain curves.
+            let x = if o <= 0 {
                 0.0
-            };
-
-            // Deck B: processed stems, then (after a short seam) the original.
-            let b_orig = read(&b.audio, c, b_end_n + (o - overlap_len));
-            let b_val = if o < 0 {
-                0.0
-            } else if o < overlap_len + lead {
-                let j = o as usize;
-                let processed: f32 = (0..GROUPS).map(|s| gb[s] * b_proc[2 * s + c][j]).sum();
-                let w = ((o - (overlap_len + lead - fade)) as f32 / fade as f32).clamp(0.0, 1.0);
-                processed * (1.0 - w) + b_orig * w
+            } else if o >= overlap_len {
+                k as f64
             } else {
-                b_orig
+                while beat + 1 < k && (o as f64) >= out_knots[beat + 1] {
+                    beat += 1;
+                }
+                beat as f64 + (o as f64 - out_knots[beat]) / (out_knots[beat + 1] - out_knots[beat])
             };
-            mix.ch[c][i] = a_val + b_val;
+            let (ga, gb) = bass_swap_gains(x, k as f64, plan.b_vocal_beat, clash);
 
-            // Baseline: both at their own tempo, equal-power crossfade.
+            for c in 0..2 {
+                // Deck A: original, then (after a short seam) its processed stems.
+                let a_val = if o < overlap_len {
+                    let j = (o + lead) as usize;
+                    let processed: f32 = (0..GROUPS).map(|s| ga[s] * a_proc[2 * s + c][j]).sum();
+                    let w = ((o + lead) as f32 / fade as f32).clamp(0.0, 1.0);
+                    read(&a.audio, c, a_start_n + o) * (1.0 - w) + processed * w
+                } else {
+                    0.0
+                };
+
+                // Deck B: processed stems, then (after a short seam) the original.
+                let b_val = if o < 0 {
+                    0.0
+                } else {
+                    let j = o as usize;
+                    let processed: f32 = (0..GROUPS).map(|s| gb[s] * b_proc[2 * s + c][j]).sum();
+                    let w = ((o - (overlap_len + lead - fade)) as f32 / fade as f32).clamp(0.0, 1.0);
+                    processed * (1.0 - w) + read(&b.audio, c, b_end_n + (o - overlap_len)) * w
+                };
+                mix.ch[c][i] = a_gain * a_val + b_gain * b_val;
+            }
+        }
+
+        if opts.baseline {
+            // Both at their own tempo, equal-power crossfade.
             let p = (o as f64 / overlap_len as f64).clamp(0.0, 1.0);
-            let fa = (p * std::f64::consts::FRAC_PI_2).cos() as f32;
-            let fb = (p * std::f64::consts::FRAC_PI_2).sin() as f32;
-            baseline.ch[c][i] = fa * read(&a.audio, c, a_start_n + o) + fb * read(&b.audio, c, b_start_n + o);
+            let fa = a_gain * (p * std::f64::consts::FRAC_PI_2).cos() as f32;
+            let fb = b_gain * (p * std::f64::consts::FRAC_PI_2).sin() as f32;
+            for c in 0..2 {
+                baseline.ch[c][i] = fa * read(&a.audio, c, a_start_n + o) + fb * read(&b.audio, c, b_start_n + o);
+            }
         }
     }
 
     // Only the overlap is ever gain-ridden: outside it the output has to stay
     // the untouched original, or the splice back onto the song would show.
     // The ceiling is whatever the louder original already reaches.
-    let peak_of = |t: &Stereo| t.ch.iter().flatten().fold(0.0f32, |m, v| m.max(v.abs()));
-    let ceiling = peak_of(&a.audio).max(peak_of(&b.audio)).max(0.5);
-    let region = ((pre - lead).max(0) as usize, ((pre + overlap_len + lead) as usize).min(total));
-    limit(&mut mix, region, ceiling);
-    limit(&mut baseline, region, ceiling);
+    let ceiling = (a_gain * peak(&a.audio)).max(b_gain * peak(&b.audio)).max(0.5);
+    let changed_n = ((pre - lead).max(0) as usize, ((pre + overlap_len + lead) as usize).min(total));
+    limit_changed(&mut mix, changed_n, ceiling);
+    if opts.baseline {
+        limit_changed(&mut baseline, changed_n, ceiling);
+    }
     let overlap = (pre as f64 / SRF, (pre + overlap_len) as f64 / SRF);
-    Ok(Rendered { mix, baseline, overlap })
+    let changed = (changed_n.0 as f64 / SRF, changed_n.1 as f64 / SRF);
+    Ok(Rendered {
+        mix,
+        baseline,
+        overlap,
+        changed,
+        a_start: (a_start_n - pre) as f64 / SRF,
+        b_resume: b_end_n as f64 / SRF,
+    })
+}
+
+pub fn peak(audio: &Stereo) -> f32 {
+    audio.ch.iter().flatten().fold(0.0f32, |m, v| m.max(v.abs()))
 }
 
 pub fn harmony_clashes(plan: &Plan) -> bool {
     plan.harmony < HARMONY_CLASH
 }
 
+/// [`limit`] for a stretch the caller will splice between untouched audio:
+/// the gain it rides reaches 250 ms either side of the loud block that asked
+/// for it, so only blocks 300 ms inside the stretch are allowed to ask.
+pub fn limit_changed(audio: &mut Stereo, changed: (usize, usize), ceiling: f32) {
+    let inset = n(0.3) as usize;
+    if changed.1 > changed.0 + 2 * inset {
+        limit(audio, (changed.0 + inset, changed.1 - inset), ceiling);
+    }
+}
+
 /// Slow gain riding that keeps the sum of two songs under full scale without
 /// audible pumping: per-block peaks, widened, then interpolated.
-fn limit(audio: &mut Stereo, region: (usize, usize), ceiling: f32) {
+pub fn limit(audio: &mut Stereo, region: (usize, usize), ceiling: f32) {
     let block = 441usize;
-    let blocks = audio.len() / block + 1;
+    let pad = 30 * block;
+    let from = region.0.saturating_sub(pad);
+    let to = (region.1 + pad).min(audio.len());
+    if to <= from {
+        return;
+    }
+    let blocks = (to - from) / block + 1;
     let mut gain = vec![1.0f32; blocks];
     for (bi, g) in gain.iter_mut().enumerate() {
-        let a = bi * block;
-        let b = ((bi + 1) * block).min(audio.len());
+        let a = from + bi * block;
+        let b = (a + block).min(to);
         let mut peak = 0.0f32;
         for c in 0..2 {
             for v in &audio.ch[c][a..b] {
@@ -614,8 +766,8 @@ fn limit(audio: &mut Stereo, region: (usize, usize), ceiling: f32) {
             (widened[a..b].iter().sum::<f32>() / (b - a) as f32).min(widened[i as usize])
         })
         .collect();
-    for i in 0..audio.len() {
-        let pos = i as f32 / block as f32;
+    for i in from..to {
+        let pos = (i - from) as f32 / block as f32;
         let b0 = (pos.floor() as usize).min(blocks - 1);
         let b1 = (b0 + 1).min(blocks - 1);
         let g = smoothed[b0] + (smoothed[b1] - smoothed[b0]) * (pos - b0 as f32);
@@ -657,14 +809,7 @@ mod tests {
         let (b, _) = generate(&Spec { bpm: 126.0, root: 38, bars: 40, lead_in: 0.21, seed: 9 });
         let a = Track::new("a".into(), "a".into(), a);
         let b = Track::new("b".into(), "b".into(), b);
-        let opts = Options {
-            max_bars: 16,
-            pre_seconds: 8.0,
-            post_seconds: 8.0,
-            stem_mode: StemMode::Frequency,
-            a_downbeat_shift: 0,
-            b_downbeat_shift: 0,
-        };
+        let opts = Options { pre_seconds: 8.0, post_seconds: 8.0, stem_mode: StemMode::Frequency, ..Options::default() };
         let plan = plan(&a, &b, &opts, Path::new("unused")).unwrap();
         assert_eq!(plan.beats, 64);
         let rendered = render(&a, &b, &plan, &opts).unwrap();
@@ -679,7 +824,7 @@ mod tests {
 
         // The seams hand over to the untouched originals.
         let first = rendered.mix.ch[0][1000];
-        let original = a.audio.ch[0][(plan.a_beats[0] * SRF).round() as usize - (8.0 * SRF) as usize + 1000];
+        let original = a.audio.ch[0][(rendered.a_start * SRF).round() as usize + 1000];
         assert!((first - original).abs() < 1e-4);
         let peak_of = |t: &Stereo| t.ch[0].iter().fold(0.0f32, |m, v| m.max(v.abs()));
         let ceiling = peak_of(&a.audio).max(peak_of(&b.audio));

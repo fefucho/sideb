@@ -10,8 +10,11 @@ name = "sideb_core"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [features]
-default = []
+default = ["automix"]
 windows-bridge = []
+# DJ-style transitions between songs (PLAN-024): pulls in the audio engine,
+# the HT-Demucs runtime and a C++ time-stretcher.
+automix = ["dep:automix"]
 
 [[bin]]
 name = "uniffi-bindgen"
@@ -40,6 +43,7 @@ httpdate = "1"
 urlencoding = "2"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "gzip", "brotli", "stream"] }
 innertube = { path = "../innertube" }
+automix = { path = "../automix", optional = true }
 listen-protocol = { workspace = true }
 md-5 = "0.10"
 lofty = "0.22.2"

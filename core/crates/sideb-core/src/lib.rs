@@ -2,6 +2,8 @@ uniffi::setup_scaffolding!();
 
 pub mod blocked;
 pub mod animated_artwork;
+#[cfg(feature = "automix")]
+pub mod automix_job;
 pub mod cipher;
 pub mod db;
 pub mod genius;
@@ -640,6 +642,8 @@ pub struct SideBCore {
     current_playback: Arc<Mutex<Option<CorePlaybackTracking>>>,
     genius: Arc<genius::GeniusEngine>,
     animated_artwork: animated_artwork::Engine,
+    #[cfg(feature = "automix")]
+    automix: automix_job::AutomixState,
 }
 
 impl SideBCore {
@@ -706,6 +710,8 @@ impl SideBCore {
             potoken,
             cipher,
             current_playback: Arc::new(Mutex::new(None)),
+            #[cfg(feature = "automix")]
+            automix: automix_job::AutomixState::default(),
         }))
     }
 }
@@ -2345,6 +2351,69 @@ fn format_epoch_day(played_at: i64, now: i64) -> String {
         ];
         let m_idx = (m.saturating_sub(1) as usize).min(11);
         format!("{d} de {}", months[m_idx])
+    }
+}
+
+/// Automix (PLAN-024). Behind the `automix` cargo feature, on by default.
+#[cfg(feature = "automix")]
+#[uniffi::export(async_runtime = "tokio")]
+impl SideBCore {
+    /// Renders the transition from one song into the next while the first
+    /// one plays: resolves both streams (AAC is required, so a song that
+    /// resolves to Opus only fails with an `automix:unsupported-format`
+    /// stream error), downloads them into `<cache_dir>/audio/`, and writes
+    /// `<cache_dir>/transitions/<from>__<to>.wav` with the first song
+    /// untouched, the transition and the whole rest of the second.
+    ///
+    /// Gains are baked into the file (the player must not apply its own to
+    /// it). At most one preparation runs at a time and a newer request
+    /// supersedes an older one: the older fails with `automix:cancelled`, as
+    /// does one cancelled by [`cancel_automix`](Self::cancel_automix); its work
+    /// may still run to the end of its current stage in the background.
+    /// Nothing here touches the playback-history tracking `resolve_stream`
+    /// records.
+    ///
+    /// First transition on a machine without the stem model: it gets the
+    /// frequency-split stand-in and the model downloads in the background
+    /// (`automix_model_ready` turns true once it has).
+    #[allow(clippy::too_many_arguments)]
+    pub async fn prepare_automix(
+        &self,
+        request_id: String,
+        from_video_id: String,
+        from_is_upload: bool,
+        from_gain_db: Option<f64>,
+        to_video_id: String,
+        to_is_upload: bool,
+        to_gain_db: Option<f64>,
+        cache_dir: String,
+    ) -> Result<automix_job::AutomixTransitionRecord, SideBError> {
+        automix_job::prepare(
+            self,
+            automix_job::Request {
+                request_id,
+                from_video_id,
+                from_is_upload,
+                from_gain_db,
+                to_video_id,
+                to_is_upload,
+                to_gain_db,
+                cache_dir,
+            },
+        )
+        .await
+    }
+
+    /// Abandons the preparation started with this `request_id`, if it is the
+    /// current one. Its result is discarded.
+    pub fn cancel_automix(&self, request_id: String) {
+        self.automix.cancel(&request_id);
+    }
+
+    /// Whether the stem-separation model is on disk. Until it is, transitions
+    /// that would use stems get a frequency split instead.
+    pub fn automix_model_ready(&self) -> bool {
+        automix::stems::model_ready()
     }
 }
 
