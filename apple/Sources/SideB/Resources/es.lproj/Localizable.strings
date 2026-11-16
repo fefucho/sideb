@@ -106,6 +106,8 @@
 	<string>Automix · rápida lista · mejorando… %@ s</string>
 	<key>automix.pill.state.fastReady</key>
 	<string>Automix · rápida lista</string>
+	<key>automix.pill.state.fastWaiting</key>
+	<string>Automix · rápida lista · buena en espera</string>
 	<key>automix.pill.state.goodReady</key>
 	<string>Automix · versión buena lista ✓</string>
 	<key>automix.pill.state.idle</key>
@@ -168,6 +170,8 @@
 	<string>Versión buena: no se va a pedir.</string>
 	<key>automix.summary.good.notUsed</key>
 	<string>Versión buena: no se va a usar porque %@.</string>
+	<key>automix.summary.good.waitingPrefetch</key>
+	<string>Versión buena: esperando la precarga… (si no termina, se pedirá cuando falten ~60 s para el corte).</string>
 	<key>automix.summary.good.watching</key>
 	<string>Versión buena: aún no se pidió; se vigila por si queda lista de antes.</string>
 	<key>automix.summary.good.working</key>
@@ -208,6 +212,8 @@
 	<string>La versión rápida ya está lista; se sigue preparando la buena y, si llega a tiempo, la sustituirá antes de mezclar.</string>
 	<key>automix.tip.fastReady</key>
 	<string>La versión rápida está lista y es la que sonará.</string>
+	<key>automix.tip.fastWaiting</key>
+	<string>La versión rápida ya está lista; la buena espera a que termine la precarga (si no termina, se pedirá cuando falte cerca de un minuto para el corte).</string>
 	<key>automix.tip.goodReady</key>
 	<string>La versión buena (con stems) está lista y es la que sonará.</string>
 	<key>automix.tip.idle</key>

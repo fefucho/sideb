@@ -207,6 +207,10 @@
     "es": "Automix · rápida lista",
     "en": "Automix · fast version ready"
   },
+  "automix.pill.state.fastWaiting": {
+    "es": "Automix · rápida lista · buena en espera",
+    "en": "Automix · fast version ready · good one waiting"
+  },
   "automix.pill.state.goodReady": {
     "es": "Automix · versión buena lista ✓",
     "en": "Automix · good version ready ✓"
@@ -331,6 +335,10 @@
     "es": "Versión buena: no se va a usar porque %@.",
     "en": "Good version: it will not be used because %@."
   },
+  "automix.summary.good.waitingPrefetch": {
+    "es": "Versión buena: esperando la precarga… (si no termina, se pedirá cuando falten ~60 s para el corte).",
+    "en": "Good version: waiting for the prefetch… (if it does not finish, it will be requested about 60 s before the cut)."
+  },
   "automix.summary.good.watching": {
     "es": "Versión buena: aún no se pidió; se vigila por si queda lista de antes.",
     "en": "Good version: not requested yet; watching in case it gets ready beforehand."
@@ -410,6 +418,10 @@
   "automix.tip.fastReady": {
     "es": "La versión rápida está lista y es la que sonará.",
     "en": "The fast version is ready and is the one that will play."
+  },
+  "automix.tip.fastWaiting": {
+    "es": "La versión rápida ya está lista; la buena espera a que termine la precarga (si no termina, se pedirá cuando falte cerca de un minuto para el corte).",
+    "en": "The fast version is ready; the good one is waiting for the prefetch to finish (if it does not, it will be requested about a minute before the cut)."
   },
   "automix.tip.goodReady": {
     "es": "La versión buena (con stems) está lista y es la que sonará.",

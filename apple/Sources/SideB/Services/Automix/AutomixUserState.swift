@@ -51,6 +51,8 @@ enum AutomixUpgradeState: Equatable, Sendable {
     case none
     /// La rápida está lista y la buena no se ha pedido aún: se vigila la pareja por si queda lista en la caché.
     case watching
+    /// La buena se quiere, pero se espera a que la precarga deje la pareja lista (o a que falten ~60 s para el corte).
+    case waitingPrefetch
     /// Se está preparando la buena desde `since`.
     case working(since: Date)
     /// La buena ya sustituyó a la rápida.
@@ -97,6 +99,7 @@ enum AutomixUserText {
             if case .working(let since) = quality.upgrade {
                 return L10n.text("automix.pill.state.fastImproving", args: [seconds(now.timeIntervalSince(since))], language: language)
             }
+            if quality.upgrade == .waitingPrefetch { return L10n.text("automix.pill.state.fastWaiting", language: language) }
             return L10n.text("automix.pill.state.fastReady", language: language)
         case .mixing:
             return L10n.text("automix.pill.state.mixing", args: [qualityWord(good: quality.isGood, language: language)], language: language)
@@ -134,6 +137,7 @@ enum AutomixUserText {
         case .ready:
             if quality.isGood { base = L10n.text("automix.tip.goodReady", language: language) }
             else if quality.isImproving { base = L10n.text("automix.tip.fastImproving", language: language) }
+            else if quality.upgrade == .waitingPrefetch { base = L10n.text("automix.tip.fastWaiting", language: language) }
             else { base = L10n.text("automix.tip.fastReady", language: language) }
         case .mixing:
             base = L10n.text("automix.tip.mixing", args: [qualityWord(good: quality.isGood, language: language)], language: language)
@@ -216,6 +220,8 @@ enum AutomixUserText {
             return L10n.text("automix.summary.good.none", language: language)
         case .watching:
             return L10n.text("automix.summary.good.watching", language: language)
+        case .waitingPrefetch:
+            return L10n.text("automix.summary.good.waitingPrefetch", language: language)
         case .working(let since):
             let elapsed = seconds(now.timeIntervalSince(since))
             if let typical = input.typicalUpgradeSeconds, typical.isFinite, typical > 0 {

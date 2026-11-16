@@ -410,9 +410,11 @@ final class AutomixCoordinator {
         guard allow.allowed else { return }
         let ready = host.automixPairReady(from: current.key.from, to: current.key.to)
         noteStrategy(pairReady: ready, allow: allow)
-        let decision = AutomixStrategy.wantsStems(settings: settings, capability: host.automixCapability(), power: power, pairReady: ready)
-        if decision.wants, !directStemsFailed.contains(current.key) {
-            log("mejora a stems: sí — \(decision.reason) (vigilancia periódica)")
+        guard !directStemsFailed.contains(current.key) else { return }
+        let wants = AutomixStrategy.wantsStems(settings: settings, capability: host.automixCapability(), power: power, pairReady: false).wants
+        let timing = AutomixUpgradeTiming.decide(wants: wants, pairReady: ready, secondsToCut: host.automixPosition().map { fast.aCut - $0 })
+        if case .request(let reason) = timing {
+            log("mejora a stems: sí — \(reason) (vigilancia periódica)")
             startUpgrade(key: current.key, from: fast, host: host)
         }
     }
@@ -538,17 +540,25 @@ final class AutomixCoordinator {
                 let allow = AutomixStrategy.allowStems(settings: settings, power: power)
                 let ready = allow.allowed && host.automixPairReady(from: key.from, to: key.to)
                 noteStrategy(pairReady: ready, allow: allow)
-                var decision = AutomixStrategy.wantsStems(settings: settings, capability: host.automixCapability(), power: power, pairReady: ready)
-                if decision.wants, directStemsFailed.contains(key) { decision = (false, "la petición directa de stems ya falló para esta pareja") }
-                log("mejora a stems: \(decision.wants ? "sí" : "no") — \(decision.reason)")
-                if decision.wants {
+                let base = AutomixStrategy.wantsStems(settings: settings, capability: host.automixCapability(), power: power, pairReady: false)
+                let failedBefore = directStemsFailed.contains(key)
+                let timing = failedBefore ? AutomixUpgradeTiming.Decision.wait
+                    : AutomixUpgradeTiming.decide(wants: allow.allowed && base.wants, pairReady: ready, secondsToCut: host.automixPosition().map { transition.aCut - $0 })
+                switch timing {
+                case .request(let reason): log("mejora a stems: sí — \(reason)")
+                case .wait: log(failedBefore ? "mejora a stems: no — la petición directa de stems ya falló para esta pareja"
+                                : (base.wants && allow.allowed ? "mejora a stems: espera a la precarga — \(base.reason)" : "mejora a stems: no — \(base.reason)"))
+                }
+                if case .request = timing {
                     startUpgrade(key: key, from: transition, host: host)
                 } else if allow.allowed {
-                    request?.upgrade = "no pedida: \(decision.reason) (se vigila la pareja)"
-                    qualityState.upgrade = directStemsFailed.contains(key) ? .notUsed(.pairFailed) : .watching
+                    let waits = base.wants && !failedBefore
+                    request?.upgrade = waits ? "esperando la precarga (se pide si la pareja queda lista o a ~60 s del corte)"
+                                             : "no pedida: \(base.reason) (se vigila la pareja)"
+                    qualityState.upgrade = failedBefore ? .notUsed(.pairFailed) : (waits ? .waitingPrefetch : .watching)
                 } else {
                     plan?.upgradeSettled = true
-                    request?.upgrade = "no pedida: \(decision.reason)"
+                    request?.upgrade = "no pedida: \(base.reason)"
                     qualityState.upgrade = .notUsed(settings.quality == "fast" ? .alwaysFast : .battery(lowPower: power.lowPower))
                 }
             }

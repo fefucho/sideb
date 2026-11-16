@@ -378,10 +378,43 @@ enum AutomixUpgradePlanner {
     }
 }
 
-/// Qué temas se le pasan a `prefetchAutomix`: el que suena y los siguientes (hasta `lookahead`).
+/// Qué temas se le pasan a `prefetchAutomix`: el que suena y `lookahead + 1` siguientes. El core separa la COLA de cada
+/// tema de la lista y la CABEZA de todos menos el primero; para que `automixPairReady(next, next+1)` sea cierto cuando
+/// `next` pase a sonar hace falta `next+1` en la lista, o sea `lookahead + 2` temas en total ([actual, next, next+1, …]).
 enum AutomixPrefetchPlan {
+    /// Máximo de temas siguientes que se miran (el adelanto va de 1 a 3 y siempre se añade uno más).
+    static let maxUpcoming = 4
+
     static func items(current: AutomixSong, upcoming: [AutomixSong], lookahead: Int) -> [AutomixSong] {
-        [current] + upcoming.prefix(max(1, min(3, lookahead)))
+        [current] + upcoming.prefix(max(1, min(3, lookahead)) + 1)
+    }
+}
+
+/// Cuándo pedir la versión buena (stems) con la rápida ya lista: la precarga del core separa los temas por tramos y
+/// una petición en primer plano la duplicaría, así que se espera a que la pareja quede lista en la caché (`automixPairReady`)
+/// y, si aún no lo está, se pide una sola vez cuando faltan ~60 s para el corte (así el primer plano acelera la precarga).
+enum AutomixUpgradeTiming {
+    /// Segundos antes del corte en que se pide la buena aunque la precarga no haya terminado.
+    static let foregroundLeadSeconds = 60.0
+
+    enum Decision: Equatable {
+        /// Pedirla ahora, por este motivo.
+        case request(String)
+        /// Esperar a la precarga.
+        case wait
+    }
+
+    /// - Parameters:
+    ///   - wants: los ajustes y la capacidad piden stems (sin contar la pareja lista).
+    ///   - pairReady: `automixPairReady` ahora.
+    ///   - secondsToCut: segundos que faltan para el corte de la rápida (nil si la canción aún no suena).
+    static func decide(wants: Bool, pairReady: Bool, secondsToCut: Double?) -> Decision {
+        if pairReady { return .request("la pareja ya está lista en la caché de stems") }
+        guard wants else { return .wait }
+        if let secondsToCut, secondsToCut.isFinite, secondsToCut <= foregroundLeadSeconds {
+            return .request("faltan \(Int(max(0, secondsToCut).rounded())) s para el corte y la precarga no terminó: se pide en primer plano")
+        }
+        return .wait
     }
 }
 

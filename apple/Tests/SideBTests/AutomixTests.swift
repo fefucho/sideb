@@ -929,6 +929,18 @@ struct AutomixPlayerViewModelTests {
         #expect(player.automixContext()?.next == nil, "el último tema no tiene siguiente conocido")
     }
 
+    @Test("El contexto trae hasta cuatro temas siguientes (adelanto 3 + 1) para que la precarga incluya next+1")
+    func contextUpcomingDepth() throws {
+        let (player, _, cleanup) = try makePlayer()
+        defer { cleanup() }
+        let songs = ["A", "B", "C", "D", "E", "F", "G"].map { track($0) }
+        player.queueManager.replaceQueue(with: songs, startingAt: 0, context: .custom(title: "Cola"))
+        player.currentTrack = songs[0]
+        let automix = try #require(player.automixContext())
+        #expect(automix.upcoming.map(\.videoID) == ["B", "C", "D", "E"])
+        #expect(AutomixPrefetchPlan.items(current: automix.current, upcoming: automix.upcoming, lookahead: 1).map(\.videoID) == ["A", "B", "C"])
+    }
+
     @Test("La preferencia del reproductor llega al coordinador y se persiste")
     func enabling() throws {
         let (player, audio, cleanup) = try makePlayer()
@@ -1369,14 +1381,34 @@ struct AutomixStrategyTests {
         #expect(AutomixPowerState.current(lowPower: true).lowPower)
     }
 
-    @Test("La precarga lleva el tema que suena y hasta `lookahead` siguientes")
+    @Test("La precarga lleva el tema que suena y `lookahead + 1` siguientes: así `next+1` está en la lista cuando `next` suene")
     func prefetchItems() {
-        let list = ["B", "C", "D", "E"].map { song($0) }
-        #expect(AutomixPrefetchPlan.items(current: song("A"), upcoming: list, lookahead: 1).map(\.videoID) == ["A", "B"])
-        #expect(AutomixPrefetchPlan.items(current: song("A"), upcoming: list, lookahead: 3).map(\.videoID) == ["A", "B", "C", "D"])
-        #expect(AutomixPrefetchPlan.items(current: song("A"), upcoming: list, lookahead: 9).map(\.videoID) == ["A", "B", "C", "D"])
-        #expect(AutomixPrefetchPlan.items(current: song("A"), upcoming: list, lookahead: 0).map(\.videoID) == ["A", "B"])
+        let list = ["B", "C", "D", "E", "F"].map { song($0) }
+        #expect(AutomixPrefetchPlan.items(current: song("A"), upcoming: list, lookahead: 1).map(\.videoID) == ["A", "B", "C"])
+        #expect(AutomixPrefetchPlan.items(current: song("A"), upcoming: list, lookahead: 2).map(\.videoID) == ["A", "B", "C", "D"])
+        #expect(AutomixPrefetchPlan.items(current: song("A"), upcoming: list, lookahead: 3).map(\.videoID) == ["A", "B", "C", "D", "E"])
+        #expect(AutomixPrefetchPlan.items(current: song("A"), upcoming: list, lookahead: 9).map(\.videoID) == ["A", "B", "C", "D", "E"])
+        #expect(AutomixPrefetchPlan.items(current: song("A"), upcoming: list, lookahead: 0).map(\.videoID) == ["A", "B", "C"])
         #expect(AutomixPrefetchPlan.items(current: song("A"), upcoming: [song("B")], lookahead: 3).map(\.videoID) == ["A", "B"])
+        #expect(AutomixPrefetchPlan.maxUpcoming == 4, "el contexto trae hasta lookahead(3) + 1 temas siguientes")
+    }
+
+    @Test("Regla de tiempos de la versión buena: con la pareja lista ya; si no, una vez a ~60 s del corte; sin querer stems, nunca en primer plano")
+    func upgradeTimingRule() {
+        typealias T = AutomixUpgradeTiming
+        // Pareja lista: se pide siempre (aunque los ajustes no la pidan, la precarga ya hizo el trabajo).
+        #expect(T.decide(wants: true, pairReady: true, secondsToCut: 200) != .wait)
+        #expect(T.decide(wants: false, pairReady: true, secondsToCut: nil) != .wait)
+        // Pareja no lista: espera hasta que falten ≤ 60 s.
+        #expect(T.decide(wants: true, pairReady: false, secondsToCut: 200) == .wait)
+        #expect(T.decide(wants: true, pairReady: false, secondsToCut: 60.5) == .wait)
+        #expect(T.decide(wants: true, pairReady: false, secondsToCut: nil) == .wait, "la canción aún no suena")
+        for lead in [60.0, 59.0, 30.0, 8.0, 0.0, -5.0] {
+            if case .request = T.decide(wants: true, pairReady: false, secondsToCut: lead) {} else { Issue.record("a \(lead) s debía pedirse") }
+        }
+        // Sin querer stems (automático sin capacidad, etc.) no se pide en primer plano por mucho que se acerque el corte.
+        #expect(T.decide(wants: false, pairReady: false, secondsToCut: 30) == .wait)
+        #expect(T.foregroundLeadSeconds == 60)
     }
 
     @Test("Los ajustes viajan al core sin perder ni salirse de rango, y los prefijos nuevos se clasifican")
@@ -1437,6 +1469,7 @@ struct AutomixCoordinatorQualityTests {
         host.settings.fastOnBattery = true
         host.power = power
         host.capability = capability
+        host.position = 45   // a 55 s del corte (aCut 100): ya toca pedir la versión buena en primer plano
         let coordinator = AutomixCoordinator(enabled: true, log: { _ in })
         coordinator.host = host
         return (coordinator, host)
@@ -1504,7 +1537,7 @@ struct AutomixCoordinatorQualityTests {
     @Test("Una stems con otro corte y otro solape sustituye a la rápida y mueve la marca de la barra")
     func upgradeDifferentCut() async {
         let (coordinator, host) = make()
-        host.position = 20
+        host.position = 45
         await fastReady(coordinator, host)
         #expect(coordinator.marker?.songSeconds == 108)
         var stems = transition(cut: 104, overlapStart: 12, overlapEnd: 28, handover: 18, bOffset: 88); stems.quality = "stems"; stems.sameCutAsFast = false; stems.kind = "mix"
@@ -1524,7 +1557,7 @@ struct AutomixCoordinatorQualityTests {
                                                (110.0, 104.0, false),  // el corte ya quedó atrás
                                                (95.0, 100.0, true)] {  // mismo corte, aunque falten 5 s
             let (coordinator, host) = make()
-            host.position = 20
+            host.position = 45
             await fastReady(coordinator, host)
             host.position = position
             var stems = transition(cut: cut); stems.quality = "stems"; stems.sameCutAsFast = cut == 100
@@ -1543,7 +1576,7 @@ struct AutomixCoordinatorQualityTests {
     @Test("Si el reproductor ya no admite cambiar el archivo (arranque programado), se queda la rápida")
     func upgradeCommitted() async {
         let (coordinator, host) = make()
-        host.position = 20
+        host.position = 45
         await fastReady(coordinator, host)
         host.canReplace = false
         var stems = transition(cut: 104); stems.quality = "stems"
@@ -1655,12 +1688,76 @@ struct AutomixCoordinatorQualityTests {
         #expect(host.disarmCount >= 1)
     }
 
+    @Test("Con stems preferidos y la pareja sin lista: rápida primero, la buena espera a la precarga y se pide una sola vez a ~60 s del corte")
+    func upgradeWaitsForPrefetchThenForeground() async {
+        let (coordinator, host) = make()          // «siempre con stems»
+        host.position = 20                         // a 80 s del corte (aCut 100)
+        await fastReady(coordinator, host)
+        #expect(host.prepared.map(\.quality) == ["fast"], "no se pide stems nada más empezar")
+        #expect(coordinator.qualityState == AutomixQualityState(preparing: nil, ready: "fast", upgrade: .waitingPrefetch))
+        #expect(coordinator.request?.upgrade.hasPrefix("esperando la precarga") == true)
+        coordinator.pollOnce(); coordinator.pollOnce(); await host.settle()
+        #expect(host.prepared.count == 1, "mientras falte más de un minuto y la pareja no esté lista, nada")
+        host.position = 41                         // a 59 s: toca pedirla en primer plano
+        coordinator.pollOnce(); await host.settle()
+        #expect(host.prepared.map(\.quality) == ["fast", "stems"])
+        #expect(coordinator.qualityState.isImproving)
+        coordinator.pollOnce(); host.position = 70; coordinator.pollOnce(); await host.settle()
+        #expect(host.prepared.count == 2, "una sola vez")
+    }
+
+    @Test("Con stems preferidos, en cuanto la precarga deja la pareja lista se pide la buena, sin esperar al minuto del corte")
+    func upgradeWhenPairBecomesReady() async {
+        let (coordinator, host) = make()
+        host.position = 20
+        await fastReady(coordinator, host)
+        #expect(coordinator.qualityState.upgrade == .waitingPrefetch)
+        host.pairReady = true
+        coordinator.pollOnce(); await host.settle()
+        #expect(host.prepared.map(\.quality) == ["fast", "stems"])
+        #expect(coordinator.request?.upgrade.hasPrefix("pedida") == true)
+    }
+
+    @Test("Si la pareja ya estaba lista al terminar la rápida, la buena se pide al instante")
+    func upgradeImmediateWhenPairReadyAtFinish() async {
+        let (coordinator, host) = make()
+        host.position = 20
+        coordinator.reconcile(); await host.settle()
+        host.pairReady = true                      // la precarga terminó mientras se preparaba la rápida
+        host.complete(host.prepared[0].requestID, with: transition())
+        await host.settle()
+        #expect(host.prepared.map(\.quality) == ["fast", "stems"])
+    }
+
+    @Test("En automático con la capacidad recomendada espera igual; sin recomendarla sólo vigila la pareja y nunca la pide en primer plano")
+    func autoTiming() async {
+        var good = AutomixCapabilityValue(); good.stemsRecommended = true; good.realtimeFactor = 5.6
+        let (recommended, recommendedHost) = make(quality: "auto", capability: good)
+        recommendedHost.position = 20
+        await fastReady(recommended, recommendedHost)
+        #expect(recommended.qualityState.upgrade == .waitingPrefetch)
+        recommendedHost.position = 45
+        recommended.pollOnce(); await recommendedHost.settle()
+        #expect(recommendedHost.prepared.map(\.quality) == ["fast", "stems"])
+
+        let (plain, plainHost) = make(quality: "auto")
+        plainHost.position = 20
+        await fastReady(plain, plainHost)
+        #expect(plain.qualityState.upgrade == .watching)
+        plainHost.position = 50
+        plain.pollOnce(); await plainHost.settle()
+        #expect(plainHost.prepared.count == 1)
+        plainHost.pairReady = true                 // sí la pide cuando la precarga deja la pareja lista
+        plain.pollOnce(); await plainHost.settle()
+        #expect(plainHost.prepared.map(\.quality) == ["fast", "stems"])
+    }
+
     @Test("La precarga se pide con el tema y los siguientes, no se repite y se cancela con Jam, apagado o cambio de cuenta")
     func prefetch() async {
         let token = UUID()
         let (coordinator, host) = make(context(token: token, upcoming: [song("B"), song("C"), song("D")], lookahead: 2), quality: "fast")
         coordinator.reconcile(); await host.settle()
-        #expect(host.prefetched.map { $0.map(\.videoID) } == [["A", "B", "C"]])
+        #expect(host.prefetched.map { $0.map(\.videoID) } == [["A", "B", "C", "D"]])
         coordinator.reconcile(); coordinator.reconcile()
         #expect(host.prefetched.count == 1)
         // La cola cambia: lista nueva.
@@ -2051,6 +2148,7 @@ struct AutomixQualityStateTests {
         host.settings.fastOnBattery = true
         host.power = power
         host.capability = capability
+        host.position = 45   // a 55 s del corte (aCut 100): ya toca pedir la versión buena en primer plano
         host.pairReady = pairReady
         let coordinator = AutomixCoordinator(enabled: true, log: { _ in })
         coordinator.host = host
@@ -2179,6 +2277,7 @@ struct AutomixUserTextTests {
         let improving = AutomixQualityState(ready: "fast", upgrade: .working(since: now.addingTimeInterval(-23.9)))
         #expect(pill(.ready(kind: "mix", bpm: 120), improving) == "Automix · rápida lista · mejorando… 23 s")
         #expect(pill(.ready(kind: "mix", bpm: 120), AutomixQualityState(ready: "stems", upgrade: .applied)) == "Automix · versión buena lista ✓")
+        #expect(pill(.ready(kind: "mix", bpm: 120), AutomixQualityState(ready: "fast", upgrade: .waitingPrefetch)) == "Automix · rápida lista · buena en espera")
         #expect(pill(.mixing(kind: "mix"), AutomixQualityState(ready: "stems")) == "Automix · mezclando (buena)")
         #expect(pill(.mixing(kind: "mix"), AutomixQualityState(ready: "fast")) == "Automix · mezclando (rápida)")
         #expect(pill(.unavailable(.sameAlbum)) == "Automix · no disponible: mismo álbum")
@@ -2237,6 +2336,8 @@ struct AutomixUserTextTests {
 
         input.quality = AutomixQualityState(ready: "fast", upgrade: .notUsed(.battery(lowPower: false)))
         #expect(summary(input)[2].hasSuffix("Versión buena: no se va a usar porque se está usando la batería y ese ajuste pide la versión rápida."))
+        input.quality = AutomixQualityState(ready: "fast", upgrade: .waitingPrefetch)
+        #expect(summary(input)[2].contains("Versión buena: esperando la precarga…"))
         input.quality = AutomixQualityState(ready: "fast", upgrade: .failed)
         #expect(summary(input)[2].hasSuffix("no se pudo preparar; sonará la rápida."))
         input.quality = AutomixQualityState(ready: "stems")

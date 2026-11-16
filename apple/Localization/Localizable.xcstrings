@@ -885,6 +885,23 @@
         }
       }
     },
+    "automix.pill.state.fastWaiting": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automix · rápida lista · buena en espera"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automix · fast version ready · good one waiting"
+          }
+        }
+      }
+    },
     "automix.pill.state.goodReady": {
       "extractionState": "manual",
       "localizations": {
@@ -1412,6 +1429,23 @@
         }
       }
     },
+    "automix.summary.good.waitingPrefetch": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Versión buena: esperando la precarga… (si no termina, se pedirá cuando falten ~60 s para el corte)."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Good version: waiting for the prefetch… (if it does not finish, it will be requested about 60 s before the cut)."
+          }
+        }
+      }
+    },
     "automix.summary.good.watching": {
       "extractionState": "manual",
       "localizations": {
@@ -1748,6 +1782,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "The fast version is ready and is the one that will play."
+          }
+        }
+      }
+    },
+    "automix.tip.fastWaiting": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La versión rápida ya está lista; la buena espera a que termine la precarga (si no termina, se pedirá cuando falte cerca de un minuto para el corte)."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The fast version is ready; the good one is waiting for the prefetch to finish (if it does not, it will be requested about a minute before the cut)."
           }
         }
       }

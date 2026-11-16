@@ -106,6 +106,8 @@
 	<string>Automix · fast version ready · improving… %@ s</string>
 	<key>automix.pill.state.fastReady</key>
 	<string>Automix · fast version ready</string>
+	<key>automix.pill.state.fastWaiting</key>
+	<string>Automix · fast version ready · good one waiting</string>
 	<key>automix.pill.state.goodReady</key>
 	<string>Automix · good version ready ✓</string>
 	<key>automix.pill.state.idle</key>
@@ -168,6 +170,8 @@
 	<string>Good version: it will not be requested.</string>
 	<key>automix.summary.good.notUsed</key>
 	<string>Good version: it will not be used because %@.</string>
+	<key>automix.summary.good.waitingPrefetch</key>
+	<string>Good version: waiting for the prefetch… (if it does not finish, it will be requested about 60 s before the cut).</string>
 	<key>automix.summary.good.watching</key>
 	<string>Good version: not requested yet; watching in case it gets ready beforehand.</string>
 	<key>automix.summary.good.working</key>
@@ -208,6 +212,8 @@
 	<string>The fast version is ready; the good one is still being prepared and, if it arrives in time, it will replace it before the mix.</string>
 	<key>automix.tip.fastReady</key>
 	<string>The fast version is ready and is the one that will play.</string>
+	<key>automix.tip.fastWaiting</key>
+	<string>The fast version is ready; the good one is waiting for the prefetch to finish (if it does not, it will be requested about a minute before the cut).</string>
 	<key>automix.tip.goodReady</key>
 	<string>The good version (with stems) is ready and is the one that will play.</string>
 	<key>automix.tip.idle</key>

@@ -116,5 +116,8 @@
   "automix.summary.good.workingEstimate": { "es": "Versión buena: trabajando hace %@ s (estimado ~%@ s).", "en": "Good version: working for %@ s (estimated ~%@ s)." },
   "automix.summary.good.applied": { "es": "Versión buena: lista a las %@ y ya sustituyó a la rápida.", "en": "Good version: ready at %@ and it already replaced the fast one." },
   "automix.summary.good.notUsed": { "es": "Versión buena: no se va a usar porque %@.", "en": "Good version: it will not be used because %@." },
-  "automix.summary.good.failed": { "es": "Versión buena: no se pudo preparar; sonará la rápida.", "en": "Good version: it could not be prepared; the fast one will play." }
+  "automix.summary.good.failed": { "es": "Versión buena: no se pudo preparar; sonará la rápida.", "en": "Good version: it could not be prepared; the fast one will play." },
+  "automix.pill.state.fastWaiting": { "es": "Automix · rápida lista · buena en espera", "en": "Automix · fast version ready · good one waiting" },
+  "automix.tip.fastWaiting": { "es": "La versión rápida ya está lista; la buena espera a que termine la precarga (si no termina, se pedirá cuando falte cerca de un minuto para el corte).", "en": "The fast version is ready; the good one is waiting for the prefetch to finish (if it does not, it will be requested about a minute before the cut)." },
+  "automix.summary.good.waitingPrefetch": { "es": "Versión buena: esperando la precarga… (si no termina, se pedirá cuando falten ~60 s para el corte).", "en": "Good version: waiting for the prefetch… (if it does not finish, it will be requested about 60 s before the cut)." }
 }

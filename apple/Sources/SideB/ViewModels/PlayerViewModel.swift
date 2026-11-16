@@ -2233,10 +2233,10 @@ extension PlayerViewModel: AutomixHost {
         // «Siguiente conocido»: sólo si la cola apunta de verdad al tema que suena.
         let pointsAtCurrent = queueManager.currentTrack?.videoId == track.videoId
         var upcomingTracks = pointsAtCurrent && queue.indices.contains(nextIndex)
-            ? Array(queue[nextIndex..<min(queue.count, nextIndex + 3)]) : []
+            ? Array(queue[nextIndex..<min(queue.count, nextIndex + AutomixPrefetchPlan.maxUpcoming)]) : []
         // When the queue runs out, the next songs are the recommendations it promotes (radio, autoplay).
-        if pointsAtCurrent && upcomingTracks.count < 3 && nextIndex + upcomingTracks.count >= queue.count {
-            upcomingTracks += queueManager.peekUpcomingRecommendations(limit: 3 - upcomingTracks.count)
+        if pointsAtCurrent && upcomingTracks.count < AutomixPrefetchPlan.maxUpcoming && nextIndex + upcomingTracks.count >= queue.count {
+            upcomingTracks += queueManager.peekUpcomingRecommendations(limit: AutomixPrefetchPlan.maxUpcoming - upcomingTracks.count)
         }
         let upcoming = upcomingTracks.map(AutomixSong.init)
         let settings = automixPreferences.settings
