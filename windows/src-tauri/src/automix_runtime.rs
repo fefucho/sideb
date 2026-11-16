@@ -590,6 +590,39 @@ fn album_of<'a>(entry: &'a QueueEntryDto, track: Option<&'a PlaybackTrackDto>) -
         .filter(|id| !id.is_empty())
 }
 
+/// ¿Se promovería una recomendación cuando la cola se agote? Mismas reglas que `handle_track_ended`: con la
+/// repetición no (se reinicia la actual), y mientras una fuente de colección espera su continuación tampoco (se
+/// espera a que lleguen más filas); una radio de búsqueda sí promueve la que ya tenga.
+fn recommendations_promotable(pb: &PlaybackManager) -> bool {
+    if pb.is_repeat {
+        return false;
+    }
+    !pb.runtime.source.as_ref().is_some_and(|source| {
+        source.kind != "search-radio" && (source.continuation.is_some() || source.needs_restart)
+    })
+}
+
+/// La entrada que sigue a la actual tal como la verá el reproductor: la fila siguiente de la cola o, si la cola se
+/// agotó, la recomendación que `handle_track_ended` promovería. No muta nada (en radio y reproducción automática la
+/// siguiente sólo existe como recomendación).
+fn next_upcoming(pb: &PlaybackManager) -> Option<&QueueEntryDto> {
+    let index = pb.queue.current_index?;
+    pb.queue.items.get(index + 1).or_else(|| {
+        if recommendations_promotable(pb) { pb.queue.recommendations.first() } else { None }
+    })
+}
+
+/// Las próximas canciones (hasta `limit`), en el orden en que sonarían: filas de la cola y, agotadas éstas, las
+/// recomendaciones que se irían promoviendo. Sin mutar.
+fn upcoming(pb: &PlaybackManager, limit: usize) -> Vec<&QueueEntryDto> {
+    let Some(index) = pb.queue.current_index else { return Vec::new() };
+    let mut list: Vec<&QueueEntryDto> = pb.queue.items.iter().skip(index + 1).take(limit).collect();
+    if list.len() < limit && recommendations_promotable(pb) {
+        list.extend(pb.queue.recommendations.iter().take(limit - list.len()));
+    }
+    list
+}
+
 /// El par (actual, siguiente) que habría que mezclar, o por qué no.
 pub(crate) fn plan_for(pb: &PlaybackManager, jam_active: bool) -> Result<PlanKey, Skip> {
     if !pb.runtime.automix.enabled {
@@ -604,7 +637,7 @@ pub(crate) fn plan_for(pb: &PlaybackManager, jam_active: bool) -> Result<PlanKey
     let index = pb.queue.current_index.ok_or(Skip::NoCurrent)?;
     let current = pb.queue.items.get(index).ok_or(Skip::NoCurrent)?;
     let track = pb.current_track.as_ref().filter(|track| track.video_id == current.video_id).ok_or(Skip::NoCurrent)?;
-    let next = pb.queue.items.get(index + 1).ok_or(Skip::NoNext)?;
+    let next = next_upcoming(pb).ok_or(Skip::NoNext)?;
     if next.video_id == current.video_id {
         return Err(Skip::SameSong);
     }
@@ -632,7 +665,7 @@ pub(crate) fn plan_for(pb: &PlaybackManager, jam_active: bool) -> Result<PlanKey
 /// ¿Sigue describiendo `key` el estado actual (sin reservar memoria)?
 fn key_matches(key: &PlanKey, pb: &PlaybackManager, auth_generation: u64) -> bool {
     let Some(index) = pb.queue.current_index else { return false };
-    let (Some(current), Some(next)) = (pb.queue.items.get(index), pb.queue.items.get(index + 1)) else {
+    let (Some(current), Some(next)) = (pb.queue.items.get(index), next_upcoming(pb)) else {
         return false;
     };
     key.auth == pb.observed_auth_generation
@@ -662,10 +695,9 @@ enum Gate {
     Swallow,
 }
 
-/// Siguiente ocurrencia de la cola (sin reservar memoria).
+/// Id de la ocurrencia que sigue (fila de la cola o recomendación que se promovería), sin reservar memoria.
 fn next_entry_id(pb: &PlaybackManager) -> Option<&str> {
-    let index = pb.queue.current_index?;
-    pb.queue.items.get(index + 1).map(|entry| entry.entry_id.as_str())
+    next_upcoming(pb).map(|entry| entry.entry_id.as_str())
 }
 
 /// Evento de posición. Devuelve la posición traducida y lo que hay que hacer fuera del cerrojo.
@@ -915,11 +947,27 @@ fn hand_over(pb: &mut PlaybackManager, raw: f64, step: &mut Step) -> bool {
     if file.handed_over || file.leaving || pb.is_repeat {
         return false;
     }
-    if next_entry_id(pb) != Some(file.key.to_entry.as_str()) {
+    // Se comprueba ANTES de mover la cola (un desajuste nunca la avanza dos veces): la siguiente tiene que ser la
+    // de la mezcla, ya sea la fila que sigue o (cola agotada) la recomendación que `handle_track_ended` promovería.
+    let Some(next) = next_upcoming(pb) else { return false };
+    if next.entry_id != file.key.to_entry || next.video_id != file.key.to_video {
         return false;
     }
+    let from_recommendation = pb
+        .queue
+        .current_index
+        .map_or(false, |index| pb.queue.items.get(index + 1).is_none());
     let (b_offset, file_duration) = (file.rec.b_offset, file.rec.file_duration);
-    let to_entry = file.key.to_entry.clone();
+    let to_video = file.key.to_video.clone();
+    let to_entry = if from_recommendation {
+        // La misma promoción que hace el final de una canción: la recomendación pasa a ser una fila de la cola.
+        match pb.queue.promote_next_recommendation() {
+            Some(promoted) if promoted.video_id == to_video => promoted.entry_id,
+            _ => return false,
+        }
+    } else {
+        next.entry_id.clone()
+    };
     let previous_generation = pb.generation;
     let Some(entry) = pb.queue.select_entry(&to_entry) else { return false };
     pb.generation = pb.generation.wrapping_add(1);
@@ -1083,7 +1131,8 @@ fn maybe_prefetch(pb: &mut PlaybackManager, ctx: &Ctx, step: &mut Step) {
             let index = pb.queue.current_index?;
             let current = pb.queue.items.get(index)?;
             let mut list = vec![(current.video_id.clone(), current.is_upload)];
-            list.extend(pb.queue.items.iter().skip(index + 1).take(lookahead).map(|entry| (entry.video_id.clone(), entry.is_upload)));
+            // Las filas que siguen y, agotada la cola, las recomendaciones que se irían promoviendo (radio, automática).
+            list.extend(upcoming(pb, lookahead).into_iter().map(|entry| (entry.video_id.clone(), entry.is_upload)));
             (list.len() > 1).then_some(list)
         })
         .flatten();
@@ -2521,6 +2570,173 @@ mod tests {
         let step = on_position(&mut pb, 3.0, &ctx(&engine, t0));
         assert!(step.prepare.is_none() && step.cancels.is_empty() || step.cancels.iter().all(|c| c != &request));
         assert!(pb.runtime.automix.job.as_ref().is_some_and(|job| job.request_id == request));
+    }
+
+    /// Radio y reproducción automática: la cola se agota y lo que sigue es la recomendación que se promovería.
+    fn with_recommendations(rows: &[Option<&str>], recommendations: &[&str]) -> PlaybackManager {
+        let mut pb = playing(rows);
+        pb.queue.recommendations = recommendations.iter().map(|id| entry(id, None)).collect();
+        pb
+    }
+
+    fn pending_source(kind: &str, continuation: bool) -> crate::playback_runtime::ProgressiveSource {
+        crate::playback_runtime::ProgressiveSource {
+            kind: kind.into(),
+            id: None,
+            continuation: continuation.then(|| "token".into()),
+            loading: false,
+            error: false,
+            needs_restart: false,
+            loaded_prefix: vec![],
+            consumed_continuations: Default::default(),
+        }
+    }
+
+    #[test]
+    fn with_the_queue_exhausted_the_next_song_is_the_recommendation_that_would_be_promoted() {
+        let mut pb = with_recommendations(&[None], &["recA", "recB"]);
+        let key = plan_for(&pb, false).expect("la recomendación es la siguiente");
+        assert_eq!(key.to_video, "recA");
+        assert_eq!(key.to_entry, pb.queue.recommendations[0].entry_id, "la identidad es la de la propuesta");
+        // El peek no muta nada.
+        let (revision, recommendations, items) = (pb.queue.revision, pb.queue.recommendations.len(), pb.queue.items.len());
+        let _ = (plan_for(&pb, false), upcoming(&pb, 3), next_upcoming(&pb));
+        assert_eq!((pb.queue.revision, pb.queue.recommendations.len(), pb.queue.items.len()), (revision, recommendations, items));
+        // Con filas por delante manda la cola, y las recomendaciones van detrás.
+        let rows = with_recommendations(&[None, None], &["recA"]);
+        assert_eq!(plan_for(&rows, false).unwrap().to_video, "song1");
+        let order: Vec<_> = upcoming(&rows, 3).iter().map(|e| e.video_id.clone()).collect();
+        assert_eq!(order, ["song1", "recA"]);
+        let order: Vec<_> = upcoming(&pb, 3).iter().map(|e| e.video_id.clone()).collect();
+        assert_eq!(order, ["recA", "recB"]);
+        assert_eq!(upcoming(&pb, 1).len(), 1);
+        // Sin recomendaciones no hay siguiente.
+        assert_eq!(plan_for(&playing(&[None]), false), Err(Skip::NoNext));
+        // El mismo disco también cuenta para la recomendación.
+        pb.queue.recommendations[0].album_id = Some("a".into());
+        pb.queue.items[0].album_id = Some("a".into());
+        pb.current_track.as_mut().unwrap().album_id = Some("a".into());
+        assert_eq!(plan_for(&pb, false), Err(Skip::SameAlbum));
+    }
+
+    #[test]
+    fn recommendations_follow_only_where_handle_track_ended_would_promote_them() {
+        let mut repeat = with_recommendations(&[None], &["recA"]);
+        repeat.is_repeat = true;
+        assert_eq!(plan_for(&repeat, false), Err(Skip::Repeat));
+        assert!(next_upcoming(&repeat).is_none() && upcoming(&repeat, 3).is_empty());
+        // Una colección que espera su continuación: se esperan más filas, no se promueve.
+        let mut waiting = with_recommendations(&[None], &["recA"]);
+        waiting.runtime.source = Some(pending_source("playlist", true));
+        assert!(next_upcoming(&waiting).is_none());
+        assert_eq!(plan_for(&waiting, false), Err(Skip::NoNext));
+        let mut restart = with_recommendations(&[None], &["recA"]);
+        let mut source = pending_source("library", false);
+        source.needs_restart = true;
+        restart.runtime.source = Some(source);
+        assert!(next_upcoming(&restart).is_none());
+        // La radio de búsqueda con continuación sí promueve la que ya tiene; una fuente sin pendientes también.
+        let mut search = with_recommendations(&[None], &["recA"]);
+        search.runtime.source = Some(pending_source("search-radio", true));
+        assert_eq!(next_upcoming(&search).map(|e| e.video_id.as_str()), Some("recA"));
+        let mut done = with_recommendations(&[None], &["recA"]);
+        done.runtime.source = Some(pending_source("playlist", false));
+        assert!(next_upcoming(&done).is_some());
+        // Y esas filas pendientes no impiden las filas ya cargadas.
+        let mut rows = with_recommendations(&[None, None], &["recA"]);
+        rows.runtime.source = Some(pending_source("playlist", true));
+        assert_eq!(plan_for(&rows, false).unwrap().to_video, "song1");
+    }
+
+    #[test]
+    fn prefetch_and_the_plan_follow_the_recommendations_and_their_changes() {
+        let mut pb = with_recommendations(&[None], &["recA", "recB"]);
+        let engine = Fake::default();
+        let t0 = Instant::now();
+        let step = on_position(&mut pb, 0.5, &ctx(&engine, t0));
+        assert_eq!(step.prepare.as_ref().unwrap().key.to_video, "recA");
+        assert_eq!(step.prefetch.as_ref().unwrap().items.iter().map(|(id, _)| id.as_str()).collect::<Vec<_>>(), ["song0", "recA"]);
+        // Si la recomendación que sigue cambia (la radio se actualiza), el plan se descarta y se rehace.
+        let request = pb.runtime.automix.job.as_ref().unwrap().request_id.clone();
+        pb.queue.recommendations.insert(0, entry("recNew", None));
+        let step = on_position(&mut pb, 0.6, &ctx(&engine, t0));
+        assert!(step.cancels.contains(&request));
+        assert_eq!(step.prepare.as_ref().unwrap().key.to_video, "recNew");
+        // Si una continuación se pone en espera, deja de haber siguiente y se cancela lo pedido.
+        let request = pb.runtime.automix.job.as_ref().unwrap().request_id.clone();
+        pb.runtime.source = Some(pending_source("playlist", true));
+        let step = on_position(&mut pb, 0.7, &ctx(&engine, t0));
+        assert!(step.cancels.contains(&request));
+        assert_eq!(pb.runtime.automix.status().reason.as_deref(), Some("no-next"));
+    }
+
+    #[test]
+    fn the_handover_promotes_the_recommendation_after_checking_it_and_never_advances_twice() {
+        let engine = Fake::default();
+        let t0 = Instant::now();
+        let mut pb = with_recommendations(&[None], &["recA", "recB"]);
+        let promoted_before = pb.queue.recommendations[0].video_id.clone();
+        on_file_after_splice(&mut pb, &engine, t0);
+        let before = pb.generation;
+        let step = on_position(&mut pb, 16.0, &ctx(&engine, t0));
+        assert!(step.leave.is_none() && step.handover.is_some());
+        assert_eq!(pb.generation, before + 1);
+        assert_eq!(pb.queue.items.len(), 2, "la recomendación pasó a ser una fila de la cola");
+        assert_eq!(pb.queue.current_index, Some(1));
+        assert_eq!(pb.queue.current().unwrap().video_id, promoted_before);
+        assert_eq!(pb.current_track.as_ref().unwrap().video_id, "recA");
+        assert_eq!(pb.queue.recommendations.iter().map(|e| e.video_id.as_str()).collect::<Vec<_>>(), ["recB"], "una sola promoción");
+        assert_eq!(pb.loaded_generation, Some(before + 1));
+        // El EOF del archivo después del traspaso no promueve otra: avanza el final normal de la canción.
+        assert!(ends_track(&mut pb));
+        assert_eq!(pb.queue.recommendations.len(), 1);
+
+        // Si la recomendación cambió antes del traspaso, no se toca la cola y se vuelve al arranque normal.
+        let mut changed = with_recommendations(&[None], &["recA", "recB"]);
+        on_file_after_splice(&mut changed, &engine, t0);
+        changed.queue.recommendations.insert(0, entry("recNew", None));
+        let (items, recommendations, index, generation) = (changed.queue.items.len(), changed.queue.recommendations.len(), changed.queue.current_index, changed.generation);
+        let step = on_position(&mut changed, 16.0, &ctx(&engine, t0));
+        assert!(step.leave.is_some() && step.handover.is_none());
+        assert_eq!((changed.queue.items.len(), changed.queue.recommendations.len(), changed.queue.current_index, changed.generation), (items, recommendations, index, generation));
+        // Un EOF antes del traspaso con la recomendación vigente completa la promoción primero, una sola vez.
+        let mut early = with_recommendations(&[None], &["recA", "recB"]);
+        on_file_after_splice(&mut early, &engine, t0);
+        assert!(ends_track(&mut early));
+        assert_eq!((early.queue.current_index, early.queue.recommendations.len()), (Some(1), 1));
+        // Si se agotan las recomendaciones durante la mezcla, tampoco se avanza.
+        let mut gone = with_recommendations(&[None], &["recA"]);
+        on_file_after_splice(&mut gone, &engine, t0);
+        gone.queue.recommendations.clear();
+        let step = on_position(&mut gone, 16.0, &ctx(&engine, t0));
+        assert!(step.leave.is_some());
+        assert_eq!((gone.queue.items.len(), gone.queue.current_index), (1, Some(0)));
+    }
+
+    #[test]
+    fn loading_the_song_after_a_handover_leaves_the_engine_and_the_gain_alone() {
+        // Equivalente al arreglo de Mac (8b12461): allí soltar el reproductor del archivo al cargar la
+        // siguiente lo dejaba mudo. Aquí la carga normal (`play_song`) sólo llama a `reset_for_new_load`, que no
+        // toca el reproductor; la ganancia de la canción la fija esa misma carga.
+        let engine = Fake::default();
+        let t0 = Instant::now();
+        let mut pb = playing(&[None, None, None]);
+        on_file_after_splice(&mut pb, &engine, t0);
+        on_position(&mut pb, 16.0, &ctx(&engine, t0)); // traspaso: B suena del archivo
+        on_position(&mut pb, 60.0, &ctx(&engine, t0));
+        assert_eq!(pb.runtime.track_gain, None, "mientras suena el archivo la ganancia va horneada");
+        let calls = engine.log.borrow().len();
+        pb.runtime.automix.reset_for_new_load();
+        assert_eq!(engine.log.borrow().len(), calls, "ni pausa, ni silencio, ni vaciado del reproductor");
+        let rt = &pb.runtime.automix;
+        assert!(rt.on_file.is_none() && rt.job.is_none() && rt.ready.is_none() && rt.upgrade.is_none());
+        assert!(!swallow_playing(&pb) && !seek_blocked(&pb));
+        assert!(ends_track(&mut pb), "un EOF posterior es el de la canción nueva");
+        assert_eq!(engine_seek_target(&pb, 42.0), 42.0, "los saltos vuelven a ir directos al reproductor");
+        // Y la canción siguiente fija su propia ganancia como siempre (`play_song` escribe `track_gain`).
+        let gain = crate::volume::combined_gain(80.0, true, Some(-2.5));
+        pb.runtime.track_gain = Some(-2.5);
+        assert_eq!(gain, crate::volume::combined_gain(80.0, true, pb.runtime.track_gain));
     }
 
     #[test]
