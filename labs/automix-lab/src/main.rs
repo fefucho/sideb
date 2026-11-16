@@ -45,6 +45,9 @@ enum Command {
         #[arg(long, default_value = "out/stems-cache")]
         stems_cache: PathBuf,
     },
+    /// Desarma un archivo de transición: dónde empieza A, dónde deja de ser A,
+    /// dónde pasa a ser B y qué tanto de B contiene (busca coincidencias exactas).
+    Inspect { wav: PathBuf, a: PathBuf, b: PathBuf },
     /// Genera una pista sintética de tempo conocido.
     Synth {
         out: PathBuf,
@@ -122,6 +125,7 @@ fn main() -> Result<()> {
             println!("total {:.1} s; modelo: {:?}", started.elapsed().as_secs_f64(), automix::model::info());
             Ok(())
         }
+        Command::Inspect { wav, a, b } => inspect(&wav, &a, &b),
         Command::Synth { out, bpm, root, bars, lead_in } => {
             let (audio, downbeat) = synth::generate(&synth::Spec { bpm, root, bars, lead_in, seed: 7 });
             audio::save(&out, &audio)?;
@@ -253,5 +257,80 @@ fn check_decode(file: &str, reference: &std::path::Path) -> Result<()> {
         }
     }
     println!("{file}: motor {} muestras, referencia {}; desfase {best_lag} muestras", ours.len(), theirs.len());
+    Ok(())
+}
+
+/// Takes a transition file apart by exact sample matches against the two songs.
+fn inspect(wav: &std::path::Path, a: &std::path::Path, b: &std::path::Path) -> Result<()> {
+    let file = audio::load_wav(wav)?;
+    let a = audio::load(a)?;
+    let b = audio::load(b)?;
+    let sr = audio::SRF;
+    println!("archivo {:.2} s, A {:.2} s, B {:.2} s", file.seconds(), a.seconds(), b.seconds());
+    let same = |x: f32, y: f32| (x - y).abs() < 1e-5;
+
+    // Where in A does the file begin? Match a short run taken 1 s in.
+    let probe = 44_100.min(file.len() / 2);
+    let run = 24;
+    let found = (0..a.len().saturating_sub(run)).find(|&p| (0..run).all(|k| same(a.ch[0][p + k], file.ch[0][probe + k])));
+    match found {
+        Some(p) => {
+            let cut = p as i64 - probe as i64;
+            let mut end = 0usize;
+            while end < file.len() && ((cut + end as i64) as usize) < a.len() && same(file.ch[0][end], a.ch[0][(cut + end as i64) as usize]) {
+                end += 1;
+            }
+            println!("A: el archivo arranca en el segundo {:.3} de A y es A exacto hasta el segundo {:.3} del archivo (A hasta su segundo {:.3})", cut as f64 / sr, end as f64 / sr, (cut + end as i64) as f64 / sr);
+        }
+        None => println!("A: el principio del archivo no es A (¿ganancia aplicada o A distinta?)"),
+    }
+
+    // B: assume it plays to its end inside the file.
+    let offset = file.len() as i64 - b.len() as i64;
+    let mut start = file.len();
+    while start > 0 && (start as i64 - offset) >= 0 && same(file.ch[0][start - 1], b.ch[0][(start as i64 - 1 - offset) as usize]) {
+        start -= 1;
+    }
+    println!(
+        "B: el archivo es B exacto desde el segundo {:.3} del archivo (B desde su segundo {:.3}) hasta el final; archivo = B + {:.3} s; B completa {:.1} s",
+        start as f64 / sr,
+        (start as i64 - offset) as f64 / sr,
+        offset as f64 / sr,
+        b.seconds()
+    );
+    if file.len() - start < 5 * 44_100 {
+        // No exact B: it may be a different encode of the same song. Find where
+        // a stretch of B sits in the file by correlating 1 kHz envelopes.
+        let env = |x: &audio::Stereo| -> Vec<f32> {
+            x.ch[0].chunks(44).map(|c| c.iter().map(|v| v.abs()).sum::<f32>() / c.len() as f32).collect()
+        };
+        let (fe, be) = (env(&file), env(&b));
+        for at in [30_000usize, 60_000, 120_000] {
+            if at + 4000 >= be.len() {
+                continue;
+            }
+            let probe = &be[at..at + 2000];
+            let (mut best, mut best_pos) = (f32::MIN, 0usize);
+            let mean_p = probe.iter().sum::<f32>() / probe.len() as f32;
+            for pos in 0..fe.len().saturating_sub(2000) {
+                let w = &fe[pos..pos + 2000];
+                let mean_w = w.iter().sum::<f32>() / 2000.0;
+                let c: f32 = probe.iter().zip(w).map(|(p, q)| (p - mean_p) * (q - mean_w)).sum();
+                let n = (w.iter().map(|q| (q - mean_w).powi(2)).sum::<f32>().sqrt() * probe.iter().map(|p| (p - mean_p).powi(2)).sum::<f32>().sqrt()).max(1e-9);
+                if c / n > best {
+                    best = c / n;
+                    best_pos = pos;
+                }
+            }
+            println!(
+                "B (aproximado): el segundo {:.1} de B está en el segundo {:.1} del archivo (correlación {best:.3}) => archivo = B + {:.2} s",
+                at as f64 / 1000.0,
+                best_pos as f64 / 1000.0,
+                (best_pos as f64 - at as f64) / 1000.0
+            );
+        }
+    }
+    let total = file.seconds();
+    println!("el tramo que no es ni A ni B dura {:.1} s; B ocupa {:.0}% del archivo", (start as f64 / sr) - 0.0, 100.0 * (total - start as f64 / sr) / total);
     Ok(())
 }
