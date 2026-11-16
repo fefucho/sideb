@@ -39,8 +39,14 @@ pub const ERR_NO_CACHE_DIR: &str = "automix:no-cache-dir";
 
 /// Songs kept downloaded in `<cache_dir>/audio`.
 const KEEP_AUDIO_FILES: usize = 12;
-/// Transition files kept in `<cache_dir>/transitions`.
-const KEEP_TRANSITIONS: usize = 3;
+/// Transition files kept in `<cache_dir>/transitions` (and any younger than `TRANSITION_GRACE`).
+const KEEP_TRANSITIONS: usize = 6;
+/// A transition file younger than this is never deleted, however many newer
+/// ones there are: the player may still be playing it (or about to), and a
+/// song is at most 12 minutes long.
+const TRANSITION_GRACE: Duration = Duration::from_secs(20 * 60);
+/// Size at which the event log is cut down to its newest half.
+const LOG_BYTES: u64 = 256 << 10;
 /// Size the stems cache is pruned to (the two stretches of one song are ~70 MB).
 const STEMS_CACHE_BYTES: u64 = 500 << 20;
 /// A song longer than this is not worth holding in memory twice over.
@@ -406,6 +412,52 @@ fn touch(path: &Path) {
     }
 }
 
+/// Appends one line to `<cache>/automix.log`: what was asked, what came out,
+/// how long it took, why it failed. Ids and numbers only, never URLs or
+/// headers. The shells' own diagnostics live in memory; this survives.
+fn log_event(root: &Path, line: &str) {
+    use std::io::Write;
+    let path = root.join("automix.log");
+    if std::fs::metadata(&path).is_ok_and(|m| m.len() > LOG_BYTES) {
+        if let Ok(text) = std::fs::read_to_string(&path) {
+            // Error messages are Spanish: cut on a character boundary.
+            let mut half = text.len() / 2;
+            while !text.is_char_boundary(half) {
+                half += 1;
+            }
+            let tail = &text[half..];
+            let tail = tail.split_once('\n').map_or("", |(_, rest)| rest);
+            let _ = std::fs::write(&path, tail);
+        }
+    }
+    let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
+    let _ = std::fs::create_dir_all(root);
+    if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
+        let _ = writeln!(file, "{secs} {line}");
+    }
+}
+
+/// Like [`prune_files`] for transition files: nothing younger than `grace` is
+/// deleted, whatever the count.
+fn prune_transitions(dir: &Path, keep: usize, grace: Duration, protect: &[&Path]) {
+    let now = std::time::SystemTime::now();
+    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    let mut files: Vec<(std::time::SystemTime, PathBuf)> = entries
+        .flatten()
+        .filter_map(|e| {
+            let meta = e.metadata().ok()?;
+            meta.is_file().then(|| (meta.modified().unwrap_or(std::time::UNIX_EPOCH), e.path()))
+        })
+        .collect();
+    files.sort_by(|a, b| b.0.cmp(&a.0));
+    for (modified, path) in files.into_iter().skip(keep) {
+        let young = now.duration_since(modified).is_ok_and(|age| age < grace);
+        if !young && !protect.contains(&path.as_path()) {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+}
+
 /// Deletes the oldest files of `dir` beyond `keep`, never those in `protect`.
 fn prune_files(dir: &Path, keep: usize, protect: &[&Path]) {
     let Ok(entries) = std::fs::read_dir(dir) else { return };
@@ -620,8 +672,20 @@ pub(crate) async fn prepare(core: &SideBCore, request: Request) -> Result<Automi
     // Background separations make way while this runs.
     let _busy = automix::model::busy();
     let _preparing = Counted::new(core.automix.preparing.clone());
+    let root = PathBuf::from(&request.cache_dir);
+    log_event(&root, &format!("prepare #{token} {} {from} -> {to} quality={}", request.request_id, request.quality));
     let outcome = run(core, &request, &from, &to, stems, token, &cancel).await;
     core.automix.finish(token);
+    match &outcome {
+        Ok(r) => log_event(
+            &root,
+            &format!(
+                "prepare #{token} ok kind={} quality={} stems_model={} separated={:.1}s elapsed={:.1}s a_cut={:.2} file={:.1}s",
+                r.kind, r.quality, r.stems_model, r.separated_seconds, r.elapsed_seconds, r.a_cut_seconds, r.file_duration_seconds
+            ),
+        ),
+        Err(e) => log_event(&root, &format!("prepare #{token} failed: {e}")),
+    }
     outcome
 }
 
@@ -714,7 +778,7 @@ async fn run(
         let _ = std::fs::remove_file(&wav_path);
         return Err(cancelled());
     }
-    prune_files(&transitions_dir, KEEP_TRANSITIONS, &[&wav_path]);
+    prune_transitions(&transitions_dir, KEEP_TRANSITIONS, TRANSITION_GRACE, &[&wav_path]);
     if transition.stems_model {
         remember_speed(core);
     }
@@ -806,7 +870,14 @@ async fn prefetch_run(
         if cancel.load(Ordering::SeqCst) {
             return Err(cancelled());
         }
-        let path = fetch_audio(core, &item.video_id, item.is_upload, &audio_dir, cancel).await?;
+        log_event(root, &format!("prefetch #{token} {} ({} of {})", item.video_id, index + 1, items.len()));
+        let path = match fetch_audio(core, &item.video_id, item.is_upload, &audio_dir, cancel).await {
+            Ok(path) => path,
+            Err(e) => {
+                log_event(root, &format!("prefetch #{token} {} failed: {e}", item.video_id));
+                return Err(e);
+            }
+        };
         prune_files(&audio_dir, KEEP_AUDIO_FILES, &[&path]);
         // Stems are worth separating once the model is there, and only for
         // the ends a transition can read: the first song is playing (its
@@ -825,9 +896,13 @@ async fn prefetch_run(
         })
         .await
         .map_err(|e| SideBError::Other { message: format!("la separación anticipada se interrumpió: {e}") })?;
-        if done.is_ok() {
-            automix::stems::prune_cache(&stems_dir, STEMS_CACHE_BYTES);
-            remember_speed(core);
+        match &done {
+            Ok(()) => {
+                automix::stems::prune_cache(&stems_dir, STEMS_CACHE_BYTES);
+                remember_speed(core);
+                log_event(root, &format!("prefetch #{token} {} stems ready (tail={tail} head={head})", item.video_id));
+            }
+            Err(e) => log_event(root, &format!("prefetch #{token} {} stems failed: {e}", item.video_id)),
         }
     }
     Ok(())
@@ -1082,6 +1157,47 @@ mod tests {
         println!("prefetch (download + 2 stretches of stems) finished in {:.1}s", t.elapsed().as_secs_f64());
         ask("stems, prefetched pair", queen, levitating, "stems").await;
         println!("usage: {:?}", core.automix_cache_usage());
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn a_young_transition_file_is_never_pruned() {
+        let dir = std::env::temp_dir().join(format!("automix-grace-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let now = std::time::SystemTime::now();
+        // Ten files: two hours old down to a minute old.
+        for i in 0..10u64 {
+            let path = dir.join(format!("f{i}.wav"));
+            std::fs::write(&path, b"x").unwrap();
+            let age = if i < 5 { Duration::from_secs(7200 - i * 60) } else { Duration::from_secs(60 * (10 - i)) };
+            std::fs::OpenOptions::new().write(true).open(&path).unwrap().set_modified(now - age).unwrap();
+        }
+        prune_transitions(&dir, 2, Duration::from_secs(20 * 60), &[]);
+        let mut left: Vec<String> = std::fs::read_dir(&dir).unwrap().flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect();
+        left.sort();
+        // The five minutes-old ones stay (young), the five hours-old ones go
+        // (beyond the two newest and past the grace period).
+        assert_eq!(left, ["f5.wav", "f6.wav", "f7.wav", "f8.wav", "f9.wav"]);
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn the_event_log_records_and_stays_small() {
+        let dir = std::env::temp_dir().join(format!("automix-log-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        log_event(&dir, "prepare #1 a -> b quality=fast");
+        log_event(&dir, "prepare #1 failed: automix:cancelled");
+        let text = std::fs::read_to_string(dir.join("automix.log")).unwrap();
+        assert_eq!(text.lines().count(), 2);
+        assert!(text.lines().next().unwrap().ends_with("prepare #1 a -> b quality=fast"));
+        for i in 0..8000 {
+            log_event(&dir, &format!("prefetch #{i} {}", "x".repeat(60)));
+        }
+        let size = std::fs::metadata(dir.join("automix.log")).unwrap().len();
+        assert!(size < LOG_BYTES + 200, "{size}");
+        let last = std::fs::read_to_string(dir.join("automix.log")).unwrap();
+        assert!(last.lines().last().unwrap().contains("prefetch #7999"));
         std::fs::remove_dir_all(dir).ok();
     }
 }

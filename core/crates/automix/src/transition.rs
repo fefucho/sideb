@@ -247,7 +247,8 @@ fn render_mix(a: &Track, b: &Track, plan: &mix::Plan, opts: &Options) -> Result<
         overlap_start: rendered.changed.0,
         overlap_end: rendered.changed.1,
         b_offset: rendered.overlap.1 - rendered.b_resume,
-        b_entry: plan.b_beats[0],
+        // The overlap's first beat can fall just before B's first sample.
+        b_entry: plan.b_beats[0].max(0.0),
         handover: swap,
         bpm_a: plan.a.grid.bpm,
         bpm_b: plan.b.grid.bpm,
