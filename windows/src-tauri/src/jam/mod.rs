@@ -342,6 +342,12 @@ pub fn shutdown(app: &AppHandle) {
     }
 }
 
+/// ¿Hay una sesión de Jam en marcha? Automix se aparta mientras la haya.
+pub fn is_active(app: &AppHandle) -> bool {
+    app.try_state::<Arc<JamRuntime>>()
+        .is_some_and(|runtime| lock(&runtime.inner).session.is_some())
+}
+
 impl JamRuntime {
     fn new(app: AppHandle) -> Self {
         Self {
@@ -538,6 +544,7 @@ impl JamRuntime {
             });
             id
         };
+        crate::automix_runtime::jam_changed(&self.app);
         spawn_writer(stdin, line_rx);
         let (renew_tx, renew_rx) = unbounded_channel();
         let runtime = self.clone();
@@ -560,6 +567,7 @@ impl JamRuntime {
             inner.session.take()
         };
         self.reset_speed();
+        crate::automix_runtime::jam_changed(&self.app);
         if let Some(session) = session {
             let _ = spawn_blocking(move || stop_session(session, LEAVE_GRACE)).await;
         }
@@ -650,6 +658,7 @@ impl JamRuntime {
         // Replaced or left on purpose: the owner already restored the speed and nobody listens.
         if current {
             self.reset_speed();
+            crate::automix_runtime::jam_changed(&self.app);
             if !ended {
                 let _ = self.app.emit(EVENT, json!({ "type": "exited", "code": code }));
             }

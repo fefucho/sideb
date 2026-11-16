@@ -13,8 +13,8 @@
   import SettingsGroup from '../settings/SettingsGroup.svelte';
   import { matchingCategories, settingsCategories, settingsSectionKey, settingsSections, type SettingsCategoryId } from '../settings/settingsCategories';
   interface Category { key:string; title:string }
-  interface Props { settings:HomeSettings; kind:CollectionKind; categories:Category[]; libraryError:string|null; onChange:(settings:HomeSettings)=>void; onKind:(kind:CollectionKind)=>void; onRetryLibrary:()=>void; onClose:()=>void; exponentialVolume?:boolean; volumeModePending?:boolean; onExponentialVolume?:(enabled:boolean)=>void; initialCategory?:SettingsCategoryId }
-  let { settings, kind, categories, libraryError, onChange, onKind, onRetryLibrary, onClose, exponentialVolume=false, volumeModePending=false, onExponentialVolume, initialCategory='general' }:Props=$props();
+  interface Props { settings:HomeSettings; kind:CollectionKind; categories:Category[]; libraryError:string|null; onChange:(settings:HomeSettings)=>void; onKind:(kind:CollectionKind)=>void; onRetryLibrary:()=>void; onClose:()=>void; exponentialVolume?:boolean; volumeModePending?:boolean; onExponentialVolume?:(enabled:boolean)=>void; automix?:import('$lib/player/automix').AutomixStatus; automixPending?:boolean; automixError?:string|null; onAutomix?:(enabled:boolean)=>void; initialCategory?:SettingsCategoryId }
+  let { settings, kind, categories, libraryError, onChange, onKind, onRetryLibrary, onClose, exponentialVolume=false, volumeModePending=false, onExponentialVolume, automix, automixPending=false, automixError=null, onAutomix, initialCategory='general' }:Props=$props();
   const detailSelector='.settings-detail';
   const focusable='button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])';
   let selected=$state<SettingsCategoryId>(untrack(()=>initialCategory));
@@ -79,7 +79,7 @@
         <div class="content" data-category={selected}>
           <header><h2 id="settings-category-title">{$t(current.titleKey)}</h2><p>{$t(current.subtitleKey)}</p></header>
           {#if selected==='general'}<GeneralSettings />
-          {:else if selected==='playback'}<PlaybackSettings {exponentialVolume} {volumeModePending} {onExponentialVolume} />
+          {:else if selected==='playback'}<PlaybackSettings {exponentialVolume} {volumeModePending} {onExponentialVolume} {automix} {automixPending} {automixError} {onAutomix} />
           {:else if selected==='appearance'}<AppearanceSettings />
           {:else if selected==='visualProviders'}<SettingsGroup><div class="slot"><VisualProviderSettings /></div></SettingsGroup>
           {:else if selected==='homeFeed'}<HomeFeedSettings {settings} {kind} {categories} {libraryError} {onChange} {onKind} {onRetryLibrary} scrollSelector={detailSelector} />

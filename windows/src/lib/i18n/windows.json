@@ -11,6 +11,7 @@
   "windows.settings.exponentialVolume": { "es": "Volumen exponencial", "en": "Exponential volume" },
   "windows.settings.exponentialVolumeHint": { "es": "Más control a volumen bajo para equipos con sonido fuerte. Conserva el volumen máximo.", "en": "More control at low volume on loud systems. Keeps the maximum volume unchanged." },
   "windows.settings.exponentialVolumeError": { "es": "No se pudo cambiar el volumen exponencial.", "en": "Couldn't change exponential volume." },
+  "windows.automix.error": { "es": "No se pudo cambiar Automix.", "en": "Couldn't change Automix." },
   "windows.settings.albumCardStyle": { "es": "Tarjetas de álbumes", "en": "Album cards" },
   "windows.settings.albumCardStyle.tinted": { "es": "Blanco teñido", "en": "Tinted white" },
   "windows.settings.albumCardStyle.white": { "es": "Blanco", "en": "White" },

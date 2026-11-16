@@ -27,6 +27,8 @@
   import { useJamUi } from '$lib/components/jam/context';
   import { isJamLive } from '$lib/components/jam/view';
   import JamPanelHost from './JamPanelHost.svelte';
+  import AutomixPill from './AutomixPill.svelte';
+  import type { AutomixStatus } from '$lib/player/automix';
 
   type Panel = "queue" | "lyrics" | "related" | "jam";
   interface Props {
@@ -71,6 +73,7 @@
     likesLoading?: boolean;
     onToggleQueueLike?: (entry: QueueEntryDto) => void;
     onDislikeQueueEntry?: (entry: QueueEntryDto) => void;
+    automix?: AutomixStatus; automixPending?: boolean; onToggleAutomix?: () => void;
     onRecommendationAction?: (entryId: string, placement: 'next' | 'end' | 'now' | 'remove', generation: number) => void | PlaybackStateDto | Promise<void | PlaybackStateDto>;
   }
 
@@ -78,7 +81,7 @@
     session,pullDistance=0,pulling=false,confirmedVolume=100,volumeFeedback=false,volumeAnnouncement='',onVolumeSurfaceChange,geniusState,geniusController,onOpenExternal,playback, focusQueueEntryId=null, onQueueFocusHandled, onSelectQueue, onTogglePlayback, onClose, selectedPanel, lyricsMode='synced', onShowGenius, onSelectPanel, onOpenArtist, onOpenAlbum,
     onOpenMenu, onQueueContextMenu, loggedIn = false, liked = false, likePending = false,
     onToggleLike, onRetryRadio, onRetrySource, likedIds = new Set<string>(), pendingIds = new Set<string>(), likesLoading = false,
-    onToggleQueueLike, onDislikeQueueEntry, onRecommendationAction,
+    onToggleQueueLike, onDislikeQueueEntry, onRecommendationAction, automix, automixPending = false, onToggleAutomix,
     onMoveQueue, onRevealQueueWindow, lyricsState, recommendationsState, onSeek, onRetryLyrics,
     onRefreshRecommendations, onSuspendRecommendations, onPlayRecommendation, onEnqueueRecommendation,
     onSongContextMenu, onArtistContextMenu,
@@ -197,13 +200,14 @@
     </div>
 
     <div class="side-column" data-volume-excluded>
-      <div class="panel-toolbar">
+      <div class="panel-toolbar" class:with-automix={automix && onToggleAutomix}>
         <div class="panel-tabs">
           <ControlSegments appearance="toolbar" id="fullscreen-tab" panelId="fullscreen-panel" label={$t('windows.fullscreen.panel')}
             options={panels} value={panel} onChange={selectPanel} collapseLabels>
             {#snippet icon(id)}<PlayerIcon name={id === 'jam' ? (jamLive ? 'connections-live' : 'connections') : id} size={14} />{/snippet}
           </ControlSegments>
         </div>
+        {#if automix && onToggleAutomix}<AutomixPill status={automix} pending={automixPending} onToggle={onToggleAutomix} />{/if}
         <button type="button" class="close-button" onclick={onClose} aria-label={$t('player.closeFullscreen')} title={$t('player.closeFullscreen')}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6 18 18M18 6 6 18" /></svg>
         </button>
@@ -314,6 +318,7 @@
 
 
   .panel-toolbar { display:grid; grid-template-columns:minmax(0,1fr) 32px; align-items:center; gap:12px; width:100%; min-width:0; flex:none; }
+  .panel-toolbar.with-automix { grid-template-columns:minmax(0,1fr) auto 32px; }
   .panel-tabs { container-type:inline-size; display:flex; justify-content:center; min-width:0; }
   .panel { box-sizing: border-box; display: flex; width: 100%; min-width: 0; min-height: 0; flex: 1; overflow: hidden; }
   button:focus-visible { outline: 2px solid #d06c70; outline-offset: 3px; }

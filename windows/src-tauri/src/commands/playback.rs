@@ -712,6 +712,7 @@ pub(crate) async fn play_song(
     };
 
     let my_auth_generation = state.auth_generation.load(Ordering::SeqCst);
+    let automix_cancels;
     let my_gen = {
         let mut pb = state.playback.lock().map_err(|_| {
             CommandError::new(
@@ -833,6 +834,8 @@ pub(crate) async fn play_song(
         }
         let previous_generation = pb.generation;
         pb.generation += 1;
+        // A normal start replaces whatever Automix had loaded or prepared.
+        pb.runtime.automix.reset_for_new_load();
         let seek_owner = crate::seek_state::SeekOwner {
             auth: my_auth_generation, generation: pb.generation, entry_id: active_entry.entry_id.clone(),
         };
@@ -861,8 +864,10 @@ pub(crate) async fn play_song(
         pb.runtime.pending_next = None;
         let dto = pb.to_dto();
         let _ = app.emit("playback-state-changed", &dto);
+        automix_cancels = pb.runtime.automix.take_cancels();
         pb.generation
     };
+    crate::automix_runtime::cancel_requests(&app, automix_cancels);
 
     if coalesce == Some(true) {
         tokio::time::sleep(std::time::Duration::from_millis(180)).await;
@@ -1092,15 +1097,20 @@ pub(crate) async fn play_song(
     let dto = pb.to_dto();
     let _ = app.emit("playback-state-changed", &dto);
     drop(pb);
-    // Radio may finish before the stream installs current_track. Always start
-    // metadata hydration after a successful load as well as after radio; neither
-    // request delays audio, and ownership guards reject obsolete responses.
-    maybe_hydrate_current_album(app.clone());
-    maybe_prefetch_radio(app);
+    after_start(app);
     Ok(dto)
 }
 
-async fn start_queue_entry(
+/// Radio may finish before the stream installs current_track. Always start
+/// metadata hydration after a successful load as well as after radio; neither
+/// request delays audio, and ownership guards reject obsolete responses.
+/// The Automix handover starts a song the same way, so it ends here too.
+pub(crate) fn after_start(app: tauri::AppHandle) {
+    maybe_hydrate_current_album(app.clone());
+    maybe_prefetch_radio(app);
+}
+
+pub(crate) async fn start_queue_entry(
     app: tauri::AppHandle,
     entry_id: String,
     expected_generation: u64,
@@ -1568,6 +1578,11 @@ pub(crate) fn handle_track_ended(app: tauri::AppHandle) {
             }
             return;
         }
+        // Automix: the EOF of a song replaced by a transition file is not the end of
+        // a song, and a transition file's own EOF is the end of the song it carried.
+        if !crate::automix_runtime::ends_track(&mut playback) {
+            return;
+        }
         let generation = playback.generation;
         playback.is_playing = false;
         playback.is_loading = false;
@@ -1928,7 +1943,7 @@ pub(crate) async fn seek_playback_identified(
             "La posición debe ser un número finito no negativo.",
         ));
     }
-    let (revision, restore, dto) = {
+    let (revision, restore, restore_paused, dto) = {
         let mut pb = state
             .playback
             .lock()
@@ -1951,14 +1966,22 @@ pub(crate) async fn seek_playback_identified(
                 "La reproducción no está disponible para cambiar de posición.",
             ));
         }
-        let restore = pb.loaded_generation.is_none()
-            && !pb.is_loading
-            && !pb
-                .runtime
-                .seek
-                .pending
-                .as_ref()
-                .is_some_and(|seek| seek.resuming);
+        // Automix: a second that the transition file does not hold restarts the
+        // occurrence normally at that second, with the seek adopted by the new load.
+        let leave_file = crate::automix_runtime::seek_route(&pb, seconds)
+            == crate::automix_runtime::SeekRoute::Restart;
+        if leave_file {
+            crate::automix_runtime::mark_leaving(&mut pb);
+        }
+        let restore = leave_file
+            || pb.loaded_generation.is_none()
+                && !pb.is_loading
+                && !pb
+                    .runtime
+                    .seek
+                    .pending
+                    .as_ref()
+                    .is_some_and(|seek| seek.resuming);
         // Keep the adoption reservation when a second cue replaces the first
         // before the restored item has entered play_song.
         let resuming = restore
@@ -1976,7 +1999,10 @@ pub(crate) async fn seek_playback_identified(
             std::time::Instant::now(),
             resuming,
         );
-        (revision, restore, pb.to_dto())
+        // A restored selection has no playing item and is adopted paused; leaving a
+        // transition file keeps the playing state it had.
+        let restore_paused = !leave_file || (!pb.is_playing && !pb.is_loading);
+        (revision, restore, restore_paused, pb.to_dto())
     };
     let _ = app.emit("playback-state-changed", &dto);
     if restore {
@@ -1988,7 +2014,7 @@ pub(crate) async fn seek_playback_identified(
                 resume_app.clone(),
                 expected_entry_id,
                 expected_generation,
-                true,
+                restore_paused,
             )
             .await
             .is_err()
@@ -2082,7 +2108,7 @@ pub(crate) fn seek_snapshot(pb: &PlaybackManager) -> (u64, Option<f64>, Option<S
     (seek.revision, pending, seek.error.clone())
 }
 
-fn finish_seek_failure(app: &tauri::AppHandle, revision: u64, message: &str) {
+pub(crate) fn finish_seek_failure(app: &tauri::AppHandle, revision: u64, message: &str) {
     let state = app.state::<AppState>();
     let Ok(mut pb) = state.playback.lock() else {
         return;
@@ -2092,7 +2118,7 @@ fn finish_seek_failure(app: &tauri::AppHandle, revision: u64, message: &str) {
     }
 }
 
-fn watch_seek(app: tauri::AppHandle, revision: u64) {
+pub(crate) fn watch_seek(app: tauri::AppHandle, revision: u64) {
     tauri::async_runtime::spawn(async move {
         loop {
             {
@@ -2124,7 +2150,10 @@ fn watch_seek(app: tauri::AppHandle, revision: u64) {
                     let _ = app.emit("playback-state-changed", pb.to_dto());
                     return;
                 }
-                if !pending.dispatched && pb.loaded_generation == Some(pb.generation) {
+                if !pending.dispatched
+                    && pb.loaded_generation == Some(pb.generation)
+                    && !crate::automix_runtime::seek_blocked(&pb)
+                {
                     if let Some(player) = state.player.read().ok().and_then(|player| player.clone())
                     {
                         if !player.is_idle() {
@@ -2135,7 +2164,8 @@ fn watch_seek(app: tauri::AppHandle, revision: u64) {
                             } else {
                                 pending.target
                             };
-                            if player.seek(target).is_err() {
+                            // Seconds of the song shown; a transition file holds them elsewhere.
+                            if player.seek(crate::automix_runtime::engine_seek_target(&pb, target)).is_err() {
                                 pb.runtime.seek.fail(
                                     revision,
                                     "No se pudo cambiar la posición de reproducción.",
@@ -2341,7 +2371,11 @@ pub(crate) async fn stop_playback(
     pb.error = None;
     invalidate_queue_owner(&mut pb);
     pb.queue = QueueStateDto::default();
+    pb.runtime.automix.reset_for_new_load();
+    let cancels = pb.runtime.automix.take_cancels();
     let dto = pb.to_dto();
+    drop(pb);
+    crate::automix_runtime::cancel_requests(&app, cancels);
     let _ = app.emit("playback-state-changed", &dto);
     Ok(dto)
 }

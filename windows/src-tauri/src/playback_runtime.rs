@@ -16,6 +16,8 @@ pub(crate) struct PlaybackRuntime {
     pub last_audible: f64,
     pub exponential_volume: bool,
     pub track_gain: Option<f64>,
+    /// Automix (PLAN-024): ajuste, preparación en curso y archivo de transición.
+    pub automix: crate::automix_runtime::AutomixRuntime,
     pub recorded_generation: Option<u64>,
     pub source: Option<ProgressiveSource>,
     pub pending_next: Option<(u64, u64)>,
@@ -32,6 +34,7 @@ pub(crate) struct PlaybackRuntime {
             u64,
             bool,
             Option<(usize, bool)>,
+            bool,
         )>,
     >,
 }
@@ -94,6 +97,8 @@ struct SavedPlayback {
     last_audible: f64,
     #[serde(default)]
     exponential_volume: bool,
+    #[serde(default)]
+    automix_enabled: bool,
     #[serde(default)]
     source_resume: Option<SourceResume>,
 }
@@ -253,6 +258,7 @@ impl PlaybackRuntime {
                     source.continuation.is_some() || source.needs_restart,
                 )
             }),
+            self.automix.enabled,
         );
         if let Ok(mut last) = self.last_saved.lock() {
             if last.as_ref() == Some(&dirty) {
@@ -273,6 +279,7 @@ impl PlaybackRuntime {
                 volume: playback.volume,
                 last_audible: self.last_audible,
                 exponential_volume: self.exponential_volume,
+                automix_enabled: self.automix.enabled,
                 source_resume: self
                     .source
                     .as_ref()
@@ -301,6 +308,8 @@ pub(crate) fn interrupt_auth_owner(playback: &mut PlaybackManager) {
         playback.is_playing = false;
     }
     playback.runtime.seek.cancel();
+    // Una preparación con la cuenta anterior no sirve (sus cancelaciones las envía quien llama).
+    playback.runtime.automix.drop_plan();
     playback.runtime.interrupt_source();
     let source = playback.runtime.source.take();
     crate::invalidate_queue_owner(playback);
@@ -324,6 +333,8 @@ pub(crate) fn sync_account(app: &tauri::AppHandle, auth: &AuthStatusDto) {
     }
     pb.runtime.persist(&pb);
     flush();
+    pb.runtime.automix.reset_for_new_load();
+    let cancelled = pb.runtime.automix.take_cancels();
     if let Ok(Some(player)) = state.player.read().map(|p| p.clone()) {
         let _ = player.stop();
         let _ = player.clear_playlist();
@@ -349,6 +360,7 @@ pub(crate) fn sync_account(app: &tauri::AppHandle, auth: &AuthStatusDto) {
     pb.runtime.last_audible = 100.0;
     if let Some(saved) = saved {
         pb.runtime.exponential_volume = saved.exponential_volume;
+        pb.runtime.automix.enabled = saved.automix_enabled;
         if saved.volume.is_finite() && saved.last_audible.is_finite() {
             if let Some(queue) = saved.queue.restore() {
                 pb.queue = queue;
@@ -384,8 +396,11 @@ pub(crate) fn sync_account(app: &tauri::AppHandle, auth: &AuthStatusDto) {
         let _ = player.set_loop_file(pb.is_repeat);
     }
     let dto = pb.to_dto();
+    let automix_status = pb.runtime.automix.snapshot();
     drop(pb);
+    crate::automix_runtime::cancel_requests(app, cancelled);
     let _ = app.emit("playback-state-changed", dto);
+    let _ = app.emit("automix-status-changed", automix_status);
 }
 pub(crate) fn threshold(duration: f64) -> f64 {
     if duration.is_finite() && duration > 1.0 {
@@ -439,43 +454,54 @@ pub(crate) fn record_progress(
     };
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
-        let state = app.state::<AppState>();
-        // Serialize against account cookie replacement, not against transport.
-        let _operation = state.auth_operation.read().await;
-        if state.auth_generation.load(Ordering::SeqCst) != auth_generation
-            || !state
-                .playback
-                .lock()
-                .is_ok_and(|pb| pb.runtime.identity == request.2)
-        {
-            return;
-        }
-        let core = state.core.read().ok().and_then(|core| core.clone());
-        let Some(core) = core else {
-            return;
-        };
-        let track = request.0;
-        let metadata = serde_json::json!({ "video_id": track.video_id, "title": track.title, "artists": track.artists,
-            "duration": track.duration.map(|duration| format!("{}:{:02}", duration.max(0.0) as u64 / 60, duration.max(0.0) as u64 % 60)).unwrap_or_default(), "thumbnail": track.thumbnail,
-            "album": track.album, "album_id": track.album_id, "artist_id": track.artist_id, "artist_runs": track.artist_runs,
-            "is_upload": track.is_upload, "content_rating": track.content_rating });
-        if core
-            .record_playback(
-                track.video_id.clone(),
-                Some(metadata.to_string()),
-                request.1,
-            )
-            .await
-            .is_ok()
-            && state.auth_generation.load(Ordering::SeqCst) == auth_generation
-            && state
-                .playback
-                .lock()
-                .is_ok_and(|pb| pb.runtime.identity == request.2)
-        {
-            let _ = app.emit("playback-recorded", serde_json::json!({"track":track,"generation":generation,"authGeneration":auth_generation,"accountKey":request.2}));
-        }
+        record_history(&app, request, generation, auth_generation).await;
+        // Automix pide la ganancia de la canción siguiente resolviéndola, y eso pisa el
+        // seguimiento de historial de la actual: se espera a que esta escucha se haya registrado.
+        crate::automix_runtime::history_settled(&app, generation);
     });
+}
+async fn record_history(
+    app: &tauri::AppHandle,
+    request: (PlaybackTrackDto, Option<String>, Option<String>),
+    generation: u64,
+    auth_generation: u64,
+) {
+    let state = app.state::<AppState>();
+    // Serialize against account cookie replacement, not against transport.
+    let _operation = state.auth_operation.read().await;
+    if state.auth_generation.load(Ordering::SeqCst) != auth_generation
+        || !state
+            .playback
+            .lock()
+            .is_ok_and(|pb| pb.runtime.identity == request.2)
+    {
+        return;
+    }
+    let core = state.core.read().ok().and_then(|core| core.clone());
+    let Some(core) = core else {
+        return;
+    };
+    let track = request.0;
+    let metadata = serde_json::json!({ "video_id": track.video_id, "title": track.title, "artists": track.artists,
+        "duration": track.duration.map(|duration| format!("{}:{:02}", duration.max(0.0) as u64 / 60, duration.max(0.0) as u64 % 60)).unwrap_or_default(), "thumbnail": track.thumbnail,
+        "album": track.album, "album_id": track.album_id, "artist_id": track.artist_id, "artist_runs": track.artist_runs,
+        "is_upload": track.is_upload, "content_rating": track.content_rating });
+    if core
+        .record_playback(
+            track.video_id.clone(),
+            Some(metadata.to_string()),
+            request.1,
+        )
+        .await
+        .is_ok()
+        && state.auth_generation.load(Ordering::SeqCst) == auth_generation
+        && state
+            .playback
+            .lock()
+            .is_ok_and(|pb| pb.runtime.identity == request.2)
+    {
+        let _ = app.emit("playback-recorded", serde_json::json!({"track":track,"generation":generation,"authGeneration":auth_generation,"accountKey":request.2}));
+    }
 }
 #[cfg(test)]
 mod tests {

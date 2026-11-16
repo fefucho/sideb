@@ -8,6 +8,7 @@ mod session_operations;
 mod cipher_runtime;
 #[cfg(windows)]
 mod media_controls;
+mod automix_runtime;
 mod playback_runtime;
 mod seek_state;
 mod artwork_runtime;
@@ -561,10 +562,12 @@ fn set_auth_status(app: &tauri::AppHandle, status: AuthStatusDto) {
     playback_runtime::sync_account(app, &status);
     let _ = app.emit("auth-status-changed", status);
     let generation = state.auth_generation.load(Ordering::SeqCst);
+    let mut automix_cancels = Vec::new();
     let playback_snapshot = if let Ok(mut playback) = state.playback.lock() {
         if playback.observed_auth_generation != generation {
             playback.observed_auth_generation = generation;
             playback_runtime::interrupt_auth_owner(&mut playback);
+            automix_cancels = playback.runtime.automix.take_cancels();
             Some(playback.to_dto())
         } else {
             None
@@ -572,6 +575,7 @@ fn set_auth_status(app: &tauri::AppHandle, status: AuthStatusDto) {
     } else {
         None
     };
+    automix_runtime::cancel_requests(app, automix_cancels);
     if let Some(dto) = playback_snapshot {
         let _ = app.emit("playback-state-changed", &dto);
     }
@@ -830,12 +834,39 @@ pub fn run() {
                     let mut last_progress_emit = std::time::Instant::now();
                     while let Some(ev) = rx.recv().await {
                         match ev {
-                            player::PlayerEvent::Position(pos) => {
+                            player::PlayerEvent::Position(raw_pos) => {
                                 let should_emit = last_progress_emit.elapsed()
                                     >= std::time::Duration::from_millis(200);
+                                // Fuera del cerrojo de reproducción: el estado del Jam tiene el suyo.
+                                let jam_active = jam::is_active(&app_handle);
+                                let auth_generation = app_handle
+                                    .state::<AppState>()
+                                    .auth_generation
+                                    .load(Ordering::SeqCst);
+                                let engine = app_handle
+                                    .state::<AppState>()
+                                    .player
+                                    .read()
+                                    .ok()
+                                    .and_then(|player| player.clone());
                                 if let Ok(mut pb) = pb_ref.lock() {
                                     // Sólo procesar eventos de posición si hay una pista efectivamente cargada para la generación activa
                                     if pb.loaded_generation.is_some() && !pb.is_ended {
+                                        // Automix traduce los segundos del archivo a los de la canción que se muestra.
+                                        let ctx = automix_runtime::Ctx {
+                                            now: std::time::Instant::now(),
+                                            jam_active,
+                                            auth_generation,
+                                            engine: engine
+                                                .as_deref()
+                                                .map(|player| player as &dyn automix_runtime::Engine),
+                                        };
+                                        let mut step = automix_runtime::on_position(&mut pb, raw_pos, &ctx);
+                                        let Some(pos) = step.position else {
+                                            drop(pb);
+                                            automix_runtime::finish(&app_handle, step);
+                                            continue;
+                                        };
                                         pb.position = pos;
                                         pb.position_observed = Some((pos, std::time::SystemTime::now()));
                                         let seek_changed = commands::playback::observe_seek(&mut pb, pos);
@@ -857,6 +888,8 @@ pub fn run() {
                                             pos,
                                             dur,
                                         );
+                                        step.position = None;
+                                        automix_runtime::finish(&app_handle, step);
                                         if should_emit {
                                             let prog = PlaybackProgressDto {
                                                 position: pos,
@@ -872,19 +905,42 @@ pub fn run() {
                             }
                             player::PlayerEvent::Duration(dur) => {
                                 if dur > 0.0 {
+                                    let engine = app_handle
+                                        .state::<AppState>()
+                                        .player
+                                        .read()
+                                        .ok()
+                                        .and_then(|player| player.clone());
                                     if let Ok(mut pb) = pb_ref.lock() {
                                         // Sólo aplicar si hay una pista cargada activa
                                         if pb.loaded_generation.is_some() {
-                                            pb.duration = dur;
+                                            let ctx = automix_runtime::Ctx {
+                                                now: std::time::Instant::now(),
+                                                jam_active: false,
+                                                auth_generation: 0,
+                                                engine: engine
+                                                    .as_deref()
+                                                    .map(|player| player as &dyn automix_runtime::Engine),
+                                            };
+                                            // Con un archivo de transición, la duración es la del archivo.
+                                            let (mapped, step) = automix_runtime::on_duration(&mut pb, dur, &ctx);
+                                            if let Some(dur) = mapped {
+                                                pb.duration = dur;
+                                            }
                                             let dto = pb.to_dto();
                                             drop(pb);
                                             let _ = app_handle.emit("playback-state-changed", &dto);
+                                            automix_runtime::finish(&app_handle, step);
                                         }
                                     }
                                 }
                             }
                             player::PlayerEvent::Playing(playing) => {
                                 if let Ok(mut pb) = pb_ref.lock() {
+                                    // La pausa con la que Automix cambia al archivo no es del usuario.
+                                    if automix_runtime::swallow_playing(&pb) {
+                                        continue;
+                                    }
                                     if playing {
                                         // Sólo pasar a playing si la pista está cargada en el motor
                                         if pb.loaded_generation.is_some() {
@@ -910,6 +966,14 @@ pub fn run() {
                             }
                             player::PlayerEvent::TrackFailed(_) => {
                                 if let Ok(mut pb) = pb_ref.lock() {
+                                    // Si falla el archivo de una transición se vuelve al arranque normal.
+                                    if pb.loaded_generation.is_some() {
+                                        if let Some(step) = automix_runtime::on_track_failed(&mut pb) {
+                                            drop(pb);
+                                            automix_runtime::finish(&app_handle, step);
+                                            continue;
+                                        }
+                                    }
                                     if pb.loaded_generation.is_some() {
                                         pb.is_playing = false;
                                         pb.is_loading = false;
@@ -1089,6 +1153,8 @@ pub fn run() {
             artwork_runtime::get_animated_artwork_runtime_state,
             commands::playback::set_playback_volume,
             commands::playback::set_exponential_volume,
+            automix_runtime::get_automix_status,
+            automix_runtime::set_automix_enabled,
             commands::playback::set_shuffle,
             commands::playback::set_repeat,
             commands::playback::get_playback_state,

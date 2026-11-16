@@ -60,6 +60,7 @@
   import {ProviderPreviewController as SearchPreviewController,emptySearchPreviewData} from "$lib/search/provider-preview";
   import SpotlightSearch from "$lib/components/search/SpotlightSearch.svelte";
   import { PlaybackController, emptyPlaybackData, prepareCollectionPlayback } from "$lib/player/controller";
+  import { AutomixController, automixWithJam, offAutomix, type AutomixSnapshot } from "$lib/player/automix";
   import { LyricsController, emptyLyricsState } from '$lib/player/lyrics';
   import { dispatchPlaybackSpace, playbackSpaceFocus } from '$lib/player/playback-shortcut';
   import { RecommendationsController, emptyRecommendationsSnapshot } from '$lib/player/recommendations';
@@ -140,6 +141,7 @@ import { promotedEntryId } from "$lib/components/fullscreen/queueProjection";
 
   let homeSettings = $state<HomeSettings>(defaults());
   let volumeModePending = $state(false);
+  let automixState = $state<AutomixSnapshot>({ status: offAutomix(), pending: false, error: null });
   let featuredKind = $state<CollectionKind>('albums');
   let featuredSlots = $state(2);
   let preferenceKey = $state<string | null>(null);
@@ -290,6 +292,10 @@ import { promotedEntryId } from "$lib/components/fullscreen/queueProjection";
       confirmedVolume = snapshot.confirmedVolume;
       playbackError = snapshot.error;
     });
+  // Automix (beta): the native runtime owns the setting and the preparation; this mirrors it.
+  const automix = new AutomixController((command, args) => invoke(command, args), (name, handler) => listen(name, handler), snapshot => { automixState = snapshot; });
+  // A Jam forces Automix off in the UI too, without touching the saved preference.
+  const automixView = $derived(automixWithJam(automixState.status, jamLive));
   const mediaService: MediaService = {
     state: () => playbackState,
     pending: () => mediaPendingRevision === collectionPlayRevision && mediaPendingGeneration === playbackState.generation ? mediaPending : null,
@@ -1102,6 +1108,7 @@ import { promotedEntryId } from "$lib/components/fullscreen/queueProjection";
       if(authStatus.state==='ready'&&event.payload.accountKey===`account:${authStatus.channelId||authStatus.email||authStatus.handle||''}`)account.recordPlayback({...track,isVideo:false,album:track.album??null,albumId:track.albumId??null,artistId:track.artistId??null,duration:track.duration==null?null:`${Math.floor(track.duration/60)}:${String(Math.floor(track.duration%60)).padStart(2,'0')}`});
     }).then(unlisten=>{if(mounted)unlistenRecorded=unlisten;else unlisten();});
     void player.connect();
+    void automix.connect();
     void jam.actions.refreshStatus();
     void updater.init();
     const updateCheckTimeout = setTimeout(() => {
@@ -1119,6 +1126,7 @@ import { promotedEntryId } from "$lib/components/fullscreen/queueProjection";
       window.removeEventListener('mousedown', handleMouseNavigation);
       window.removeEventListener('auxclick', handleMouseNavigation);
       void player.dispose();
+      void automix.dispose();
       jam.destroy();
       lyrics.dispose();
       recommendations.dispose();
@@ -1135,7 +1143,7 @@ import { promotedEntryId } from "$lib/components/fullscreen/queueProjection";
 <svelte:window bind:innerWidth={viewportWidth} />
 
 {#snippet playerControls(variant: 'bar' | 'sidebar', lead?: Snippet, tail?: Snippet, spacing: number | null = null)}
-  <PlayerBar {variant} sidebarLead={lead} sidebarTail={tail} sidebarSpacing={spacing} playback={playerBarState} onTogglePlayback={handleTogglePlay} onRetryPlayback={handleRetryPlayback} onPrevious={handlePrevious} onNext={handleNext} onSeek={handleSeek} onVolumeChange={handleVolumeChange} onVolumeSurfaceChange={()=>gestureInput?.invalidate()} onSetMuted={muted=>void player.setMuted(muted)} onSetShuffle={handleSetShuffle} onSetRepeat={handleSetRepeat} fullscreenOpen={isFullscreenOpen} onToggleFullscreen={() => setPlayerFullscreen(!isFullscreenOpen)}
+  <PlayerBar {variant} automixMarker={automixView.markerSeconds} sidebarLead={lead} sidebarTail={tail} sidebarSpacing={spacing} playback={playerBarState} onTogglePlayback={handleTogglePlay} onRetryPlayback={handleRetryPlayback} onPrevious={handlePrevious} onNext={handleNext} onSeek={handleSeek} onVolumeChange={handleVolumeChange} onVolumeSurfaceChange={()=>gestureInput?.invalidate()} onSetMuted={muted=>void player.setMuted(muted)} onSetShuffle={handleSetShuffle} onSetRepeat={handleSetRepeat} fullscreenOpen={isFullscreenOpen} onToggleFullscreen={() => setPlayerFullscreen(!isFullscreenOpen)}
     selectedPanel={selectedPanel === 'jam' ? undefined : selectedPanel} {lyricsMode} onSelectPanel={openPlayerPanel}
     onOpenArtist={(id) => { void setPlayerFullscreen(false); void openArtistDetail(id); }}
     onOpenAlbum={(id) => { void setPlayerFullscreen(false); void openAlbumDetail(id); }} onOpenMenu={openPlayerBarMenu}
@@ -1254,6 +1262,7 @@ import { promotedEntryId } from "$lib/components/fullscreen/queueProjection";
       albums={accountData.albums} playlists={accountData.playlists} history={accountData.history}
       onSettings={changeHomeSettings} onKind={changeFeaturedKind}
       exponentialVolume={playbackState.exponentialVolume ?? false} {volumeModePending} onExponentialVolume={changeExponentialVolume}
+      automix={automixView} automixPending={automixState.pending} automixError={automixState.error} onAutomix={enabled => { void automix.setEnabled(enabled); }}
       interactive={pageActive && preferencesReady}
       libraryError={accountData.errors.albums || accountData.errors.playlists || accountData.errors.history}
       onRetryLibrary={() => { void account.initialize(); if (homeSettings.albumSources.some(row => row.source === 'recentAlbums' && row.enabled)) void account.load('history'); }}
@@ -1383,7 +1392,7 @@ import { promotedEntryId } from "$lib/components/fullscreen/queueProjection";
   {/if}
   {#if isFullscreenOpen}
     <div class="fullscreen-host" inert={spotlightOpen}>
-    <FullscreenNowPlaying session={sessionRevision} playback={playerBarState} focusQueueEntryId={queueFocusEntryId} onQueueFocusHandled={(entryId)=>{if(queueFocusEntryId===entryId)queueFocusEntryId=null;}} {confirmedVolume} volumeFeedback={volumeFeedbackVisible} {volumeAnnouncement} onVolumeSurfaceChange={()=>gestureInput?.invalidate()} onTogglePlayback={handleTogglePlay} onSelectQueue={playQueueIndex} onClose={() => setPlayerFullscreen(false)}
+    <FullscreenNowPlaying session={sessionRevision} playback={playerBarState} automix={automixView} automixPending={automixState.pending} onToggleAutomix={() => { void automix.toggle(); }} focusQueueEntryId={queueFocusEntryId} onQueueFocusHandled={(entryId)=>{if(queueFocusEntryId===entryId)queueFocusEntryId=null;}} {confirmedVolume} volumeFeedback={volumeFeedbackVisible} {volumeAnnouncement} onVolumeSurfaceChange={()=>gestureInput?.invalidate()} onTogglePlayback={handleTogglePlay} onSelectQueue={playQueueIndex} onClose={() => setPlayerFullscreen(false)}
       pulling={gestureProgress.action==='dismiss-fullscreen'&&(gestureProgress.phase==='tracking'||gestureProgress.phase==='armed')}
       pullDistance={gestureProgress.action==='dismiss-fullscreen'&&(gestureProgress.phase==='tracking'||gestureProgress.phase==='armed')?gestureProgress.distance:0}
       onMoveQueue={(entryId, beforeEntryId) => player.moveQueueEntry(entryId, beforeEntryId)}

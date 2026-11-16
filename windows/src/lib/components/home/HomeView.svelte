@@ -31,12 +31,12 @@
     history:{items:{albumId:string|null;album:string|null;artists:string;artistId:string|null}[]}[];
     onSettings:(settings:Settings)=>void; onKind:(kind:CollectionKind)=>void; interactive:boolean; libraryError:string|null;
     onRetryLibrary:()=>void; metadata:Record<string,FeaturedMetadata>; onVisibleCollections:(items:HomeItemDto[])=>void; onCapacity?:(capacity:number)=>void;
-    exponentialVolume?:boolean; volumeModePending?:boolean; onExponentialVolume?:(enabled:boolean)=>void;
+    exponentialVolume?:boolean; volumeModePending?:boolean; onExponentialVolume?:(enabled:boolean)=>void; automix?:import('$lib/player/automix').AutomixStatus; automixPending?:boolean; automixError?:string|null; onAutomix?:(enabled:boolean)=>void;
     /** The playback sidebar owns the right edge: the mosaic and the collection row reach it instead of keeping the 28px inset. */
     sidebarOpen?:boolean;
   }
   let {chips,sections,selectedChipParams,isLoading,error,onSelectChip,onRetry,onOpenAlbum,onPlaySong,onOpenPlaylist,onOpenArtist,onOpenCatalog,
-    hasMore,isLoadingMore,moreError,moreNotice,onLoadMore,auth,session,settings,kind,albums,playlists,history,onSettings,onKind,interactive,libraryError,onRetryLibrary,metadata,onVisibleCollections,onCapacity,exponentialVolume=false,volumeModePending=false,onExponentialVolume,sidebarOpen=false}:Props=$props();
+    hasMore,isLoadingMore,moreError,moreNotice,onLoadMore,auth,session,settings,kind,albums,playlists,history,onSettings,onKind,interactive,libraryError,onRetryLibrary,metadata,onVisibleCollections,onCapacity,exponentialVolume=false,volumeModePending=false,onExponentialVolume,automix,automixPending=false,automixError=null,onAutomix,sidebarOpen=false}:Props=$props();
   // Keep the last rendered inputs while fullscreen covers Home; publish the latest on reveal.
   const currentInputs=()=>({sections,selectedChipParams,settings,kind,albums,playlists,history,session});
   let rendered=$state(untrack(currentInputs));
@@ -128,7 +128,7 @@
   </VirtualStack>
   <footer class="load-more" aria-live="polite">{#if moreError}<p role="alert">{resolveMessage(moreError, $language)}</p>{:else if moreNotice}<p>{resolveMessage(moreNotice, $language)}</p>{:else if !hasMore&&!isLoading&&sections.length}<p>{$t('app.home.noMore')}</p>{/if}{#if hasMore}<ControlButton disabled={isLoading} loading={isLoadingMore} onclick={onLoadMore}>{moreError?$t('sidebar.retry'):$t('home.load_more')}</ControlButton>{/if}</footer>
   </div>
-  {#if settingsOpen&&interactive}<HomeSettings {settings} {kind} categories={projection.categories} {libraryError} onChange={onSettings} {onKind} {onRetryLibrary} onClose={closeSettings} {exponentialVolume} {volumeModePending} {onExponentialVolume} />{/if}
+  {#if settingsOpen&&interactive}<HomeSettings {settings} {kind} categories={projection.categories} {libraryError} onChange={onSettings} {onKind} {onRetryLibrary} onClose={closeSettings} {exponentialVolume} {volumeModePending} {onExponentialVolume} {automix} {automixPending} {automixError} {onAutomix} />{/if}
   {#if sheetOpen&&interactive}<FeaturedSheet title={collectionTitle} items={projection.collections} {metadata} onClose={()=>sheetOpen=false} onOpen={openCollection} onOpenArtist={openSheetArtist} onOpenAlbum={openSheetAlbum} onVisible={items=>sheetVisible=items} />{/if}
 </section>
 <style>

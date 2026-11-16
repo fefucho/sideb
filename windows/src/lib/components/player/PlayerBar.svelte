@@ -5,6 +5,7 @@
   import PlayerIcon from "./PlayerIcon.svelte";
   import ConnectionsButton from "$lib/components/jam/ConnectionsButton.svelte";
   import type { PlaybackStateDto } from "$lib/types";
+  import { automixMarkerFraction } from "$lib/player/automix";
   import ArtistCredits from "$lib/components/ArtistCredits.svelte";
   import FeaturedTrackTitle from "$lib/components/FeaturedTrackTitle.svelte";
   type Panel = "queue" | "lyrics" | "genius" | "related";
@@ -42,9 +43,11 @@
     sidebarTail?: Snippet;
     /** Fixed gap between progress and transport in px; null lets it flex. */
     sidebarSpacing?: number | null;
+    /** Automix (beta): second of the current song where the transition starts, decorative on the progress bar. */
+    automixMarker?: number | null;
   }
 
-  let { playback, onTogglePlayback, onRetryPlayback, onPrevious, onNext, onSeek, onVolumeChange, onVolumeSurfaceChange, onSetMuted, onSetShuffle, onSetRepeat, fullscreenOpen, onToggleFullscreen, loggedIn = false, liked = false, likePending = false, onToggleLike, likeError = null, selectedPanel, lyricsMode = 'synced', onSelectPanel, onOpenArtist, onOpenAlbum, onOpenMenu, variant = 'bar', sidebarLead, sidebarTail, sidebarSpacing = null }: Props = $props();
+  let { playback, onTogglePlayback, onRetryPlayback, onPrevious, onNext, onSeek, onVolumeChange, onVolumeSurfaceChange, onSetMuted, onSetShuffle, onSetRepeat, fullscreenOpen, onToggleFullscreen, loggedIn = false, liked = false, likePending = false, onToggleLike, likeError = null, selectedPanel, lyricsMode = 'synced', onSelectPanel, onOpenArtist, onOpenAlbum, onOpenMenu, variant = 'bar', sidebarLead, sidebarTail, sidebarSpacing = null, automixMarker = null }: Props = $props();
   let seekDraft = $state<{ generation: number; value: number } | null>(null);
   let failedArtworkUrl = $state<string | null>(null);
   let volumeOpen = $state(false);
@@ -110,6 +113,8 @@
 
   const duration = $derived(finitePositive(playback.duration));
   const position = $derived(clamp(seekDraft?.generation === playback.generation ? seekDraft.value : playback.position, 0, duration));
+  const markFraction = $derived(automixMarkerFraction(automixMarker, duration));
+  const markText = $derived(markFraction === null || automixMarker == null ? null : $t('automix.marker.value', [formatTime(automixMarker)]));
   const volume = $derived(clamp(playback.volume, 0, 100));
   const hasTrack = $derived(playback.currentTrack !== null);
   const canNext = $derived(playback.canNext ?? (playback.queue.currentIndex !== null && (playback.isRepeat || playback.sourceLoad?.hasMore === true || playback.queue.currentIndex + 1 < playback.queue.items.length)));
@@ -162,12 +167,15 @@
 {#snippet seekSlider()}
   <input
     class="seek"
+    class:has-mark={markFraction !== null}
     type="range"
     min="0"
     max={duration || 1}
     step="0.25"
     value={position}
-    style={`--fill:${duration ? (position / duration) * 100 : 0}%`}
+    style={`--fill:${duration ? (position / duration) * 100 : 0}%${markFraction === null ? '' : `;--mark:${markFraction * 100}%`}`}
+    title={markText ?? undefined}
+    aria-valuetext={markText ? `${formatTime(position)} / ${formatTime(duration)}. ${markText}` : undefined}
     disabled={!hasTrack || playback.isLoading || duration === 0}
     oninput={handleSeekInput}
     onchange={handleSeekChange}
@@ -406,6 +414,16 @@
   /* Apple Music style track: 5 px (7 px on hover/drag), rounded ends, no visible thumb, elapsed in the accent. */
   .seek { height: 5px; border-radius: 999px; background: linear-gradient(to right, #d06c70 0 var(--fill), rgba(255, 255, 255, 0.22) var(--fill) 100%); transition: height 120ms ease; }
   .seek:hover:not(:disabled), .seek:active:not(:disabled) { height: 7px; }
+  /* Automix (beta): a decorative tick where the mix starts and a tinted stretch from there to the end. It is
+     painted in the track's own background, so the hit area, the layout and seeking are exactly the same. */
+  .seek.has-mark {
+    background:
+      linear-gradient(to right, transparent calc(var(--mark) - 1px), rgb(255 255 255 / 95%) calc(var(--mark) - 1px) calc(var(--mark) + 1px), transparent calc(var(--mark) + 1px)),
+      linear-gradient(to right, #d06c70 0 var(--fill), transparent var(--fill) 100%),
+      linear-gradient(to right, transparent var(--mark), rgb(208 108 112 / 38%) var(--mark) 100%),
+      linear-gradient(rgb(255 255 255 / 22%), rgb(255 255 255 / 22%));
+  }
+  @media (forced-colors: active) { .seek.has-mark { background: linear-gradient(to right, Highlight 0 var(--fill), ButtonFace var(--fill) 100%); } }
 
   input[type="range"]::-webkit-slider-thumb {
     appearance: none;
