@@ -12,6 +12,8 @@
 pub mod audio;
 pub mod grid;
 pub mod mix;
+pub mod model;
+pub mod prefetch;
 pub mod stems;
 pub mod stretch;
 pub mod synth;

@@ -38,6 +38,13 @@ enum Command {
         #[arg(long, default_value_t = 60.0)]
         to: f64,
     },
+    /// Separa con el modelo, a baja prioridad, el final y el principio de cada
+    /// canción (lo que haría la precarga) y mide cuánto tarda.
+    Prefetch {
+        files: Vec<String>,
+        #[arg(long, default_value = "out/stems-cache")]
+        stems_cache: PathBuf,
+    },
     /// Genera una pista sintética de tempo conocido.
     Synth {
         out: PathBuf,
@@ -69,7 +76,11 @@ enum Command {
         /// Carpeta donde se guardan los stems ya separados.
         #[arg(long, default_value = "out/stems-cache")]
         stems_cache: PathBuf,
-        /// Sin modelo de stems: separa sólo graves del resto.
+        /// «fast»: sin modelo (separa sólo graves del resto); «stems»: con
+        /// HT-Demucs, que se descarga si falta.
+        #[arg(long, default_value = "stems")]
+        quality: String,
+        /// Igual que `--quality fast`.
         #[arg(long)]
         no_stems: bool,
         /// Corre el primer tiempo detectado de A o B esta cantidad de beats.
@@ -81,6 +92,9 @@ enum Command {
 }
 
 fn main() -> Result<()> {
+    // The model is looked for here first, then where `stem-splitter-core`
+    // used to put it, and downloaded here if it is nowhere.
+    automix::model::configure(std::path::Path::new("out/model"));
     match Cli::parse().command {
         Command::Analyze { file } => analyze(file),
         Command::Decode { file, out } => audio::save(&out, &load_track(&file)?.audio),
@@ -97,17 +111,28 @@ fn main() -> Result<()> {
             }
             Ok(())
         }
+        Command::Prefetch { files, stems_cache } => {
+            let started = Instant::now();
+            for file in files {
+                let track = load_track(&file)?;
+                let t = Instant::now();
+                let seconds = automix::prefetch::prefetch(&track, &stems_cache, true, true, None)?;
+                println!("{}: {seconds:.0} s de audio separados en {:.1} s", track.name, t.elapsed().as_secs_f64());
+            }
+            println!("total {:.1} s; modelo: {:?}", started.elapsed().as_secs_f64(), automix::model::info());
+            Ok(())
+        }
         Command::Synth { out, bpm, root, bars, lead_in } => {
             let (audio, downbeat) = synth::generate(&synth::Spec { bpm, root, bars, lead_in, seed: 7 });
             audio::save(&out, &audio)?;
             println!("{}: {bpm} BPM, primer tiempo en {downbeat:.3} s, {:.1} s", out.display(), audio.seconds());
             Ok(())
         }
-        Command::Mix { a, b, out, max_bars, pre, post, stems_cache, no_stems, a_downbeat, b_downbeat } => {
+        Command::Mix { a, b, out, max_bars, pre, post, stems_cache, quality, no_stems, a_downbeat, b_downbeat } => {
             let opts = automix::Options {
                 max_bars,
                 pre_seconds: pre,
-                stem_mode: if no_stems { automix::StemMode::Frequency } else { automix::StemMode::Model },
+                stem_mode: if no_stems || quality == "fast" { automix::StemMode::Frequency } else { automix::StemMode::Model },
                 a_downbeat_shift: a_downbeat,
                 b_downbeat_shift: b_downbeat,
                 post_seconds: post,
@@ -153,6 +178,10 @@ fn analyze(file: String) -> Result<()> {
 }
 
 fn run_mix(a: String, b: String, out: PathBuf, stems_cache: &std::path::Path, opts: automix::Options) -> Result<()> {
+    if opts.stem_mode == automix::StemMode::Model && !automix::model::ready() {
+        println!("Bajando el modelo de stems (~210 MB)…");
+        automix::model::download()?;
+    }
     let started = Instant::now();
     let track_a = load_track(&a)?;
     let track_b = load_track(&b)?;
@@ -162,6 +191,12 @@ fn run_mix(a: String, b: String, out: PathBuf, stems_cache: &std::path::Path, op
     let prepared = started.elapsed();
     println!("A «{}» -> B «{}»", track_a.name, track_b.name);
     println!("Tipo: {}. {}", transition.kind.as_str(), transition.detail);
+    println!(
+        "Stems del modelo: {} ({:.0} s de audio separados ahora); mismo corte que la versión rápida: {}",
+        if transition.stems_model { "sí" } else { "no" },
+        transition.separated_seconds,
+        if transition.same_cut_as_fast { "sí" } else { "no" }
+    );
     println!(
         "Tempos medidos: A {:.2} BPM, B {:.2} BPM; {} compases",
         transition.bpm_a, transition.bpm_b, transition.bars

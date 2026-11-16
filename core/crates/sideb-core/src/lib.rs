@@ -698,7 +698,7 @@ impl SideBCore {
             it.set_visitor_data(Some(vd));
         }
 
-        Ok(Arc::new(SideBCore {
+        let core = Arc::new(SideBCore {
             data_dir: path,
             genius: Arc::new(genius::GeniusEngine::new(db.clone())),
             animated_artwork: animated_artwork::Engine::new(),
@@ -712,7 +712,10 @@ impl SideBCore {
             current_playback: Arc::new(Mutex::new(None)),
             #[cfg(feature = "automix")]
             automix: automix_job::AutomixState::default(),
-        }))
+        });
+        #[cfg(feature = "automix")]
+        automix_job::init(&core);
+        Ok(core)
     }
 }
 
@@ -2386,6 +2389,7 @@ impl SideBCore {
         to_video_id: String,
         to_is_upload: bool,
         to_gain_db: Option<f64>,
+        quality: String,
         cache_dir: String,
     ) -> Result<automix_job::AutomixTransitionRecord, SideBError> {
         automix_job::prepare(
@@ -2398,6 +2402,7 @@ impl SideBCore {
                 to_video_id,
                 to_is_upload,
                 to_gain_db,
+                quality,
                 cache_dir,
             },
         )
@@ -2410,10 +2415,66 @@ impl SideBCore {
         self.automix.cancel(&request_id);
     }
 
-    /// Whether the stem-separation model is on disk. Until it is, transitions
-    /// that would use stems get a frequency split instead.
+    /// Whether the stem-separation model is on disk. Until it is, `"stems"`
+    /// requests fail with `automix:model-unavailable` (and the model starts
+    /// downloading).
     pub fn automix_model_ready(&self) -> bool {
-        automix::stems::model_ready()
+        automix::model::ready()
+    }
+
+    /// Tells the core where the automix caches live (`<dir>/audio`,
+    /// `/stems`, `/transitions`) without preparing anything, so that
+    /// `prefetch_automix`, `automix_cache_usage` and `clear_automix_cache`
+    /// work from app start. `prepare_automix` remembers its `cache_dir` too.
+    pub fn set_automix_cache_dir(&self, cache_dir: String) {
+        automix_job::set_cache_dir(self, &cache_dir);
+    }
+
+    /// Replaces the prefetch list. `items[0]` is the song that is playing
+    /// (its end is the one a transition reads), the rest the upcoming ones in
+    /// order; at most `lookahead + 1` are used. Downloads each in turn and,
+    /// once the model is on disk and the setting `quality` is not "fast",
+    /// separates (at low priority, never while a preparation runs) the last
+    /// stretch of the playing song and the first and last of the next ones.
+    /// Returns as soon as the work is scheduled; calling it again cancels the
+    /// previous list. Bounded by the cache limits (12 songs, 500 MB of stems).
+    pub async fn prefetch_automix(self: Arc<Self>, items: Vec<automix_job::AutomixQueueItem>) -> Result<(), SideBError> {
+        automix_job::prefetch(self, items).await
+    }
+
+    /// Stops the prefetch in progress.
+    pub fn cancel_automix_prefetch(&self) {
+        self.automix.cancel_prefetch();
+    }
+
+    pub fn get_automix_settings(&self) -> automix_job::AutomixSettings {
+        automix_job::load_settings(self)
+    }
+
+    /// Stores the settings (out-of-range values are corrected) and returns
+    /// what was stored. `compute` and `keep_model_loaded` take effect at once.
+    pub fn set_automix_settings(&self, settings: automix_job::AutomixSettings) -> automix_job::AutomixSettings {
+        automix_job::save_settings(self, settings)
+    }
+
+    /// What this machine can do: see `AutomixCapability`.
+    pub fn automix_capability(&self) -> automix_job::AutomixCapability {
+        automix_job::capability(self)
+    }
+
+    pub fn automix_cache_usage(&self) -> automix_job::AutomixCacheUsage {
+        automix_job::cache_usage(self)
+    }
+
+    /// Deletes the downloaded songs, stems and transitions (not the model).
+    pub fn clear_automix_cache(&self) {
+        automix_job::clear_cache(self);
+    }
+
+    /// Unloads and deletes the stem model (~210 MB); `"stems"` is unavailable
+    /// until it is downloaded again.
+    pub fn delete_automix_model(&self) -> Result<(), SideBError> {
+        automix_job::delete_model(self)
     }
 }
 

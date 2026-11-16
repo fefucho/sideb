@@ -14,8 +14,11 @@ cargo build --release
 # Dos canciones de YouTube Music (búsqueda, id o URL), con stems
 target/release/automix-lab mix "yt:Daft Punk One More Time" "yt:Daft Punk Around the World" -o out/prueba.wav
 
-# Rápido, sin modelo de stems (sólo separa graves del resto)
-target/release/automix-lab mix a.mp3 b.m4a -o out/prueba.wav --no-stems
+# Versión rápida, sin modelo de stems (sólo separa graves del resto): segundos
+target/release/automix-lab mix a.mp3 b.m4a -o out/prueba.wav --quality fast
+
+# Separar de antemano el final y el principio de cada canción (como la precarga) y medir
+target/release/automix-lab prefetch out/cache/a.m4a out/cache/b.m4a
 
 # Ver tempo y grilla de una canción
 target/release/automix-lab analyze "yt:Daft Punk Around the World"
@@ -30,7 +33,7 @@ Opciones de `mix`:
 - `--pre` y `--post`: segundos de A antes de la transición y de B después (20 por defecto; `inf` deja B entera, como hace el core).
 - `--a-downbeat N` y `--b-downbeat N`: corren el primer tiempo detectado N beats, si la entrada suena cruzada.
 - `--stems-cache`: carpeta de los stems ya separados (`out/stems-cache/` por defecto).
-- `--no-stems`: sin el modelo.
+- `--quality fast|stems` (`stems` por defecto; baja el modelo a `out/model/` si falta y no lo encuentra donde lo dejaba `stem-splitter-core`): `fast` es la versión que piden primero las apps; `stems` la mejora con el modelo, **con el mismo corte**. `--no-stems` equivale a `--quality fast`.
 
 Todo lo generado queda en `out/` (ignorado por Git): descargas en `out/cache/`, stems en `out/stems-cache/`.
 
@@ -38,7 +41,7 @@ Todo lo generado queda en `out/` (ignorado por Git): descargas en `out/cache/`, 
 
 `automix::prepare` baja por una escalera hasta donde haga falta y el banco imprime qué tipo salió:
 
-1. **mix** (`Kind::Mix`): estima el tempo y ajusta una grilla de beats sólo en el tramo que usa la transición, separa en stems esos dos tramos (60 s de cada canción) con HT-Demucs, desliza el tempo del de A al de B siguiendo cada canción beat a beat con Signalsmith Stretch y aplica la plantilla «cambio de bajo»: B entra sin bajo, a mitad de la mezcla se intercambian los bajos, A se va en la segunda mitad y nunca cantan las dos a la vez.
+1. **mix** (`Kind::Mix`): estima el tempo y ajusta una grilla de beats sólo en el tramo que usa la transición, decide el plan (corte, largo de 4 u 8 compases, entrada de B) sin el modelo y, en la versión «stems», separa con HT-Demucs sólo el solape y 4 s de contexto de cada canción, desliza el tempo del de A al de B siguiendo cada canción beat a beat con Signalsmith Stretch y aplica la plantilla «cambio de bajo»: B entra sin bajo, a mitad de la mezcla se intercambian los bajos, A se va en la segunda mitad y nunca cantan las dos a la vez.
 2. **cut** (`Kind::Cut`): tempos demasiado lejanos (o la mezcla se negó por otra causa) pero con grillas fiables. A sale en un compás con un barrido de filtro y un eco sincronizado; B entra limpio, a su tempo, en su primer tiempo, un compás después. No usa stems.
 3. **fade** (`Kind::Fade`): sin grilla fiable. A se apaga en unos 6 s cerca de su final audible; B arranca desde su inicio audible con ~1 s de solape.
 
@@ -64,4 +67,7 @@ target/release/automix-lab check-decode out/cache/<id>.m4a /tmp/referencia.wav  
 ```sh
 cargo test                                          # este banco
 cargo test --manifest-path ../../core/Cargo.toml -p automix   # el motor
+cargo test --manifest-path ../../core/Cargo.toml -p automix -- --ignored   # con el modelo en disco
+# velocidad del modelo según el proveedor de CoreML:
+#   cargo run --release -p automix --example model_bench -- <canción> <carpeta> 23.4 cpu 0 1
 ```

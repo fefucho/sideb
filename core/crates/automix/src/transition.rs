@@ -17,6 +17,7 @@
 use crate::audio::{Stereo, SRF};
 use crate::grid::{self, Grid};
 use crate::mix::{self, Options, Refusal, StemMode, Track, MIN_GRID_CONFIDENCE};
+use crate::stems;
 pub use crate::mix::Cancelled;
 use anyhow::{bail, Result};
 use std::path::Path;
@@ -71,6 +72,15 @@ pub struct Transition {
     /// Whether the stems came from the model (a mix) rather than a frequency
     /// split or none at all.
     pub stems_model: bool,
+    /// Seconds of audio the model separated for this transition (0 for the
+    /// fast render, for `Cut` and `Fade`, and when the cache had the stems).
+    pub separated_seconds: f64,
+    /// Whether this render has the same cut as the fast one would. Always
+    /// true today: the plan (grid, overlap, cut point, B's entry) is made on
+    /// the frequency split and the model only re-renders it, so an upgrade
+    /// never moves `a_cut`. Kept in the contract so a future plan that does
+    /// use the model can say it differs.
+    pub same_cut_as_fast: bool,
     /// One line, in Spanish, about what was done and why.
     pub detail: String,
 }
@@ -135,9 +145,19 @@ pub fn prepare(a: &Track, b: &Track, cache: &Path, opts: &Options) -> Result<Tra
             Some((ra, rb)) if !mix::tempos_compatible(ra, rb) => {
                 note = format!("tempos demasiado lejanos ({ra:.0} y {rb:.0} BPM)");
             }
-            _ => match mix::plan(a, b, opts, cache) {
-                Ok(plan) => {
+            _ => match mix::plan(a, b, opts) {
+                Ok(mut plan) => {
                     opts.check_cancel()?;
+                    // The model, when it is wanted and there: only for the
+                    // spans the render reads. If it cannot run, the fast
+                    // render stands (and says so in `stems_model`).
+                    if stems::resolve(opts.stem_mode) == StemMode::Model {
+                        match plan.upgrade(a, b, opts, cache, crate::model::Priority::Normal) {
+                            Ok(()) => {}
+                            Err(e) if opts.check_cancel().is_err() => return Err(anyhow::Error::new(Cancelled).context(e)),
+                            Err(_) => {}
+                        }
+                    }
                     match render_mix(a, b, &plan, opts) {
                         Ok(done) => return Ok(done),
                         Err(e) => note = format!("la mezcla falló al renderizar: {e}"),
@@ -213,13 +233,13 @@ fn render_mix(a: &Track, b: &Track, plan: &mix::Plan, opts: &Options) -> Result<
     let swap = rendered.overlap.0 + plan.beat_times[k / 2];
     let model = plan.stem_mode == StemMode::Model;
     let detail = format!(
-        "Mezcla de {} compases ({:.0} s) con cambio de bajo; {:.0} y {:.0} BPM; stems {}; armonía {}.",
+        "Mezcla de {} compases ({:.0} s) con cambio de bajo; {:.0} y {:.0} BPM; {}; armonía {}.",
         k / 4,
         plan.beat_times[k],
         plan.a.grid.bpm,
         plan.b.grid.bpm,
-        if model { "del modelo" } else { "por frecuencias (el modelo aún no está disponible)" },
-        if mix::harmony_clashes(plan) { "en choque: no se superponen" } else { "compatible" },
+        if model { "stems del modelo" } else { "versión rápida (separación por frecuencias)" },
+        if !model { "sin evaluar" } else if mix::harmony_clashes(plan) { "en choque: no se superponen" } else { "compatible" },
     );
     Ok(Transition {
         kind: Kind::Mix,
@@ -233,6 +253,8 @@ fn render_mix(a: &Track, b: &Track, plan: &mix::Plan, opts: &Options) -> Result<
         bpm_b: plan.b.grid.bpm,
         bars: (k / 4) as u32,
         stems_model: model,
+        separated_seconds: plan.separated_seconds,
+        same_cut_as_fast: true,
         detail,
         audio: rendered.mix,
         baseline: rendered.baseline,
@@ -384,6 +406,8 @@ fn render_cut(a: &Track, b: &Track, sa: &Side, sb: &Side, opts: &Options, why: &
         bpm_b: gb.bpm,
         bars: exit_bars + 1,
         stems_model: false,
+        separated_seconds: 0.0,
+        same_cut_as_fast: true,
         detail: format!(
             "Corte en compás: A sale con filtro y eco ({exit_bars} {}) y B entra limpio en su primer tiempo; {why}.",
             if exit_bars == 1 { "compás" } else { "compases" }
@@ -453,6 +477,8 @@ fn render_fade(
         bpm_b,
         bars: 0,
         stems_model: false,
+        separated_seconds: 0.0,
+        same_cut_as_fast: true,
         detail: format!("Fundido de {fade:.0} s: A se apaga y B arranca desde su inicio audible; {why}."),
     })
 }
@@ -505,7 +531,8 @@ mod tests {
         let t = prepare(&a, &b, Path::new("unused"), &options()).unwrap();
         assert_eq!(t.kind, Kind::Mix, "{}", t.detail);
         assert!((t.overlap_start - 8.0).abs() < 1e-3, "pre is 8 s by default");
-        assert_eq!(t.bars, 16);
+        assert_eq!(t.bars, 8);
+        assert!(!t.stems_model && t.same_cut_as_fast && t.separated_seconds == 0.0);
         check_contract(&t, &a, &b, 1.0, 1.0);
         // The bass swap is in the middle of the change.
         let middle = 0.5 * (t.overlap_start + t.overlap_end);
@@ -581,5 +608,35 @@ mod tests {
         let (b, _) = track(120.0, 36, 40, 0.2, 9);
         // Whatever comes out, nothing may panic.
         let _ = prepare(&silent("a"), &b, Path::new("unused"), &options());
+    }
+
+    /// Needs the model on disk. `cargo test -p automix -- --ignored upgrade`.
+    #[test]
+    #[ignore = "needs the HT-Demucs model on disk"]
+    fn upgrade_keeps_the_cut_and_separates_only_the_overlap() {
+        assert!(crate::model::ready());
+        let (a, _) = track(120.0, 36, 40, 0.37, 7);
+        let (b, _) = track(126.0, 38, 40, 0.21, 9);
+        let dir = std::env::temp_dir().join(format!("automix-upgrade-{}", std::process::id()));
+        let fast = prepare(&a, &b, &dir, &options()).unwrap();
+        let full = prepare(&a, &b, &dir, &Options { stem_mode: StemMode::Model, ..options() }).unwrap();
+        assert_eq!(fast.kind, Kind::Mix);
+        assert_eq!(full.kind, Kind::Mix);
+        assert!(full.stems_model && !fast.stems_model);
+        assert!(full.same_cut_as_fast);
+        // The cut does not move: same start, same overlap, same entry of B.
+        assert_eq!(fast.a_cut, full.a_cut);
+        assert_eq!(fast.overlap_start, full.overlap_start);
+        assert_eq!(fast.overlap_end, full.overlap_end);
+        assert_eq!(fast.b_offset, full.b_offset);
+        assert_eq!(fast.audio.len(), full.audio.len());
+        check_contract(&full, &a, &b, 1.0, 1.0);
+        // Only the overlap and its margins went through the model.
+        let overlap = full.overlap_end - full.overlap_start;
+        assert!(full.separated_seconds > 0.0 && full.separated_seconds < 2.0 * (overlap + 10.0), "{}", full.separated_seconds);
+        // A second request is served from the cache.
+        let again = prepare(&a, &b, &dir, &Options { stem_mode: StemMode::Model, ..options() }).unwrap();
+        assert_eq!(again.separated_seconds, 0.0);
+        std::fs::remove_dir_all(dir).ok();
     }
 }

@@ -24,4 +24,6 @@ The Windows app bundles [Inter 4.1](https://github.com/rsms/inter/releases/tag/v
 
 Side B also uses RustyPipe, UniFFI, Tauri, Svelte, mpv/libmpv, SQLite, and other dependencies declared in its package manifests and lockfiles. These retain their respective licenses. Windows portable packages include the Vulkan runtime license alongside the runtime.
 
+Automix (`core/crates/automix`, beta) separates stems with HT-Demucs by Meta (MIT), in the ONNX/ORT conversion published at [gentij/htdemucs-ort](https://huggingface.co/gentij/htdemucs-ort), run on ONNX Runtime (MIT). The STFT/inverse-STFT pre- and post-processing around the model in `core/crates/automix/src/model.rs` is adapted from [stem-splitter-core](https://github.com/gentij/stem-splitter-core) 1.2.0 by Gentrit Jashari (MIT OR Apache-2.0; the MIT notice is kept in that file). It also uses Signalsmith Stretch (MIT) for time-stretching and Symphonia (MPL-2.0) for decoding. The model file (~210 MB) is downloaded on first use and is not part of the app package.
+
 YouTube Music supplies the catalog and audio; lyric providers and Genius supply their corresponding text and song information. Music, artwork, trademarks, and provider content remain the property of their respective owners.
