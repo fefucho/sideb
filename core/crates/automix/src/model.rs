@@ -92,8 +92,12 @@ pub struct Tuning {
     pub fp16_gpu: bool,
     pub static_shapes: bool,
     pub fast_prediction: bool,
-    /// CPU threads for what the provider does not take (and the CPU path).
+    /// CPU threads for what the provider does not take.
     pub threads: usize,
+    /// ONNX Runtime's CPU provider: keep an arena allocator / a memory
+    /// pattern. Off: they only make it hold on to memory.
+    pub cpu_arena: bool,
+    pub cpu_memory_pattern: bool,
 }
 
 impl Default for Tuning {
@@ -108,6 +112,8 @@ impl Default for Tuning {
             static_shapes: true,
             fast_prediction: false,
             threads: 4,
+            cpu_arena: false,
+            cpu_memory_pattern: false,
         }
     }
 }
@@ -122,13 +128,18 @@ struct Settings {
 fn settings() -> &'static Mutex<Settings> {
     static S: OnceLock<Mutex<Settings>> = OnceLock::new();
     S.get_or_init(|| {
-        Mutex::new(Settings { dir: None, compute: Compute::Auto, tuning: Tuning::default(), idle: Some(Duration::from_secs(60)) })
+        Mutex::new(Settings { dir: None, compute: Compute::Auto, tuning: Tuning::default(), idle: Some(DEFAULT_IDLE) })
     })
 }
 
 fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     m.lock().unwrap_or_else(|e| e.into_inner())
 }
+
+/// How long the session stays loaded after its last use unless told
+/// otherwise. Short on purpose: it holds ~2-3 GB, and loading it again on ONNX
+/// Runtime's CPU provider takes well under a second.
+pub const DEFAULT_IDLE: Duration = Duration::from_secs(15);
 
 /// Where the model file lives (and is downloaded to). Call once at startup.
 pub fn configure(dir: &Path) {
@@ -155,7 +166,7 @@ pub fn set_tuning(tuning: Tuning) {
 }
 
 /// How long the session stays loaded after its last use; `None` keeps it
-/// for the life of the process.
+/// for the life of the process. Default [`DEFAULT_IDLE`].
 pub fn set_idle_release(after: Option<Duration>) {
     let mut s = lock(settings());
     let changed = s.idle.is_some() != after.is_some();
@@ -313,6 +324,21 @@ pub fn info() -> Option<Info> {
 /// Drops the session (and with it the model's memory).
 pub fn unload() {
     lock(slot()).loaded = None;
+    give_memory_back();
+}
+
+/// Asks the allocator to return the pages the model's buffers left free.
+fn give_memory_back() {
+    #[cfg(target_os = "macos")]
+    {
+        extern "C" {
+            fn malloc_zone_pressure_relief(zone: *mut std::ffi::c_void, goal: usize) -> usize;
+        }
+        // SAFETY: a null zone means "all zones"; the call only frees memory.
+        unsafe {
+            malloc_zone_pressure_relief(std::ptr::null_mut(), 0);
+        }
+    }
 }
 
 fn build_session(path: &Path, compute: Compute, tuning: Tuning, cache_dir: Option<&Path>) -> Result<Loaded> {
@@ -326,6 +352,8 @@ fn build_session(path: &Path, compute: Compute, tuning: Tuning, cache_dir: Optio
             .with_parallel_execution(false)?)
     };
     let _ = cache_dir;
+    // Why the accelerated provider could not be used, for the CPU's detail.
+    let mut why: Option<String> = None;
 
     #[cfg(target_os = "macos")]
     if compute != Compute::Cpu {
@@ -351,8 +379,9 @@ fn build_session(path: &Path, compute: Compute, tuning: Tuning, cache_dir: Optio
             std::fs::create_dir_all(dir).ok();
             ep = ep.with_model_cache_dir(dir.to_string_lossy());
         }
-        if let Ok(session) = builder()?.with_execution_providers([ep.build()]).and_then(|b| b.commit_from_file(path)) {
-            return Ok(Loaded {
+        match builder()?.with_execution_providers([ep.build()]).and_then(|b| b.commit_from_file(path)) {
+            Err(e) => why = Some(format!("CoreML: {e}")),
+            Ok(session) => return Ok(Loaded {
                 session,
                 info: Info {
                     provider: "CoreML".into(),
@@ -366,32 +395,48 @@ fn build_session(path: &Path, compute: Compute, tuning: Tuning, cache_dir: Optio
                     ),
                     load_seconds: started.elapsed().as_secs_f64(),
                 },
-            });
+            }),
         }
     }
 
     #[cfg(target_os = "windows")]
     if compute != Compute::Cpu {
         let ep = ort::ep::DirectML::default().build();
-        if let Ok(session) = builder()?.with_execution_providers([ep]).and_then(|b| b.commit_from_file(path)) {
-            return Ok(Loaded {
-                session,
-                info: Info { provider: "DirectML".into(), detail: "GPU".into(), load_seconds: started.elapsed().as_secs_f64() },
-            });
+        match builder()?.with_execution_providers([ep]).and_then(|b| b.commit_from_file(path)) {
+            Err(e) => why = Some(format!("DirectML: {e}")),
+            Ok(session) => {
+                return Ok(Loaded {
+                    session,
+                    info: Info { provider: "DirectML".into(), detail: "GPU".into(), load_seconds: started.elapsed().as_secs_f64() },
+                })
+            }
         }
     }
 
     let _ = compute;
     let cores = std::thread::available_parallelism().map_or(4, |n| n.get());
+    // Measured (PLAN-024): the arena and the memory pattern that ONNX Runtime
+    // turns on by default hold on to every buffer a window needed, 5.2 GB
+    // after a prefetch against 2.9 GB without; neither costs any speed. The
+    // rest of what is left is the model's own working set.
     let session = SessionBuilder::new()?
         .with_optimization_level(GraphOptimizationLevel::Level3)?
         .with_intra_threads(cores)?
         .with_inter_threads(1)?
         .with_parallel_execution(false)?
+        .with_memory_pattern(tuning.cpu_memory_pattern)?
+        .with_execution_providers([ort::ep::CPU::default().with_arena_allocator(tuning.cpu_arena).build()])?
         .commit_from_file(path)?;
     Ok(Loaded {
         session,
-        info: Info { provider: "CPU".into(), detail: format!("{cores} hilos"), load_seconds: started.elapsed().as_secs_f64() },
+        info: Info {
+            provider: "CPU".into(),
+            detail: match why.or_else(fallback_reason) {
+                Some(why) => format!("{cores} hilos; el acelerador no se pudo usar: {why}"),
+                None => format!("{cores} hilos"),
+            },
+            load_seconds: started.elapsed().as_secs_f64(),
+        },
     })
 }
 
@@ -402,11 +447,12 @@ fn ensure_loaded(slot: &mut Slot) -> Result<()> {
     let path = model_path().context("el modelo de stems no está en disco")?;
     let (compute, tuning, cache) = {
         let s = lock(settings());
-        // CoreML keeps ~1.2 GB resident after its session is dropped, so a
-        // session that is meant to be released when idle runs on ORT's own
-        // CPU provider instead: slower (~2x realtime against ~5x), but its
-        // memory really comes back. "auto" only; an explicit choice is kept.
-        let compute = if s.compute == Compute::Auto && s.idle.is_some() { Compute::Cpu } else { s.compute };
+        // On a Mac "auto" is ONNX Runtime's CPU provider, not CoreML: measured
+        // on prefetching one song (126 s of audio) it is as fast (4.0x against
+        // 3.6x realtime), peaks at 2.9 GB against 4.6 GB, and gives its memory
+        // back when the session is dropped, where CoreML keeps ~1.7 GB. An
+        // explicit "gpu" is still CoreML's CPU-and-GPU units.
+        let compute = if cfg!(target_os = "macos") && s.compute == Compute::Auto { Compute::Cpu } else { s.compute };
         (compute, s.tuning, s.dir.as_ref().map(|d| d.join("coreml-cache")))
     };
     let loaded = build_session(&path, compute, tuning, cache.as_deref())?;
@@ -436,6 +482,8 @@ fn idle_watcher() {
             if s.last_use.elapsed() >= after {
                 s.loaded = None;
                 s.watcher = false;
+                drop(s);
+                give_memory_back();
                 return;
             }
         }
@@ -602,6 +650,14 @@ pub enum Priority {
 }
 
 static ACTIVE: AtomicUsize = AtomicUsize::new(0);
+static RUNNING: AtomicUsize = AtomicUsize::new(0);
+static MOST_RUNNING: AtomicUsize = AtomicUsize::new(0);
+
+/// The most model windows that ever ran at the same time in this process
+/// (one: the session is behind a lock; this is how the tests know).
+pub fn most_windows_at_once() -> usize {
+    MOST_RUNNING.load(Ordering::SeqCst)
+}
 
 /// Held while a foreground job (a transition being prepared) runs, so that
 /// background separations make way for it even when it does not use the
@@ -701,7 +757,11 @@ pub fn separate(audio: &Stereo, cancel: Option<&AtomicBool>, priority: Priority)
             guard.last_use = Instant::now();
             let session = &mut guard.loaded.as_mut().expect("just loaded").session;
             let run_started = Instant::now();
-            match run_window(session, &left, &right) {
+            let now = RUNNING.fetch_add(1, Ordering::SeqCst) + 1;
+            MOST_RUNNING.fetch_max(now, Ordering::SeqCst);
+            let window = run_window(session, &left, &right);
+            RUNNING.fetch_sub(1, Ordering::SeqCst);
+            match window {
                 Ok(out) => {
                     let fresh = if start == 0 { WINDOW.min(n) } else { stride.min(n - start) };
                     note_window(fresh as f64 / SR as f64, run_started.elapsed().as_secs_f64());
@@ -747,7 +807,19 @@ pub fn separate(audio: &Stereo, cancel: Option<&AtomicBool>, priority: Priority)
     Ok([vocals, drums, bass, other])
 }
 
-fn tracing_note(_e: &anyhow::Error) {}
+/// Why the accelerated provider was given up on in this process, if it was.
+fn fallback() -> &'static Mutex<Option<String>> {
+    static F: OnceLock<Mutex<Option<String>>> = OnceLock::new();
+    F.get_or_init(|| Mutex::new(None))
+}
+
+pub fn fallback_reason() -> Option<String> {
+    lock(fallback()).clone()
+}
+
+fn tracing_note(e: &anyhow::Error) {
+    *lock(fallback()) = Some(format!("falló al correr: {e:#}"));
+}
 
 /// Window count (and so model runs) [`separate`] needs for `seconds` of audio.
 pub fn windows_for(seconds: f64) -> usize {
@@ -870,5 +942,29 @@ mod tests {
         assert!(waited.is_err(), "a background separation does not start while a job is busy");
         assert!(started.elapsed() < Duration::from_secs(3));
         drop(guard);
+    }
+
+    /// Needs the model on disk: `cargo test -p automix --release -- --ignored model_never`.
+    #[test]
+    #[ignore = "needs the HT-Demucs model on disk"]
+    fn model_never_runs_two_windows_at_once() {
+        assert!(ready());
+        set_idle_release(None);
+        std::thread::scope(|scope| {
+            for (i, priority) in [Priority::Normal, Priority::Low, Priority::Normal, Priority::Low].into_iter().enumerate() {
+                scope.spawn(move || {
+                    separate(&tone(9.0 + i as f64), None, priority).expect("separation");
+                });
+            }
+        });
+        assert_eq!(most_windows_at_once(), 1, "the session is used by one window at a time, process-wide");
+        set_idle_release(Some(DEFAULT_IDLE));
+    }
+
+    #[test]
+    fn the_default_tuning_keeps_no_memory_it_does_not_need() {
+        let t = Tuning::default();
+        assert!(!t.cpu_arena && !t.cpu_memory_pattern);
+        assert_eq!(DEFAULT_IDLE, Duration::from_secs(15));
     }
 }

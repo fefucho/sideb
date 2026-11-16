@@ -127,7 +127,7 @@ fn main() -> Result<()> {
         }
         Command::Inspect { wav, a, b } => inspect(&wav, &a, &b),
         Command::Synth { out, bpm, root, bars, lead_in } => {
-            let (audio, downbeat) = synth::generate(&synth::Spec { bpm, root, bars, lead_in, seed: 7 });
+            let (audio, downbeat) = synth::generate(&synth::Spec { bpm, root, bars, lead_in, seed: 7, intro_bars: 8, outro_bars: 8 });
             audio::save(&out, &audio)?;
             println!("{}: {bpm} BPM, primer tiempo en {downbeat:.3} s, {:.1} s", out.display(), audio.seconds());
             Ok(())

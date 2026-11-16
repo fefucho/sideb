@@ -12,6 +12,10 @@ pub struct Spec {
     /// Seconds of silence before the first downbeat.
     pub lead_in: f64,
     pub seed: u64,
+    /// Bars of drums and pad before the bass and the lead come in.
+    pub intro_bars: u32,
+    /// Bars of drums and bass at the end, with no pad and no lead.
+    pub outro_bars: u32,
 }
 
 struct Rng(u64);
@@ -51,8 +55,8 @@ pub fn generate(spec: &Spec) -> (Stereo, f64) {
     let progression = [0, 0, 5, 7];
 
     for bar in 0..spec.bars {
-        let intro = bar < 8;
-        let outro = bar + 8 >= spec.bars;
+        let intro = bar < spec.intro_bars;
+        let outro = bar + spec.outro_bars >= spec.bars;
         let chord = progression[(bar % 4) as usize];
         for b in 0..4 {
             let t = spec.lead_in + (bar * 4 + b) as f64 * beat;
@@ -122,7 +126,7 @@ mod tests {
     fn grid_fit_recovers_tempo_and_downbeat() {
         for (bpm, lead_in) in [(120.0, 0.37), (126.0, 0.21), (98.0, 0.5)] {
             let (audio, first_downbeat) =
-                generate(&Spec { bpm, root: 36, bars: 32, lead_in, seed: 7 });
+                generate(&Spec { bpm, root: 36, bars: 32, lead_in, seed: 7, intro_bars: 8, outro_bars: 8 });
             let env = Envelope::compute(&audio);
             let (first, last) = grid::audible_range(&env);
             let guess = grid::estimate_bpm(&env, first, last);

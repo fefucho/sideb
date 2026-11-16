@@ -10,7 +10,7 @@
 //! B starts singing or drops, and it may skip a long instrumental outro of A
 //! but never music A is still singing over.
 
-use crate::audio::{Stereo, SRF};
+use crate::audio::{self, Stereo, SRF};
 use crate::grid::{self, Envelope, Grid};
 use crate::stems::{self, Stems, BASS, DRUMS, GROUPS, KICK, OTHER, VOCALS};
 use crate::stretch::{self, TimeMap};
@@ -122,6 +122,13 @@ pub struct Deck {
     pub grid: Grid,
     /// Whether the grid's beat phase came from the drum stem.
     pub grid_from_drums: bool,
+    /// Level of the "vocal band" (400 Hz to 3 kHz) per 10 ms frame from
+    /// `win_start`, on the frequency split only. Read as a per-beat median it
+    /// is the sustained level of voices, leads and pads: a bass line sits
+    /// below the band, hats above it, and snares and claps are too short to
+    /// move a median. Empty on a deck made from the model's stems, which has
+    /// the vocal stem instead.
+    tonal: Vec<f32>,
 }
 
 /// Everything decided before any audio is rendered.
@@ -147,11 +154,12 @@ pub struct Plan {
     pub a_skipped_bars: i64,
     /// Pitch-content similarity of the two decks over the overlap, 0..1.
     pub harmony: f64,
-    /// Which separation produced the stems the decks hold now: a plan is
-    /// always made on the frequency split, and [`Plan::upgrade`] swaps the
-    /// spans the render reads for the model's.
+    /// What the decks hold: the model's stems ([`StemMode::Model`], a plan
+    /// that knows where each song sings) or the frequency split
+    /// ([`StemMode::Frequency`], one that guesses from band energies).
     pub stem_mode: StemMode,
-    /// Seconds of audio the model separated for this plan (0 until upgraded).
+    /// Seconds of audio the model separated for this plan (0 when the cache
+    /// had them, and for a plan on the frequency split).
     pub separated_seconds: f64,
 }
 
@@ -161,29 +169,71 @@ pub const MIN_GRID_CONFIDENCE: f64 = 1.1;
 /// How far the two tempos may differ and still be beat-matched.
 pub const MAX_TEMPO_RATIO: f64 = 1.25;
 /// Longest overlap, in seconds, whatever the tempo.
-const MAX_OVERLAP_SECONDS: f64 = 36.0;
+const MAX_OVERLAP_SECONDS: f64 = 42.0;
 /// Below this pitch-content similarity the two songs are kept from playing
 /// their harmony at once. Provisional.
 const HARMONY_CLASH: f64 = 0.8;
-/// How much of each song is separated into stems: enough for the longest
-/// overlap plus the structure scan, not the whole song (stems cost about
-/// real time).
-const WINDOW_SECONDS: f64 = 60.0;
-/// Longest overlap, in bars, planned without knowing where either song sings.
+/// Longest overlap, in bars, planned when nothing says where B starts singing.
 const MAX_BLIND_BARS: i64 = 8;
+/// Bars of overlap a plan with the vocal stem takes at least, harmony allowing
+/// (double when the tempos are close), even when B starts singing at once.
+const VOCAL_SWAP_BARS: i64 = 8;
+/// Bars of an instrumental intro (B) or outro (A), read from band energies,
+/// that are trusted enough to plan a long overlap around.
+const CLEAR_INSTRUMENTAL_BARS: i64 = 6;
+/// On the frequency split, B is taken to start singing (or leading) at the
+/// first bar whose sustained vocal-band level (see [`Deck::tonal`]) is this many
+/// times what its first bars have, and keeps it the bar after (a lower step).
+/// Provisional.
+const STEP_UP: f32 = 1.4;
+/// ...and A's outro is the bars at its end whose vocal-band level is below this
+/// fraction of its body's (the median of the bars before). Provisional.
+const OUTRO_RATIO: f32 = 0.6;
 
 fn n(seconds: f64) -> i64 {
     (seconds * SRF).round() as i64
 }
 
-/// A deck on the frequency split of its window. The plan is made from this
-/// (cheap) so that it does not depend on whether the model is there.
-fn build_deck(track: &Track, from: f64, to: f64, fit: (f64, f64), bpm_guess: f64) -> Deck {
+/// A deck on the frequency split of its window: no model, no vocal or drum
+/// stem. Cheap enough that the fast plan costs nothing.
+fn build_deck_fast(track: &Track, from: f64, to: f64, fit: (f64, f64), bpm_guess: f64) -> Deck {
     let win_start = n(from);
-    let window = track.audio.slice(win_start, (n(to) - win_start) as usize);
+    let window = track.audio.slice(win_start, (n(to) - win_start).max(0) as usize);
     let stems = stems::split_by_frequency(&window);
     let grid = grid::fit_grid(&track.env, fit.0, fit.1, bpm_guess);
-    Deck { win_start, stems, grid, grid_from_drums: false }
+    // The "vocal band": 400 Hz to 3 kHz, above where a bass line and a kick
+    // leak into the mids and below the hats.
+    let band = audio::lowpass4(&audio::highpass4(&window, 400.0), 3000.0);
+    let mono = band.mono();
+    let tonal: Vec<f32> = (0..mono.len() / 441)
+        .map(|f| {
+            let slice = &mono[f * 441..(f * 441 + 882).min(mono.len())];
+            audio::rms(slice)
+        })
+        .collect();
+    Deck { win_start, stems, grid, grid_from_drums: false, tonal }
+}
+
+/// A deck on the model's stems of `win_start..`.
+fn build_deck_stems(track: &Track, win_start: i64, stems: Stems, fit: (f64, f64), bpm_guess: f64) -> Deck {
+    let from = win_start as f64 / SRF;
+    let window = track.audio.slice(win_start, stems.stem[0].len());
+    // Bar phase from the full mix (that is where the harmony is); beat phase
+    // and tempo from the drum stem when it is the clearer of the two.
+    let mix_grid = grid::fit_grid(&track.env, fit.0, fit.1, bpm_guess);
+    let drum_env = Envelope::compute(&stems.stem[DRUMS]);
+    let has_drums = audio::rms(&stems.stem[DRUMS].ch[0]) > 0.05 * audio::rms(&window.ch[0]);
+    let mut grid = mix_grid.clone();
+    let mut grid_from_drums = false;
+    if has_drums {
+        let mut drum_grid = grid::fit_grid(&drum_env, fit.0 - from, fit.1 - from, mix_grid.bpm);
+        drum_grid.anchor += from;
+        if drum_grid.confidence >= mix_grid.confidence {
+            grid = drum_grid.with_downbeat_near(mix_grid.beat(0));
+            grid_from_drums = true;
+        }
+    }
+    Deck { win_start, stems, grid, grid_from_drums, tonal: Vec::new() }
 }
 
 impl Deck {
@@ -241,6 +291,42 @@ impl Deck {
         self.bar_levels(&[VOCALS], bar).iter().filter(|v| **v > 0.12 * reference).count() >= 2
     }
 
+    /// Median [`Deck::tonal`] level between two track times: the sustained
+    /// level, which a snare or a clap in the band does not move.
+    fn tonal_level(&self, from: f64, to: f64) -> f32 {
+        let start = self.win_start as f64 / SRF;
+        let a = (((from - start) * crate::grid::FPS).round().max(0.0) as usize).min(self.tonal.len());
+        let b = (((to - start) * crate::grid::FPS).round().max(0.0) as usize).min(self.tonal.len());
+        if b <= a {
+            return 0.0;
+        }
+        let mut frames = self.tonal[a..b].to_vec();
+        frames.sort_by(|x, y| x.partial_cmp(y).unwrap());
+        frames[frames.len() / 2]
+    }
+
+    /// 90th percentile of the per-beat tonal level over the window.
+    fn tonal_reference(&self) -> f32 {
+        let first = self.grid.beat_at_or_before(self.win_start as f64 / SRF) + 1;
+        let end = (self.win_start + self.stems.stem[0].len() as i64) as f64 / SRF;
+        let mut levels = Vec::new();
+        let mut k = first;
+        while self.grid.beat(k + 1) < end {
+            levels.push(self.tonal_level(self.grid.beat(k), self.grid.beat(k + 1)));
+            k += 1;
+        }
+        if levels.is_empty() {
+            return 0.0;
+        }
+        levels.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        levels[levels.len() * 9 / 10]
+    }
+
+    /// Mean tonal energy of bar `bar`.
+    fn bar_tonal(&self, bar: i64) -> f32 {
+        self.tonal_level(self.grid.beat(bar * 4), self.grid.beat(bar * 4 + 4))
+    }
+
     /// Summed pitch-class profile of everything but the drums.
     fn chroma(&self, from: f64, to: f64) -> [f32; 12] {
         let (a, b) = self.span(from, to);
@@ -288,7 +374,29 @@ pub fn tempos_compatible(a_bpm: f64, b_bpm: f64) -> bool {
     (1.0 / (MAX_TEMPO_RATIO * 1.03)..=MAX_TEMPO_RATIO * 1.03).contains(&(a_bpm / b_bpm))
 }
 
+/// Which separation a plan is made from.
+#[derive(Clone, Copy)]
+pub enum PlanKind<'a> {
+    /// The frequency split: no model, a plan that guesses where the songs
+    /// sing from band energies (the "fast" version).
+    Fast,
+    /// The model's stems of the spans [`crate::prefetch`] separates, from
+    /// `cache` (separated now if a prefetch has not): a plan that knows where
+    /// each song sings (the "stems" version).
+    Stems { cache: &'a Path, priority: crate::model::Priority },
+}
+
+/// The fast plan: see [`PlanKind::Fast`].
 pub fn plan(a: &Track, b: &Track, opts: &Options) -> std::result::Result<Plan, Refusal> {
+    plan_with(a, b, opts, PlanKind::Fast)
+}
+
+/// The vocal-aware plan on the model's stems: see [`PlanKind::Stems`].
+pub fn plan_stems(a: &Track, b: &Track, opts: &Options, cache: &Path, priority: crate::model::Priority) -> std::result::Result<Plan, Refusal> {
+    plan_with(a, b, opts, PlanKind::Stems { cache, priority })
+}
+
+fn plan_with(a: &Track, b: &Track, opts: &Options, kind: PlanKind) -> std::result::Result<Plan, Refusal> {
     let (a_first, a_last) = grid::audible_range(&a.env);
     let (b_first, b_last) = grid::audible_range(&b.env);
 
@@ -300,18 +408,34 @@ pub fn plan(a: &Track, b: &Track, opts: &Options) -> std::result::Result<Plan, R
     if !tempos_compatible(a_bpm, b_bpm) {
         return Err(Refusal::TempoGap { a: a_bpm, b: b_bpm });
     }
-
-    // The plan is made on the cheap frequency split of the last and first
-    // stretch of each song. What the model adds (who is singing, which
-    // harmony) only shapes the gains of the same plan, see `Plan::upgrade`.
-    let a_from = (a_last - WINDOW_SECONDS).max(0.0);
-    let a_to = (a_last + 2.0).min(a.audio.seconds());
-    let b_from = (b_first - 2.0).max(0.0);
-    let b_to = (b_first + WINDOW_SECONDS).min(b.audio.seconds());
     opts.check_cancel()?;
 
-    let mut deck_a = build_deck(a, a_from, a_to, ((a_last - 60.0).max(a_first), a_last), a_bpm);
-    let mut deck_b = build_deck(b, b_from, b_to, (b_first, (b_first + 60.0).min(b_last)), b_bpm);
+    // The stretch of each song the plan reads: the last of A and the first of
+    // B, the same ones a prefetch separates.
+    let (a_span, b_span) = (crate::prefetch::tail_span(a), crate::prefetch::head_span(b));
+    let a_fit = ((a_last - 60.0).max(a_first), a_last);
+    let b_fit = (b_first, (b_first + 60.0).min(b_last));
+    let stems_mode = matches!(kind, PlanKind::Stems { .. });
+    let (mut deck_a, mut deck_b, separated_seconds) = match kind {
+        PlanKind::Fast => (
+            build_deck_fast(a, a_span.0 as f64 / SRF, a_span.1 as f64 / SRF, a_fit, a_bpm),
+            build_deck_fast(b, b_span.0 as f64 / SRF, b_span.1 as f64 / SRF, b_fit, b_bpm),
+            0.0,
+        ),
+        PlanKind::Stems { cache, priority } => {
+            let cancel = opts.cancel.as_deref();
+            let sa = stems::separate_span(&a.audio, a_span, cache, &format!("{}-tail", a.key), cancel, priority)?;
+            opts.check_cancel()?;
+            let sb = stems::separate_span(&b.audio, b_span, cache, &format!("{}-head", b.key), cancel, priority)?;
+            let seconds = sa.model_seconds + sb.model_seconds;
+            (
+                build_deck_stems(a, sa.start, sa.stems, a_fit, a_bpm),
+                build_deck_stems(b, sb.start, sb.stems, b_fit, b_bpm),
+                seconds,
+            )
+        }
+    };
+    opts.check_cancel()?;
     let shift = |g: &mut Grid, by: i64| {
         g.anchor_bar_position = (g.anchor_bar_position as i64 - by).rem_euclid(4) as u32;
     };
@@ -325,26 +449,46 @@ pub fn plan(a: &Track, b: &Track, opts: &Options) -> std::result::Result<Plan, R
     if deck_a.grid.confidence < MIN_GRID_CONFIDENCE || deck_b.grid.confidence < MIN_GRID_CONFIDENCE {
         return Err(Refusal::WeakGrid { a: deck_a.grid.confidence, b: deck_b.grid.confidence });
     }
+    let a_win_start = deck_a.win_start as f64 / SRF;
+    let b_win_end = (deck_b.win_start + deck_b.stems.stem[0].len() as i64) as f64 / SRF;
 
     // --- B: how long before it sings or drops? The overlap must fit there.
+    // With the vocal stem "sings" is read from it; without, from the mid band
+    // (a bar is "busy" once it reaches half the song's loud level there).
     let b_first_bar = {
         let raw = ((b_first - 0.05 - deck_b.grid.beat(0)) / deck_b.grid.interval()).ceil() as i64;
         raw.div_euclid(4) + if raw.rem_euclid(4) == 0 { 0 } else { 1 }
     };
-    let b_bars_available =
-        ((b_from + WINDOW_SECONDS - 3.0 - deck_b.grid.beat(b_first_bar * 4)) / (4.0 * deck_b.grid.interval())).floor() as i64;
+    let b_bars_available = ((b_win_end - 3.0 - deck_b.grid.beat(b_first_bar * 4)) / (4.0 * deck_b.grid.interval())).floor() as i64;
     let b_loud = deck_b.loud_reference(&[VOCALS, DRUMS, BASS, OTHER]);
+    let b_mid = deck_b.tonal_reference();
+    let b_base = {
+        let mut first: Vec<f32> = (0..3).map(|i| deck_b.bar_tonal(b_first_bar + i)).collect();
+        first.sort_by(|x, y| x.partial_cmp(y).unwrap());
+        first[1]
+    };
     let b_rhythm_loud = deck_b.loud_reference(&[DRUMS, BASS]);
     let rhythm = |bar: i64| -> f32 {
         let l = deck_b.bar_levels(&[DRUMS, BASS], b_first_bar + bar);
         l.iter().sum::<f32>() / 4.0
     };
+    let b_sings = |bar: i64| -> bool {
+        if stems_mode {
+            deck_b.bar_sung(b_first_bar + bar, b_loud)
+                && (deck_b.bar_sung(b_first_bar + bar + 1, b_loud)
+                    || deck_b.bar_levels(&[VOCALS], b_first_bar + bar).iter().filter(|v| **v > 0.12 * b_loud).count() >= 3)
+        } else {
+            // A step up from where B starts, that holds: the cheap stand-in
+            // for a voice or a lead coming in over an instrumental intro.
+            bar >= 2
+                && deck_b.bar_tonal(b_first_bar + bar) >= (STEP_UP * b_base).max(0.3 * b_mid)
+                && deck_b.bar_tonal(b_first_bar + bar + 1) >= ((1.0 + 0.5 * (STEP_UP - 1.0)) * b_base).max(0.3 * b_mid)
+        }
+    };
     let mut b_intro_bars: Option<i64> = None;
     let mut b_vocal_bar: Option<i64> = None;
     for bar in 0..b_bars_available.min(24) {
-        let sung = deck_b.bar_sung(b_first_bar + bar, b_loud)
-            && (deck_b.bar_sung(b_first_bar + bar + 1, b_loud)
-                || deck_b.bar_levels(&[VOCALS], b_first_bar + bar).iter().filter(|v| **v > 0.12 * b_loud).count() >= 3);
+        let sung = b_sings(bar);
         if sung && b_vocal_bar.is_none() {
             b_vocal_bar = Some(bar);
         }
@@ -362,27 +506,44 @@ pub fn plan(a: &Track, b: &Track, opts: &Options) -> std::result::Result<Plan, R
 
     // --- A: where does it stop singing? Everything after that is outro.
     let a_end_bar = deck_a.grid.beat_at_or_before(a_last).div_euclid(4);
-    let a_bars_available =
-        ((deck_a.grid.beat(a_end_bar * 4) - a_from - 3.0) / (4.0 * deck_a.grid.interval())).floor() as i64;
+    let a_bars_available = ((deck_a.grid.beat(a_end_bar * 4) - a_win_start - 3.0) / (4.0 * deck_a.grid.interval())).floor() as i64;
     if a_bars_available < 4 {
         return Err(Refusal::TooShort(a.name.clone()));
     }
     if b_bars_available < 4 {
         return Err(Refusal::TooShort(b.name.clone()));
     }
-    // Without the vocal stem nothing says whether A still sings in its last
-    // bars, so none of its outro is skipped.
-    let a_outro_bars: Option<i64> = None;
+    let a_loud = deck_a.loud_reference(&[VOCALS, DRUMS, BASS, OTHER]);
+    let a_body = {
+        let mut bars: Vec<f32> = (1..=a_bars_available.min(24)).map(|j| deck_a.bar_tonal(a_end_bar - j)).collect();
+        bars.sort_by(|x, y| x.partial_cmp(y).unwrap());
+        bars[bars.len() / 2]
+    };
+    let a_outro_bars = (1..=a_bars_available)
+        .find(|j| if stems_mode { deck_a.bar_sung(a_end_bar - j, a_loud) } else { deck_a.bar_tonal(a_end_bar - j) >= OUTRO_RATIO * a_body })
+        .map(|j| j - 1);
 
     // --- How long. B's intro bounds the overlap: it has to be over before B
     // sings or drops. Unless A leaves an instrumental outro at least as long:
     // then B may sing over it, the way a DJ brings a verse in over a beat.
     // That second reading is dropped when the two songs clash harmonically.
+    //
+    // With the vocal stem the limits are what it says. Without it, only an
+    // intro (or outro) of CLEAR_INSTRUMENTAL_BARS or more is taken at its
+    // word; anything shorter keeps the overlap short, and a song with no
+    // visible structure is capped at MAX_BLIND_BARS.
+    let (b_limit, a_outro_bars) = if stems_mode {
+        (b_intro_bars.unwrap_or(16).max(4), a_outro_bars)
+    } else {
+        let limit = match b_intro_bars {
+            Some(bars) if bars >= CLEAR_INSTRUMENTAL_BARS => bars.min(16),
+            Some(bars) => bars.max(4),
+            None => MAX_BLIND_BARS,
+        };
+        (limit, a_outro_bars.filter(|o| *o >= CLEAR_INSTRUMENTAL_BARS))
+    };
+    let a_limit = if stems_mode { a_outro_bars.unwrap_or(16) } else { a_outro_bars.unwrap_or(0) };
     let bar_seconds = 4.0 * 60.0 / ((deck_a.grid.bpm + deck_b.grid.bpm) / 2.0);
-    // With no vocal information the overlap is capped at eight bars: a
-    // longer one could have both songs singing over each other.
-    let b_limit = b_intro_bars.unwrap_or(MAX_BLIND_BARS).clamp(4, MAX_BLIND_BARS);
-    let a_limit = a_outro_bars.unwrap_or(0);
     let choose = |limit: i64| -> i64 {
         [16i64, 8, 4]
             .into_iter()
@@ -405,7 +566,18 @@ pub fn plan(a: &Track, b: &Track, opts: &Options) -> std::result::Result<Plan, R
         grid::refine_beats(&mono, deck.win_start as f64 / SRF, &deck.grid, first, count)
     };
 
-    let mut bars = choose(b_limit.max(a_limit));
+    // With the vocal stem a long overlap does not need B to stay silent: A's
+    // voice is faded out before B's comes in (see `bass_swap_gains`) and A's
+    // instrumental plays under B's, so the overlap is at least
+    // `VOCAL_SWAP_BARS` (16 when the tempos are within 10% of each other, so
+    // the glide between them is gentle) unless the harmonies clash: the loop
+    // below then tries the next shorter overlap, down to what B's intro allows.
+    let swap_floor = match (stems_mode, ratio) {
+        (false, _) => 0,
+        (true, r) if (1.0 / 1.10..=1.10).contains(&r) => 2 * VOCAL_SWAP_BARS,
+        (true, _) => VOCAL_SWAP_BARS,
+    };
+    let mut bars = choose(b_limit.max(a_limit).max(swap_floor));
     let (beats, a_skipped_bars, a_beats, a_refined, b_beats, b_refined, harmony) = loop {
         let a_skipped_bars = match a_outro_bars {
             Some(outro) if outro > bars => (outro - bars).min(16).min(a_bars_available - bars),
@@ -424,7 +596,7 @@ pub fn plan(a: &Track, b: &Track, opts: &Options) -> std::result::Result<Plan, R
         let norm = pa.iter().map(|x| x * x).sum::<f32>().sqrt() * pb.iter().map(|x| x * x).sum::<f32>().sqrt();
         let harmony = if norm > 0.0 { (dot / norm) as f64 } else { 1.0 };
 
-        let shorter = choose(b_limit);
+        let shorter = choose(bars - 1).max(choose(b_limit));
         if harmony < HARMONY_CLASH && shorter < bars {
             bars = shorter;
             continue;
@@ -443,8 +615,10 @@ pub fn plan(a: &Track, b: &Track, opts: &Options) -> std::result::Result<Plan, R
         t += 60.0 / (a_local + (b_local - a_local) * progress);
     }
 
-    let _ = b_vocal_bar;
-    let b_vocal_beat = beats as f64;
+    let b_vocal_beat = match b_vocal_bar {
+        Some(bar) if stems_mode && bar * 4 < beats as i64 => (bar * 4) as f64,
+        _ => beats as f64,
+    };
 
     Ok(Plan {
         a: deck_a,
@@ -460,61 +634,9 @@ pub fn plan(a: &Track, b: &Track, opts: &Options) -> std::result::Result<Plan, R
         a_outro_bars,
         a_skipped_bars,
         harmony,
-        stem_mode: StemMode::Frequency,
-        separated_seconds: 0.0,
+        stem_mode: if stems_mode { StemMode::Model } else { StemMode::Frequency },
+        separated_seconds,
     })
-}
-
-/// Seconds of context the model gets either side of what the render reads.
-const SPAN_MARGIN: f64 = 4.0;
-
-impl Plan {
-    /// Swaps the frequency split of the decks for the model's, over just the
-    /// spans the render reads (the overlap and [`SPAN_MARGIN`] around it), and
-    /// uses the vocal stem to say where B starts singing and whether the two
-    /// harmonies clash. The plan itself (grid, overlap, cut point, B's entry)
-    /// is untouched, so the rendered file keeps the same cut as the fast one.
-    /// Spans separated earlier (a prefetch) are reused from `cache`.
-    pub fn upgrade(&mut self, a: &Track, b: &Track, opts: &Options, cache: &Path, priority: crate::model::Priority) -> Result<()> {
-        let k = self.beats;
-        let span = |beats: &[f64], track: &Track| {
-            let len = track.audio.len() as i64;
-            (n(beats[0] - SPAN_MARGIN).max(0), n(beats[k] + SPAN_MARGIN).min(len))
-        };
-        let cancel = opts.cancel.as_deref();
-        let (a0, a1) = span(&self.a_beats, a);
-        let a_sep = stems::separate_span(&a.audio, (a0, a1), cache, &format!("{}-tail", a.key), cancel, priority)?;
-        let (b0, b1) = span(&self.b_beats, b);
-        let b_sep = stems::separate_span(&b.audio, (b0, b1), cache, &format!("{}-head", b.key), cancel, priority)?;
-        self.a.stems = a_sep.stems;
-        self.a.win_start = a_sep.start;
-        self.b.stems = b_sep.stems;
-        self.b.win_start = b_sep.start;
-        self.separated_seconds = a_sep.model_seconds + b_sep.model_seconds;
-
-        // Who sings over the overlap, now that there is a vocal stem.
-        let b_loud = self.b.loud_reference(&[VOCALS, DRUMS, BASS, OTHER]);
-        let interval = self.b.grid.interval();
-        let first_beat = ((self.b_beats[0] - self.b.grid.beat(0)) / interval).round() as i64;
-        let first_bar = first_beat.div_euclid(4);
-        self.b_vocal_beat = k as f64;
-        for bar in 0..(k / 4) as i64 {
-            let sung = self.b.bar_sung(first_bar + bar, b_loud)
-                && (self.b.bar_sung(first_bar + bar + 1, b_loud)
-                    || self.b.bar_levels(&[VOCALS], first_bar + bar).iter().filter(|v| **v > 0.12 * b_loud).count() >= 3);
-            if sung {
-                self.b_vocal_beat = (bar * 4) as f64;
-                break;
-            }
-        }
-        let pa = self.a.chroma(self.a_beats[0], self.a_beats[k]);
-        let pb = self.b.chroma(self.b_beats[0], self.b_beats[k]);
-        let dot: f32 = pa.iter().zip(&pb).map(|(x, y)| x * y).sum();
-        let norm = pa.iter().map(|x| x * x).sum::<f32>().sqrt() * pb.iter().map(|x| x * x).sum::<f32>().sqrt();
-        self.harmony = if norm > 0.0 { (dot / norm) as f64 } else { 1.0 };
-        self.stem_mode = StemMode::Model;
-        Ok(())
-    }
 }
 
 fn up(x: f64, from: f64, to: f64) -> f32 {
@@ -544,7 +666,10 @@ fn bass_swap_gains(x: f64, k: f64, b_vocal: f64, clash: bool) -> ([f32; GROUPS],
     a[KICK] = a[BASS];
     a[DRUMS] = down(x, swap, swap + 4.0);
     a[OTHER] = if clash { down(x, swap - 4.0, swap) } else { down(x, swap, k - k / 8.0) };
-    a[VOCALS] = down(x, b_vocal - 2.0, b_vocal).min(down(x, swap + k / 4.0, k - k / 8.0));
+    // A's voice leaves before B's arrives: over the bar up to B's entry, or the
+    // first bar of the overlap if B sings from the start.
+    let leave_from = (b_vocal - 4.0).max(0.0);
+    a[VOCALS] = down(x, leave_from, b_vocal.max(leave_from + 4.0)).min(down(x, swap + k / 4.0, k - k / 8.0));
     if clash {
         a[VOCALS] = a[VOCALS].min(down(x, swap, swap + 4.0));
     }
@@ -557,20 +682,27 @@ fn bass_swap_gains(x: f64, k: f64, b_vocal: f64, clash: bool) -> ([f32; GROUPS],
     (a, b)
 }
 
-/// Gains for a mix on the frequency split (no vocal or drum stem): the two
-/// basses trade places on the middle bar line and the rest of the spectrum
-/// (everything above 180 Hz, voices included) crosses over in the bar around
-/// it, so the two vocals are never up together for long.
-fn eq_swap_gains(x: f64, k: f64) -> ([f32; GROUPS], [f32; GROUPS]) {
+/// Gains for a mix on the frequency split, where [`BASS`] is everything under
+/// 180 Hz, [`OTHER`] 180 Hz to 2.5 kHz (voices, leads, snares) and [`DRUMS`]
+/// everything above (hats, air): a bass swap on the middle bar line, the highs
+/// of B coming in gradually from the first eighth and A's going out after the
+/// swap, and the mids crossing over in the middle 40% of the overlap (a bar or
+/// two, not all of it) so the two voices are never up together for long; 20%
+/// if the harmonies clash.
+fn eq_swap_gains(x: f64, k: f64, clash: bool) -> ([f32; GROUPS], [f32; GROUPS]) {
     let swap = k / 2.0;
     let mut a = [1.0f32; GROUPS];
-    let mut b = [1.0f32; GROUPS];
-    a[BASS] = down(x, swap - 0.5, swap);
+    let mut b = [0.0f32; GROUPS];
+    a[BASS] = down(x, swap - 1.0, swap);
     a[KICK] = a[BASS];
-    a[OTHER] = down(x, swap - 2.0, swap + 2.0);
-    b[BASS] = up(x, swap - 0.5, swap);
+    b[BASS] = up(x, swap - 1.0, swap);
     b[KICK] = b[BASS];
-    b[OTHER] = up(x, swap - 2.0, swap + 2.0);
+    b[DRUMS] = up(x, k / 8.0, swap);
+    a[DRUMS] = down(x, swap, k - k / 8.0);
+    let (from, to) = if clash { (0.4 * k, 0.6 * k) } else { (0.3 * k, 0.7 * k) };
+    a[OTHER] = down(x, from, to);
+    b[OTHER] = up(x, from, to);
+    b[VOCALS] = 1.0;
     (a, b)
 }
 
@@ -678,7 +810,7 @@ pub fn render(a: &Track, b: &Track, plan: &Plan, opts: &Options) -> Result<Rende
             let (ga, gb) = if plan.stem_mode == StemMode::Model {
                 bass_swap_gains(x, k as f64, plan.b_vocal_beat, clash)
             } else {
-                eq_swap_gains(x, k as f64)
+                eq_swap_gains(x, k as f64, clash)
             };
 
             for c in 0..2 {
@@ -837,8 +969,8 @@ mod tests {
 
     #[test]
     fn both_decks_stay_on_the_mix_grid() {
-        let (a, _) = generate(&Spec { bpm: 120.0, root: 36, bars: 40, lead_in: 0.37, seed: 7 });
-        let (b, _) = generate(&Spec { bpm: 126.0, root: 38, bars: 40, lead_in: 0.21, seed: 9 });
+        let (a, _) = generate(&Spec { bpm: 120.0, root: 36, bars: 40, lead_in: 0.37, seed: 7, intro_bars: 8, outro_bars: 8 });
+        let (b, _) = generate(&Spec { bpm: 126.0, root: 38, bars: 40, lead_in: 0.21, seed: 9, intro_bars: 8, outro_bars: 8 });
         let a = Track::new("a".into(), "a".into(), a);
         let b = Track::new("b".into(), "b".into(), b);
         let opts = Options { pre_seconds: 8.0, post_seconds: 8.0, stem_mode: StemMode::Frequency, ..Options::default() };
@@ -865,36 +997,78 @@ mod tests {
     }
 
     #[test]
-    fn the_frequency_swap_hands_over_without_a_hole_or_a_bump() {
-        let k = 32.0;
-        let (a0, b0) = eq_swap_gains(0.0, k);
-        assert!(a0[BASS] > 0.99 && a0[OTHER] > 0.99 && b0[BASS] < 0.01 && b0[OTHER] < 0.01, "A alone at the start");
-        let (a1, b1) = eq_swap_gains(k, k);
-        assert!(a1[BASS] < 0.01 && a1[OTHER] < 0.01 && b1[BASS] > 0.99 && b1[OTHER] > 0.99, "B alone at the end");
-        // Equal power in the mid/high crossover, and in the bass swap.
-        for step in 0..=64 {
-            let x = k * step as f64 / 64.0;
-            let (a, b) = eq_swap_gains(x, k);
-            let other = a[OTHER] * a[OTHER] + b[OTHER] * b[OTHER];
-            let bass = a[BASS] * a[BASS] + b[BASS] * b[BASS];
-            assert!((other - 1.0).abs() < 1e-5 && (bass - 1.0).abs() < 1e-5, "x={x}: {other} {bass}");
+    fn the_frequency_swap_is_a_bass_swap_with_a_gradual_crossover() {
+        let k = 64.0;
+        let (a0, b0) = eq_swap_gains(0.0, k, false);
+        assert!(a0[BASS] > 0.99 && a0[OTHER] > 0.99 && a0[DRUMS] > 0.99);
+        assert!(b0[BASS] < 0.01 && b0[OTHER] < 0.01 && b0[DRUMS] < 0.01, "B is silent at the start");
+        let (a1, b1) = eq_swap_gains(k, k, false);
+        assert!(a1[BASS] < 0.01 && a1[OTHER] < 0.01 && a1[DRUMS] < 0.01);
+        assert!(b1[BASS] > 0.99 && b1[OTHER] > 0.99 && b1[DRUMS] > 0.99, "B alone at the end");
+        for step in 0..=128 {
+            let x = k * step as f64 / 128.0;
+            let (a, b) = eq_swap_gains(x, k, false);
+            // Equal power in the bass swap and in the mid crossover.
+            assert!((a[BASS].powi(2) + b[BASS].powi(2) - 1.0).abs() < 1e-5);
+            assert!((a[OTHER].powi(2) + b[OTHER].powi(2) - 1.0).abs() < 1e-5);
         }
-        // The two basses never play together: A's is gone as B's arrives.
-        let (a, b) = eq_swap_gains(k / 2.0 - 0.25, k);
-        assert!(a[BASS] * b[BASS] < 0.5);
+        // The two basses trade places in a beat, at the middle bar line.
+        let (a, b) = eq_swap_gains(k / 2.0 - 1.0, k, false);
+        assert!(a[BASS] > 0.99 && b[BASS] < 0.01);
+        let (a, b) = eq_swap_gains(k / 2.0, k, false);
+        assert!(a[BASS] < 0.01 && b[BASS] > 0.99);
+        // The mids of both are up together only in the middle of the overlap.
+        let both = |clash: bool| -> f64 {
+            (0..=640).filter(|i| { let (a, b) = eq_swap_gains(k * *i as f64 / 640.0, k, clash); a[OTHER] > 0.2 && b[OTHER] > 0.2 }).count() as f64 / 640.0
+        };
+        assert!(both(false) < 0.35 && both(true) < both(false), "{} {}", both(false), both(true));
+        // B's highs arrive before the swap, A's leave after it.
+        let (a, b) = eq_swap_gains(k / 4.0, k, false);
+        assert!(b[DRUMS] > 0.3 && b[DRUMS] < 0.99 && a[DRUMS] > 0.99);
+    }
+
+    fn pair(intro_a: u32, outro_a: u32, intro_b: u32, outro_b: u32) -> (Track, Track) {
+        let (a, _) = generate(&Spec { bpm: 120.0, root: 36, bars: 60, lead_in: 0.3, seed: 5, intro_bars: intro_a, outro_bars: outro_a });
+        let (b, _) = generate(&Spec { bpm: 124.0, root: 38, bars: 60, lead_in: 0.2, seed: 6, intro_bars: intro_b, outro_bars: outro_b });
+        (Track::new("a".into(), "a".into(), a), Track::new("b".into(), "b".into(), b))
     }
 
     #[test]
-    fn the_plan_is_made_without_the_model_and_is_capped_at_eight_bars() {
-        let (a, _) = generate(&Spec { bpm: 120.0, root: 36, bars: 60, lead_in: 0.3, seed: 5 });
-        let (b, _) = generate(&Spec { bpm: 124.0, root: 38, bars: 60, lead_in: 0.2, seed: 6 });
-        let a = Track::new("a".into(), "a".into(), a);
-        let b = Track::new("b".into(), "b".into(), b);
-        // Whatever the stem mode asked for: a plan never touches the model.
+    fn the_fast_plan_never_touches_the_model() {
+        let (a, b) = pair(8, 8, 8, 8);
+        // Whatever the stem mode asked for: `plan` is the frequency-split plan.
         let opts = Options { stem_mode: StemMode::Model, ..Options::default() };
         let plan = plan(&a, &b, &opts).unwrap();
         assert_eq!(plan.stem_mode, StemMode::Frequency);
         assert_eq!(plan.separated_seconds, 0.0);
-        assert!(plan.beats <= 32 && plan.a_skipped_bars == 0 && plan.a_outro_bars.is_none());
+    }
+
+    #[test]
+    fn a_clearly_instrumental_intro_allows_a_long_fast_mix() {
+        // B opens with 16 bars of drums and pad before its lead comes in; A
+        // ends with 8 of drums and bass. The band cue sees both.
+        let (a, b) = pair(8, 8, 16, 8);
+        let p = plan(&a, &b, &Options::default()).unwrap();
+        assert!(p.b_intro_bars.is_some_and(|bars| bars >= 14), "B's intro read as {:?}", p.b_intro_bars);
+        assert!(p.a_outro_bars.is_some_and(|bars| bars >= 6), "A's outro read as {:?}", p.a_outro_bars);
+        assert_eq!(p.beats, 64, "sixteen bars");
+        let overlap = p.beat_times[p.beats];
+        assert!(overlap > 28.0 && overlap <= 36.0, "{overlap} s");
+    }
+
+    #[test]
+    fn a_short_intro_keeps_the_fast_mix_short() {
+        // The lead is in by the fourth bar: no room for a long overlap.
+        let (a, b) = pair(8, 8, 4, 8);
+        let p = plan(&a, &b, &Options::default()).unwrap();
+        assert!(p.beats <= 16, "{} beats", p.beats);
+    }
+
+    #[test]
+    fn a_song_with_no_visible_structure_is_planned_at_eight_bars_at_most() {
+        // No intro at all: the lead is in from the first bar.
+        let (a, b) = pair(0, 0, 0, 0);
+        let p = plan(&a, &b, &Options::default()).unwrap();
+        assert!(p.beats <= 32, "{} beats", p.beats);
     }
 }

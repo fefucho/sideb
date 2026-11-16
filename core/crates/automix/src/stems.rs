@@ -163,6 +163,16 @@ fn cached(audio: &Stereo, (from, to): (i64, i64), dir: &Path, tag: &str) -> Opti
     Some(Span { stems: Stems { stem }, start, model_seconds: 0.0, model_run_seconds: 0.0 })
 }
 
+/// Whether the cache holds a finished separation under `tag` of at least
+/// `min_seconds` of audio, without looking at any audio: the cheap question a
+/// shell asks before deciding to request "stems". The content is verified when
+/// the stems are actually used.
+pub fn has_entry(dir: &Path, tag: &str, min_seconds: f64) -> bool {
+    let Ok(meta) = std::fs::read_to_string(dir.join(format!("{tag}.meta"))) else { return false };
+    let len = meta.split_whitespace().nth(1).and_then(|v| v.parse::<f64>().ok()).unwrap_or(0.0);
+    len >= min_seconds * audio::SRF && dir.join(format!("{tag}.sig")).exists() && stem_paths(dir, tag).iter().all(|p| p.exists())
+}
+
 /// Writes `stem` (the stems of `audio[from..to)`) into the cache under `tag`;
 /// the `.meta` file goes last, so a half-written entry is never read.
 fn store(audio: &Stereo, (from, to): (i64, i64), stem: &[Stereo; 4], dir: &Path, tag: &str) -> Result<()> {
@@ -217,16 +227,20 @@ pub fn separate_span(
     })
 }
 
-/// A stand-in that needs no model: "bass" is everything under 180 Hz and
-/// "other" is the rest. Enough to hear beat alignment and a bass swap.
+/// A stand-in that needs no model: three bands in the stems' slots. [`BASS`]
+/// is everything under 180 Hz, [`DRUMS`] everything above 2.5 kHz (hats, air:
+/// the rhythm that can be told apart) and [`OTHER`] what is between (voices,
+/// leads, snares). They add up to the window exactly.
 pub fn split_by_frequency(window: &Stereo) -> Stems {
     let bass = audio::lowpass4(window, 180.0);
-    let mut stem: [Stereo; 4] = [
-        Stereo::zeros(window.len()),
-        Stereo::zeros(window.len()),
-        bass,
-        Stereo::zeros(window.len()),
-    ];
+    let low = audio::lowpass4(window, 2500.0);
+    let mut highs = window.clone();
+    for c in 0..2 {
+        for (h, l) in highs.ch[c].iter_mut().zip(&low.ch[c]) {
+            *h -= l;
+        }
+    }
+    let mut stem: [Stereo; 4] = [Stereo::zeros(window.len()), highs, bass, Stereo::zeros(window.len())];
     fold_residual(window, &mut stem);
     Stems { stem }
 }
@@ -322,6 +336,23 @@ mod tests {
         // Without its .meta (a separation that never finished) nothing is read.
         std::fs::remove_file(dir.join("a-tail.meta")).unwrap();
         assert!(cached(&audio, (44_100 * 8, 44_100 * 20), &dir, "a-tail").is_none());
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn an_entry_is_ready_only_when_whole_and_long_enough() {
+        let dir = std::env::temp_dir().join(format!("automix-entry-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let audio = song(44_100 * 70, 1.0);
+        let window = audio.slice(0, 44_100 * 66);
+        let stem = split_by_frequency(&window).stem;
+        assert!(!has_entry(&dir, "x-tail", 60.0));
+        store(&audio, (0, 44_100 * 66), &stem, &dir, "x-tail").unwrap();
+        assert!(has_entry(&dir, "x-tail", 60.0));
+        assert!(!has_entry(&dir, "x-tail", 70.0), "a shorter stretch than the plan reads is not ready");
+        std::fs::remove_file(dir.join("x-tail_bass.wav")).unwrap();
+        assert!(!has_entry(&dir, "x-tail", 60.0), "a missing stem is not ready");
         std::fs::remove_dir_all(dir).ok();
     }
 }

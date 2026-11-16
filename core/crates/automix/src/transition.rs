@@ -16,7 +16,7 @@
 
 use crate::audio::{Stereo, SRF};
 use crate::grid::{self, Grid};
-use crate::mix::{self, Options, Refusal, StemMode, Track, MIN_GRID_CONFIDENCE};
+use crate::mix::{self, Options, Plan, Refusal, StemMode, Track, MIN_GRID_CONFIDENCE};
 use crate::stems;
 pub use crate::mix::Cancelled;
 use anyhow::{bail, Result};
@@ -138,38 +138,55 @@ pub fn prepare(a: &Track, b: &Track, cache: &Path, opts: &Options) -> Result<Tra
     // Rung 1: the full mix, unless the pair is evidently out of its reach.
     let mut note;
     let mut weak = hopeless(&side_a) || hopeless(&side_b);
-    if weak {
+    // The grid read off the full mix can be hopeless where the drum stem's is
+    // not: a "stems" request still tries the model for such a pair.
+    let stems_wanted = stems::resolve(opts.stem_mode) == StemMode::Model;
+    if weak && !(stems_wanted && side_a.is_some() && side_b.is_some()) {
         note = "sin grilla de beats confiable".to_owned();
     } else {
         match mix::rough_tempos(a, b) {
             Some((ra, rb)) if !mix::tempos_compatible(ra, rb) => {
                 note = format!("tempos demasiado lejanos ({ra:.0} y {rb:.0} BPM)");
             }
-            _ => match mix::plan(a, b, opts) {
-                Ok(mut plan) => {
-                    opts.check_cancel()?;
-                    // The model, when it is wanted and there: only for the
-                    // spans the render reads. If it cannot run, the fast
-                    // render stands (and says so in `stems_model`).
-                    if stems::resolve(opts.stem_mode) == StemMode::Model {
-                        match plan.upgrade(a, b, opts, cache, crate::model::Priority::Normal) {
-                            Ok(()) => {}
-                            Err(e) if opts.check_cancel().is_err() => return Err(anyhow::Error::new(Cancelled).context(e)),
-                            Err(_) => {}
+            _ => {
+                // The fast plan is always made: it is cheap, it is the
+                // fallback, and it is what the cut of a stems plan is
+                // compared with (`same_cut_as_fast`).
+                let fast = if weak {
+                    Err(Refusal::WeakGrid { a: side_a.as_ref().map_or(1.0, |s| s.grid.confidence), b: side_b.as_ref().map_or(1.0, |s| s.grid.confidence) })
+                } else {
+                    mix::plan(a, b, opts)
+                };
+                let fast_cut = fast.as_ref().ok().map(|p| (p.a_beats[0], p.beats, p.a_skipped_bars));
+                let mut chosen: Option<Plan> = None;
+                if stems_wanted {
+                    match mix::plan_stems(a, b, opts, cache, crate::model::Priority::Normal) {
+                        Ok(plan) => chosen = Some(plan),
+                        Err(Refusal::Cancelled(c)) => return Err(c.into()),
+                        // The model could not run, or the pair is not for it:
+                        // the fast version stands (`stems_model` says so).
+                        Err(_) => {}
+                    }
+                }
+                match (chosen, fast) {
+                    (Some(plan), _) | (None, Ok(plan)) => {
+                        opts.check_cancel()?;
+                        let same = fast_cut.is_some_and(|(start, beats, skipped)| {
+                            (start - plan.a_beats[0]).abs() < 1e-3 && beats == plan.beats && skipped == plan.a_skipped_bars
+                        });
+                        match render_mix(a, b, &plan, opts, same) {
+                            Ok(done) => return Ok(done),
+                            Err(e) => note = format!("la mezcla falló al renderizar: {e}"),
                         }
                     }
-                    match render_mix(a, b, &plan, opts) {
-                        Ok(done) => return Ok(done),
-                        Err(e) => note = format!("la mezcla falló al renderizar: {e}"),
+                    (None, Err(Refusal::Cancelled(c))) => return Err(c.into()),
+                    (None, Err(Refusal::WeakGrid { .. })) => {
+                        weak = true;
+                        note = "grilla de beats poco confiable".to_owned();
                     }
+                    (None, Err(e)) => note = e.to_string(),
                 }
-                Err(Refusal::Cancelled(c)) => return Err(c.into()),
-                Err(Refusal::WeakGrid { .. }) => {
-                    weak = true;
-                    note = "grilla de beats poco confiable".to_owned();
-                }
-                Err(e) => note = e.to_string(),
-            },
+            }
         }
     }
 
@@ -227,7 +244,7 @@ fn ceiling(a: &Track, b: &Track, opts: &Options) -> f32 {
 
 // ---------------------------------------------------------------- Mix
 
-fn render_mix(a: &Track, b: &Track, plan: &mix::Plan, opts: &Options) -> Result<Transition> {
+fn render_mix(a: &Track, b: &Track, plan: &mix::Plan, opts: &Options, same_cut: bool) -> Result<Transition> {
     let rendered = mix::render(a, b, plan, opts)?;
     let k = plan.beats;
     let swap = rendered.overlap.0 + plan.beat_times[k / 2];
@@ -255,7 +272,7 @@ fn render_mix(a: &Track, b: &Track, plan: &mix::Plan, opts: &Options) -> Result<
         bars: (k / 4) as u32,
         stems_model: model,
         separated_seconds: plan.separated_seconds,
-        same_cut_as_fast: true,
+        same_cut_as_fast: same_cut,
         detail,
         audio: rendered.mix,
         baseline: rendered.baseline,
@@ -287,6 +304,9 @@ impl Svf {
     }
 }
 
+/// Bars of B's start that come through an opening low-pass in a cut.
+const SWEEP_BARS: u32 = 2;
+
 /// A leaves on its last bar line through a closing low-pass and a ping-pong
 /// echo that rings out for the rest of the bar; B comes in on its first
 /// downbeat, clean.
@@ -298,7 +318,8 @@ fn render_cut(a: &Track, b: &Track, sa: &Side, sb: &Side, opts: &Options, why: &
     // A's last bar line that still has music on it.
     let exit_bar = ga.beat_at_or_before(sa.last - 0.1).div_euclid(4);
     let leave = ga.beat(exit_bar * 4);
-    let exit_bars = if 2.0 * bar_a <= 6.0 { 2 } else { 1 };
+    // As long an exit as the tempo allows: up to four bars, 12 seconds.
+    let exit_bars = if 4.0 * bar_a <= 12.0 { 4 } else if 2.0 * bar_a <= 6.0 { 2 } else { 1 };
     let exit_start = leave - exit_bars as f64 * bar_a;
     if exit_start < sa.first + 2.0 {
         bail!("{} es demasiado corta para salir en compás", a.name);
@@ -386,11 +407,32 @@ fn render_cut(a: &Track, b: &Track, sa: &Side, sb: &Side, opts: &Options, why: &
         pos = (pos + 1) % line[0].len();
     }
 
-    // B, from its entry to the end, untouched.
+    // B, from its entry to the end...
     let ramp = n(0.003) as usize;
     paste(&mut audio, n(file_entry), &b.audio, n(entry), (n(b_end) - n(entry)).max(0) as usize, opts.b_gain, ramp);
+    // ...with its first two bars coming through a low-pass that opens: B enters
+    // on the downbeat, clean in time, and its highs arrive over the bars that
+    // follow instead of all at once. The last stretch of the sweep is
+    // crossfaded to the untouched original, so after `overlap_end` B is exact.
+    let sweep_end = (n(file_downbeat + SWEEP_BARS as f64 * bar_b) as usize).min(total);
+    let sweep_from = n(file_entry).max(0) as usize;
+    if sweep_end > sweep_from + n(0.5) as usize {
+        let len = (sweep_end - sweep_from) as f64;
+        let blend = n(0.15) as usize;
+        let mut filter = [Svf { ic1: 0.0, ic2: 0.0 }, Svf { ic1: 0.0, ic2: 0.0 }];
+        for i in sweep_from..sweep_end {
+            let progress = (i - sweep_from) as f64 / len;
+            let cutoff = 350.0 * (20_000.0f64 / 350.0).powf(progress.powf(0.7));
+            let keep = ((sweep_end - i) as f32 / blend as f32).min(1.0);
+            for c in 0..2 {
+                let heard = audio.ch[c][i];
+                let filtered = filter[c].process(heard, cutoff, 0.8);
+                audio.ch[c][i] = heard + (filtered - heard) * keep;
+            }
+        }
+    }
 
-    let region = ((exit_n - lead_in).max(0) as usize, (end_n as usize).min(total));
+    let region = ((exit_n - lead_in).max(0) as usize, sweep_end);
     mix::limit_changed(&mut audio, region, ceiling(a, b, opts));
 
     Ok(Transition {
@@ -399,18 +441,18 @@ fn render_cut(a: &Track, b: &Track, sa: &Side, sb: &Side, opts: &Options, why: &
         baseline: Stereo::default(),
         a_cut,
         overlap_start: file_leave - exit_bars as f64 * bar_a,
-        overlap_end: file_entry,
+        overlap_end: sweep_end as f64 / SRF,
         b_offset,
         b_entry: entry,
         handover: file_downbeat,
         bpm_a: ga.bpm,
         bpm_b: gb.bpm,
-        bars: exit_bars + 1,
+        bars: exit_bars + 1 + SWEEP_BARS,
         stems_model: false,
         separated_seconds: 0.0,
         same_cut_as_fast: true,
         detail: format!(
-            "Corte en compás: A sale con filtro y eco ({exit_bars} {}) y B entra limpio en su primer tiempo; {why}.",
+            "Corte en compás: A sale con filtro y eco ({exit_bars} {}) y B entra en su primer tiempo abriendo el filtro durante {SWEEP_BARS} compases; {why}.",
             if exit_bars == 1 { "compás" } else { "compases" }
         ),
     })
@@ -490,7 +532,7 @@ mod tests {
     use crate::synth::{generate, Spec};
 
     fn track(bpm: f64, root: i32, bars: u32, lead_in: f64, seed: u64) -> (Track, f64) {
-        let (audio, downbeat) = generate(&Spec { bpm, root, bars, lead_in, seed });
+        let (audio, downbeat) = generate(&Spec { bpm, root, bars, lead_in, seed, intro_bars: 8, outro_bars: 8 });
         (Track::new(format!("{bpm}"), format!("t{bpm}-{seed}"), audio), downbeat)
     }
 
@@ -569,9 +611,8 @@ mod tests {
         );
         let last_a_bar = b_down_in_file - bar_a;
         assert!(last_a_bar > t.overlap_start && last_a_bar < t.overlap_end, "A does not leave on the bar before B");
-        // The echo is gone by the time B is in.
-        let i = (t.overlap_end * SRF) as usize;
-        assert!(t.audio.ch[0][i - 20].abs() < 1e-3);
+        // B's filter sweep is part of the change: B is exact only after it.
+        assert!(t.overlap_end > t.handover + 2.0, "the sweep runs for two bars of B after its downbeat");
         // B enters clean at its own tempo: no stretching of what follows.
         assert!((t.bpm_a - 100.0).abs() < 2.0);
         assert!([75.0, 150.0].iter().any(|b| (t.bpm_b - b).abs() < 2.0), "B counted at {}", t.bpm_b);
@@ -611,33 +652,29 @@ mod tests {
         let _ = prepare(&silent("a"), &b, Path::new("unused"), &options());
     }
 
-    /// Needs the model on disk. `cargo test -p automix -- --ignored upgrade`.
+    /// Needs the model on disk. `cargo test -p automix -- --ignored stems_plan`.
     #[test]
     #[ignore = "needs the HT-Demucs model on disk"]
-    fn upgrade_keeps_the_cut_and_separates_only_the_overlap() {
+    fn stems_plan_is_vocal_aware_and_honest_about_its_cut() {
         assert!(crate::model::ready());
-        let (a, _) = track(120.0, 36, 40, 0.37, 7);
-        let (b, _) = track(126.0, 38, 40, 0.21, 9);
-        let dir = std::env::temp_dir().join(format!("automix-upgrade-{}", std::process::id()));
+        let (a, _) = generate(&Spec { bpm: 120.0, root: 36, bars: 60, lead_in: 0.37, seed: 7, intro_bars: 8, outro_bars: 8 });
+        let (b, _) = generate(&Spec { bpm: 126.0, root: 38, bars: 60, lead_in: 0.21, seed: 9, intro_bars: 8, outro_bars: 8 });
+        let (a, b) = (Track::new("a".into(), "sa".into(), a), Track::new("b".into(), "sb".into(), b));
+        let dir = std::env::temp_dir().join(format!("automix-stemsplan-{}", std::process::id()));
         let fast = prepare(&a, &b, &dir, &options()).unwrap();
         let full = prepare(&a, &b, &dir, &Options { stem_mode: StemMode::Model, ..options() }).unwrap();
         assert_eq!(fast.kind, Kind::Mix);
         assert_eq!(full.kind, Kind::Mix);
         assert!(full.stems_model && !fast.stems_model);
-        assert!(full.same_cut_as_fast);
-        // The cut does not move: same start, same overlap, same entry of B.
-        assert_eq!(fast.a_cut, full.a_cut);
-        assert_eq!(fast.overlap_start, full.overlap_start);
-        assert_eq!(fast.overlap_end, full.overlap_end);
-        assert_eq!(fast.b_offset, full.b_offset);
-        assert_eq!(fast.audio.len(), full.audio.len());
         check_contract(&full, &a, &b, 1.0, 1.0);
-        // Only the overlap and its margins went through the model.
-        let overlap = full.overlap_end - full.overlap_start;
-        assert!(full.separated_seconds > 0.0 && full.separated_seconds < 2.0 * (overlap + 10.0), "{}", full.separated_seconds);
-        // A second request is served from the cache.
+        // `same_cut_as_fast` says exactly whether the cut moved.
+        assert_eq!(full.same_cut_as_fast, fast.a_cut == full.a_cut && fast.bars == full.bars);
+        // Both sides' stems were separated (the two spans, not the songs).
+        assert!(full.separated_seconds > 100.0 && full.separated_seconds < 140.0, "{}", full.separated_seconds);
+        // A second request is served from the cache: no separation at all.
         let again = prepare(&a, &b, &dir, &Options { stem_mode: StemMode::Model, ..options() }).unwrap();
         assert_eq!(again.separated_seconds, 0.0);
+        assert_eq!(again.a_cut, full.a_cut);
         std::fs::remove_dir_all(dir).ok();
     }
 }

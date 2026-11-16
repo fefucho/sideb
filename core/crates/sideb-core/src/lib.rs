@@ -2365,23 +2365,43 @@ impl SideBCore {
     /// one plays: resolves both streams (AAC is required, so a song that
     /// resolves to Opus only fails with an `automix:unsupported-format`
     /// stream error), downloads them into `<cache_dir>/audio/`, and writes
-    /// `<cache_dir>/transitions/<from>__<to>.wav` with the first song
+    /// `<cache_dir>/transitions/<from>__<to>.<fast|stems>.wav` with the first song
     /// untouched, the transition and the whole rest of the second.
     ///
     /// Gains are baked into the file (the player must not apply its own to
-    /// it). At most one preparation runs at a time and a newer request
-    /// supersedes an older one: the older fails with `automix:cancelled`, as
-    /// does one cancelled by [`cancel_automix`](Self::cancel_automix); its work
-    /// may still run to the end of its current stage in the background.
-    /// Nothing here touches the playback-history tracking `resolve_stream`
-    /// records.
+    /// it).
     ///
-    /// First transition on a machine without the stem model: it gets the
-    /// frequency-split stand-in and the model downloads in the background
-    /// (`automix_model_ready` turns true once it has).
+    /// **Same request, same work.** A request with the same pair, quality and
+    /// gains as one already running joins it (it gets the same result under
+    /// its own `request_id`); one whose file is already rendered and still on
+    /// disk returns that record at once with `reused = true`; cancelling one of
+    /// several requests waiting for a job leaves it running for the others.
+    /// A request for a *different pair* supersedes the jobs of every other pair
+    /// (they fail with `automix:cancelled`); the same pair at the other quality
+    /// runs alongside. So a shell never needs to debounce, de-duplicate or
+    /// re-ask: asking is idempotent.
+    ///
+    /// `"fast"` plans from a frequency split (a bass swap with the highs and
+    /// mids crossing over gradually; up to 16 bars when B's intro is
+    /// instrumental by band cues, else up to 8) and takes a few seconds.
+    /// `"stems"` plans from HT-Demucs stems of the last 62 s of the first song
+    /// and the first 64 s of the second (where each sings, so B may sing over
+    /// A's instrumental outro, long outros are skipped and clashing harmonies
+    /// are kept apart; up to 16 bars / 36 s): ~5 s when
+    /// [`automix_pair_ready`](Self::automix_pair_ready) is true, ~30 s when it
+    /// has to separate them now. Its cut may differ from the fast one's:
+    /// `same_cut_as_fast` says. A "stems" request for a pair that ends up a
+    /// "cut" or "fade" has nothing to separate. Fails with
+    /// `automix:model-unavailable` without the model.
+    ///
+    /// At most one preparation runs at a time; a superseded one fails with
+    /// `automix:cancelled` as does one cancelled by
+    /// [`cancel_automix`](Self::cancel_automix); its work may still run to the
+    /// end of its current stage in the background. Nothing here touches the
+    /// playback-history tracking `resolve_stream` records.
     #[allow(clippy::too_many_arguments)]
     pub async fn prepare_automix(
-        &self,
+        self: Arc<Self>,
         request_id: String,
         from_video_id: String,
         from_is_upload: bool,
@@ -2433,13 +2453,25 @@ impl SideBCore {
     /// Replaces the prefetch list. `items[0]` is the song that is playing
     /// (its end is the one a transition reads), the rest the upcoming ones in
     /// order; at most `lookahead + 1` are used. Downloads each in turn and,
-    /// once the model is on disk and the setting `quality` is not "fast",
-    /// separates (at low priority, never while a preparation runs) the last
-    /// stretch of the playing song and the first and last of the next ones.
-    /// Returns as soon as the work is scheduled; calling it again cancels the
-    /// previous list. Bounded by the cache limits (12 songs, 500 MB of stems).
-    pub async fn prefetch_automix(self: Arc<Self>, items: Vec<automix_job::AutomixQueueItem>) -> Result<(), SideBError> {
-        automix_job::prefetch(self, items).await
+    /// **only if `allow_stems` is true** (and the setting `quality` is not
+    /// "fast", and the model is on disk), separates, at low priority and never
+    /// while a preparation runs, the last 62 s of the playing song and the
+    /// first 64 s of the next ones (what the vocal-aware plan reads). With
+    /// `allow_stems` false it only downloads: no model, no decoding, no memory.
+    /// Pass false on battery with the rule on, in low-power mode, or when the
+    /// quality is "fast". Returns as soon as the work is scheduled; calling it
+    /// again cancels the previous list. Bounded by the cache limits (12 songs,
+    /// 500 MB of stems).
+    pub async fn prefetch_automix(self: Arc<Self>, items: Vec<automix_job::AutomixQueueItem>, allow_stems: bool) -> Result<(), SideBError> {
+        automix_job::prefetch(self, items, allow_stems).await
+    }
+
+    /// Whether a `"stems"` preparation of this pair would separate nothing:
+    /// the stems for the end of `from` and the start of `to` are in the cache
+    /// (a prefetch put them there) and the model is on disk. Looks at files
+    /// only, so it is cheap enough to ask whenever the queue changes.
+    pub fn automix_pair_ready(&self, from_video_id: String, to_video_id: String) -> bool {
+        automix_job::pair_ready(self, &from_video_id, &to_video_id)
     }
 
     /// Stops the prefetch in progress.

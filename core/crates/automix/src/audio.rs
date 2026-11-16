@@ -307,12 +307,24 @@ pub fn load_wav(path: &Path) -> Result<Stereo> {
 
 /// Two cascaded 2nd-order Butterworth low-passes (24 dB/oct), per channel.
 pub fn lowpass4(input: &Stereo, cutoff_hz: f64) -> Stereo {
+    biquad2(input, cutoff_hz, false)
+}
+
+/// Two cascaded 2nd-order Butterworth high-passes (24 dB/oct), per channel.
+pub fn highpass4(input: &Stereo, cutoff_hz: f64) -> Stereo {
+    biquad2(input, cutoff_hz, true)
+}
+
+fn biquad2(input: &Stereo, cutoff_hz: f64, high: bool) -> Stereo {
     let w0 = 2.0 * std::f64::consts::PI * cutoff_hz / SRF;
     let cos = w0.cos();
     let alpha = w0.sin() / (2.0 * std::f64::consts::FRAC_1_SQRT_2);
     let a0 = 1.0 + alpha;
-    let b0 = ((1.0 - cos) / 2.0 / a0) as f32;
-    let b1 = ((1.0 - cos) / a0) as f32;
+    let (b0, b1) = if high {
+        (((1.0 + cos) / 2.0 / a0) as f32, (-(1.0 + cos) / a0) as f32)
+    } else {
+        (((1.0 - cos) / 2.0 / a0) as f32, ((1.0 - cos) / a0) as f32)
+    };
     let b2 = b0;
     let a1 = (-2.0 * cos / a0) as f32;
     let a2 = ((1.0 - alpha) / a0) as f32;
