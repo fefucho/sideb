@@ -217,6 +217,10 @@ struct AutomixDiagnosticsSnapshot: Equatable, Sendable {
     var prefetchAllowStems: Bool?
     /// `automixPairReady` leído ahora (con caché breve) para la pareja actual → siguiente.
     var pairReadyNow: Bool?
+    /// AVPlayer que Side B tiene vivos / pico / creados (el del servicio y los del empalme: nunca más de dos a la vez).
+    var players = AutomixPlayerCounter.Snapshot(alive: 0, peak: 0, created: 0)
+    /// Dispositivo de salida predeterminado ahora mismo.
+    var outputDevice: AudioOutputDevice?
 }
 
 // MARK: - Almacén
@@ -232,6 +236,7 @@ final class AutomixDiagnostics {
     @ObservationIgnored private var fileSizeCache: (path: String, size: Int64?, date: Date)?
     @ObservationIgnored private var powerCache: (value: AutomixPowerState, date: Date)?
     @ObservationIgnored private var pairReadyCache: (key: String, value: Bool, date: Date)?
+    @ObservationIgnored private var deviceCache: (value: AudioOutputDevice?, date: Date)?
 
     /// Archivo persistente (nil hasta `configurePersistence`: las pruebas y el modo sin carpeta no escriben a disco).
     @ObservationIgnored private(set) var file: AutomixLogFile?
@@ -303,6 +308,14 @@ final class AutomixDiagnostics {
         if let cache = modelReadyCache, now.timeIntervalSince(cache.date) < 1 { return cache.value }
         let value = read()
         modelReadyCache = (value, now)
+        return value
+    }
+
+    /// Dispositivo de salida predeterminado (caché de 2 s: la ventana pregunta cada 0,25 s).
+    func cachedOutputDevice(now: Date) -> AudioOutputDevice? {
+        if let cache = deviceCache, now.timeIntervalSince(cache.date) < 2 { return cache.value }
+        let value = AudioOutputDevice.current()
+        deviceCache = (value, now)
         return value
     }
 

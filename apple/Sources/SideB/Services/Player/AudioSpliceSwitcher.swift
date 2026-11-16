@@ -26,6 +26,15 @@ struct AutomixSpliceDiagnostics: Equatable, Sendable {
     /// Positivo = la canción iba por delante del archivo.
     var measuredOffsetMilliseconds: Double?
     var note: String?
+    /// Cómo arrancó el archivo: «sincronizado» (hora de host) o «play()» (dispositivo no integrado o recuperación).
+    var startPath: String?
+    /// Dispositivo de salida predeterminado en el momento de comprometer el empalme.
+    var outputDevice: String?
+    /// El arranque sincronizado no avanzó y se repitió con `play()`.
+    var fellBackToPlain = false
+    /// Correcciones (saltos de alineación con el archivo mudo) antes del fundido en el arranque simple, y el último error medido.
+    var alignCorrections: Int?
+    var alignErrorMilliseconds: Double?
 }
 
 /// Fundido lineal de ganancias (suma 1: la primera parte del archivo es idéntica a la canción).
@@ -49,8 +58,10 @@ enum AudioCrossfade {
 final class AudioSpliceSwitcher {
     enum Phase: String, Sendable { case idle, prerolling, prerolled, scheduled, crossfading, done, aborted }
 
-    let player = AVPlayer()
-    let item: AVPlayerItem
+    let player: CountedPlayer
+    private(set) var item: AVPlayerItem
+    /// Tras un arranque sincronizado que no avanzó, se vuelve a intentar sólo con `play()`.
+    var forcePlain = false
     private(set) var phase: Phase = .idle
     private(set) var prerolledFileSeconds: Double?
     private(set) var diagnostics = AutomixSpliceDiagnostics()
@@ -59,9 +70,13 @@ final class AudioSpliceSwitcher {
 
     private var timer: DispatchSourceTimer?
     private var timerQueue: DispatchQueue?
+    private var alignTask: Task<Void, Never>?
     private var generation = 0
 
-    init(asset: AVURLAsset) {
+    /// `player`: el reproductor de repuesto del servicio (se reutiliza: Side B no crea ni destruye clientes de audio en cada
+    /// empalme, y nunca hay más de dos `AVPlayer` vivos).
+    init(asset: AVURLAsset, player: CountedPlayer = CountedPlayer()) {
+        self.player = player
         item = AVPlayerItem(asset: asset)
         player.volume = 0
         // Requisito de `setRate(_:time:atHostTime:)`: no esperar a minimizar los cortes.
@@ -80,6 +95,8 @@ final class AudioSpliceSwitcher {
         guard phase != .crossfading, phase != .done else { return .superseded }
         generation += 1
         let token = generation
+        // Tras un `abort` el elemento se soltó del reproductor (no deja su canalización de audio viva): se vuelve a poner.
+        if player.currentItem !== item { player.replaceCurrentItem(with: item) }
         phase = .prerolling
         prerolledFileSeconds = nil
         diagnostics.phase = phase.rawValue
@@ -119,23 +136,72 @@ final class AudioSpliceSwitcher {
 
     /// Programa el arranque del archivo en `fileSeconds` a la hora de host `hostTime` y el fundido que empieza en ella.
     /// `onFinished` se llama en el hilo principal al terminar el fundido.
-    func commit(fileSeconds: Double, hostTime: CMTime, old: AVPlayer, output: Float, onFinished: @escaping @MainActor () -> Void) -> Bool {
-        guard phase == .prerolled, prerolledFileSeconds == fileSeconds else { return false }
+    /// `mode`: `.hostSynced` arranca con `setRate(_:time:atHostTime:)`; `.plain` llama a `play()` en el instante del fundido.
+    /// `onFinished(advancing)` dice si el archivo estaba de verdad avanzando al terminar el fundido.
+    func commit(fileSeconds: Double, prerolledAt: Double? = nil, hostTime: CMTime, old: AVPlayer, output: Float, mode: AudioSpliceStartMode,
+                device: AudioOutputDevice?, onFinished: @escaping @MainActor (Bool) -> Void) -> Bool {
+        guard phase == .prerolled, prerolledFileSeconds == (prerolledAt ?? fileSeconds) else { return false }
         let start = hostTime.seconds
         let now = Self.hostSeconds()
         guard start - now > 0.04 else { return false }
         player.volume = 0
-        player.setRate(1.0, time: CMTime(seconds: fileSeconds, preferredTimescale: 44_100), atHostTime: hostTime)
+        if mode == .hostSynced {
+            player.setRate(1.0, time: CMTime(seconds: fileSeconds, preferredTimescale: 44_100), atHostTime: hostTime)
+        } else {
+            // Arranque simple: `plainLeadIn` antes del empalme el archivo empieza a sonar (mudo) desde donde se precargó y se
+            // alinea con la canción antes del fundido. Arrancar con `play()` justo en el fundido llega tarde con salidas de
+            // latencia alta (una virtual como eqMac): la canción ya se habría apagado. (Se programa tras `runCrossfade`,
+            // que reinicia los temporizadores.)
+        }
+        lastMode = mode
+        diagnostics.startPath = mode == .hostSynced ? "sincronizado (setRate atHostTime)" : "play() mudo con antelación y alineado por saltos (\(Int(AudioSpliceTimeline.plainLeadIn * 1000)) ms)"
+        diagnostics.outputDevice = device?.summary ?? "desconocido"
         phase = .scheduled
         diagnostics.phase = phase.rawValue
         diagnostics.scheduledHostSeconds = start
         diagnostics.scheduledLeadSeconds = start - now
         diagnostics.scheduledFileSeconds = fileSeconds
-        runCrossfade(startSeconds: start, old: old, output: output, onFinished: onFinished)
+        runCrossfade(startSeconds: start, old: old, output: output, plainStart: false, onFinished: onFinished)
+        if mode == .plain { startAligning(fileSeconds: fileSeconds, switchHost: start) }
         return true
     }
 
-    private func runCrossfade(startSeconds: Double, old: AVPlayer, output: Float, onFinished: @escaping @MainActor () -> Void) {
+    /// Alinea el archivo mudo con la canción: cada 15 ms compara dónde está con dónde debería estar a esa hora de host
+    /// (`fileSeconds + (ahora − hora del empalme)`) y, si difiere más de 4 ms, salta al sitio correcto. Es mudo, no se oye.
+    private func startAligning(fileSeconds: Double, switchHost: Double) {
+        alignTask?.cancel()
+        alignTask = Task { @MainActor [weak self] in
+            var corrections = 0
+            // Espera hasta `plainLeadIn` antes del empalme y arranca (mudo): el archivo se precargó `plainLeadIn` antes.
+            while !Task.isCancelled, Self.hostSeconds() < switchHost - AudioSpliceTimeline.plainLeadIn - 0.004 {
+                try? await Task.sleep(for: .milliseconds(4))
+            }
+            guard !Task.isCancelled, let started = self else { return }
+            started.player.play()
+            // Lo que tarda un salto en completarse (se mide y se corrige en cada vuelta): el destino se calcula para cuando
+            // el salto termine, no para cuando empieza.
+            var seekLatency = 0.12
+            while let self, !Task.isCancelled, Self.hostSeconds() < switchHost - 0.06 {
+                try? await Task.sleep(for: .milliseconds(15))
+                guard !Task.isCancelled else { return }
+                let host = Self.hostSeconds()
+                let position = self.player.currentTime().seconds
+                guard position.isFinite, self.player.rate > 0 else { continue } // aún no arrancó
+                let error = position - (fileSeconds + (host - switchHost))
+                self.diagnostics.alignErrorMilliseconds = error * 1000
+                if abs(error) > 0.010, corrections < 10, host < switchHost - 0.08 - seekLatency {
+                    corrections += 1
+                    let target = fileSeconds + (host - switchHost) + seekLatency
+                    _ = await self.player.seek(to: CMTime(seconds: max(0, target), preferredTimescale: 44_100), toleranceBefore: .zero, toleranceAfter: .zero)
+                    seekLatency = min(0.4, max(0.02, Self.hostSeconds() - host))
+                }
+            }
+            self?.diagnostics.alignCorrections = corrections
+        }
+    }
+
+    private func runCrossfade(startSeconds: Double, old: AVPlayer, output: Float, plainStart: Bool,
+                              onFinished: @escaping @MainActor (Bool) -> Void) {
         cancelTimer()
         let duration = AudioCrossfade.duration
         let queue = DispatchQueue(label: "sideb.automix.crossfade", qos: .userInteractive)
@@ -146,8 +212,14 @@ final class AudioSpliceSwitcher {
         nonisolated(unsafe) let newPlayer = player
         nonisolated(unsafe) let oldPlayer = old
         nonisolated(unsafe) var announced = false
+        nonisolated(unsafe) var playCalled = false
         source.setEventHandler { [weak self] in
             let host = AudioSpliceSwitcher.hostSeconds()
+            // Arranque sencillo: `play()` unos milisegundos antes del fundido (el archivo ya está precargado).
+            if plainStart, !playCalled, host >= startSeconds - 0.012 {
+                playCalled = true
+                newPlayer.play()
+            }
             let progress = AudioCrossfade.progress(hostSeconds: host, startSeconds: startSeconds, duration: duration)
             let gains = AudioCrossfade.gains(progress: progress, output: output)
             newPlayer.volume = gains.new
@@ -158,7 +230,7 @@ final class AudioSpliceSwitcher {
             }
             if progress >= 1 {
                 source.cancel()
-                DispatchQueue.main.async { MainActor.assumeIsolated { self?.crossfadeEnded(host: host); onFinished() } }
+                DispatchQueue.main.async { MainActor.assumeIsolated { onFinished(self?.crossfadeEnded(host: host) ?? false) } }
             }
         }
         timer = source
@@ -172,16 +244,37 @@ final class AudioSpliceSwitcher {
         diagnostics.crossfadeStartHost = startSeconds
     }
 
-    private func crossfadeEnded(host: Double) {
-        guard phase == .scheduled || phase == .crossfading else { return }
+    /// Devuelve si el archivo está avanzando de verdad (reproduciendo y con el tiempo por encima de donde arrancó).
+    private func crossfadeEnded(host: Double) -> Bool {
+        guard phase == .scheduled || phase == .crossfading else { return false }
+        // El temporizador ya terminó: se suelta (guardaba referencias fuertes a los dos reproductores).
+        timer = nil
+        timerQueue = nil
         phase = .done
         diagnostics.phase = phase.rawValue
         diagnostics.crossfadeEndHost = host
+        let started = diagnostics.scheduledFileSeconds ?? 0
+        let now = player.currentTime().seconds
+        // Avanzando = reproduciendo y cerca de lo previsto. Con el arranque sincronizado debe estar ya por encima de donde
+        // arrancó; con el simple se admite hasta 300 ms de retraso (queda anotado como desfase medido).
+        let advancing = player.rate > 0 && now >= (lastMode == .plain ? started - 0.3 : started + 0.01)
+        AutomixDiagnostics.shared.record("player", "fin del fundido: archivo tasa \(player.rate), tiempo \(String(format: "%.3f", now)) s (previsto ≈ \(String(format: "%.3f", started + AudioCrossfade.duration)) s), "
+            + "estado \(player.timeControlStatus.rawValue), correcciones \(diagnostics.alignCorrections.map(String.init) ?? "—"), último error de alineación \(diagnostics.alignErrorMilliseconds.map { String(format: "%.1f ms", $0) } ?? "—"); "
+            + "avanza \(advancing ? "sí" : "NO")")
+        return advancing
+    }
+
+    /// El arranque sincronizado no avanzó: se deshace y la próxima confirmación usa `play()`.
+    func fallBackToPlain() {
+        forcePlain = true
+        diagnostics.fellBackToPlain = true
     }
 
     /// Para el temporizador del fundido y espera a que termine una pasada en curso: así ninguna escritura tardía de
     /// volumen puede pisar la restauración que haga quien lo cancela.
     private func cancelTimer() {
+        alignTask?.cancel()
+        alignTask = nil
         timer?.cancel()
         timer = nil
         timerQueue?.sync {}
@@ -196,6 +289,24 @@ final class AudioSpliceSwitcher {
         diagnostics.prerolledFileSeconds = fileSeconds
     }
 
+    /// Cambia el archivo (stems en lugar de la rápida) **en el mismo reproductor**: no se crea otro `AVPlayer`, así que
+    /// nunca hay más de dos vivos (el de la canción y éste).
+    func reload(asset: AVURLAsset) {
+        generation += 1
+        cancelTimer()
+        player.pause()
+        player.volume = 0
+        player.replaceCurrentItem(with: nil)
+        item = AVPlayerItem(asset: asset)
+        player.replaceCurrentItem(with: item)
+        prerolledFileSeconds = nil
+        phase = .idle
+        diagnostics = AutomixSpliceDiagnostics(phase: phase.rawValue)
+    }
+
+    /// Cómo se arrancó la última vez (para decidir si repetir con `play()`).
+    private(set) var lastMode: AudioSpliceStartMode?
+
     func recordMeasuredOffset(milliseconds: Double) { diagnostics.measuredOffsetMilliseconds = milliseconds }
     func note(_ text: String) { diagnostics.note = text }
 
@@ -208,6 +319,9 @@ final class AudioSpliceSwitcher {
         player.pause()
         player.volume = 0
         old.volume = output
+        // Se suelta el elemento: un reproductor pausado con el elemento cargado y precargado mantiene viva su
+        // canalización de audio (un cliente más del dispositivo de salida). `prepare` lo vuelve a poner.
+        player.replaceCurrentItem(with: nil)
         prerolledFileSeconds = nil
         phase = .aborted
         diagnostics.phase = phase.rawValue

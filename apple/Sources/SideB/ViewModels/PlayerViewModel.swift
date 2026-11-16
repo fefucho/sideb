@@ -344,6 +344,9 @@ public final class PlayerViewModel {
     private var radioRequestCursors = Set<String>()
     private var currentRadioToken: UUID = UUID()
     private var currentAutomixToken: UUID = UUID()
+    /// Cuándo empezó a sonar la pista actual y cuántas seguidas terminaron nada más empezar (ver `stopOnRepeatedInstantEnds`).
+    private var currentTrackStartedAt: Date?
+    private var failureGuard = PlaybackFailureGuard()
 
     // MARK: - Automix (DJ, PLAN-024)
     // El «Automix» de arriba (`checkAutomixTrigger`) extiende la cola con radio; éste mezcla dos temas.
@@ -395,6 +398,7 @@ public final class PlayerViewModel {
         audioService.onPlaybackStarted = { [weak self] playbackID in
             if let self, playbackID == self.currentPlaybackToken, self.automixStartedToken != playbackID {
                 self.automixStartedToken = playbackID
+                self.currentTrackStartedAt = Date()
                 self.automix.reconcile()
             }
             guard let self, let intent = self.searchRecentIntent,
@@ -532,12 +536,35 @@ public final class PlayerViewModel {
     private func setupTrackEndListener() {
         self.audioService.onTrackDidEnd = { [weak self] in
             guard let self, !self.isJamSessionActive else { return }
+            if self.stopOnRepeatedInstantEnds() { return }
             self.playNext(isManualSkip: false)
         }
     }
 
+    /// Final automático de una pista: si ya van varias que «terminan» nada más empezar (la salida de audio no responde, el
+    /// reproductor da tiempos falsos…) se detiene la reproducción con el error de siempre en vez de recorrer la cola
+    /// saltando una pista cada pocos segundos. Devuelve verdadero si se detuvo.
+    private func stopOnRepeatedInstantEnds() -> Bool {
+        let since = currentTrackStartedAt.map { Date().timeIntervalSince($0) } ?? .infinity
+        let duration = audioService.duration
+        let device = AudioOutputDevice.current()?.summary ?? "desconocido"
+        AutomixDiagnostics.shared.record("vm", "avance automático: la pista «\(currentTrack?.videoId ?? "—")» sonó \(since.isFinite ? String(format: "%.1f", since) : "—") s de \(String(format: "%.0f", duration)) s; "
+            + "finales instantáneos seguidos antes de éste: \(failureGuard.consecutiveShortEnds); salida \(device)")
+        guard failureGuard.trackEnded(secondsSinceStart: since, expectedDuration: duration) else { return false }
+        AutomixDiagnostics.shared.record("vm", "REPRODUCCIÓN DETENIDA: \(PlaybackFailureGuard.limit) pistas seguidas terminaron a menos de \(Int(PlaybackFailureGuard.shortTrackSeconds)) s de empezar; "
+            + "no se avanza más por la cola. Salida de audio \(device); estado \(audioService.avPlayer.timeControlStatus.rawValue), empalme \(audioService.spliceStage)")
+        failureGuard.reset()
+        audioService.pause()
+        pendingTailSkipToken = nil
+        isLoadingStream = false
+        errorDescriptor = AppMessage(key: "player.error.audioOutputStalled", args: [device])
+        updateNowPlayingPlaybackRate()
+        return true
+    }
+
     private func setupPlaybackProgressListener() {
         self.audioService.onPlaybackProgress = { [weak self] current, duration in
+            if current >= 10 { self?.failureGuard.reset() }
             self?.rememberCurrentTrackDuration(duration)
             self?.checkAndRecordPlaybackHistory(current: current, duration: duration)
         }
@@ -1225,6 +1252,7 @@ public final class PlayerViewModel {
     }
 
     public func playNext(isManualSkip: Bool = true) {
+        if isManualSkip { failureGuard.reset() }
         if let jamControl { if isManualSkip { jamControl(.next) }; return }
         if currentTrack == nil, let selected = queueManager.currentTrack {
             playSongNow(selected, deferStreamResolution: isManualSkip)
@@ -1257,6 +1285,7 @@ public final class PlayerViewModel {
     }
 
     public func playPrevious() {
+        failureGuard.reset()
         if let jamControl { jamControl(.previous); return }
         if let prev = queueManager.previousTrack() {
             playSongNow(prev, deferStreamResolution: true)
@@ -1273,6 +1302,7 @@ public final class PlayerViewModel {
     }
 
     public func playQueueIndex(_ index: Int) {
+        failureGuard.reset()
         // The Jam cannot jump to an arbitrary row: say so instead of silently doing nothing.
         guard !isJamSessionActive else { queueManager.sessionEditor?.sessionRejected(.playRow); return }
         if let track = queueManager.selectTrack(at: index) {
@@ -2340,6 +2370,7 @@ extension PlayerViewModel: AutomixHost {
         pendingTailSkipToken = nil
         audioService.completeHandover(playbackID: token)
         automixStartedToken = token // Ya está sonando: es un arranque real.
+        currentTrackStartedAt = Date()
         streamInfo = nil
 
         currentTrack = song
@@ -2416,6 +2447,7 @@ extension PlayerViewModel: AutomixHost {
         case .restream:
             // El archivo no contiene ese momento: resolver la canción y reproducirla desde ahí.
             guard let track = currentTrack, rustCore != nil else { return false }
+            failureGuard.reset() // buscar es una acción del usuario
             playSongNow(track)
             guard isLoadingStream, currentTrack?.videoId == track.videoId else { return false }
             pendingLyricSeek = PendingLyricSeek(playbackID: currentPlaybackToken, sessionID: accountGeneration,
@@ -2471,7 +2503,8 @@ extension PlayerViewModel {
                 store.cachedPairReady(key: "\(context!.current.videoID)>\(next.videoID)", now: now) {
                     automixPairReady(from: context!.current.videoID, to: next.videoID)
                 }
-            })
+            },
+            players: AutomixPlayerCounter.snapshot, outputDevice: store.cachedOutputDevice(now: now))
     }
 
     /// Depuración: salta la canción a 10 s antes del corte (sólo con una transición lista y la canción antes del corte).

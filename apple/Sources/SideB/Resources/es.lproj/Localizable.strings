@@ -1527,6 +1527,8 @@ Historial: %@</string>
 	<string>Ver cola</string>
 	<key>player.closeFullscreen</key>
 	<string>Cerrar pantalla completa</string>
+	<key>player.error.audioOutputStalled</key>
+	<string>La reproducción se detuvo: varias canciones terminaron nada más empezar. Puede que la salida de audio (%@) no esté respondiendo; revisá el dispositivo de salida y volvé a reproducir.</string>
 	<key>player.error.completePlaylist</key>
 	<string>No se pudo completar la lista: %@</string>
 	<key>player.error.completePlaylistCoreUnavailable</key>

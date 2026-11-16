@@ -1527,6 +1527,8 @@ History: %@</string>
 	<string>View queue</string>
 	<key>player.closeFullscreen</key>
 	<string>Close full screen</string>
+	<key>player.error.audioOutputStalled</key>
+	<string>Playback stopped: several songs ended right after starting. The audio output (%@) may not be responding; check the output device and play again.</string>
 	<key>player.error.completePlaylist</key>
 	<string>Couldn’t load the playlist: %@</string>
 	<key>player.error.completePlaylistCoreUnavailable</key>

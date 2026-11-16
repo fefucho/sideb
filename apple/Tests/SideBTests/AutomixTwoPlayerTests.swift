@@ -1,5 +1,6 @@
 import Foundation
 import AVFoundation
+import CoreAudio
 import Testing
 @testable import SideB
 
@@ -46,7 +47,11 @@ struct AutomixTwoPlayerTests {
         let suite = "AutomixTwoPlayer.\(UUID())"
         let defaults = try #require(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
-        let audio = AudioPlayerService(preferences: defaults, preferencePrefix: "twoplayer")
+        // SIDEB_TEST_FORCE_HOSTSYNC=1 finge una salida integrada para medir el arranque sincronizado con la salida real.
+        let forced = ProcessInfo.processInfo.environment["SIDEB_TEST_FORCE_HOSTSYNC"] == "1"
+        let audio = AudioPlayerService(preferences: defaults, preferencePrefix: "twoplayer", outputDevice: {
+            forced ? AudioOutputDevice(name: "falsa", uid: "falsa", transportType: kAudioDeviceTransportTypeBuiltIn) : AudioOutputDevice.current()
+        })
         audio.volume = 0
         defer { audio.stop() }
         var entered = 0
@@ -74,6 +79,12 @@ struct AutomixTwoPlayerTests {
             if audio.spliceStage == .inFile { afterSwitch += 1 }
             if afterSwitch > 100 { break }
             try await Task.sleep(for: .milliseconds(10))
+        }
+        for entry in AutomixDiagnostics.shared.log.entries where entry.message.hasPrefix("fin del fundido") || entry.message.hasPrefix("empalme comprometido") {
+            print("[AutomixTwoPlayerTests] \(entry.message)")
+        }
+        if audio.spliceStage != .inFile {
+            print("[AutomixTwoPlayerTests] REGISTRO:\n" + AutomixDiagnostics.shared.log.entries.suffix(25).map { $0.line() }.joined(separator: "\n"))
         }
         #expect(audio.spliceStage == .inFile, "el empalme debía completarse")
         #expect(entered == 1)
@@ -200,5 +211,37 @@ struct AutomixTwoPlayerTests {
         audio.resume()
         #expect(try await waitUntil(8) { audio.spliceStage == .inFile })
         #expect(abs(audio.spliceDiagnostics?.measuredOffsetMilliseconds ?? 999) < 30)
+    }
+
+    @Test("Respaldo con play(): el archivo arranca mudo con antelación y se alinea; el empalme se completa sin que el activo espere")
+    func plainFallbackStart() async throws {
+        // Fuerza el arranque simple en cualquier salida (el interruptor de seguridad) mientras dura la prueba.
+        let saved = AudioSpliceStartMode.preferPlainOnNonBuiltIn
+        AudioSpliceStartMode.preferPlainOnNonBuiltIn = true
+        defer { AudioSpliceStartMode.preferPlainOnNonBuiltIn = saved }
+        guard AudioOutputDevice.current()?.isBuiltIn == false else {
+            try Test.cancel("la salida es la integrada: el interruptor no fuerza play() en ella")
+        }
+        let rig = try makeRig(cut: 3)
+        defer { rig.cleanup() }
+        let audio = rig.audio
+        if !(try await waitUntil(5) { audio.avPlayer.timeControlStatus == .playing }) {
+            try Test.cancel("el sistema no arranca la reproducción de audio en este momento (un AVPlayer suelto tampoco): no se puede medir")
+        }
+        #expect(audio.armSplice(AudioSplice(asset: AVURLAsset(url: rig.file), nextVideoID: "B", timeline: rig.timeline)) == .armed)
+        var waiting = 0
+        let switched = try await waitUntil(10) {
+            if audio.avPlayer.timeControlStatus == .waitingToPlayAtSpecifiedRate { waiting += 1 }
+            return audio.spliceStage == .inFile
+        }
+        #expect(switched, "con play() el empalme debía completarse")
+        #expect(waiting == 0)
+        let diagnostics = try #require(audio.spliceDiagnostics)
+        #expect(diagnostics.startPath?.hasPrefix("play() mudo") == true)
+        #expect(diagnostics.alignCorrections != nil)
+        // El respaldo no es tan preciso como el sincronizado (queda anotado): se exige que no se desvíe más de 250 ms.
+        let offset = try #require(diagnostics.measuredOffsetMilliseconds)
+        print("[AutomixTwoPlayerTests] respaldo play(): desfase \(String(format: "%.1f", offset)) ms, correcciones \(diagnostics.alignCorrections ?? -1)")
+        #expect(abs(offset) < 250, "desfase del respaldo: \(offset) ms")
     }
 }

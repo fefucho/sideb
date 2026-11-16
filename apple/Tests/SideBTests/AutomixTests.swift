@@ -622,7 +622,7 @@ struct AutomixAudioServiceTests {
         let defaults = UserDefaults(suiteName: suite)!
         let probe = AudioProbe()
         let audio = AudioPlayerService(
-            preferences: defaults, preferencePrefix: "test",
+            preferences: defaults, preferencePrefix: "test", isRendering: { _ in true },
             seekExecutor: { _, time, completion in probe.seekTargets.append(time.seconds); completion(true) },
             measuredTime: { _ in probe.media })
         audio.skipsSplicePrerollForTesting = true // estas pruebas ejercitan la máquina de estados, no el audio del sistema
@@ -836,6 +836,8 @@ struct AutomixAudioServiceTests {
         #expect(audio.spliceStage == .handedOver)
         #expect(audio.timeBias == 90)
         #expect(audio.armSplice(plan) == .armed)
+        // Un tick del reloj de AVPlayer puede llegar mientras se cede el turno: que no alcance el traspaso (segundo 14 del archivo).
+        probe.media = 5
         await switchNow(audio)
         #expect(audio.spliceStage == .inFile)
         #expect(audio.timeBias == -150)

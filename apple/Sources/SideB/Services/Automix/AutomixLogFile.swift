@@ -251,6 +251,7 @@ enum AutomixDiagnosticsExport {
         if let c = snapshot.capability {
             lines.append("Capacidad: modelo \(c.modelReady ? "listo" : "no listo")\(c.modelDownloading ? " (descargando)" : ""), factor \(c.realtimeFactor.map { String(format: "%.2f×", $0) } ?? "sin medir"), stems recomendado \(yesNo(c.stemsRecommended)), proveedor \(c.provider.isEmpty ? "—" : c.provider)")
         }
+        lines.append("Audio: salida \(snapshot.outputDevice?.summary ?? "desconocida"); AVPlayer vivos \(snapshot.players.alive), pico \(snapshot.players.peak), creados \(snapshot.players.created)")
         lines.append("Energía: batería \(yesNo(snapshot.power.onBattery)); bajo consumo \(yesNo(snapshot.power.lowPower))")
         if let memory = snapshot.memory {
             lines.append("Memoria: huella \(AutomixMemory.gigabytes(memory.footprint)) (\(memory.footprint) B); pico \(AutomixMemory.gigabytes(memory.peak)) (\(memory.peak) B)")
@@ -281,7 +282,7 @@ enum AutomixDiagnosticsExport {
             + "isPlaying \(yesNo(p.isPlaying)), isBuffering \(yesNo(p.isBuffering)), timeControlStatus \(p.timeControlStatus)\(p.waitingReason.map { ", espera \($0)" } ?? "")")
         for item in p.items { lines.append("  elemento \(item)") }
         if let sp = snapshot.splice {
-            lines.append("Segundo reproductor: fase \(sp.phase), precarga \(sp.prerolledFileSeconds.map { f($0) } ?? "—") s, arranque programado \(sp.scheduledHostSeconds.map { f($0) } ?? "no"), "
+            lines.append("Segundo reproductor: camino \(sp.startPath ?? "—")\(sp.fellBackToPlain ? " (tras fallar el sincronizado)" : ""), salida \(sp.outputDevice ?? "—"), fase \(sp.phase), precarga \(sp.prerolledFileSeconds.map { f($0) } ?? "—") s, arranque programado \(sp.scheduledHostSeconds.map { f($0) } ?? "no"), "
                 + "fundido \(sp.crossfadeStartHost.map { f($0) } ?? "—") / \(sp.crossfadeEndHost.map { f($0) } ?? "—"), desfase medido \(sp.measuredOffsetMilliseconds.map { f($0, 2) + " ms" } ?? "—")")
         }
         if let c = snapshot.countdown {

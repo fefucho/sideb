@@ -449,6 +449,9 @@ struct AudioSpliceTimeline: Equatable, Sendable {
     static let switchLead = 0.45
     /// Margen entre el fin del fundido y el fin de la parte del archivo idéntica a la canción.
     static let crossfadeEndMargin = 0.15
+    /// Con el arranque simple (`play()`), el archivo arranca mudo esto antes del punto de empalme y se alinea con la canción:
+    /// la salida (sobre todo una virtual) tarda en empezar a sonar y no se puede esperar al instante del fundido.
+    static let plainLeadIn = 0.7
 
     /// Qué hacer con el empalme según la posición de la canción (segundos de la canción mostrada).
     func commitDecision(position: Double) -> AudioSpliceCommitDecision {

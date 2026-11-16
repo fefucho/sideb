@@ -109,6 +109,11 @@ private struct AutomixDiagnosticsSections: View {
     let snapshot: AutomixDiagnosticsSnapshot
 
     var body: some View {
+        section("Audio: dispositivo y reproductores") {
+            row("Salida predeterminada", snapshot.outputDevice?.summary ?? "desconocida")
+            row("Arranque del empalme", snapshot.outputDevice.map { $0.isBuiltIn ? "sincronizado (salida integrada)" : "con play() (salida no integrada)" } ?? "—")
+            row("AVPlayer vivos / pico / creados", "\(snapshot.players.alive) / \(snapshot.players.peak) / \(snapshot.players.created)  (máximo previsto: 2 vivos)")
+        }
         section("Memoria") {
             if let m = snapshot.memory {
                 row("Huella (phys_footprint)", "\(AutomixMemory.gigabytes(m.footprint))  (\(ByteCountFormatter.string(fromByteCount: Int64(m.footprint), countStyle: .memory)))")
@@ -228,6 +233,11 @@ private struct AutomixDiagnosticsSections: View {
                 row("Arranque programado", sp.scheduledHostSeconds.map { "hora de host \(f($0)) s, archivo \(f(sp.scheduledFileSeconds ?? 0)) s, con \(f((sp.scheduledLeadSeconds ?? 0) * 1000, 0)) ms de adelanto" } ?? "no")
                 row("Inicio / fin del fundido", "\(sp.crossfadeStartHost.map { f($0) } ?? "—") / \(sp.crossfadeEndHost.map { f($0) } ?? "—") s de host (50 ms)")
                 row("Desfase medido", sp.measuredOffsetMilliseconds.map { f($0, 2) + " ms (canción − archivo)" } ?? "—")
+                row("Camino de arranque", (sp.startPath ?? "—") + (sp.fellBackToPlain ? " (tras fallar el sincronizado)" : ""))
+                row("Salida al comprometer", sp.outputDevice ?? "—")
+                if let corrections = sp.alignCorrections {
+                    row("Alineación (arranque con play())", "\(corrections) saltos mudos; último error \(sp.alignErrorMilliseconds.map { f($0, 1) + " ms" } ?? "—")")
+                }
                 if let note = sp.note { row("Nota", note) }
             } else {
                 row("Empalme", "no hay archivo cargado en un segundo reproductor")

@@ -13003,6 +13003,23 @@
         }
       }
     },
+    "player.error.audioOutputStalled": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La reproducción se detuvo: varias canciones terminaron nada más empezar. Puede que la salida de audio (%@) no esté respondiendo; revisá el dispositivo de salida y volvé a reproducir."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Playback stopped: several songs ended right after starting. The audio output (%@) may not be responding; check the output device and play again."
+          }
+        }
+      }
+    },
     "player.error.completePlaylist": {
       "extractionState": "manual",
       "localizations": {
