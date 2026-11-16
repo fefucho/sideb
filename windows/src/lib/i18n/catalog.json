@@ -127,6 +127,14 @@
     "es": "Error al iniciar Side B",
     "en": "Couldn’t start Side B"
   },
+  "automix.diag.menuItem": {
+    "es": "Diagnóstico…",
+    "en": "Diagnostics…"
+  },
+  "automix.diag.window": {
+    "es": "Diagnóstico de Automix",
+    "en": "Automix Diagnostics"
+  },
   "automix.kind.cut": {
     "es": "corte",
     "en": "cut"
@@ -2594,6 +2602,10 @@
   "menu.add_to_queue": {
     "es": "Añadir a la cola",
     "en": "Add to Queue"
+  },
+  "menu.automix": {
+    "es": "Automix",
+    "en": "Automix"
   },
   "menu.cancel": {
     "es": "Cancelar",

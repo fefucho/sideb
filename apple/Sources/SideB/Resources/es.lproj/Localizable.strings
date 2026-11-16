@@ -66,6 +66,54 @@
 	<string>No se pudo iniciar Side B: %@</string>
 	<key>app.startError</key>
 	<string>Error al iniciar Side B</string>
+	<key>automix.diag.menuItem</key>
+	<string>Diagnóstico…</string>
+	<key>automix.diag.window</key>
+	<string>Diagnóstico de Automix</string>
+	<key>automix.kind.cut</key>
+	<string>corte</string>
+	<key>automix.kind.fade</key>
+	<string>fundido</string>
+	<key>automix.kind.mix</key>
+	<string>mezcla</string>
+	<key>automix.marker.value</key>
+	<string>Automix: la mezcla empieza acá (%@)</string>
+	<key>automix.pill.title</key>
+	<string>Beta · Automix</string>
+	<key>automix.pill.turnOff</key>
+	<string>Desactivar Automix (beta)</string>
+	<key>automix.pill.turnOn</key>
+	<string>Activar Automix (beta)</string>
+	<key>automix.status.idle</key>
+	<string>Activado</string>
+	<key>automix.status.mixing</key>
+	<string>Mezclando: %@</string>
+	<key>automix.status.off</key>
+	<string>Desactivado</string>
+	<key>automix.status.preparing</key>
+	<string>Preparando la mezcla…</string>
+	<key>automix.status.ready</key>
+	<string>Lista: %@ (%@ bpm)</string>
+	<key>automix.status.readyNoBpm</key>
+	<string>Lista: %@</string>
+	<key>automix.unavailable.failed</key>
+	<string>No disponible: no se pudo preparar la mezcla</string>
+	<key>automix.unavailable.jam</key>
+	<string>No disponible en Jam</string>
+	<key>automix.unavailable.noNextTrack</key>
+	<string>No disponible: no hay un tema siguiente</string>
+	<key>automix.unavailable.repeatOne</key>
+	<string>No disponible con la repetición de un tema</string>
+	<key>automix.unavailable.sameAlbum</key>
+	<string>No disponible: temas del mismo álbum</string>
+	<key>automix.unavailable.sameTrack</key>
+	<string>No disponible: el siguiente es el mismo tema</string>
+	<key>automix.unavailable.tooLate</key>
+	<string>No disponible: la mezcla llegó tarde</string>
+	<key>automix.unavailable.tooLong</key>
+	<string>No disponible: canción demasiado larga</string>
+	<key>automix.unavailable.unsupportedFormat</key>
+	<string>No disponible: el audio no es AAC</string>
 	<key>common.cancel</key>
 	<string>Cancelar</string>
 	<key>common.closeEscape</key>
@@ -1251,6 +1299,8 @@ Historial: %@</string>
 	<string>Añadir a lista de reproducción</string>
 	<key>menu.add_to_queue</key>
 	<string>Añadir a la cola</string>
+	<key>menu.automix</key>
+	<string>Automix</string>
 	<key>menu.cancel</key>
 	<string>Cancelar</string>
 	<key>menu.check_updates</key>
@@ -1791,6 +1841,10 @@ Historial: %@</string>
 	<string>Mostrá la animación del álbum cuando esté disponible.</string>
 	<key>settings.appearance</key>
 	<string>Apariencia</string>
+	<key>settings.automix</key>
+	<string>Automix (beta)</string>
+	<key>settings.automix.hint</key>
+	<string>Prepara una transición de DJ hacia la canción siguiente mientras suena la actual. La primera vez descarga un modelo de unos 210 MB. Necesita transmisiones AAC y no actúa durante un Jam (tu preferencia se conserva y vuelve al terminar), con la repetición de un tema ni entre pistas del mismo álbum.</string>
 	<key>settings.categories</key>
 	<string>Categorías de Inicio</string>
 	<key>settings.categoriesHint</key>

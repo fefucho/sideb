@@ -100,7 +100,7 @@ private func recommendedAlbum(_ id: String) -> AlbumDetailRecord {
     let player = recommendedCollectionPlayer(core)
     player.queueManager.replaceQueue(with: [collectionTrack("existing")])
     let token = player.queueManager.queueToken
-    let item = AVPlayerItem(url: URL(fileURLWithPath: "/tmp/home-playlist-fixture.m4a"))
+    let item = AVPlayerItem(url: TestAudioFixture.silentWAV)
     player.audioService.avPlayer.replaceCurrentItem(with: item)
     player.playRecommendedPlaylist(browseId: "PL-failure")
     await core.playlists.wait("PL-failure")

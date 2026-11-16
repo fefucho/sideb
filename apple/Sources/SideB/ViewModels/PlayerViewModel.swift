@@ -1,6 +1,7 @@
 import Foundation
 import SwiftUI
 import MediaPlayer
+import AVFoundation
 import SideBCore
 
 // SAFETY: SideBCore está protegido internamente por Arc<Mutex<T>> en Rust.
@@ -186,10 +187,16 @@ public final class PlayerViewModel {
         currentTrack = nil
         queueManager.sessionEditor = editor
         jamControl = control
+        AutomixDiagnostics.shared.record("jam", "el Jam empezó: Automix se descarta (estado del empalme antes: \(audioService.spliceStage)); la preferencia guardada no cambia")
+        automix.reconcile() // Con un Jam activo no hay Automix: descarta lo preparado.
     }
 
     /// Called by the Jam controller when the session is over, whatever the reason.
     func endJamSession(restore: JamExitRestore) {
+        defer { // Sin Jam, Automix vuelve a regir con la preferencia guardada.
+            AutomixDiagnostics.shared.record("jam", "el Jam terminó: Automix vuelve a regir con el ajuste guardado (\(audioService.automixEnabled ? "encendido" : "apagado"))")
+            automix.reconcile()
+        }
         let snapshot = jamSnapshot
         let wasSwitching = isSwitchingPlaybackSession
         isSwitchingPlaybackSession = true // The cleared Jam queue must never be written as the session.
@@ -316,6 +323,7 @@ public final class PlayerViewModel {
             if oldValue != currentPlaybackToken {
                 volumeScroll.cancel()
                 pendingLyricSeek = nil
+                automix.reconcile()
             }
         }
     }
@@ -333,6 +341,19 @@ public final class PlayerViewModel {
     private var radioRequestCursors = Set<String>()
     private var currentRadioToken: UUID = UUID()
     private var currentAutomixToken: UUID = UUID()
+
+    // MARK: - Automix (DJ, PLAN-024)
+    // El «Automix» de arriba (`checkAutomixTrigger`) extiende la cola con radio; éste mezcla dos temas.
+    /// Prepara y entrega las transiciones DJ al reproductor. Estado visible: `automix.status`.
+    let automix: AutomixCoordinator
+    /// Ocurrencia que ya sonó de verdad (`onPlaybackStarted`); el coordinador no prepara antes.
+    private var automixStartedToken: UUID?
+    /// Mientras la cola avanza al traspaso, el coordinador no debe evaluar un estado intermedio.
+    private var isPerformingAutomixHandover = false
+    var automixEnabled: Bool {
+        get { audioService.automixEnabled }
+        set { audioService.automixEnabled = newValue }
+    }
 
     // MARK: - Dependencias
     public var rustCore: SideBCore? {
@@ -360,10 +381,17 @@ public final class PlayerViewModel {
         self.playbackStore = playbackStore
         self.searchRecents = searchRecents ?? .shared
         self.playlistCatalog = playlistCatalog ?? .shared
+        self.automix = AutomixCoordinator(enabled: audioService.automixEnabled)
+        self.automix.host = self
+        setupAutomixCallbacks()
         setupRemoteCommands()
         setupTrackEndListener()
         setupPlaybackProgressListener()
         audioService.onPlaybackStarted = { [weak self] playbackID in
+            if let self, playbackID == self.currentPlaybackToken, self.automixStartedToken != playbackID {
+                self.automixStartedToken = playbackID
+                self.automix.reconcile()
+            }
             guard let self, let intent = self.searchRecentIntent,
                   intent.playbackID == playbackID, self.currentPlaybackToken == playbackID,
                   self.currentTrack?.videoId == intent.videoID else { return }
@@ -374,7 +402,10 @@ public final class PlayerViewModel {
             guard let self, self.searchRecentIntent?.playbackID == playbackID else { return }
             self.failSearchRecentIntent()
         }
-        queueManager.onStateChange = { [weak self] in self?.schedulePlaybackSave() }
+        queueManager.onStateChange = { [weak self] in
+            self?.schedulePlaybackSave()
+            self?.automix.reconcile()
+        }
         if rustCore != nil {
             hydrateLikedSongs()
         }
@@ -1967,7 +1998,8 @@ public final class PlayerViewModel {
 
     public func seek(toFraction fraction: Double) {
         if let jamControl { jamControl(.seek(fraction: fraction)); return }
-        audioService.seek(toFraction: fraction)
+        guard fraction.isFinite, audioService.duration.isFinite, audioService.duration > 0 else { return }
+        performSeek(toSeconds: max(0, min(fraction, 1)) * audioService.duration)
     }
 
     /// Lyrics name an absolute media cue even before duration is known. Loaded
@@ -1977,7 +2009,7 @@ public final class PlayerViewModel {
         guard seconds.isFinite, seconds >= 0, let track = currentTrack else { return false }
         if audioService.avPlayer.currentItem != nil && !isLoadingStream {
             pendingLyricSeek = nil
-            return audioService.seek(toSeconds: seconds)
+            return performSeek(toSeconds: seconds)
         }
         guard rustCore != nil else { return false }
         if !isLoadingStream { playSongNow(track) }
@@ -2072,7 +2104,7 @@ public final class PlayerViewModel {
                 return .commandFailed
             }
             Task { @MainActor in
-                self?.audioService.seek(toSeconds: posEvent.positionTime)
+                self?.performSeek(toSeconds: posEvent.positionTime)
             }
             return .success
         }
@@ -2133,6 +2165,256 @@ public final class PlayerViewModel {
         info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = audioService.currentTime
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
     }
+}
+
+// MARK: - Automix (DJ): anfitrión del coordinador, traspaso y saltos (PLAN-024)
+
+extension PlayerViewModel: AutomixHost {
+    fileprivate func setupAutomixCallbacks() {
+        audioService.onAutomixEnabledChanged = { [weak self] enabled in
+            self?.automix.setEnabled(enabled)
+        }
+        audioService.onSpliceEntered = { [weak self] in self?.automix.spliceEntered() }
+        audioService.onSpliceFailed = { [weak self] in self?.automix.spliceFailed() }
+        audioService.onSpliceHandover = { [weak self] in self?.performAutomixHandover() }
+    }
+
+    /// Foto para el coordinador: nil cuando no hay tema, o mientras la cola avanza al traspaso.
+    func automixContext() -> AutomixContext? {
+        guard !isPerformingAutomixHandover, let track = currentTrack else { return nil }
+        let queue = queueManager.queue
+        let nextIndex = queueManager.currentIndex + 1
+        // «Siguiente conocido»: sólo si la cola apunta de verdad al tema que suena.
+        let next = queueManager.currentTrack?.videoId == track.videoId && queue.indices.contains(nextIndex)
+            ? AutomixSong(queue[nextIndex]) : nil
+        return AutomixContext(token: currentPlaybackToken, current: AutomixSong(track), next: next,
+                              jamActive: isJamSessionActive, repeatOne: queueManager.isRepeat,
+                              hasStarted: automixStartedToken == currentPlaybackToken && !isLoadingStream)
+    }
+
+    func automixPrepare(_ request: AutomixRequest) async throws -> AutomixTransition {
+        guard let core = rustCore else { throw AutomixFailure.other }
+        do {
+            // El Mac no aplica normalización de volumen (`loudnessDb` no se usa): sin ganancias.
+            let record = try await core.prepareAutomix(
+                requestId: request.requestID, fromVideoId: request.from.videoID, fromIsUpload: request.from.isUpload,
+                fromGainDb: nil, toVideoId: request.to.videoID, toIsUpload: request.to.isUpload, toGainDb: nil,
+                cacheDir: request.cacheDirectory.path)
+            return AutomixTransition(record: record)
+        } catch SideBError.StreamError(let message) {
+            throw AutomixFailureReport(failure: AutomixFailure(coreMessage: message), message: message)
+        } catch is CancellationError {
+            throw AutomixFailureReport(failure: .cancelled, message: "CancellationError")
+        } catch {
+            throw AutomixFailureReport(failure: .other, message: "\(type(of: error)): \(error.localizedDescription)")
+        }
+    }
+
+    func automixModelReady() -> Bool? { rustCore?.automixModelReady() }
+
+    func automixCancel(requestID: String) {
+        rustCore?.cancelAutomix(requestId: requestID)
+    }
+
+    func automixArm(_ transition: AutomixTransition) async -> AutomixArmOutcome {
+        guard FileManager.default.fileExists(atPath: transition.filePath) else { return .failed }
+        let asset = AVURLAsset(url: URL(fileURLWithPath: transition.filePath))
+        do { guard try await asset.load(.isPlayable) else { return .failed } } catch { return .failed }
+        // El tema pudo cambiar mientras el archivo se abría.
+        guard !Task.isCancelled, currentTrack?.videoId == transition.fromVideoID,
+              audioService.spliceStage == .none || audioService.spliceStage == .handedOver else { return .failed }
+        let splice = AudioSplice(asset: asset, nextVideoID: transition.toVideoID, timeline: transition.timeline)
+        switch audioService.armSplice(splice) {
+        case .armed: return .armed
+        case .enteredLate: return .enteredLate
+        case .tooLate: return .tooLate
+        case .unavailable: return .failed
+        }
+    }
+
+    func automixDisarm() {
+        audioService.disarmSplice()
+    }
+
+    func automixAbortMixing() {
+        AutomixDiagnostics.shared.record("vm", "la cola cambió el siguiente tema con la mezcla en curso: se sigue por la vía normal (playNext)")
+        playNext(isManualSkip: false)
+    }
+
+    func automixCacheDirectory() -> URL {
+        let bundle = Bundle.main.bundleIdentifier ?? "com.fefucho.SideB"
+        return FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent(bundle, isDirectory: true)
+            .appendingPathComponent(HomeLabConfiguration.enabled ? "automix-lab" : "automix", isDirectory: true)
+    }
+
+    /// El archivo llegó a su segundo de traspaso: la interfaz pasa a la siguiente canción sin resolver ni
+    /// reproducir su stream (ya suena desde el archivo).
+    fileprivate func performAutomixHandover() {
+        guard let nextID = audioService.spliceNextVideoID else { return }
+        AutomixDiagnostics.shared.record("vm", "traspaso en el segundo \(String(format: "%.2f", audioService.avPlayer.currentTime().seconds)) del archivo hacia \(nextID)")
+        isPerformingAutomixHandover = true
+        automix.didHandover()
+        let queue = queueManager.queue
+        let nextIndex = queueManager.currentIndex + 1
+        guard !isJamSessionActive, queue.indices.contains(nextIndex), queue[nextIndex].videoId == nextID,
+              let song = queueManager.nextTrack(isManualSkip: false), song.videoId == nextID else {
+            isPerformingAutomixHandover = false
+            AutomixDiagnostics.shared.record("vm", "traspaso sin el siguiente esperado en la cola: se sigue por la vía normal (playNext)")
+            playNext(isManualSkip: false)
+            return
+        }
+
+        cancelSearchRecentIntent()
+        resolveStreamTask?.cancel()
+        lyricsTask?.cancel()
+        cancelRecommendationLoading()
+        albumMetadataTask?.cancel()
+        albumMetadataRequest = nil
+
+        let token = UUID()
+        currentPlaybackToken = token
+        pendingTailSkipToken = nil
+        audioService.completeHandover(playbackID: token)
+        automixStartedToken = token // Ya está sonando: es un arranque real.
+        streamInfo = nil
+
+        currentTrack = song
+        genius.prepare(for: song, core: rustCore, identity: token)
+        queueManager.syncCurrentIndex(for: song.videoId)
+        currentArtistBrowseId = (song.artistId?.isEmpty == false) ? song.artistId : nil
+        currentAlbumBrowseId = (song.albumId?.isEmpty == false) ? song.albumId : nil
+        isCurrentTrackLiked = likedVideoIds.contains(song.videoId)
+        hasRecordedHistoryForCurrentTrack = false
+        isLoadingStream = false
+        errorMessage = nil
+        if isFullscreenPresented && selectedFullscreenPanel == .recommended {
+            fetchRecommendations(for: song)
+        } else {
+            recommendedData = nil
+            recommendedTracks = []
+        }
+        lyricsInfo = nil
+        isLoadingLyrics = false
+        hydrateCurrentAlbumMetadata()
+        rememberCurrentTrackDuration(audioService.duration)
+        genius.playbackStarted(identity: token)
+        updateNowPlayingInfo()
+        checkAutomixTrigger()
+
+        // El historial y `streamInfo` dependen de que el core conozca la reproducción actual: se resuelve el
+        // stream de fondo, sin reproducirlo.
+        if let core = rustCore {
+            AutomixDiagnostics.shared.record("vm", "resolveStream de fondo para el historial: \(song.videoId) (no se reproduce)")
+            resolveStreamTask = Task {
+                self.loadLyrics(for: song, token: token)
+                do {
+                    let info = try await core.resolveStream(videoId: song.videoId, isUpload: song.isUpload)
+                    guard !Task.isCancelled, self.currentPlaybackToken == token, self.currentTrack?.videoId == song.videoId else {
+                        AutomixDiagnostics.shared.record("vm", "resolveStream de fondo descartado (cambió el tema): \(song.videoId)")
+                        return
+                    }
+                    self.streamInfo = info
+                    AutomixDiagnostics.shared.record("vm", "resolveStream de fondo listo: \(song.videoId) itag \(info.itag) cliente \(info.streamClient)")
+                } catch {
+                    guard !Task.isCancelled, self.currentPlaybackToken == token else { return }
+                    AutomixDiagnostics.shared.record("vm", "resolveStream de fondo falló para \(song.videoId): \(error.localizedDescription)")
+                }
+            }
+        }
+        isPerformingAutomixHandover = false
+        automix.reconcile()
+    }
+
+    /// Salto con el mapa de tiempos del archivo cuando suena una transición.
+    @discardableResult
+    fileprivate func performSeek(toSeconds seconds: Double) -> Bool {
+        let route = audioService.seekRoute(forSeconds: seconds)
+        if audioService.spliceStage != .none {
+            let bias = audioService.timeBias
+            let mapping: String
+            switch route {
+            case .direct: mapping = "elemento \(String(format: "%.2f", seconds + bias)) s"
+            case .intoFile: mapping = "entra al archivo: segundo \(String(format: "%.2f", seconds - (audioService.spliceTimeline?.cut ?? 0))) del archivo"
+            case .disarmThenDirect: mapping = "desarma el empalme y busca normal en la canción"
+            case .restream: mapping = "el archivo no lo contiene: se resuelve la canción de nuevo desde ahí"
+            }
+            AutomixDiagnostics.shared.record("vm", "salto: canción \(String(format: "%.2f", seconds)) s [\(audioService.spliceStage)] → \(route) → \(mapping)")
+        }
+        switch route {
+        case .direct:
+            return audioService.seek(toSeconds: seconds)
+        case .intoFile:
+            return audioService.seekIntoSplice(toSeconds: seconds)
+        case .disarmThenDirect:
+            audioService.disarmSplice()
+            automix.gaveUp()
+            return audioService.seek(toSeconds: seconds)
+        case .restream:
+            // El archivo no contiene ese momento: resolver la canción y reproducirla desde ahí.
+            guard let track = currentTrack, rustCore != nil else { return false }
+            playSongNow(track)
+            guard isLoadingStream, currentTrack?.videoId == track.videoId else { return false }
+            pendingLyricSeek = PendingLyricSeek(playbackID: currentPlaybackToken, sessionID: accountGeneration,
+                                               videoID: track.videoId, seconds: seconds)
+            return true
+        }
+    }
+}
+
+// MARK: - Diagnóstico de Automix (PLAN-024)
+
+extension PlayerViewModel {
+    /// Foto del estado de Automix para la ventana de diagnóstico. Sólo lectura; se llama únicamente mientras la
+    /// ventana está abierta.
+    func automixDiagnosticsSnapshot(now: Date = Date()) -> AutomixDiagnosticsSnapshot {
+        let store = AutomixDiagnostics.shared
+        let context = automixContext()
+        let queue = queueManager.queue
+        func line(_ song: SongItemRecord?, index: Int?) -> AutomixTrackLine? {
+            song.map { AutomixTrackLine(title: $0.title, videoID: $0.videoId, albumID: $0.albumId, queueIndex: index) }
+        }
+        let index = queueManager.currentIndex
+        let current = line(currentTrack, index: queueManager.currentTrack?.videoId == currentTrack?.videoId ? index : nil)
+        let next = line(queue.indices.contains(index + 1) ? queue[index + 1] : nil, index: index + 1)
+        let request = automix.request
+        let transition = request?.transition
+        let player = audioService.diagnosticsSnapshot()
+        let countdown = audioService.spliceTimeline.flatMap {
+            AutomixCountdown.make(timeline: $0, stage: player.stage, itemSeconds: player.rawItemSeconds, timeBias: player.timeBias)
+        }
+        let reason = context.flatMap(AutomixEligibility.reason)
+        let jumpTarget: Double? = {
+            guard automix.status.isReady, player.stage == .armed, let transition else { return nil }
+            return AutomixDebugActions.jumpTarget(cut: transition.aCut, position: player.displayedSeconds)
+        }()
+        return AutomixDiagnosticsSnapshot(
+            date: now, settingEnabled: audioService.automixEnabled, jamActive: isJamSessionActive, repeatOne: queueManager.isRepeat,
+            hasStarted: context?.hasStarted ?? false, isLoadingStream: isLoadingStream,
+            eligibility: context == nil ? "sin tema que suene" : reason.map(AutomixCoordinator.describe),
+            coordinatorStatus: AutomixCoordinator.describe(automix.status),
+            current: current, next: next, request: request,
+            modelReady: store.cachedModelReady(now: now) { automixModelReady() },
+            transition: transition, fileSize: transition.flatMap { store.cachedFileSize(path: $0.filePath, now: now) },
+            player: player, countdown: countdown,
+            canPrepareNow: audioService.automixEnabled && context != nil && reason == nil,
+            canCancel: automix.isPreparing, jumpTarget: jumpTarget)
+    }
+
+    /// Depuración: salta la canción a 10 s antes del corte (sólo con una transición lista y la canción antes del corte).
+    @discardableResult
+    func automixJumpBeforeCut() -> Bool {
+        guard let snapshot = Optional(automixDiagnosticsSnapshot()), let target = snapshot.jumpTarget else {
+            AutomixDiagnostics.shared.record("vm", "«Saltar antes del corte» ignorado: no hay transición lista o la canción ya pasó el corte")
+            return false
+        }
+        AutomixDiagnostics.shared.record("vm", "«Saltar antes del corte»: canción a \(String(format: "%.2f", target)) s")
+        return performSeek(toSeconds: target)
+    }
+}
+
+extension AutomixCoordinator.Status {
+    var isReady: Bool { if case .ready = self { true } else { false } }
 }
 
 // MARK: - Normalización de Metadatos Artista / Álbum

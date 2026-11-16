@@ -53,6 +53,16 @@ struct PlayerBarProgressView: View {
         return "-" + viewModel.formattedTime(at: max(0, viewModel.duration * (1 - seekFraction)))
     }
 
+    /// Inicio de la mezcla de Automix sobre esta barra, si hay una transición lista o sonando para este tema.
+    private func automixLayout(width: Double) -> (tickX: Double, segmentWidth: Double)? {
+        viewModel.automix.marker?.layout(duration: viewModel.duration, width: width)
+    }
+
+    private var automixHelp: String? {
+        guard let marker = viewModel.automix.marker, marker.fraction(duration: viewModel.duration) != nil else { return nil }
+        return L10n.text("automix.marker.value", args: [viewModel.formattedTime(at: marker.songSeconds)])
+    }
+
     private func timeLabel(_ value: String, alignment: Alignment) -> some View {
         Text(value)
             .font(.system(size: 10.5, weight: .medium, design: .rounded))
@@ -71,6 +81,7 @@ struct PlayerBarProgressView: View {
             let fillWidth = width * clampedFraction
 
             let thickness: CGFloat = isHoveringScrubber || isSeeking ? 7 : 5
+            let mix = automixLayout(width: width)
 
             ZStack(alignment: .leading) {
                 // Pista completa atenuada, extremos redondeados.
@@ -78,10 +89,37 @@ struct PlayerBarProgressView: View {
                     .fill(Color.white.opacity(0.22))
                     .frame(height: thickness)
 
+                // Automix (beta): el tramo de la canción que se mezclará, desde el inicio de la mezcla hasta el final.
+                if let mix {
+                    Capsule()
+                        .fill(Color.clear)
+                        .frame(height: thickness)
+                        .overlay(alignment: .leading) {
+                            Rectangle()
+                                .fill(Color.sidebAccentHighlight.opacity(0.38))
+                                .frame(width: mix.segmentWidth, height: thickness)
+                                .offset(x: mix.tickX)
+                        }
+                        .clipShape(Capsule())
+                        .allowsHitTesting(false)
+                        .accessibilityHidden(true)
+                }
+
                 // Parte transcurrida con el acento de Side B (sin thumb visible).
                 Capsule()
                     .fill(Color.sidebAccentHighlight)
                     .frame(width: max(0, fillWidth), height: thickness)
+
+                if let mix {
+                    // Marca fina del inicio de la mezcla; el halo oscuro la separa del relleno y de la pista.
+                    Capsule()
+                        .fill(Color.white.opacity(0.95))
+                        .frame(width: 2, height: thickness + 5)
+                        .shadow(color: .black.opacity(0.45), radius: 0.6)
+                        .offset(x: max(0, min(width - 2, mix.tickX - 1)))
+                        .allowsHitTesting(false)
+                        .accessibilityHidden(true)
+                }
             }
             .frame(height: proxy.size.height, alignment: .center)
             .contentShape(Rectangle())
@@ -107,7 +145,8 @@ struct PlayerBarProgressView: View {
         .allowsHitTesting(viewModel.duration.isFinite && viewModel.duration > 0)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(L10n.text("playbackSidebar.position"))
-        .accessibilityValue(viewModel.formattedElapsed + " / " + viewModel.formattedDuration)
+        .help(automixHelp ?? "")
+        .accessibilityValue(viewModel.formattedElapsed + " / " + viewModel.formattedDuration + (automixHelp.map { ". " + $0 } ?? ""))
         .accessibilityAdjustableAction { direction in
             guard viewModel.duration.isFinite, viewModel.duration > 0 else { return }
             let delta = direction == .increment ? 5.0 : -5.0

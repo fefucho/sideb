@@ -15,6 +15,7 @@ struct ExperimentalLyricsPanel: View {
     var source: String = "auto"
     var onSelectSource: (String) -> Void = { _ in }
     var showsControls = true
+    var timeBias: @MainActor () -> Double = { 0 }
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorSchemeContrast) private var contrast
@@ -27,13 +28,15 @@ struct ExperimentalLyricsPanel: View {
     @State private var recenterRevision: UInt64 = 0
     @State private var visibleItemIDs: Set<String> = []
 
-    init(document: ExperimentalLyricsDocument, player: AVPlayer, playbackIdentity: UUID,
+    init(document: ExperimentalLyricsDocument, player: AVPlayer, timeBias: @escaping @MainActor () -> Double = { 0 },
+         playbackIdentity: UUID,
          duration: Double, seekSnapshot: AudioPlayerSeekSnapshot = .idle, onSeek: @escaping (Double) -> Void,
          onShowOriginalLyrics: @escaping () -> Void = {}, onRefresh: @escaping () -> Void = {},
          isRefreshing: Bool = false, presentation: LyricsPresentationSettings? = nil,
          source: String = "auto", onSelectSource: @escaping (String) -> Void = { _ in },
          showsControls: Bool = true) {
         self.showsControls = showsControls
+        self.timeBias = timeBias
         self.source = source
         self.onSelectSource = onSelectSource
         self.document = document
@@ -350,7 +353,7 @@ struct ExperimentalLyricsPanel: View {
         presentation.activate(playbackIdentity)
         cachedItems = (document, duration, Self.items(document: document, duration: duration))
         clock.start(player: player, document: document, duration: duration,
-                    playbackIdentity: playbackIdentity, seekSnapshot: seekSnapshot)
+                    playbackIdentity: playbackIdentity, seekSnapshot: seekSnapshot, timeBias: timeBias)
         configureClock()
         if recenterAfterUpdate {
             recenterRevision &+= 1

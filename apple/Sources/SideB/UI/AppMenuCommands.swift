@@ -81,6 +81,7 @@ final class AppMenuContext {
 
 struct SideBMenuCommands: Commands {
     @FocusedValue(\.sideBMenuContext) private var context
+    @Environment(\.openWindow) private var openWindow
 
     var body: some Commands {
         let _ = L10n.revision
@@ -180,6 +181,12 @@ struct SideBMenuCommands: Commands {
                 set: { context?.player?.queueManager.isRepeat = $0 }
             ))
             .disabled(context?.player?.currentTrack == nil)
+        }
+
+        // Automix (beta): disponible mientras exista la beta.
+        CommandMenu(L10n.text("menu.automix")) {
+            Button(L10n.text("automix.diag.menuItem")) { openWindow(id: AutomixDiagnosticsWindow.id) }
+                .keyboardShortcut("a", modifiers: [.option, .command])
         }
 
         CommandMenu(L10n.text("menu.account")) {

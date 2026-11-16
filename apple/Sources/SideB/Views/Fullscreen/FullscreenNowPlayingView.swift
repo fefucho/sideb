@@ -235,6 +235,9 @@ struct FullscreenNowPlayingView: View, Animatable {
                 // The marker hangs above the cover, centred on it, without taking layout space,
                 // so the artwork never moves or resizes when a Jam starts or ends.
                 .overlay(alignment: .top) { fullscreenJamBadge(layout) }
+                // Beta · Automix hangs over the cover's leading corner, in the same clearance as the Jam marker
+                // (disabled while a Jam is live: the Jam forces Automix off).
+                .overlay(alignment: .topLeading) { fullscreenAutomixPill(layout) }
                 .frame(width: layout.leftWidth, height: layout.availableContentHeight, alignment: .center)
 
                 VStack(alignment: .center, spacing: 14) {
@@ -275,6 +278,18 @@ struct FullscreenNowPlayingView: View, Animatable {
             }
         }
         .animation(reduceMotion ? nil : .easeOut(duration: 0.22), value: live)
+    }
+
+    private func fullscreenAutomixPill(_ layout: FullscreenSceneMetrics) -> some View {
+        Group {
+            if viewModel.currentTrack != nil {
+                AutomixPill(viewModel: viewModel)
+                    .frame(height: FullscreenSceneMetrics.jamMarkerHeight)
+                    // The overlay sits on the artwork-wide block, so x = 0 is the cover's leading edge.
+                    .offset(y: -(FullscreenSceneMetrics.jamMarkerHeight + FullscreenSceneMetrics.jamMarkerGap))
+                    .windowGestureRegion(.excluded)
+            }
+        }
     }
 
     // MARK: - Módulo Artwork (1:1 Cuadrado en Fullscreen con Play/Pause en click y oscurecimiento en hover)
@@ -776,6 +791,7 @@ struct FullscreenNowPlayingView: View, Animatable {
             ExperimentalLyricsPanel(
                 document: document,
                 player: viewModel.audioService.avPlayer,
+                timeBias: { [audio = viewModel.audioService] in audio.timeBias },
                 playbackIdentity: viewModel.experimentalLyricsPlaybackIdentity,
                 duration: viewModel.duration,
                 seekSnapshot: viewModel.audioService.seekSnapshot,
@@ -876,6 +892,7 @@ struct FullscreenNowPlayingView: View, Animatable {
                     ExperimentalLyricsPanel(
                         document: document,
                         player: viewModel.audioService.avPlayer,
+                        timeBias: { [audio = viewModel.audioService] in audio.timeBias },
                         playbackIdentity: viewModel.experimentalLyricsPlaybackIdentity,
                         duration: viewModel.duration,
                         seekSnapshot: viewModel.audioService.seekSnapshot,

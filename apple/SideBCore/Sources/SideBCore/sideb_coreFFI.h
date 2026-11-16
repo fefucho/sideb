@@ -299,9 +299,19 @@ uint64_t uniffi_sideb_core_fn_method_sidebcore_add_to_playlist(void*_Nonnull ptr
 uint64_t uniffi_sideb_core_fn_method_sidebcore_apply_song_library_action(void*_Nonnull ptr, RustBuffer token
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_FN_METHOD_SIDEBCORE_AUTOMIX_MODEL_READY
+#define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_FN_METHOD_SIDEBCORE_AUTOMIX_MODEL_READY
+int8_t uniffi_sideb_core_fn_method_sidebcore_automix_model_ready(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_FN_METHOD_SIDEBCORE_CANCEL_ANIMATED_ARTWORK
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_FN_METHOD_SIDEBCORE_CANCEL_ANIMATED_ARTWORK
 void uniffi_sideb_core_fn_method_sidebcore_cancel_animated_artwork(void*_Nonnull ptr, RustBuffer request_id, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_FN_METHOD_SIDEBCORE_CANCEL_AUTOMIX
+#define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_FN_METHOD_SIDEBCORE_CANCEL_AUTOMIX
+void uniffi_sideb_core_fn_method_sidebcore_cancel_automix(void*_Nonnull ptr, RustBuffer request_id, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_FN_METHOD_SIDEBCORE_CHOOSE_GENIUS
@@ -562,6 +572,11 @@ void uniffi_sideb_core_fn_method_sidebcore_pin_item(void*_Nonnull ptr, RustBuffe
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_FN_METHOD_SIDEBCORE_PREPARE_ANIMATED_ARTWORK
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_FN_METHOD_SIDEBCORE_PREPARE_ANIMATED_ARTWORK
 uint64_t uniffi_sideb_core_fn_method_sidebcore_prepare_animated_artwork(void*_Nonnull ptr, RustBuffer request, RustBuffer request_id, RustBuffer cache_dir
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_FN_METHOD_SIDEBCORE_PREPARE_AUTOMIX
+#define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_FN_METHOD_SIDEBCORE_PREPARE_AUTOMIX
+uint64_t uniffi_sideb_core_fn_method_sidebcore_prepare_automix(void*_Nonnull ptr, RustBuffer request_id, RustBuffer from_video_id, int8_t from_is_upload, RustBuffer from_gain_db, RustBuffer to_video_id, int8_t to_is_upload, RustBuffer to_gain_db, RustBuffer cache_dir
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_FN_METHOD_SIDEBCORE_RATE_SONG
@@ -991,9 +1006,21 @@ uint16_t uniffi_sideb_core_checksum_method_sidebcore_apply_song_library_action(v
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_AUTOMIX_MODEL_READY
+#define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_AUTOMIX_MODEL_READY
+uint16_t uniffi_sideb_core_checksum_method_sidebcore_automix_model_ready(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_CANCEL_ANIMATED_ARTWORK
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_CANCEL_ANIMATED_ARTWORK
 uint16_t uniffi_sideb_core_checksum_method_sidebcore_cancel_animated_artwork(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_CANCEL_AUTOMIX
+#define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_CANCEL_AUTOMIX
+uint16_t uniffi_sideb_core_checksum_method_sidebcore_cancel_automix(void
     
 );
 #endif
@@ -1306,6 +1333,12 @@ uint16_t uniffi_sideb_core_checksum_method_sidebcore_pin_item(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_PREPARE_ANIMATED_ARTWORK
 #define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_PREPARE_ANIMATED_ARTWORK
 uint16_t uniffi_sideb_core_checksum_method_sidebcore_prepare_animated_artwork(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_PREPARE_AUTOMIX
+#define UNIFFI_FFIDEF_UNIFFI_SIDEB_CORE_CHECKSUM_METHOD_SIDEBCORE_PREPARE_AUTOMIX
+uint16_t uniffi_sideb_core_checksum_method_sidebcore_prepare_automix(void
     
 );
 #endif

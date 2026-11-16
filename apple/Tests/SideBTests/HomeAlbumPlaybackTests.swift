@@ -74,7 +74,7 @@ private func homeAlbum(_ id: String) -> AlbumDetailRecord {
     let player = homePlayer(core)
     player.queueManager.replaceQueue(with: homeAlbum("existing").items)
     let token = player.queueManager.queueToken
-    let item = AVPlayerItem(url: URL(fileURLWithPath: "/tmp/home-album-fixture.m4a"))
+    let item = AVPlayerItem(url: TestAudioFixture.silentWAV)
     player.audioService.avPlayer.replaceCurrentItem(with: item)
     player.playRecommendedAlbum(browseId: "failed")
     await core.requests.wait("failed")

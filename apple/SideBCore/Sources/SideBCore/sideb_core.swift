@@ -540,7 +540,19 @@ public protocol SideBCoreProtocol : AnyObject {
      */
     func applySongLibraryAction(token: String) async throws 
     
+    /**
+     * Whether the stem-separation model is on disk. Until it is, transitions
+     * that would use stems get a frequency split instead.
+     */
+    func automixModelReady()  -> Bool
+    
     func cancelAnimatedArtwork(requestId: String) 
+    
+    /**
+     * Abandons the preparation started with this `request_id`, if it is the
+     * current one. Its result is discarded.
+     */
+    func cancelAutomix(requestId: String) 
     
     func chooseGenius(track: GeniusTrackRecord, songId: Int64) async throws  -> GeniusResolutionRecord
     
@@ -769,6 +781,28 @@ public protocol SideBCoreProtocol : AnyObject {
     func prepareAnimatedArtwork(request: AnimatedArtworkRequest, requestId: String, cacheDir: String) async throws  -> AnimatedArtworkAsset?
     
     /**
+     * Renders the transition from one song into the next while the first
+     * one plays: resolves both streams (AAC is required, so a song that
+     * resolves to Opus only fails with an `automix:unsupported-format`
+     * stream error), downloads them into `<cache_dir>/audio/`, and writes
+     * `<cache_dir>/transitions/<from>__<to>.wav` with the first song
+     * untouched, the transition and the whole rest of the second.
+     *
+     * Gains are baked into the file (the player must not apply its own to
+     * it). At most one preparation runs at a time and a newer request
+     * supersedes an older one: the older fails with `automix:cancelled`, as
+     * does one cancelled by [`cancel_automix`](Self::cancel_automix); its work
+     * may still run to the end of its current stage in the background.
+     * Nothing here touches the playback-history tracking `resolve_stream`
+     * records.
+     *
+     * First transition on a machine without the stem model: it gets the
+     * frequency-split stand-in and the model downloads in the background
+     * (`automix_model_ready` turns true once it has).
+     */
+    func prepareAutomix(requestId: String, fromVideoId: String, fromIsUpload: Bool, fromGainDb: Double?, toVideoId: String, toIsUpload: Bool, toGainDb: Double?, cacheDir: String) async throws  -> AutomixTransitionRecord
+    
+    /**
      * Rate song (LIKE, DISLIKE, INDIFFERENT).
      */
     func rateSong(videoId: String, rating: String) async throws 
@@ -965,8 +999,30 @@ open func applySongLibraryAction(token: String)async throws  {
         )
 }
     
+    /**
+     * Whether the stem-separation model is on disk. Until it is, transitions
+     * that would use stems get a frequency split instead.
+     */
+open func automixModelReady() -> Bool {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+    uniffi_sideb_core_fn_method_sidebcore_automix_model_ready(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
 open func cancelAnimatedArtwork(requestId: String) {try! rustCall() {
     uniffi_sideb_core_fn_method_sidebcore_cancel_animated_artwork(self.uniffiClonePointer(),
+        FfiConverterString.lower(requestId),$0
+    )
+}
+}
+    
+    /**
+     * Abandons the preparation started with this `request_id`, if it is the
+     * current one. Its result is discarded.
+     */
+open func cancelAutomix(requestId: String) {try! rustCall() {
+    uniffi_sideb_core_fn_method_sidebcore_cancel_automix(self.uniffiClonePointer(),
         FfiConverterString.lower(requestId),$0
     )
 }
@@ -1903,6 +1959,43 @@ open func prepareAnimatedArtwork(request: AnimatedArtworkRequest, requestId: Str
             completeFunc: ffi_sideb_core_rust_future_complete_rust_buffer,
             freeFunc: ffi_sideb_core_rust_future_free_rust_buffer,
             liftFunc: FfiConverterOptionTypeAnimatedArtworkAsset.lift,
+            errorHandler: FfiConverterTypeSideBError.lift
+        )
+}
+    
+    /**
+     * Renders the transition from one song into the next while the first
+     * one plays: resolves both streams (AAC is required, so a song that
+     * resolves to Opus only fails with an `automix:unsupported-format`
+     * stream error), downloads them into `<cache_dir>/audio/`, and writes
+     * `<cache_dir>/transitions/<from>__<to>.wav` with the first song
+     * untouched, the transition and the whole rest of the second.
+     *
+     * Gains are baked into the file (the player must not apply its own to
+     * it). At most one preparation runs at a time and a newer request
+     * supersedes an older one: the older fails with `automix:cancelled`, as
+     * does one cancelled by [`cancel_automix`](Self::cancel_automix); its work
+     * may still run to the end of its current stage in the background.
+     * Nothing here touches the playback-history tracking `resolve_stream`
+     * records.
+     *
+     * First transition on a machine without the stem model: it gets the
+     * frequency-split stand-in and the model downloads in the background
+     * (`automix_model_ready` turns true once it has).
+     */
+open func prepareAutomix(requestId: String, fromVideoId: String, fromIsUpload: Bool, fromGainDb: Double?, toVideoId: String, toIsUpload: Bool, toGainDb: Double?, cacheDir: String)async throws  -> AutomixTransitionRecord {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_sideb_core_fn_method_sidebcore_prepare_automix(
+                    self.uniffiClonePointer(),
+                    FfiConverterString.lower(requestId),FfiConverterString.lower(fromVideoId),FfiConverterBool.lower(fromIsUpload),FfiConverterOptionDouble.lower(fromGainDb),FfiConverterString.lower(toVideoId),FfiConverterBool.lower(toIsUpload),FfiConverterOptionDouble.lower(toGainDb),FfiConverterString.lower(cacheDir)
+                )
+            },
+            pollFunc: ffi_sideb_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_sideb_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_sideb_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeAutomixTransitionRecord.lift,
             errorHandler: FfiConverterTypeSideBError.lift
         )
 }
@@ -3091,6 +3184,292 @@ public func FfiConverterTypeArtistDetailRecord_lift(_ buf: RustBuffer) throws ->
 #endif
 public func FfiConverterTypeArtistDetailRecord_lower(_ value: ArtistDetailRecord) -> RustBuffer {
     return FfiConverterTypeArtistDetailRecord.lower(value)
+}
+
+
+/**
+ * The rendered transition and where everything sits in it. Seconds named
+ * "file" are into the WAV at `file_path`; the others are into the song.
+ */
+public struct AutomixTransitionRecord {
+    /**
+     * The id the request was made with.
+     */
+    public var requestId: String
+    public var fromVideoId: String
+    public var toVideoId: String
+    /**
+     * "mix" (beat-matched bass swap), "cut" (filter and echo out, clean
+     * entry on the downbeat) or "fade" (no reliable beat grid).
+     */
+    public var kind: String
+    /**
+     * 16-bit stereo 44.1 kHz WAV (32-bit float when baked-in gains push it
+     * over full scale). Holds, in order: the current song untouched from
+     * `a_cut_seconds`, the transition, then all the rest of the next song
+     * untouched. It is not deleted until newer transitions push it out.
+     */
+    public var filePath: String
+    public var fileDurationSeconds: Double
+    /**
+     * Second of the current song heard at file second 0: where the player
+     * seeks the file to when it takes over from the song.
+     */
+    public var aCutSeconds: Double
+    /**
+     * File seconds between which the file is neither the plain current song
+     * nor the plain next one. Before `overlap_start_seconds` the file is the
+     * current song sample for sample.
+     */
+    public var overlapStartSeconds: Double
+    public var overlapEndSeconds: Double
+    /**
+     * File second minus next-song second. Exact for file times from
+     * `overlap_end_seconds` on, where the file is the next song untouched.
+     */
+    public var bOffsetSeconds: Double
+    /**
+     * Second of the next song at which it enters the file; its earlier
+     * seconds are not in the file.
+     */
+    public var bEntrySeconds: Double
+    /**
+     * File second at which the UI should switch to the next song: the bass
+     * swap of a mix, the next song's entry otherwise.
+     */
+    public var handoverSeconds: Double
+    /**
+     * Tempos as measured (0 when there was no usable estimate), in the
+     * engine's counting (a half or double tempo is possible).
+     */
+    public var bpmFrom: Double
+    public var bpmTo: Double
+    /**
+     * Bars between the start of the change and the next song being fully in.
+     */
+    public var bars: UInt32
+    /**
+     * Whether the HT-Demucs model separated the stems (otherwise a
+     * frequency split, or no stems at all for "cut" and "fade").
+     */
+    public var stemsModel: Bool
+    /**
+     * One line, in Spanish, about what was done and why.
+     */
+    public var detail: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The id the request was made with.
+         */requestId: String, fromVideoId: String, toVideoId: String, 
+        /**
+         * "mix" (beat-matched bass swap), "cut" (filter and echo out, clean
+         * entry on the downbeat) or "fade" (no reliable beat grid).
+         */kind: String, 
+        /**
+         * 16-bit stereo 44.1 kHz WAV (32-bit float when baked-in gains push it
+         * over full scale). Holds, in order: the current song untouched from
+         * `a_cut_seconds`, the transition, then all the rest of the next song
+         * untouched. It is not deleted until newer transitions push it out.
+         */filePath: String, fileDurationSeconds: Double, 
+        /**
+         * Second of the current song heard at file second 0: where the player
+         * seeks the file to when it takes over from the song.
+         */aCutSeconds: Double, 
+        /**
+         * File seconds between which the file is neither the plain current song
+         * nor the plain next one. Before `overlap_start_seconds` the file is the
+         * current song sample for sample.
+         */overlapStartSeconds: Double, overlapEndSeconds: Double, 
+        /**
+         * File second minus next-song second. Exact for file times from
+         * `overlap_end_seconds` on, where the file is the next song untouched.
+         */bOffsetSeconds: Double, 
+        /**
+         * Second of the next song at which it enters the file; its earlier
+         * seconds are not in the file.
+         */bEntrySeconds: Double, 
+        /**
+         * File second at which the UI should switch to the next song: the bass
+         * swap of a mix, the next song's entry otherwise.
+         */handoverSeconds: Double, 
+        /**
+         * Tempos as measured (0 when there was no usable estimate), in the
+         * engine's counting (a half or double tempo is possible).
+         */bpmFrom: Double, bpmTo: Double, 
+        /**
+         * Bars between the start of the change and the next song being fully in.
+         */bars: UInt32, 
+        /**
+         * Whether the HT-Demucs model separated the stems (otherwise a
+         * frequency split, or no stems at all for "cut" and "fade").
+         */stemsModel: Bool, 
+        /**
+         * One line, in Spanish, about what was done and why.
+         */detail: String) {
+        self.requestId = requestId
+        self.fromVideoId = fromVideoId
+        self.toVideoId = toVideoId
+        self.kind = kind
+        self.filePath = filePath
+        self.fileDurationSeconds = fileDurationSeconds
+        self.aCutSeconds = aCutSeconds
+        self.overlapStartSeconds = overlapStartSeconds
+        self.overlapEndSeconds = overlapEndSeconds
+        self.bOffsetSeconds = bOffsetSeconds
+        self.bEntrySeconds = bEntrySeconds
+        self.handoverSeconds = handoverSeconds
+        self.bpmFrom = bpmFrom
+        self.bpmTo = bpmTo
+        self.bars = bars
+        self.stemsModel = stemsModel
+        self.detail = detail
+    }
+}
+
+
+
+extension AutomixTransitionRecord: Equatable, Hashable {
+    public static func ==(lhs: AutomixTransitionRecord, rhs: AutomixTransitionRecord) -> Bool {
+        if lhs.requestId != rhs.requestId {
+            return false
+        }
+        if lhs.fromVideoId != rhs.fromVideoId {
+            return false
+        }
+        if lhs.toVideoId != rhs.toVideoId {
+            return false
+        }
+        if lhs.kind != rhs.kind {
+            return false
+        }
+        if lhs.filePath != rhs.filePath {
+            return false
+        }
+        if lhs.fileDurationSeconds != rhs.fileDurationSeconds {
+            return false
+        }
+        if lhs.aCutSeconds != rhs.aCutSeconds {
+            return false
+        }
+        if lhs.overlapStartSeconds != rhs.overlapStartSeconds {
+            return false
+        }
+        if lhs.overlapEndSeconds != rhs.overlapEndSeconds {
+            return false
+        }
+        if lhs.bOffsetSeconds != rhs.bOffsetSeconds {
+            return false
+        }
+        if lhs.bEntrySeconds != rhs.bEntrySeconds {
+            return false
+        }
+        if lhs.handoverSeconds != rhs.handoverSeconds {
+            return false
+        }
+        if lhs.bpmFrom != rhs.bpmFrom {
+            return false
+        }
+        if lhs.bpmTo != rhs.bpmTo {
+            return false
+        }
+        if lhs.bars != rhs.bars {
+            return false
+        }
+        if lhs.stemsModel != rhs.stemsModel {
+            return false
+        }
+        if lhs.detail != rhs.detail {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(requestId)
+        hasher.combine(fromVideoId)
+        hasher.combine(toVideoId)
+        hasher.combine(kind)
+        hasher.combine(filePath)
+        hasher.combine(fileDurationSeconds)
+        hasher.combine(aCutSeconds)
+        hasher.combine(overlapStartSeconds)
+        hasher.combine(overlapEndSeconds)
+        hasher.combine(bOffsetSeconds)
+        hasher.combine(bEntrySeconds)
+        hasher.combine(handoverSeconds)
+        hasher.combine(bpmFrom)
+        hasher.combine(bpmTo)
+        hasher.combine(bars)
+        hasher.combine(stemsModel)
+        hasher.combine(detail)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAutomixTransitionRecord: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AutomixTransitionRecord {
+        return
+            try AutomixTransitionRecord(
+                requestId: FfiConverterString.read(from: &buf), 
+                fromVideoId: FfiConverterString.read(from: &buf), 
+                toVideoId: FfiConverterString.read(from: &buf), 
+                kind: FfiConverterString.read(from: &buf), 
+                filePath: FfiConverterString.read(from: &buf), 
+                fileDurationSeconds: FfiConverterDouble.read(from: &buf), 
+                aCutSeconds: FfiConverterDouble.read(from: &buf), 
+                overlapStartSeconds: FfiConverterDouble.read(from: &buf), 
+                overlapEndSeconds: FfiConverterDouble.read(from: &buf), 
+                bOffsetSeconds: FfiConverterDouble.read(from: &buf), 
+                bEntrySeconds: FfiConverterDouble.read(from: &buf), 
+                handoverSeconds: FfiConverterDouble.read(from: &buf), 
+                bpmFrom: FfiConverterDouble.read(from: &buf), 
+                bpmTo: FfiConverterDouble.read(from: &buf), 
+                bars: FfiConverterUInt32.read(from: &buf), 
+                stemsModel: FfiConverterBool.read(from: &buf), 
+                detail: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: AutomixTransitionRecord, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.requestId, into: &buf)
+        FfiConverterString.write(value.fromVideoId, into: &buf)
+        FfiConverterString.write(value.toVideoId, into: &buf)
+        FfiConverterString.write(value.kind, into: &buf)
+        FfiConverterString.write(value.filePath, into: &buf)
+        FfiConverterDouble.write(value.fileDurationSeconds, into: &buf)
+        FfiConverterDouble.write(value.aCutSeconds, into: &buf)
+        FfiConverterDouble.write(value.overlapStartSeconds, into: &buf)
+        FfiConverterDouble.write(value.overlapEndSeconds, into: &buf)
+        FfiConverterDouble.write(value.bOffsetSeconds, into: &buf)
+        FfiConverterDouble.write(value.bEntrySeconds, into: &buf)
+        FfiConverterDouble.write(value.handoverSeconds, into: &buf)
+        FfiConverterDouble.write(value.bpmFrom, into: &buf)
+        FfiConverterDouble.write(value.bpmTo, into: &buf)
+        FfiConverterUInt32.write(value.bars, into: &buf)
+        FfiConverterBool.write(value.stemsModel, into: &buf)
+        FfiConverterString.write(value.detail, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAutomixTransitionRecord_lift(_ buf: RustBuffer) throws -> AutomixTransitionRecord {
+    return try FfiConverterTypeAutomixTransitionRecord.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAutomixTransitionRecord_lower(_ value: AutomixTransitionRecord) -> RustBuffer {
+    return FfiConverterTypeAutomixTransitionRecord.lower(value)
 }
 
 
@@ -8661,7 +9040,13 @@ private let initializationResult: InitializationResult = {
     if (uniffi_sideb_core_checksum_method_sidebcore_apply_song_library_action() != 10220) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_sideb_core_checksum_method_sidebcore_automix_model_ready() != 47565) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_sideb_core_checksum_method_sidebcore_cancel_animated_artwork() != 50775) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_sideb_core_checksum_method_sidebcore_cancel_automix() != 20913) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_sideb_core_checksum_method_sidebcore_choose_genius() != 51171) {
@@ -8818,6 +9203,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_sideb_core_checksum_method_sidebcore_prepare_animated_artwork() != 41957) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_sideb_core_checksum_method_sidebcore_prepare_automix() != 17762) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_sideb_core_checksum_method_sidebcore_rate_song() != 25083) {

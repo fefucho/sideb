@@ -134,7 +134,17 @@ struct SideBApp: App {
         .windowStyle(.titleBar)
         .windowToolbarStyle(.unifiedCompact(showsTitle: false))
         .windowBackgroundDragBehavior(.enabled)
+
+        // Diagnóstico de Automix (beta): ventana de utilidad aparte, abierta desde el menú Automix.
+        Window(L10n.text("automix.diag.window"), id: AutomixDiagnosticsWindow.id) {
+            AutomixDiagnosticsView(player: playerViewModel)
+        }
+        .defaultSize(width: 680, height: 820)
     }
+}
+
+enum AutomixDiagnosticsWindow {
+    static let id = "automix-diagnostics"
 }
 
 // MARK: - WindowRootView (Ámbito de Estado por Ventana - A26)

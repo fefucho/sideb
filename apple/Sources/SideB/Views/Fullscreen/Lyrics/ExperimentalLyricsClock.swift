@@ -32,13 +32,18 @@ final class ExperimentalLyricsClock {
     @ObservationIgnored private var observationGeneration = UUID()
     @ObservationIgnored private var playbackIdentity: UUID?
     @ObservationIgnored private var seekSnapshot: AudioPlayerSeekSnapshot = .idle
+    /// Item seconds minus displayed song seconds (PLAN-024: non-zero while an Automix file plays). The 0.1 s
+    /// periodic sample keeps the position right across a bias change; boundary times use the bias at install.
+    @ObservationIgnored private var timeBias: @MainActor () -> Double = { 0 }
 
     func start(player: AVPlayer, document: ExperimentalLyricsDocument, duration: Double = 0,
-               playbackIdentity: UUID? = nil, seekSnapshot: AudioPlayerSeekSnapshot = .idle) {
+               playbackIdentity: UUID? = nil, seekSnapshot: AudioPlayerSeekSnapshot = .idle,
+               timeBias: @escaping @MainActor () -> Double = { 0 }) {
         let retainedVisibleGroups = visiblePresentationGroupIDs
         let retainedVisibleInterludes = visibleInterludeIDs
         stop()
         self.player = player
+        self.timeBias = timeBias
         self.document = document
         let validGroups = Set(document.presentationGroups.map { "line:\($0.anchorLineIndex)" })
         visiblePresentationGroupIDs = retainedVisibleGroups.intersection(validGroups)
@@ -193,7 +198,7 @@ final class ExperimentalLyricsClock {
     func sample() {
         guard let player, document != nil else { return }
         let pending = seekSnapshot.pendingTargetSeconds
-        let seconds = pending ?? player.currentTime().seconds
+        let seconds = pending ?? (player.currentTime().seconds - timeBias())
         updatePosition(seconds: seconds, playing: player.timeControlStatus == .playing && pending == nil)
     }
 
@@ -262,7 +267,7 @@ final class ExperimentalLyricsClock {
         let times = Self.boundarySeconds(document: document, offsetMS: offsetMS, interludes: interludes)
         guard !times.isEmpty else { return }
         let generation = observationGeneration
-        boundaryObserver = player.addBoundaryTimeObserver(forTimes: times.map { NSValue(time: CMTime(seconds: $0, preferredTimescale: 600)) }, queue: .main) { [weak self] in
+        boundaryObserver = player.addBoundaryTimeObserver(forTimes: times.map { NSValue(time: CMTime(seconds: $0 + timeBias(), preferredTimescale: 600)) }, queue: .main) { [weak self] in
             MainActor.assumeIsolated {
                 guard let self, self.observationGeneration == generation else { return }
                 self.sample()

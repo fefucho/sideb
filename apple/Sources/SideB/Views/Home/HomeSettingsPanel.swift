@@ -164,6 +164,21 @@ struct HomeSettingsPanel: View {
                         .accessibilityIdentifier("exponential-volume-toggle")
                     Text(L10n.text("settings.exponentialVolume.hint"))
                         .font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    Toggle(L10n.text("settings.automix"), isOn: Binding(
+                        get: { AudioPlayerService.shared.automixEnabled },
+                        set: { AudioPlayerService.shared.automixEnabled = $0 }
+                    ))
+                        .toggleStyle(.checkbox)
+                        .font(.system(size: 12))
+                        // A Jam forces Automix off; the saved preference is shown unchanged and applies again afterwards.
+                        .disabled(JamSessionController.shared.isActive)
+                        .accessibilityIdentifier("automix-toggle")
+                    if JamSessionController.shared.isActive {
+                        Text(L10n.text("automix.unavailable.jam"))
+                            .font(.system(size: 12, weight: .medium)).foregroundStyle(.secondary)
+                    }
+                    Text(L10n.text("settings.automix.hint"))
+                        .font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     Toggle(L10n.text("settings.animatedArtwork"), isOn: $animatedArtworkEnabled)
                         .toggleStyle(.checkbox)
                         .font(.system(size: 12))
