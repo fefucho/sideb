@@ -310,6 +310,7 @@ pub(crate) fn interrupt_auth_owner(playback: &mut PlaybackManager) {
     playback.runtime.seek.cancel();
     // Una preparación con la cuenta anterior no sirve (sus cancelaciones las envía quien llama).
     playback.runtime.automix.drop_plan();
+    playback.runtime.automix.cancel_prefetch_always();
     playback.runtime.interrupt_source();
     let source = playback.runtime.source.take();
     crate::invalidate_queue_owner(playback);
@@ -334,6 +335,7 @@ pub(crate) fn sync_account(app: &tauri::AppHandle, auth: &AuthStatusDto) {
     pb.runtime.persist(&pb);
     flush();
     pb.runtime.automix.reset_for_new_load();
+    pb.runtime.automix.cancel_prefetch_always();
     let cancelled = pb.runtime.automix.take_cancels();
     if let Ok(Some(player)) = state.player.read().map(|p| p.clone()) {
         let _ = player.stop();
@@ -357,6 +359,12 @@ pub(crate) fn sync_account(app: &tauri::AppHandle, auth: &AuthStatusDto) {
     pb.observed_auth_generation = state.auth_generation.load(Ordering::SeqCst);
     pb.runtime.identity = Some(identity);
     pb.runtime.directory = directory;
+    // Los ajustes de Automix viven en el core, no en la cuenta: se leen de nuevo al reemplazar el estado.
+    if let Some(core) = state.core.read().ok().and_then(|core| core.clone()) {
+        pb.runtime
+            .automix
+            .set_options(crate::automix_runtime::options_from(&core.get_automix_settings()));
+    }
     pb.runtime.last_audible = 100.0;
     if let Some(saved) = saved {
         pb.runtime.exponential_volume = saved.exponential_volume;
@@ -455,9 +463,6 @@ pub(crate) fn record_progress(
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
         record_history(&app, request, generation, auth_generation).await;
-        // Automix pide la ganancia de la canción siguiente resolviéndola, y eso pisa el
-        // seguimiento de historial de la actual: se espera a que esta escucha se haya registrado.
-        crate::automix_runtime::history_settled(&app, generation);
     });
 }
 async fn record_history(
@@ -482,6 +487,15 @@ async fn record_history(
         return;
     };
     let track = request.0;
+    // Automix resuelve la canción siguiente (para su ganancia) o traspasa sin resolver la nueva, y eso deja
+    // el seguimiento del core apuntando a otra: se resuelve de nuevo la que suena justo antes de registrarla.
+    let tracking_stale = state
+        .playback
+        .lock()
+        .is_ok_and(|mut pb| pb.runtime.automix.take_tracking_stale(generation));
+    if tracking_stale {
+        let _ = core.resolve_stream(track.video_id.clone(), track.is_upload).await;
+    }
     let metadata = serde_json::json!({ "video_id": track.video_id, "title": track.title, "artists": track.artists,
         "duration": track.duration.map(|duration| format!("{}:{:02}", duration.max(0.0) as u64 / 60, duration.max(0.0) as u64 % 60)).unwrap_or_default(), "thumbnail": track.thumbnail,
         "album": track.album, "album_id": track.album_id, "artist_id": track.artist_id, "artist_runs": track.artist_runs,

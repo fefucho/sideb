@@ -44,6 +44,7 @@
   import TopNavigation from '$lib/components/shell/TopNavigation.svelte';
   import { deriveNavigationPresentation } from '$lib/navigation/presentation';
   import { SETTINGS_HOST_CONTEXT, type SettingsHost } from '$lib/components/settings/settingsCategories';
+  import { AUTOMIX_HOST_CONTEXT, type AutomixHost } from '$lib/components/settings/automixHost';
   import { CatalogController, emptyCatalogData, type CatalogData } from "$lib/catalog/controller";
   import { defaults, decodeSettings as decodeHomeSettings, accountSettingsKey, missingHomeSources, type CollectionKind, type HomeSettings } from "$lib/home/settings";
   import { projectHome, visibleSignature } from "$lib/home/featured";
@@ -141,7 +142,7 @@ import { promotedEntryId } from "$lib/components/fullscreen/queueProjection";
 
   let homeSettings = $state<HomeSettings>(defaults());
   let volumeModePending = $state(false);
-  let automixState = $state<AutomixSnapshot>({ status: offAutomix(), pending: false, error: null });
+  let automixState = $state<AutomixSnapshot>({ status: offAutomix(), pending: false, error: null, options: null, optionsPending: false, optionsError: null });
   let featuredKind = $state<CollectionKind>('albums');
   let featuredSlots = $state(2);
   let preferenceKey = $state<string | null>(null);
@@ -294,6 +295,7 @@ import { promotedEntryId } from "$lib/components/fullscreen/queueProjection";
     });
   // Automix (beta): the native runtime owns the setting and the preparation; this mirrors it.
   const automix = new AutomixController((command, args) => invoke(command, args), (name, handler) => listen(name, handler), snapshot => { automixState = snapshot; });
+  setContext<AutomixHost>(AUTOMIX_HOST_CONTEXT, { get snapshot() { return automixState; }, controller: automix });
   // A Jam forces Automix off in the UI too, without touching the saved preference.
   const automixView = $derived(automixWithJam(automixState.status, jamLive));
   const mediaService: MediaService = {

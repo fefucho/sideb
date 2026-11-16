@@ -6,6 +6,7 @@
   import SettingsRow from './SettingsRow.svelte';
   import SettingsSelect from './SettingsSelect.svelte';
   import SettingsSwitch from './SettingsSwitch.svelte';
+  import AutomixAdvancedSettings from './AutomixAdvancedSettings.svelte';
   import { automixBlockedByJam, automixPresentation, type AutomixStatus } from '$lib/player/automix';
   interface Props { exponentialVolume: boolean; volumeModePending: boolean; onExponentialVolume?: (enabled: boolean) => void;
     automix?: AutomixStatus; automixPending?: boolean; automixError?: string | null; onAutomix?: (enabled: boolean) => void }
@@ -37,6 +38,7 @@
       </SettingsRow>
     </SettingsGroup>
   {/if}
+  {#if automix && onAutomix}<AutomixAdvancedSettings />{/if}
   {#if onExponentialVolume}
     <SettingsGroup title={$t('windows.settings.audio')} footer={$t('windows.settings.exponentialVolumeHint')}>
       <SettingsRow title={$t('windows.settings.exponentialVolume')}>

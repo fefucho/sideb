@@ -152,6 +152,30 @@ impl Player {
         Ok(())
     }
 
+    /// Load a local file and start it `start_secs` into it, replacing the playlist: the file opens
+    /// already positioned, so no audio before that point is heard and no seek follows (Automix's
+    /// splice from a song into its transition file). `headers` and `gain_db` are applied as in
+    /// [`Self::load`].
+    ///
+    /// mpv >= 0.38 takes `loadfile <url> <flags> <index> <options>`; older builds take the options
+    /// as the third argument. The new form is tried first and the old one when mpv rejects it.
+    pub fn load_at(
+        &self,
+        url: &str,
+        headers: &HashMap<String, String>,
+        gain_db: Option<f64>,
+        start_secs: f64,
+    ) -> Result<(), Error> {
+        self.apply_headers(headers)?;
+        self.set_gain(gain_db)?;
+        let url = quoted(url);
+        let start = start_option(start_secs);
+        self.mpv
+            .command("loadfile", &[&url, "replace", "-1", &start])
+            .or_else(|_| self.mpv.command("loadfile", &[&url, "replace", &start]))?;
+        Ok(())
+    }
+
     /// Append the next track for a gapless transition (the 1-track lookahead). context/14.
     ///
     /// Note: mpv's `http-header-fields`/`user-agent` are global properties, so appended tracks
@@ -472,6 +496,13 @@ fn quoted(arg: &str) -> String {
     format!("\"{}\"", arg.replace('\\', "\\\\").replace('"', "\\\""))
 }
 
+/// The per-file `start` option for [`Player::load_at`]: seconds, never negative or non-finite
+/// (mpv would read `NaN` as text and reject the whole command).
+fn start_option(start_secs: f64) -> String {
+    let seconds = if start_secs.is_finite() { start_secs.max(0.0) } else { 0.0 };
+    format!("start={seconds:.3}")
+}
+
 /// Slider percent → mpv `volume` value, over a 60 dB range. mpv applies gain = (v/100)³,
 /// i.e. 60·log10(v/100) dB, so v = 100·10^(−(1−s/100)^1.5) yields −60·(1−s/100)^1.5 dB:
 /// 50% is −21 dB, 25% is −39 dB, 1% is −59 dB. 0 stays a hard mute.
@@ -489,7 +520,7 @@ fn perceptual_to_mpv(percent: i64) -> f64 {
 
 #[cfg(test)]
 mod tests {
-    use super::{af_chain, perceptual_to_mpv, quoted};
+    use super::{af_chain, perceptual_to_mpv, quoted, start_option};
 
     static MPV_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
@@ -616,5 +647,15 @@ mod tests {
         // Monotonic, and finer steps at the loud end than the quiet one.
         assert!((1..=100).all(|s| perceptual_to_mpv(s) > perceptual_to_mpv(s - 1)));
         assert!(db(100) - db(99) < db(2) - db(1));
+    }
+
+    #[test]
+    fn load_at_start_option_is_a_clean_non_negative_number_of_seconds() {
+        assert_eq!(start_option(12.5), "start=12.500");
+        assert_eq!(start_option(0.0), "start=0.000");
+        assert_eq!(start_option(-3.0), "start=0.000");
+        assert_eq!(start_option(f64::NAN), "start=0.000");
+        assert_eq!(start_option(f64::INFINITY), "start=0.000");
+        assert_eq!(start_option(1.0004), "start=1.000");
     }
 }

@@ -16,9 +16,11 @@ export interface AutomixStatus {
   reason: string | null;
   /** Second of the CURRENT song (its progress-bar axis) where the mix starts: `a_cut + overlap_start`. */
   markerSeconds: number | null;
+  /** Quality of the ready or playing file: "fast" (no model) or "stems". */
+  quality: 'fast' | 'stems' | null;
 }
 
-export const offAutomix = (): AutomixStatus => ({ enabled: false, phase: 'off', kind: null, bpmFrom: null, bpmTo: null, bars: null, stemsModel: null, reason: null, markerSeconds: null });
+export const offAutomix = (): AutomixStatus => ({ enabled: false, phase: 'off', kind: null, bpmFrom: null, bpmTo: null, bars: null, stemsModel: null, reason: null, markerSeconds: null, quality: null });
 
 const phases: readonly AutomixPhase[] = ['off', 'idle', 'preparing', 'ready', 'unavailable', 'mixing'];
 const reasons = ['no-next', 'album', 'same-song', 'jam', 'repeat', 'unsupported-format', 'too-long', 'late', 'failed', 'load', 'resolve'] as const;
@@ -39,6 +41,7 @@ export function normalizeAutomix(value: unknown): AutomixStatus {
     bars: typeof raw.bars === 'number' ? raw.bars : null,
     stemsModel: typeof raw.stemsModel === 'boolean' ? raw.stemsModel : null,
     reason: reasons.includes(raw.reason as typeof reasons[number]) ? raw.reason as string : null,
+    quality: raw.quality === 'fast' || raw.quality === 'stems' ? raw.quality : null,
     markerSeconds: typeof raw.markerSeconds === 'number' && Number.isFinite(raw.markerSeconds) && raw.markerSeconds >= 0 ? raw.markerSeconds : null,
   };
 }
@@ -108,13 +111,96 @@ export function automixMarkerLayout(seconds: number | null | undefined, duration
   return { tickX, segmentWidth: width - tickX };
 }
 
-export interface AutomixSnapshot { status: AutomixStatus; pending: boolean; error: string | null }
+// MARK: Advanced options (the core's shared settings)
+
+export type AutomixQuality = 'auto' | 'fast' | 'stems';
+export type AutomixCompute = 'auto' | 'gpu' | 'cpu';
+export interface AutomixSettings {
+  quality: AutomixQuality;
+  /** On battery (or battery saver) stay with the fast version. */
+  fastOnBattery: boolean;
+  /** Do not mix two consecutive songs of the same album. */
+  skipSameAlbum: boolean;
+  compute: AutomixCompute;
+  /** Upcoming songs prepared ahead of time, 1 to 3. */
+  lookahead: 1 | 2 | 3;
+  keepModelLoaded: boolean;
+}
+export interface AutomixCapability {
+  modelReady: boolean;
+  modelDownloading: boolean;
+  /** Seconds of audio the model separates per second, once measured. */
+  realtimeFactor: number | null;
+  stemsRecommended: boolean;
+  /** "DirectML", "CPU"… empty until the model has been loaded once. */
+  provider: string;
+}
+export interface AutomixCacheUsage { audioBytes: number; stemsBytes: number; transitionsBytes: number; modelBytes: number }
+export interface AutomixOptions { settings: AutomixSettings; capability: AutomixCapability; cache: AutomixCacheUsage }
+
+export const defaultAutomixSettings = (): AutomixSettings =>
+  ({ quality: 'auto', fastOnBattery: true, skipSameAlbum: true, compute: 'auto', lookahead: 1, keepModelLoaded: false });
+
+const bytes = (value: unknown) => typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : 0;
+
+/** Defensive: anything that is not what the runtime promised reads as "no options", never as a broken page. */
+export function normalizeAutomixOptions(value: unknown): AutomixOptions | null {
+  if (!value || typeof value !== 'object') return null;
+  const raw = value as { settings?: Record<string, unknown>; capability?: Record<string, unknown>; cache?: Record<string, unknown> };
+  if (!raw.settings || typeof raw.settings !== 'object') return null;
+  const d = defaultAutomixSettings();
+  const s = raw.settings, c = raw.capability ?? {}, u = raw.cache ?? {};
+  const lookahead = typeof s.lookahead === 'number' ? Math.min(3, Math.max(1, Math.round(s.lookahead))) : d.lookahead;
+  return {
+    settings: {
+      quality: s.quality === 'fast' || s.quality === 'stems' || s.quality === 'auto' ? s.quality : d.quality,
+      fastOnBattery: typeof s.fastOnBattery === 'boolean' ? s.fastOnBattery : d.fastOnBattery,
+      skipSameAlbum: typeof s.skipSameAlbum === 'boolean' ? s.skipSameAlbum : d.skipSameAlbum,
+      compute: s.compute === 'gpu' || s.compute === 'cpu' || s.compute === 'auto' ? s.compute : d.compute,
+      lookahead: lookahead as 1 | 2 | 3,
+      keepModelLoaded: typeof s.keepModelLoaded === 'boolean' ? s.keepModelLoaded : d.keepModelLoaded,
+    },
+    capability: {
+      modelReady: c.modelReady === true, modelDownloading: c.modelDownloading === true,
+      realtimeFactor: typeof c.realtimeFactor === 'number' && Number.isFinite(c.realtimeFactor) && c.realtimeFactor > 0 ? c.realtimeFactor : null,
+      stemsRecommended: c.stemsRecommended === true, provider: typeof c.provider === 'string' ? c.provider : '',
+    },
+    cache: { audioBytes: bytes(u.audioBytes), stemsBytes: bytes(u.stemsBytes), transitionsBytes: bytes(u.transitionsBytes), modelBytes: bytes(u.modelBytes) },
+  };
+}
+
+/** "0 MB", "48.2 MB", "210 MB", "1.3 GB". */
+export function formatBytes(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) return '0 MB';
+  const mb = value / (1024 * 1024);
+  if (mb >= 1024) return `${(mb / 1024).toFixed(1)} GB`;
+  return mb >= 100 ? `${Math.round(mb)} MB` : `${mb.toFixed(1)} MB`;
+}
+
+/** What the "this computer" line says, as parts the UI translates. */
+export function describeCapability(capability: AutomixCapability): { model: 'ready' | 'downloading' | 'missing'; provider: string | null; speed: string | null; recommended: boolean } {
+  return {
+    model: capability.modelReady ? 'ready' : capability.modelDownloading ? 'downloading' : 'missing',
+    provider: capability.provider || null,
+    speed: capability.realtimeFactor === null ? null : capability.realtimeFactor.toFixed(1),
+    recommended: capability.stemsRecommended,
+  };
+}
+
+export interface AutomixSnapshot {
+  status: AutomixStatus; pending: boolean; error: string | null;
+  /** Advanced options; null until the runtime answers (an older host never does). */
+  options: AutomixOptions | null; optionsPending: boolean; optionsError: string | null;
+}
 
 /** Mirrors the native Automix status (`automix-status-changed`) and sends the setting. */
 export class AutomixController {
   private status = offAutomix();
   private pending = false;
   private error: string | null = null;
+  private options: AutomixOptions | null = null;
+  private optionsPending = false;
+  private optionsError: string | null = null;
   private revision = 0;
   private connected = false;
   private unlisten: PlayerUnlisten | null = null;
@@ -124,7 +210,10 @@ export class AutomixController {
     this.emit();
   }
 
-  get snapshot(): AutomixSnapshot { return { status: this.status, pending: this.pending, error: this.error }; }
+  get snapshot(): AutomixSnapshot {
+    return { status: this.status, pending: this.pending, error: this.error,
+      options: this.options, optionsPending: this.optionsPending, optionsError: this.optionsError };
+  }
   private emit() { this.publish(this.snapshot); }
 
   async connect(): Promise<void> {
@@ -155,8 +244,7 @@ export class AutomixController {
       const next = normalizeAutomix(await this.rpc('set_automix_enabled', { enabled }));
       if (revision === this.revision) this.status = next;
     } catch (cause) {
-      const message = cause && typeof cause === 'object' && 'message' in cause && typeof cause.message === 'string' ? cause.message : null;
-      this.error = message ?? 'No se pudo cambiar Automix.';
+      this.error = messageOf(cause, 'No se pudo cambiar Automix.');
     } finally {
       if (revision === this.revision) this.pending = false;
       this.emit();
@@ -165,10 +253,48 @@ export class AutomixController {
 
   toggle(): Promise<void> { return this.setEnabled(!this.status.enabled); }
 
+  /** Reads the options (opening the settings, and while the model downloads). Quiet on failure. */
+  async refreshOptions(): Promise<void> {
+    if (this.optionsPending || this.disposed) return;
+    try {
+      const next = normalizeAutomixOptions(await this.rpc('get_automix_options'));
+      if (next && !this.optionsPending) { this.options = next; this.emit(); }
+    } catch { /* An older host has no options: the section stays hidden. */ }
+  }
+
+  /** Sends the whole settings object with `patch` applied; the core corrects what is out of range. */
+  async updateSettings(patch: Partial<AutomixSettings>): Promise<void> {
+    if (!this.options) return;
+    return this.runOptions('set_automix_options', { settings: { ...this.options.settings, ...patch } });
+  }
+  clearCache(): Promise<void> { return this.runOptions('clear_automix_cache'); }
+  deleteModel(): Promise<void> { return this.runOptions('delete_automix_model'); }
+
+  private async runOptions(command: string, args?: Record<string, unknown>): Promise<void> {
+    if (this.optionsPending || this.disposed) return;
+    this.optionsPending = true;
+    this.optionsError = null;
+    this.emit();
+    try {
+      const next = normalizeAutomixOptions(await this.rpc(command, args));
+      if (!next) throw new Error('Respuesta de Automix no válida.');
+      this.options = next;
+    } catch (cause) {
+      this.optionsError = messageOf(cause, 'No se pudo guardar el ajuste de Automix.');
+    } finally {
+      this.optionsPending = false;
+      this.emit();
+    }
+  }
+
   async dispose(): Promise<void> {
     this.disposed = true;
     const unlisten = this.unlisten;
     this.unlisten = null;
     try { await unlisten?.(); } catch { /* Best effort. */ }
   }
+}
+
+function messageOf(cause: unknown, fallback: string): string {
+  return cause && typeof cause === 'object' && 'message' in cause && typeof cause.message === 'string' ? cause.message : fallback;
 }

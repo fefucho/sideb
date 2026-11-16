@@ -20,6 +20,13 @@ $script:VulkanAsset = "VulkanRT-X64-$($script:VulkanVersion)-Components"
 $script:VulkanUrl = "https://sdk.lunarg.com/sdk/download/$($script:VulkanVersion)/windows/$($script:VulkanAsset).zip"
 $script:VulkanSha256 = 'a25a927aa8b9f0371048f1861cf88ac3b9bc9b1fb332c42d897c8ab32695769a'
 
+# Automix (PLAN-024): ONNX Runtime goes into the EXE statically (ort-sys links pyke's onnxruntime.lib), but that
+# build ships compiled with DirectML and the EXE imports DirectML.dll, so the redistributable the same archive
+# carries has to travel next to libmpv: the one in System32 is older and may not exist. ort-sys downloads and
+# extracts the archive into its cache (ORT_CACHE_DIR or %LOCALAPPDATA%\ort.pyke.io); this stages the DLL from there
+# once its hash matches the one pinned here (UNVERIFIED on a real Windows build: re-pin it if ort is updated).
+$script:DirectMlSha256 = '9c9e6d822561c6c41b90e6994b3e8857cf1d66dbfb1e0c4c799c7c89b4e92da1'
+
 function Get-MpvDir {
     if ($env:SIDEB_MPV_DIR) {
         $resolved = (Resolve-Path -LiteralPath $env:SIDEB_MPV_DIR).Path
@@ -103,6 +110,32 @@ function Ensure-VulkanRuntime([string] $MpvDir) {
     }
 }
 
+function Find-OrtDirectMl {
+    $cache = if ($env:ORT_CACHE_DIR) { $env:ORT_CACHE_DIR } else { Join-Path $env:LOCALAPPDATA 'ort.pyke.io' }
+    $root = Join-Path $cache 'dfbin\x86_64-pc-windows-msvc'
+    if (-not (Test-Path -LiteralPath $root)) { return $null }
+    Get-ChildItem -LiteralPath $root -Recurse -Filter 'DirectML.dll' -File -ErrorAction SilentlyContinue |
+        Where-Object { (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash -eq $script:DirectMlSha256 } |
+        Select-Object -First 1
+}
+
+function Ensure-DirectMlRuntime {
+    $resource = Join-Path $WindowsDir 'src-tauri\DirectML.dll'
+    if ((Test-Path -LiteralPath $resource) -and
+        (Get-FileHash -LiteralPath $resource -Algorithm SHA256).Hash -eq $script:DirectMlSha256) { return }
+    $found = Find-OrtDirectMl
+    if (-not $found) {
+        # Building only ort-sys (not the app, whose build script needs this very resource) downloads the archive.
+        Write-Host 'Descargando ONNX Runtime con DirectML (ort-sys)...'
+        Push-Location (Join-Path $WindowsDir 'src-tauri')
+        try { & cargo build --locked -p ort-sys; if ($LASTEXITCODE -ne 0) { throw "cargo build -p ort-sys falló ($LASTEXITCODE)." } }
+        finally { Pop-Location }
+        $found = Find-OrtDirectMl
+    }
+    if (-not $found) { throw "No se encontró DirectML.dll con el SHA256 esperado ($script:DirectMlSha256) en la caché de ort; Automix no tendría GPU (cae a CPU) o la app no arrancaría." }
+    Copy-Item -LiteralPath $found.FullName -Destination $resource -Force
+}
+
 function Ensure-MpvImportLibrary {
     $mpvDir = Get-MpvDir
     $dll = Join-Path $mpvDir 'libmpv-2.dll'
@@ -110,6 +143,7 @@ function Ensure-MpvImportLibrary {
     # tauri_build copies configured resources before our build.rs runs. Stage the DLL
     # for verify/build as well as package so a clean checkout has that input available.
     Ensure-VulkanRuntime $mpvDir
+    Ensure-DirectMlRuntime
     foreach ($name in @('libmpv-2.dll', 'vulkan-1.dll', 'VulkanRT-License.txt')) {
         $source = Join-Path $mpvDir $name
         $resource = Join-Path $WindowsDir "src-tauri\$name"

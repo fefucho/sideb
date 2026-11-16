@@ -2372,6 +2372,7 @@ pub(crate) async fn stop_playback(
     invalidate_queue_owner(&mut pb);
     pb.queue = QueueStateDto::default();
     pb.runtime.automix.reset_for_new_load();
+    pb.runtime.automix.cancel_prefetch_always();
     let cancels = pb.runtime.automix.take_cancels();
     let dto = pb.to_dto();
     drop(pb);

@@ -720,6 +720,9 @@ fn retry_init_core(
             *err_lock = None;
 
             if let Some(core) = core_lock.clone() {
+                // `init` lee el core: se hace cuando ya se soltó este cerrojo de escritura.
+                let init_app = app.clone();
+                tauri::async_runtime::spawn(async move { automix_runtime::init(&init_app) });
                 tauri::async_runtime::spawn(session::restore(app.clone(), core.clone()));
                 tauri::async_runtime::spawn(session::watch_rotations(app.clone(), core.clone()));
                 tauri::async_runtime::spawn(session::watch_health(app.clone(), core));
@@ -1017,6 +1020,7 @@ pub fn run() {
             {
                 let _ = media_controls::initialize(app.handle());
             }
+            automix_runtime::init(app.handle());
             playback_runtime::sync_account(app.handle(), &AuthStatusDto::guest());
             if let Some(core) = core_to_restore {
                 tauri::async_runtime::spawn(session::restore(app.handle().clone(), core.clone()));
@@ -1155,6 +1159,10 @@ pub fn run() {
             commands::playback::set_exponential_volume,
             automix_runtime::get_automix_status,
             automix_runtime::set_automix_enabled,
+            automix_runtime::get_automix_options,
+            automix_runtime::set_automix_options,
+            automix_runtime::clear_automix_cache,
+            automix_runtime::delete_automix_model,
             commands::playback::set_shuffle,
             commands::playback::set_repeat,
             commands::playback::get_playback_state,

@@ -36,6 +36,7 @@
     "resources": [
       "libmpv-2.dll",
       "vulkan-1.dll",
+      "DirectML.dll",
       "VulkanRT-License.txt",
       "provider/spotify-canvas/manifest.json",
       "provider/spotify-canvas/sideb-spotify-canvas.exe",
